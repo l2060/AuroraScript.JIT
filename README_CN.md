@@ -31,7 +31,6 @@ AuroraScript 是一个基于 .NET 构建的轻量级、弱类型脚本执行引�
   - 支持 `@module("MODULENAME")` 自定义模块名称。
 - **高级控制流**：
   - 支持 `debugger` 指令进行编程式断点。
-  - 支持宿主控制的中断（Interruption）与继续（Continue）机制。
   - 增强的 `where` / `for` loop 支持。
 - **编译模式 (Compilation Modes)**：
   - `Persistence`：持久化程序集模式。编译为包含 PDB 符号的持久化 DLL。支持源码级调试和编程式断点。完全可检索、可被外部进程 Dump。

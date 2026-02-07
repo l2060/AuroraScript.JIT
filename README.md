@@ -30,7 +30,6 @@ While inspired by JavaScript syntax and mechanisms, AuroraScript is a distinct l
   - `include 'xxx.as'`: Embed script files directly.
   - `@module("NAME")`: Define module name.
 - **Advanced Control Flow**:
-  - `Interruption & Continue`: Pause and resume script execution from external host.
   - `debugger`: Programmatic breakpoint.
   - `where` / `for` loop enhancements.
 - **Compilation Modes**:
