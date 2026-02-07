@@ -1,0 +1,44 @@
+﻿using System.Collections.Generic;
+
+namespace AuroraScript.Compiler.Ast.Expressions
+{
+    internal class SetElementExpression : OperatorExpression
+    {
+        public SetElementExpression(Expression obj, Expression index, Expression value) : base(Operator.Assignment)
+        {
+            Object = obj;
+            Index = index;
+            Value = value;
+            Object.Parent = this;
+            Index.Parent = this;
+            Value.Parent = this;
+        }
+
+        public readonly Expression Object;
+        public readonly Expression Index;
+        public readonly Expression Value;
+
+        public override IEnumerable<AstNode> ChildNodes
+        {
+            get
+            {
+                if (Object != null) yield return Object;
+                if (Index != null) yield return Index;
+                if (Value != null) yield return Value;
+            }
+        }
+
+        public override void Accept(IAstVisitor visitor)
+        {
+            visitor.AcceptSetElementExpression(this);
+        }
+
+        public override string ToString()
+        {
+            return $"{Object}[{Index}] = {Value}";
+        }
+
+
+
+    }
+}

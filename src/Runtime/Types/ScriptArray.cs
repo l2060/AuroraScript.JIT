@@ -1,0 +1,307 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+
+namespace AuroraScript.Runtime.Types
+{
+    /// <summary>
+    /// Represents a dynamic array in AuroraScript.
+    /// Manages an internal buffer of <see cref="ScriptDatum"/> and provides methods for manipulation.
+    /// </summary>
+    public sealed partial class ScriptArray : ScriptObject
+    {
+        internal ScriptDatum[] _items;
+        private int _count;
+
+        /// <summary>
+        /// Initializes a new <see cref="ScriptArray"/> by copying another array.
+        /// </summary>
+        /// <param name="array">The source array to copy from.</param>
+        public ScriptArray(ScriptArray array)
+        {
+            this._prototype = Prototypes.ScriptArrayPrototype;
+            var capacity = array._count;
+            _items = new ScriptDatum[Math.Max(4, capacity)];
+            if (capacity > 0)
+            {
+                Array.Copy(array._items, _items, capacity);
+            }
+        }
+
+        /// <summary>
+        /// Initializes a new <see cref="ScriptArray"/> with the specified initial capacity.
+        /// </summary>
+        /// <param name="capacity">The initial capacity of the array.</param>
+        public ScriptArray(int capacity)
+        {
+            this._prototype = Prototypes.ScriptArrayPrototype;
+            if (capacity <= 0)
+            {
+                _items = Array.Empty<ScriptDatum>();
+                _count = 0;
+            }
+            else
+            {
+                _items = new ScriptDatum[Math.Max(4, capacity)];
+                _count = capacity;
+                for (int i = 0; i < _count; i++)
+                {
+                    _items[i] = ScriptDatum.Null;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Initializes a new <see cref="ScriptArray"/> from a list of script objects.
+        /// </summary>
+        /// <param name="list">The source list.</param>
+        public ScriptArray(List<ScriptObject> list)
+        {
+            this._prototype = Prototypes.ScriptArrayPrototype;
+            if (list == null || list.Count == 0)
+            {
+                _items = Array.Empty<ScriptDatum>();
+                _count = 0;
+            }
+            else
+            {
+                _items = new ScriptDatum[Math.Max(4, list.Count)];
+                _count = list.Count;
+                for (int i = 0; i < _count; i++)
+                {
+                    ScriptDatum.WriteObject(ref _items[i], list[i]);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Initializes a new <see cref="ScriptArray"/> from a span of <see cref="ScriptDatum"/>.
+        /// </summary>
+        /// <param name="array">The source span.</param>
+        public ScriptArray(Span<ScriptDatum> array)
+        {
+            this._prototype = Prototypes.ScriptArrayPrototype;
+            if (array.Length == 0)
+            {
+                _items = Array.Empty<ScriptDatum>();
+                _count = 0;
+            }
+            else
+            {
+                _items = new ScriptDatum[Math.Max(4, array.Length)];
+                _count = array.Length;
+                for (int i = 0; i < _count; i++)
+                {
+                    _items[i] = array[i];
+                }
+            }
+        }
+
+        /// <summary>
+        /// Initializes a new <see cref="ScriptArray"/> from an array of <see cref="ScriptDatum"/>.
+        /// </summary>
+        /// <param name="array">The source array.</param>
+        public ScriptArray(ScriptDatum[] array)
+        {
+            this._prototype = Prototypes.ScriptArrayPrototype;
+            if (array.Length == 0)
+            {
+                _items = Array.Empty<ScriptDatum>();
+                _count = 0;
+            }
+            else
+            {
+                _items = new ScriptDatum[Math.Max(4, array.Length)];
+                _count = array.Length;
+                for (int i = 0; i < _count; i++)
+                {
+                    _items[i] = array[i];
+                }
+            }
+        }
+
+        /// <summary>
+        /// Initializes a new <see cref="ScriptArray"/> from an array of <see cref="ScriptObject"/>.
+        /// </summary>
+        /// <param name="array">The source array.</param>
+        public ScriptArray(ScriptObject[] array)
+        {
+            this._prototype = Prototypes.ScriptArrayPrototype;
+            if (array == null || array.Length == 0)
+            {
+                _items = Array.Empty<ScriptDatum>();
+                _count = 0;
+            }
+            else
+            {
+                _items = new ScriptDatum[Math.Max(4, array.Length)];
+                _count = array.Length;
+                for (int i = 0; i < _count; i++)
+                {
+                    ScriptDatum.WriteObject(ref _items[i], array[i]);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Initializes an empty <see cref="ScriptArray"/>.
+        /// </summary>
+        public ScriptArray()
+        {
+            this._prototype = Prototypes.ScriptArrayPrototype;
+            this._items = Array.Empty<ScriptDatum>();
+            this._count = 0;
+        }
+
+        /// <summary> Gets the element at the specified index. </summary>
+        public ScriptDatum GetElement(int index)
+        {
+            if (index < 0 || index >= _count) return ScriptDatum.Null;
+            return _items[index];
+        }
+
+        /// <summary> Gets the element at the specified index and writes it to the provided datum. </summary>
+        public void GetElement(int index, ref ScriptDatum scriptDatum)
+        {
+            if (index < 0) index = _count + index;
+            if (index < 0 || index >= _count)
+            {
+                scriptDatum = default;
+                return;
+            }
+            scriptDatum = _items[index];
+        }
+
+        /// <summary>
+        /// Slices the array from start to end and writes the resulting <see cref="ScriptArray"/> to the provided datum.
+        /// Supports negative indices.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void SliceTo(int start, int end, ref ScriptDatum scriptDatum)
+        {
+            int count = _count;
+            // Support negative indexing
+            if (start < 0) start += count;
+            if (end < 0) end += count;
+
+            // Clamp boundaries
+            if (start < 0) start = 0;
+            if (end > count) end = count;
+            if (end == 0) end = count;
+
+            int len = end - start;
+            if (len <= 0)
+            {
+                ScriptDatum.MarkAsNull(ref scriptDatum);
+                return;
+            }
+
+            var result = new ScriptArray(len);
+            var dst = result._items;
+            var src = _items;
+            // High speed copy
+            Array.Copy(src, start, dst, 0, len);
+            result._count = len;
+            scriptDatum = ScriptDatum.FromArray(result);
+        }
+
+        /// <summary>
+        /// Slices the array from start to the end of the array.
+        /// </summary>
+        public void SliceTo(int start, ref ScriptDatum scriptDatum)
+        {
+            SliceTo(start, _count, ref scriptDatum);
+        }
+
+        /// <summary> Sets the element at the specified index. Expands the buffer if necessary. </summary>
+        public void SetElement(int index, in ScriptDatum datum)
+        {
+            if (index < 0) index = _count + index;
+            if (index < 0) return;
+            if (index >= _items.Length) EnsureCapacity(index + 1);
+            if (index >= _count)
+            {
+                _count = index + 1;
+            }
+            _items[index] = datum;
+        }
+
+        /// <summary> Appends a datum to the end of the array. </summary>
+        public void Push(ScriptDatum datum)
+        {
+            SetElement(_count, in datum);
+        }
+
+        /// <summary> Removes the reference at the specified index by setting it to default. </summary>
+        public void Remove(int index)
+        {
+            if (index < 0 || index >= _count) return;
+            _items[index] = default;
+        }
+
+        /// <summary> Returns a span of the active elements in the array. </summary>
+        public Span<ScriptDatum> Values()
+        {
+            return _items.AsSpan(0, _count);
+        }
+
+        /// <summary> Convers the active elements of the array into a new <see cref="ScriptDatum"/> array. </summary>
+        public ScriptDatum[] ToDatumArray()
+        {
+            if (_count == 0) return Array.Empty<ScriptDatum>();
+            var result = new ScriptDatum[_count];
+            Array.Copy(_items, result, _count);
+            return result;
+        }
+
+        /// <summary> Returns a JSON-like string representation of the array. </summary>
+        public override string ToString()
+        {
+            if (_count == 0) return "[]";
+            var parts = new string[_count];
+            for (int i = 0; i < _count; i++)
+            {
+                parts[i] = ScriptDatum.ToString(_items[i]);
+            }
+            return "[" + string.Join(", ", parts) + "]";
+        }
+
+        /// <summary> Returns an enumerator capable of iterating over the array. </summary>
+        public sealed override ScriptEnumerator GetEnumerator()
+        {
+            return new ScriptEnumerator(this);
+        }
+
+        /// <summary> Gets the number of elements in the array. </summary>
+        public int Length
+        {
+            get
+            {
+                return _count;
+            }
+        }
+
+        /// <summary> Removes the last element and writes it to the provided datum. </summary>
+        internal void PopTo(ref ScriptDatum datum)
+        {
+            if (_count > 0)
+            {
+                datum = _items[--_count];
+                ScriptDatum.MarkAsNull(ref _items[_count]);
+            }
+        }
+
+        private void EnsureCapacity(int min)
+        {
+            if (_items.Length >= min) return;
+            var newCapacity = _items.Length == 0 ? 4 : _items.Length * 2;
+            if (newCapacity < min) newCapacity = min;
+            var newArray = new ScriptDatum[newCapacity];
+            if (_count > 0)
+            {
+                Array.Copy(_items, newArray, _count);
+            }
+            _items = newArray;
+        }
+    }
+}

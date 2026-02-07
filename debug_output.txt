@@ -1,0 +1,5 @@
+从 examples\Properties\launchSettings.json 使用启动设置...
+Loaded Assemblies:
+- AuroraScript, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+Warning: Failed to save assembly to 123.dll: Referenced assembly cannot be found: ASGen_e21599fb, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+Build successful!

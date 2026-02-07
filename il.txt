@@ -1,0 +1,11 @@
+VisitDeleteStatement
+VisitSpreadExpression
+VisitObjectDestructuringPattern
+VisitArrayDestructuringPattern
+
+
+VisitForInStatement
+VisitEnumDeclaration
+VisitIncludedExpression
+VisitInExpression
+VisitNewExpression
