@@ -12,35 +12,40 @@
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/l2060/AuroraScript)
 [![Version](https://img.shields.io/badge/version-1.0.0-orange.svg)](package.json)
 
-AuroraScript 是一个基于 .NET 构建的轻量级、弱类型脚本执行引擎。它将脚本编译为字节码，并在定制的高性能虚拟机（VM）上运行，旨在快速、易于嵌入和使用。
+AuroraScript 是一个基于 .NET 构建的轻量级、弱类型脚本执行引擎。它将脚本直接编译为 CIL（通用中间语言），并通过 .NET JIT 编译器执行。旨在提供极致的性能、易于嵌入且高度可扩展。
 
-虽然在语法和机制上借鉴了 JavaScript，但 AuroraScript 是一门独立的语言，拥有自己的优化和特性，并不遵守 ECMA 规范。它支持原生 .NET 集成和调试功能。
+虽然在语法和机制上借鉴了 JavaScript，但 AuroraScript 是一门独立的语言，拥有自己的优化和特性，并不遵守 ECMA 规范。它充分利用了原生 .NET 基础设施进行执行、互操作和调试。
 
 > [!NOTE]
 > 🚧 **Work in Progress**: 本项目仍处于开发阶段，性能和 API 稳定性正在持续改进中。我们非常欢迎大家提交 **PR** 和 **Issue** 来共同壮大 AuroraScript！
 
 ## ✨ 特性
 
-- **轻量且快速**：无第三方依赖，采用字节码编译和优化过的 VM 执行。
+- **高性能**：无第三方依赖，编译为原生 CIL/MSIL，利用 .NET JIT 编译器执行。
 - **弱类型系统**：类似 JavaScript 的灵活变量类型。
 - **原生互操作**：可无缝注册和在脚本中使用 .NET (CLR) 类型和函数。
-- **调试支持**：完善的 VS Code 调试器支持（断点、单步执行、变量查看、调用堆栈）。
+- **调试支持**：目前仅支持 **Visual Studio** 调试（断点、步进、变量查看等）。
 - **模块化系统**：
   - 支持 `import xxx from 'xxx'` 导入模块导出项。
   - 支持 `include 'xxx.as'` 直接嵌入脚本文件。
   - 支持 `@module("MODULENAME")` 自定义模块名称。
 - **高级控制流**：
-  - 支持 `yield` 指令进行执行中断。
   - 支持 `debugger` 指令进行编程式断点。
   - 支持宿主控制的中断（Interruption）与继续（Continue）机制。
-  - 增强的 `where` / `for` 循环支持。
+  - 增强的 `where` / `for` loop 支持。
+- **编译模式 (Compilation Modes)**：
+  - `Persistence`：持久化程序集模式。编译为包含 PDB 符号的持久化 DLL。支持源码级调试和编程式断点。完全可检索、可被外部进程 Dump。
+  - `OnlyRun`：临时内存编译模式。内存中即时编译执行。无托管调试映射关系。对外部性能分析器和 Dump 工具透明，代码驻留在可读内存段。
+  - `Dynamic`：高性能动态执行模式。通过 `DynamicMethod` 发射 CIL。无元数据开销，提供极致性能。黑盒执行：不可检索也不可被外部进程 Dump。
+- **热修复 (Hot-fix)**：支持在不丢失状态的情况下动态更新脚本逻辑。提供 `Replace` 和 `Incremental` 两种模式，支持 .NET API 或脚本 API 调用。
+- **混淆支持 (Obfuscation)**：内置对比特、成员名和代码结构的混淆功能。
 - **现代语法支持**：
   - 支持闭包（Closures）、Lambda 表达式和函数指针。
   - 对象解构：`var { a, b } = obj;`。
   - 数组解构：`var [ a, ...b ] = arr;`。
   - 展开运算符（Spread Operator）：`...` 支持数组和对象展开。
   - 文本模板：支持多行文本模板（`` ` `` 或 `|>` 语法）。
-- **标准库**：内置 `Math`, `JSON`, `Date`, `Regex`, `StringBuffer` 等实用对象。
+- **标准库**：内置 `Math`, `JSON`, `Date`, `Regex`, `HashMap`, `Proxy`, `StringBuffer` 等实用对象。
 
 ## 🚀 快速开始
 
@@ -49,7 +54,7 @@ AuroraScript 是一个基于 .NET 构建的轻量级、弱类型脚本执行引�
 您可以通过 NuGet 快速安装 AuroraScript 引擎：
 
 ```bash
-dotnet add package AuroraScript
+dotnet add package AuroraScript.JIT
 ```
 
 ### 手动安装
@@ -84,10 +89,10 @@ var options = EngineOptions.Default.WithBaseDirectory("./scripts/");
 var engine = new AuroraEngine(options);
 
 // 2. 注册 CLR 类型或函数 (可选)
-engine.RegisterClrType(typeof(Math), "Math2");
+engine.RegisterType<Math>("Math2");
 
-// 3. 编译脚本
-await engine.BuildAsync();
+// 3. 编译脚本 (搜索并构建基础目录下所有 .as 文件)
+await engine.BuildAsync(engine.SearchAllFileSource(Encoding.UTF8));
 
 // 4. 创建 Domain 并执行
 var domain = engine.CreateDomain();
@@ -120,50 +125,22 @@ func main() {
 
 ## 🐞 脚本调试
 
-AuroraScript 支持功能完备的 VS Code 调试体验。
+AuroraScript 支持功能完备的 **Visual Studio** 调试体验。
 
-### 1. 扩展安装
+### 1. Visual Studio 调试
+在 `Persistence` 或 `OnlyRun` 模式下，您可以直接在 Visual Studio 中调试脚本：
+- **断点 (Breakpoints)**：在 `.as` 文件中自由设置断点。
+- **单步执行**: 支持逐语句 (F11)、逐过程 (F10) 和跳出 (Shift+F11)。
+- **变量查看**: 支持查看本地变量、对象成员及代码堆栈。
 
-1.  **打开项目**：在 VS Code 中打开 `vscode-extension` 文件夹。
-2.  **安装依赖**：运行 `npm install`。
-3.  **打包插件**：运行 `npm run package` 生成 `.vsix` 文件。
-4.  **安装插件**：在 VS Code 扩展菜单中选择 "Install from VSIX..." 安装该文件。
-
-### 2. 配置调试器
-
-在脚本根目录创建 `.vscode/launch.json`：
-
-```json
-{
-    "version": "0.2.0",
-    "configurations": [
-        {
-            "type": "AuroraScript",
-            "request": "attach",
-            "name": "Attach to AuroraScript",
-            "host": "localhost",
-            "port": 26010
-        }
-    ]
-}
-```
+### 2. VS Code 插件
+目前的 VS Code 插件主要用于提供**代码着色**（语法高亮）能力，提升编写体验。
+- 安装方式：打开 `vscode-extension`，运行 `npm install` 与 `npm run package`，随后安装生成的 `.vsix` 文件。
 
 ### 3. 启动调试
-
-1.  在 C# 宿主中启用调试并等待连接：
-    ```csharp
-    engine.EnableDebugger();
-    await engine.WaitAnyDebugger(TimeSpan.FromSeconds(60));
-    ```
+1.  在 C# 宿主程序中设置好断点。
 2.  运行宿主程序。
-3.  在 VS Code 中按 `F5` 附加调试器。
-
-### 调试功能
-- **断点 (Breakpoints)**：在 `.as` 文件中自由设置断点。
-- **单步执行**: 支持 F10 (Step Over), F11 (Step Into), Shift+F11 (Step Out).
-- **变量查看**: 支持查看对象、数组、闭包及本地变量。
-- **调用堆栈**: 清晰展示脚本调用层级。
-- **`debugger` 指令**: 在代码中支持 `debugger;` 关键字触发断点。
+3.  命中断点后即可在 Visual Studio 中进行调试。
 
 ![Debugger Demo](documents/debugger.png)
 
@@ -194,12 +171,51 @@ AuroraScript 运行时提供了一套核心的标准库支持。
 | **JSON** | JSON 序列化 | `parse(string)`, `stringify(object)` |
 | **Date** | 日期时间 | `now()`, `parse(string)`, 构造函数 `new Date()` |
 | **Regex** | 正则表达式 | 构造函数 `new Regex(pattern)`, `match(str)`, `replace(str, repl)` |
+| **HashMap** | 哈希表 | `set(key, val)`, `get(key)`, `has(key)`, `delete(key)`, `clear()` |
+| **Proxy** | 代理对象 | 构造函数 `new Proxy(target, handler)`, 拦截 get/set 等操作 |
 | **StringBuffer** | 字符串构建器 | `append(str)`, `toString()`, 高性能字符串拼接 |
 
 ### 全局上下文
 - `global`: 指向当前 Domain 的全局作用域。
 - `$state`: 访问用户注入的状态对象 (通过 C# `ExecuteOptions.WithUserState` 传入)。
 - `$args`: 当前函数的入参数组。
+
+## 🔥 热修复 (Hot-fix)
+
+AuroraScript 提供了强大的热修复能力，允许您在不重启应用程序或丢失运行时状态的情况下，动态更新正在运行的 `ScriptDomain` 中的脚本逻辑。
+
+### 1. .NET API (宿主侧)
+通过 `domain.DynamicPatch` 方法从宿主程序应用补丁：
+
+```csharp
+// 应用替换式补丁 (Replace)
+domain.DynamicPatch(engine.MemorySource("module.as", "func newFunc() { ... }"), HotPatchType.Replace);
+
+// 应用增量式补丁 (Incremental)
+domain.DynamicPatch(engine.MemorySource("module.as", "var newVar = 1;"), HotPatchType.Incremental);
+```
+
+### 2. 脚本 API (脚本侧)
+全局 `HotPatch` 对象允许脚本自行或为其他模块应用补丁：
+
+```javascript
+// 替换 'MAIN' 模块的所有成员
+HotPatch.replace("MAIN", "|> func main() { console.log('已修复!'); }");
+
+// 增量更新 'UTILS' 模块的成员
+HotPatch.incremental("UTILS", "|> func helper() { return 42; }");
+```
+
+### 3. 工作原理
+热修复通过 `IncrementalCompiler` 实现局部 JIT 编译。它将新代码链接到现有的 `ScriptGlobal` 环境中，并更新代表目标模块的 `ScriptObject` 实例。
+
+### 4. 注意事项
+- **顶层代码执行**：补丁模块应用时，其顶层代码（变量初始化等）会重新执行。
+- **函数签名**：确保新函数的参数签名与现有调用处保持一致，以维持兼容性。
+- **替换 vs 增量**：
+    - `Replace` 模式：具有破坏性。在应用新代码前会清空模块的所有现有属性。
+    - `Incremental` 模式：安全。保留现有属性，仅更新或添加新成员。
+- **状态持久化**：如果补丁代码中包含模块级变量定义，这些变量会被重新初始化。
 
 ## 📊 性能基准 (Benchmark)
 
