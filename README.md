@@ -201,10 +201,10 @@ The global `HotPatch` object allows scripts to patch themselves or other modules
 
 ```javascript
 // Replace all members of 'MAIN' module
-HotPatch.replace("MAIN", "|> func main() { console.log('Fixed!'); }");
+HotPatch.replace("MAIN", "func main() { console.log('Fixed!'); }");
 
 // Incrementally add/update members in 'UTILS' module
-HotPatch.incremental("UTILS", "|> func helper() { return 42; }");
+HotPatch.incremental("UTILS", "func helper() { return 42; }");
 ```
 
 ### 3. Working Mechanism

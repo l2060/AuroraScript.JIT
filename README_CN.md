@@ -200,10 +200,10 @@ domain.DynamicPatch(engine.MemorySource("module.as", "var newVar = 1;"), HotPatc
 
 ```javascript
 // 替换 'MAIN' 模块的所有成员
-HotPatch.replace("MAIN", "|> func main() { console.log('已修复!'); }");
+HotPatch.replace("MAIN", "func main() { console.log('已修复!'); }");
 
 // 增量更新 'UTILS' 模块的成员
-HotPatch.incremental("UTILS", "|> func helper() { return 42; }");
+HotPatch.incremental("UTILS", "func helper() { return 42; }");
 ```
 
 ### 3. 工作原理
