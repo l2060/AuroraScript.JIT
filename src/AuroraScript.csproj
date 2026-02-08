@@ -13,8 +13,8 @@
 	</PropertyGroup>
 
 	<PropertyGroup>
-		<GeneratePackageOnBuild>False</GeneratePackageOnBuild>
-		<PackageId>AuroraScript</PackageId>
+		<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+		<PackageId>AuroraScript.JIT</PackageId>
 		<Version>1.0.0</Version>
 		<Title>AuroraScript</Title>
 		<PackageIcon>icon.png</PackageIcon>

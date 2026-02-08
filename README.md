@@ -226,22 +226,10 @@ Performance is a priority. We encourage community contributions to optimize furt
 
 | Method | Mean | StdDev | Allocated |
 | :--- | :---: | :---: | :---: |
-| **TestIfTrue** | 225.1 ns | 0.19 ns | - |
-| **TestAssuming** | 227.0 ns | 0.51 ns | - |
-| **TestAddVar** | 240.6 ns | 0.50 ns | - |
-| **TestGetVar** | 243.5 ns | 0.37 ns | - |
-| **TestSetVar** | 250.7 ns | 0.39 ns | - |
-| **TestSetProperty** | 257.0 ns | 1.05 ns | 48 B |
-| **TestGetProperty** | 269.3 ns | 0.44 ns | - |
-| **TestClone** | 515.6 ns | 1.34 ns | 1072 B |
-| **TestIterator** | 822.1 ns | 2.09 ns | 1056 B |
-| **TestJson** | 1,907.2 ns | 6.53 ns | 4520 B |
-| **TestRegex** | 3,604.4 ns | 7.77 ns | 8696 B |
-| **TestStrings** | 979.7 $\mu$s | 3.27 $\mu$s | 3.48 MB |
-| **TestClosure** | 1.00 ms | 2.27 $\mu$s | 496 B |
-| **TestObjects** | 1.38 ms | 5.06 $\mu$s | 5.14 MB |
-| **TestArrays** | 1.40 ms | 15.13 $\mu$s | 2.22 MB |
-| **TestFor100W** | 10.25 ms | 112.7 $\mu$s | - |
+|  |  |  |  |
+|  |  |  |  |
+|  |  |  |  |
+|  |  |  |  |
 
 > Measured on Intel Core i7-13700KF, .NET 10.0.1.
 
