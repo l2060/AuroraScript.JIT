@@ -14,7 +14,7 @@ using System.Reflection.Emit;
 
 namespace AuroraScript.Compiler.Emits
 {
-    internal class CILEmitter(AbstractCILBuilder builder) : IAstVisitor
+    internal class CILEmitter(AbstractCILBuilder builder, EngineOptions Options) : IAstVisitor
     {
         private record ModuleState(String Name, int Hash, MethodInfo Init, ILGenerator IL, Dictionary<FunctionDeclaration, MethodInfo> Methods)
         {
@@ -2078,7 +2078,10 @@ namespace AuroraScript.Compiler.Emits
 
         protected override void VisitDebuggerExpression(DebuggerStatement node)
         {
-            _il.Emit(OpCodes.Break);
+            if (builder is PersistedBuilder && Options.OptimizeOption == OptimizeOptions.Debug)
+            {
+                _il.Emit(OpCodes.Break);
+            }
         }
 
         protected override void VisitSetPropertyExpression(SetPropertyExpression node)

@@ -127,21 +127,24 @@ func main() {
 AuroraScript 支持功能完备的 **Visual Studio** 调试体验。
 
 ### 1. Visual Studio 调试
-在 `Persistence` 或 `OnlyRun` 模式下，您可以直接在 Visual Studio 中调试脚本：
+在 `Persistence` 模式下并开启Debug编译优化，您可以直接在 Visual Studio 中调试脚本：
 - **断点 (Breakpoints)**：在 `.as` 文件中自由设置断点。
 - **单步执行**: 支持逐语句 (F11)、逐过程 (F10) 和跳出 (Shift+F11)。
 - **变量查看**: 支持查看本地变量、对象成员及代码堆栈。
+- **调试指令**: 支持 `debugger` 指令进行编程式断点。
 
-### 2. VS Code 插件
-目前的 VS Code 插件主要用于提供**代码着色**（语法高亮）能力，提升编写体验。
-- 安装方式：打开 `vscode-extension`，运行 `npm install` 与 `npm run package`，随后安装生成的 `.vsix` 文件。
-
-### 3. 启动调试
+### 2. 启动调试
 1.  在 C# 宿主程序中设置好断点。
 2.  运行宿主程序。
 3.  命中断点后即可在 Visual Studio 中进行调试。
 
+
 ![Debugger Demo](documents/debugger.png)
+
+### 3. VS Code 插件
+目前的 VS Code 插件主要用于提供**代码着色**（语法高亮）能力，提升编写体验。
+- 安装方式：打开 `vscode-extension`，运行 `npm install` 与 `npm run package`，随后安装生成的 `.vsix` 文件。
+
 
 *内置类型定义文件提供智能提示支持：*
 ![Type Definitions](documents/lib.d.as.png)
@@ -160,6 +163,7 @@ AuroraScript 运行时提供了一套核心的标准库支持。
 | **Boolean** | 布尔值 | `toString`, `valueOf` |
 | **Array** | 数组 | `push`, `pop`, `shift`, `slice`, `splice`, `join`, `map` |
 | **Function** | 函数 | `call`, `apply`, `bind` |
+| **Error** | 异常 |  |
 
 ### 标准库 (Standard Library)
 

@@ -126,23 +126,25 @@ func main() {
 AuroraScript supports full-featured debugging within **Visual Studio**.
 
 ### 1. Visual Studio Debugging
-When using `Persistence` or `OnlyRun` mode, you can debug your scripts:
+When using `Persistence` mode, you can debug your scripts:
 - **Breakpoints**: Set breakpoints in `.as` files.
 - **Stepping**: Step Over, Step Into, Step Out.
 - **Variables**: Inspect local variables, objects, and arrays.
 - **Call Stack**: View the mixed call stack of script and C#.
 
-### 2. VS Code Extension
-The current VS Code extension provides **Syntax Highlighting** and code colorizing to improve development experience.
-- To install: Open `vscode-extension`, run `npm install`, `npm run package`, and install the generated `.vsix`.
-
-### 3. Start Debugging
+### 2. Start Debugging
 1.  Enable debugger in your C# host (if applicable).
 2.  Set breakpoints in your `.as` files within Visual Studio.
 3.  Run your host application.
 
 *Visual Studio Debugging Example:*
 ![Debugger Demo](documents/debugger.png)
+
+
+### 3. VS Code Extension
+The current VS Code extension provides **Syntax Highlighting** and code colorizing to improve development experience.
+- To install: Open `vscode-extension`, run `npm install`, `npm run package`, and install the generated `.vsix`.
+
 
 *Built-in type definitions for easier development:*
 ![Type Definitions](documents/lib.d.as.png)
@@ -161,6 +163,7 @@ The AuroraScript runtime provides a comprehensive standard library.
 | **Boolean** | Logical values | `toString`, `valueOf` |
 | **Array** | Ordered collection | `push`, `pop`, `shift`, `slice`, `splice`, `join`, `map` |
 | **Function** | Callable object | `call`, `apply`, `bind` |
+| **Error** | Exception |  |
 
 ### Standard Library
 

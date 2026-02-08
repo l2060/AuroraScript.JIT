@@ -1,6 +1,5 @@
 ﻿using AuroraScript.Runtime.Interop;
 using AuroraScript.Runtime.Types;
-using System;
 using System.Collections.Generic;
 
 namespace AuroraScript.Runtime

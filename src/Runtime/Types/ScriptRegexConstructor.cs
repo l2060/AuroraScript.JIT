@@ -1,5 +1,4 @@
 ﻿using AuroraScript.Runtime.Pool;
-using System;
 
 namespace AuroraScript.Runtime.Types
 {

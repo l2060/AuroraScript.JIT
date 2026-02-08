@@ -172,7 +172,7 @@ namespace AuroraScript.Runtime
         {
             EngineOptions ExeOptions = Engine.Options;
             DynamicBuilder builder = new DynamicBuilder(ExeOptions);
-            var emitter = new CILEmitter(builder);
+            var emitter = new CILEmitter(builder, ExeOptions);
             var compiler = new IncrementalCompiler(this, ExeOptions, emitter);
             var invoker = compiler.BuildPatch(source, patchType);
             var ctx = new ScriptContext(this);

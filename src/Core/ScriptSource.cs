@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace AuroraScript.Core
+﻿namespace AuroraScript.Core
 {
     /// <summary>
     /// Represents a source of AuroraScript code, providing path resolution and content retrieval.

@@ -174,7 +174,7 @@ namespace AuroraScript
                 CompilationMode.Dynamic => new DynamicBuilder(Options),
                 _ => throw new NotImplementedException()
             };
-            var emitter = new CILEmitter(builder);
+            var emitter = new CILEmitter(builder, Options);
             var compiler = new ScriptCompiler(Options, emitter);
             await compiler.BuildAsync(sources);
             if (builder is PersistedBuilder persisted)

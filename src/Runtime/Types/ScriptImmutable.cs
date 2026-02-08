@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace AuroraScript.Runtime.Types
+﻿namespace AuroraScript.Runtime.Types
 {
     /// <summary>
     /// Represents an immutable script object. Once created, its properties cannot be modified, 

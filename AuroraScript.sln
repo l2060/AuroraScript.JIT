@@ -10,6 +10,7 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{F2FA3F5B-20B8-4012-975E-B0C00CD09612}"
 	ProjectSection(SolutionItems) = preProject
 		README.md = README.md
+		README_CN.md = README_CN.md
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Benchmark", "benchmark\Benchmark.csproj", "{42730287-9B8A-7ED6-2F08-B7B524CBA6F7}"

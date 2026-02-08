@@ -1,6 +1,5 @@
 ﻿using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
-using System;
 using System.Collections.Generic;
 
 namespace AuroraScript.Core
