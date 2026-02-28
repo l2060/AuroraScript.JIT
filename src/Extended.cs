@@ -157,6 +157,45 @@ namespace AuroraScript
             return false;
         }
 
+
+        /// <summary>
+        /// Attempts to retrieve a 64-bit integer from the <see cref="ScriptDatum"/> at the specified index.
+        /// Supports conversion from Numbers, Booleans, and properly formatted Strings.
+        /// </summary>
+        /// <param name="source">The span of script data.</param>
+        /// <param name="index">The index of the datum to retrieve.</param>
+        /// <param name="value">The retrieved integer value, or 0 if retrieval fails.</param>
+        /// <returns>True if the value was successfully retrieved and converted; otherwise, false.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryGetInt32(this Span<ScriptDatum> source, int index, out int value)
+        {
+            if ((uint)index < (uint)source.Length)
+            {
+                ref readonly var d = ref source[index];
+                switch (d.Kind)
+                {
+                    case ValueKind.Number:
+                        value = (int)d.Number;
+                        return true;
+
+                    case ValueKind.Boolean:
+                        value = d.Boolean ? 1 : 0;
+                        return true;
+
+                    case ValueKind.String:
+                        return int.TryParse(
+                            d.String.Value,
+                            NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint,
+                            CultureInfo.InvariantCulture,
+                            out value);
+                }
+            }
+            value = 0;
+            return false;
+        }
+
+
+
         /// <summary>
         /// Attempts to retrieve a number from the <see cref="ScriptDatum"/> at the specified index strictly if it is already a Number.
         /// </summary>

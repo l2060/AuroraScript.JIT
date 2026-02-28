@@ -485,6 +485,13 @@ namespace AuroraScript.Compiler.Emits
             }
         }
 
+
+        protected override void VisitIncludedExpression(IncludedExpression node)
+        {
+
+        }
+
+
         protected override void VisitLiteralExpression(LiteralExpression node)
         {
             object val = node.Token switch

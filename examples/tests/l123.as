@@ -12,9 +12,6 @@ func testStr2() {
 
 
 
-
-
-
 function testInput() {
     INPUT_NUMBER('��������', '����һ��0-99��ֵ', 'number', input_change);
 
@@ -24,6 +21,19 @@ function testInput() {
     });
 
 }
+
+
+
+func testInlude() {
+    var obj = { a: 1, b: 2, c: '' };
+    console.log('a' in obj);
+    console.log('e' in 'hello');
+    if("A" in ["A", "B"] && ) {
+        console.log("111");
+    }
+}
+
+
 
 func throwTest() {
     throw new Error("test");
