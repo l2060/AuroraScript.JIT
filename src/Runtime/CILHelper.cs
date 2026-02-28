@@ -760,6 +760,11 @@ namespace AuroraScript.Runtime
         public static ScriptDatum Included(ScriptObject collection, ScriptDatum value)
         {
             if (collection == null) return ScriptDatum.FromBoolean(false);
+            // string  has special behavior for 'in' operator, it checks if the substring exists in the string
+            if (collection is StringValue stringValue && ScriptDatum.TryGetString(in value, out var str) && str.Value.Length > 1)
+            {
+                return stringValue.Value.IndexOf(str.Value) > -1;
+            }
             var enumerator = collection.GetEnumerator();
             ScriptDatum current = default;
             while (enumerator.NextValue(out current))

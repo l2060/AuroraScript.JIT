@@ -25,7 +25,7 @@ export func testEmpty() {
 func testInlude() {
     var obj = { a: 1, b: 2, c: '' };
     console.log('a' in obj);
-    console.log('e' in 'hello');
+    console.log('el' in 'hello');
     if("A" in ["A", "B"] ) {
         console.log("111");
     }

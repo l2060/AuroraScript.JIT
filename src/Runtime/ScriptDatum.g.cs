@@ -154,6 +154,23 @@ namespace AuroraScript.Runtime
             return false;
         }
 
+
+        /// <summary>
+        /// Attempts to get the underlying <see cref="StringValue"/> if the datum is a string object.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static Boolean TryGetString(in ScriptDatum d, out StringValue value)
+        {
+            if (d.Kind == ValueKind.String)
+            {
+                value = (StringValue)d.Object;
+                return true;
+            }
+            value = null;
+            return false;
+        }
+
+
         /// <summary>
         /// Attempts to get the underlying <see cref="ClosureFunction"/> if the datum is a script function.
         /// </summary>
