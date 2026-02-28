@@ -172,6 +172,9 @@ namespace AuroraScript.Runtime.Types
             scriptDatum = _items[index];
         }
 
+
+
+
         /// <summary>
         /// Slices the array from start to end and writes the resulting <see cref="ScriptArray"/> to the provided datum.
         /// Supports negative indices.
@@ -225,6 +228,53 @@ namespace AuroraScript.Runtime.Types
             }
             _items[index] = datum;
         }
+
+
+        /// <summary> Determines whether the array contains a specific element. </summary>
+        /// <param name="element">The element to locate in the array.</param>
+        /// <returns>True if the element is found; otherwise, false.</returns>
+        public Boolean Has(in ScriptDatum element)
+        {
+            for (int i = 0; i < _count; i++)
+            {
+                if (element.Equals(_items[i])) return true;
+            }
+            return false;
+        }
+
+
+        /// <summary> Searches for the specified element and returns the index of the first occurrence within the array. </summary>
+        /// <param name="searchElement">The element to locate.</param>
+        /// <param name="fromIndex">The optional starting index for the search.</param>
+        /// <returns>The zero-based index of the first occurrence of the element if found; otherwise, -1.</returns>
+        public int IndexOf(in ScriptDatum searchElement, int? fromIndex)
+        {
+            var from = 0;
+            if (fromIndex.HasValue) from = fromIndex.Value;
+            for (int i = from; i < _count; i++)
+            {
+                if (searchElement.Equals(_items[i])) return i;
+            }
+            return -1;
+        }
+
+        /// <summary> Searches for the specified element and returns the index of the last occurrence within the array. </summary>
+        /// <param name="searchElement">The element to locate.</param>
+        /// <param name="fromIndex">The optional starting index for the search (searches backwards from this index).</param>
+        /// <returns>The zero-based index of the last occurrence of the element if found; otherwise, -1.</returns>
+        public int LastIndexOf(in ScriptDatum searchElement, int? fromIndex)
+        {
+            int start = fromIndex ?? (_count - 1);
+            if ((uint)start >= (uint)_count) start = _count - 1;
+            for (int i = start; i >= 0; i--)
+            {
+                ref var item = ref _items[i];
+                if (item.Equals(searchElement)) return i;
+            }
+            return -1;
+        }
+
+
 
         /// <summary> Appends a datum to the end of the array. </summary>
         public void Push(ScriptDatum datum)

@@ -39,6 +39,48 @@ namespace AuroraScript.Runtime.Types
             }
         }
 
+  
+        /// <summary> Native implementation for the 'has' method. Checks if the array contains an element. </summary>
+        internal static void HAS(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            var array = thisObject as ScriptArray;
+            if (args != null && args.Length > 0)
+            {
+                ScriptDatum.WriteAsBoolean(ref result, array.Has(args[0]));
+            }
+        }
+
+        /// <summary> Native implementation for the 'indexOf' method. Returns the first index of an element. </summary>
+        internal static void INDEXOF(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            var array = thisObject as ScriptArray;
+            ScriptDatum datum = default;
+            int? fromIndex = null;
+            if (args.TryGetInt32(1, out var fi)) fromIndex = fi;
+            if (args.TryGetRef(0, ref datum))
+            {
+                ScriptDatum.WriteAsNumber(ref result, array.IndexOf(datum, fromIndex));
+            }
+        }
+
+        /// <summary> Native implementation for the 'lastIndexOf' method. Returns the last index of an element. </summary>
+        internal static void LASTINDEXOF(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            var array = thisObject as ScriptArray;
+            ScriptDatum datum = default;
+            int? fromIndex = null;
+            if (args.TryGetInt32(1, out var fi)) fromIndex = fi;
+            if (args.TryGetRef(0, ref datum))
+            {
+                ScriptDatum.WriteAsNumber(ref result, array.LastIndexOf(datum, fromIndex));
+            }
+        }
+
+
+
+
+
+
         /// <summary> Native implementation for the 'pop' method. Removes and returns the last element. </summary>
         internal static void POP(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {

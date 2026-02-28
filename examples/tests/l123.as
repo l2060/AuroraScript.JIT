@@ -12,9 +12,6 @@ func testStr2() {
 
 
 
-
-
-
 function testInput() {
     INPUT_NUMBER('��������', '����һ��0-99��ֵ', 'number', input_change);
 
@@ -25,6 +22,11 @@ function testInput() {
 
 }
 
+
+
+
+
+
 func throwTest() {
     throw new Error("test");
 }
@@ -33,7 +35,6 @@ func throwTest() {
 
 
 func testCatch() {
-
     try { throwTest(); }
 
     try

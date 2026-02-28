@@ -16,6 +16,9 @@ namespace Examples
     {
         private static readonly EngineOptions engineOptions = EngineOptions.Default
             .WithBaseDirectory("tests")
+            .WithConsoleStdOut(Console.Out)
+            .WithConsoleErrorOut(Console.Error)
+            .WithDateTimeFormat("yyyy-MM-dd HH:mm:ss")
             .WithAssemblyOut("123.dll")
             .WithEnableConfused(false)
             .WithCompilationMode(CompilationMode.Persistence)

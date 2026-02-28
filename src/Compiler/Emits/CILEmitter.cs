@@ -485,6 +485,36 @@ namespace AuroraScript.Compiler.Emits
             }
         }
 
+
+        protected override void VisitIncludedExpression(IncludedExpression node)
+        {
+            // Implementation of the 'in' operator (e.g., 'a' in obj)
+            // high performance implementation using CILHelper.Included
+
+            // 1. Evaluate collection (Right)
+            node.Right.Accept(this);
+            EnsureTop(typeof(ScriptObject));
+            PopType();
+
+            // 2. Evaluate element to search (Left)
+            node.Left.Accept(this);
+            EnsureTop(typeof(ScriptDatum));
+            PopType();
+
+            // 3. Call CILHelper.Included(ScriptObject collection, ScriptDatum value)
+            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_Included);
+
+            if (!node.NeedResult)
+            {
+                _il.Emit(OpCodes.Pop);
+            }
+            else
+            {
+                PushType(typeof(ScriptDatum));
+            }
+        }
+
+
         protected override void VisitLiteralExpression(LiteralExpression node)
         {
             object val = node.Token switch

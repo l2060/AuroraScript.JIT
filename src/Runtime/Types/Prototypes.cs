@@ -135,6 +135,11 @@
             NumberValuePrototype.Frozen();
 
             // --- Array ---
+            ScriptArrayPrototype.Define("has", new BondingFunction(ScriptArray.HAS), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("indexOf", new BondingFunction(ScriptArray.INDEXOF), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("lastIndexOf", new BondingFunction(ScriptArray.LASTINDEXOF), writeable: false, enumerable: false);
+
+
             ScriptArrayPrototype.Define("length", new BondingGetter(ScriptArray.LENGTH), writeable: false, enumerable: false);
             ScriptArrayPrototype.Define("push", new BondingFunction(ScriptArray.PUSH), writeable: false, enumerable: false);
             ScriptArrayPrototype.Define("pop", new BondingFunction(ScriptArray.POP), writeable: false, enumerable: false);
