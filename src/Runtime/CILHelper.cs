@@ -751,6 +751,25 @@ namespace AuroraScript.Runtime
         }
 
         /// <summary>
+        /// Checks if a value is included in a collection (the 'in' operator).
+        /// </summary>
+        /// <param name="collection">The collection to search in (object, array, or string).</param>
+        /// <param name="value">The value to search for.</param>
+        /// <returns>A <see cref="ScriptDatum"/> containing true if found; otherwise false.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum Included(ScriptObject collection, ScriptDatum value)
+        {
+            if (collection == null) return ScriptDatum.FromBoolean(false);
+            var enumerator = collection.GetEnumerator();
+            ScriptDatum current = default;
+            while (enumerator.NextValue(out current))
+            {
+                if (current.Equals(value)) return ScriptDatum.FromBoolean(true);
+            }
+            return ScriptDatum.FromBoolean(false);
+        }
+
+        /// <summary>
         /// Spreads an object's elements or properties into an array.
         /// Commonly used for the spread operator (...) in array literals.
         /// </summary>

@@ -54,6 +54,7 @@ namespace AuroraScript.Compiler.Emits
         public static readonly MethodInfo ScriptDatum_FromBoolean = typeof(ScriptDatum).GetMethod(nameof(ScriptDatum.FromBoolean), [typeof(bool)]);
         public static readonly MethodInfo ScriptDatum_ToObject = typeof(ScriptDatum).GetMethod(nameof(ScriptDatum.ToObject), BindingFlags.Public | BindingFlags.Static, [typeof(ScriptDatum)]);
         public static readonly MethodInfo ScriptDatum_ToString = typeof(ScriptDatum).GetMethod(nameof(ScriptDatum.ToString), BindingFlags.Public | BindingFlags.Static, [typeof(ScriptDatum)]);
+        public static readonly MethodInfo ScriptDatum_Equals = typeof(ScriptDatum).GetMethod(nameof(ScriptDatum.Equals), [typeof(ScriptDatum)]);
         public static readonly FieldInfo ScriptDatum_Null = typeof(ScriptDatum).GetField(nameof(ScriptDatum.Null));
 
         // NullValue
@@ -120,6 +121,7 @@ namespace AuroraScript.Compiler.Emits
         public static readonly MethodInfo CILHelper_DecrementPropertyPostfix = typeof(CILHelper).GetMethod(nameof(CILHelper.DecrementPropertyPostfix), [typeof(ScriptObject), typeof(string)]);
         public static readonly MethodInfo CILHelper_DeleteProperty = typeof(CILHelper).GetMethod(nameof(CILHelper.DeleteProperty), [typeof(ScriptContext), typeof(ScriptObject), typeof(string)]);
         public static readonly MethodInfo CILHelper_DeleteElement = typeof(CILHelper).GetMethod(nameof(CILHelper.DeleteElement), [typeof(ScriptContext), typeof(ScriptObject), typeof(ScriptDatum)]);
+        public static readonly MethodInfo CILHelper_Included = typeof(CILHelper).GetMethod(nameof(CILHelper.Included), [typeof(ScriptObject), typeof(ScriptDatum)]);
         public static readonly MethodInfo CILHelper_ToBoolean = typeof(CILHelper).GetMethod(nameof(CILHelper.ToBoolean), [typeof(ScriptDatum)]);
         public static readonly MethodInfo CILHelper_ToBoolean2 = typeof(CILHelper).GetMethod(nameof(CILHelper.ToBoolean), [typeof(ScriptObject)]);
         public static readonly MethodInfo CILHelper_SpreadInto = typeof(CILHelper).GetMethod(nameof(CILHelper.SpreadInto), [typeof(ScriptArray), typeof(ScriptObject)]);

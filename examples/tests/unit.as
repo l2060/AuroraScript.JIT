@@ -22,6 +22,16 @@ export func testEmpty() {
 }
 
 
+func testInlude() {
+    var obj = { a: 1, b: 2, c: '' };
+    console.log('a' in obj);
+    console.log('e' in 'hello');
+    if("A" in ["A", "B"] ) {
+        console.log("111");
+    }
+}
+
+
 export func testHashMap() {
     var obj1 = { a: 1, b: 2 };
     var obj2 = { a: 1, b: 2 };
