@@ -32,18 +32,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Remove="common\**" />
-    <Compile Remove="ok\**" />
-    <Compile Remove="xxxx\**" />
-    <EmbeddedResource Remove="common\**" />
-    <EmbeddedResource Remove="ok\**" />
-    <EmbeddedResource Remove="xxxx\**" />
-    <None Remove="common\**" />
-    <None Remove="ok\**" />
-    <None Remove="xxxx\**" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="..\src\AuroraScript.csproj" />
   </ItemGroup>
 
