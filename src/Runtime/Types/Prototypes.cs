@@ -100,6 +100,17 @@
             DateConstructorPrototype.Define("parse", new BondingFunction(ScriptDateConstructor.PARSE), writeable: false, enumerable: false);
             DateConstructorPrototype.Frozen();
 
+            // --- DATA ---
+            DatePrototype.Define("year", new BondingGetter(ScriptDate.YEAR), writeable: false, enumerable: false);
+            DatePrototype.Define("month", new BondingGetter(ScriptDate.MONTH), writeable: false, enumerable: false);
+            DatePrototype.Define("day", new BondingGetter(ScriptDate.DAY), writeable: false, enumerable: false);
+            DatePrototype.Define("hour", new BondingGetter(ScriptDate.HOUR), writeable: false, enumerable: false);
+            DatePrototype.Define("minute", new BondingGetter(ScriptDate.MINUTE), writeable: false, enumerable: false);
+            DatePrototype.Define("second", new BondingGetter(ScriptDate.SECOND), writeable: false, enumerable: false);
+            DatePrototype.Define("millisecond", new BondingGetter(ScriptDate.MILLISECCOND), writeable: false, enumerable: false);
+            DatePrototype.Define("dayOfWeek", new BondingGetter(ScriptDate.DAYOFWEEK), writeable: false, enumerable: false);
+            DatePrototype.Define("dayOfYear", new BondingGetter(ScriptDate.DAYOFYEAR), writeable: false, enumerable: false);
+            DatePrototype.Define("ticks", new BondingGetter(ScriptDate.TICKS), writeable: false, enumerable: false);
             DatePrototype.Define("toString", new BondingFunction(ScriptDateConstructor.TOSTRING), writeable: false, enumerable: false);
             DatePrototype.Frozen();
 
