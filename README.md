@@ -155,28 +155,123 @@ AuroraScript 运行时提供了一套核心的标准库支持。
 
 ### 核心类型 (Core Types)
 
-| 类型 | 描述 | 常用方法 |
-| :--- | :--- | :--- |
-| **Object** | 基础对象类型 | `keys()`, `values()`, `assign()`, `toString()` |
-| **String** | 字符串 | `length`, `substring`, `indexOf`, `split`, `replace`, `trim` |
-| **Number** | 数值 | `toFixed`, `toString`, `isNaN` |
-| **Boolean** | 布尔值 | `toString`, `valueOf` |
-| **Array** | 数组 | `push`, `pop`, `shift`, `slice`, `splice`, `join`, `map` |
-| **Function** | 函数 | `call`, `apply`, `bind` |
-| **Error** | 异常 |  |
+#### **Object**
+基础对象类型，所有对象的基类。
+- **静态方法**:
+  - `equal$(a, b)`: 严格相等比较（引用一致性）。
+  - `equal(a, b)`: 基本值相等比较。
+  - `deepEqual(a, b)`: 深度递归比较对象内容。
+  - `assign(target, ...sources)`: 将源对象的所有可枚举属性复制到目标对象。
+  - `keys(obj)`: 返回包含对象所有自身可枚举属性名称的数组。
+  - `clone(obj)` / `deepClone(obj)`: 对对象进行浅拷贝或深拷贝。
+  - `extends(proto, [target])`: 创建一个以 `proto` 为原型的新对象，可选传入 `target` 进行初始化。
+  - `freeze(obj)`: 冻结对象，防止添加、删除或修改属性。
+- **实例成员**:
+  - `length`: [只读] 返回对象拥有的属性数量。
+  - `toString()`: 返回对象的字符串表示。
+
+#### **Array**
+有序集合类型，支持动态扩容与常用链式操作。
+- **静态方法**:
+  - `from(iterable)`: 从类数组或可迭代对象创建一个新数组。
+  - `isArray(obj)`: 检查对象是否为数组类型。
+  - `of(...items)`: 根据提供的参数创建一个新数组。
+- **实例成员**:
+  - `length`: [属性] 获取或设置数组长度。
+  - `push(...items)` / `pop()`: 在末尾添加或移除元素。
+  - `shift()` / `unshift(...items)`: 在开头移除或添加元素。
+  - `slice(start, [end])`: 提取数组的一部分，不改变原数组。
+  - `join([sep])`: 用指定分隔符（默认 `,`）将元素连接成字符串。
+  - `reverse()` / `sort([cmp])`: 反转数组或按指定比较器排序。
+  - `indexOf(val)` / `lastIndexOf(val)` / `has(val)`: 元素查找与存在性检查。
+  - `map(cb)` / `filter(cb)` / `reduce(cb)` / `flat([depth])`: 闭包驱动的迭代与转换操作。
+  - `some(cb)` / `every(cb)`: 逻辑谓词检查。
+
+#### **String**
+不可变的文本序列。
+- **静态方法**:
+  - `fromCharCode(...codes)`: 从一组 UTF-16 代码单元创建字符串。
+  - `compare(a, b)`: 返回两个字符串的比较结果。
+- **实例成员**:
+  - `length`: [属性] 获取字符串字符数。
+  - `substring(start, [end])` / `slice(start, [end])`: 截取子字符串。
+  - `indexOf(sub)` / `lastIndexOf(sub)` / `contains(sub)`: 子串查找与匹配。
+  - `startsWith(sub)` / `endsWith(sub)`: 前后缀检查。
+  - `split(sep)`: 按分隔符拆分为字符串数组。
+  - `replace(search, repl)`: 替换匹配项。支持正则匹配及回调函数处理。
+  - `match(regex)` / `matchAll(regex)`: 结合正则进行模式检索。
+  - `trim()` / `trimLeft()` / `trimRight()`: 去除空格或指定空白字符。
+  - `toLowerCase()` / `toUpperCase()`: 大小写风格转换。
+  - `charCodeAt(index)`: 获取指定位置字符的编码值。
+
+#### **Date**
+日期与时间处理。
+- **静态方法**:
+  - `now()` / `utcNow()`: 获取当前本地或 UTC 时间。
+  - `parse(str)`: 解析日期字符串。
+- **实例属性**:
+  - `year` / `month` / `day` / `hour` / `minute` / `second` / `millisecond`: 获取时间各分量（只读）。
+  - `dayOfWeek` / `dayOfYear` / `ticks`: 获取星期、年内天数或原始计时周期。
+
+#### **HashMap**
+高性能、线程安全的键值对集合，底层基于 `ConcurrentDictionary`。
+- **实例成员**:
+  - `size`: [属性] 获取集合内元素数量。
+  - `set(key, val)` / `get(key)`: 存取键值对。支持任意类型作为键。
+  - `has(key)` / `delete(key)`: 检查存在性或删除特定成员。
+  - `getOrInsert(key, defaultVal/cb)`: 获取键值，若不存在则原子性地插入默认值或回调结果。
+  - `keys` / `values`: [属性] 获取所有键或值的迭代集合。
+  - `clear()`: 清空整个集合。
+
+#### **Regex**
+正则表达式对象。
+- `test(str)`: 检查字符串是否匹配定义的模式。
+
+---
 
 ### 标准库 (Standard Library)
 
-| 对象 | 描述 | 常用方法 |
-| :--- | :--- | :--- |
-| **console** | 终端输入输出 | `log(msg)`, `error(msg)`, `warn(msg)` |
-| **Math** | 数学库 | `sin`, `cos`, `tan`, `sqrt`, `pow`, `random`, `PI`, `E` |
-| **JSON** | JSON 序列化 | `parse(string)`, `stringify(object)` |
-| **Date** | 日期时间 | `now()`, `parse(string)`, 构造函数 `new Date()` |
-| **Regex** | 正则表达式 | 构造函数 `new Regex(pattern)`, `match(str)`, `replace(str, repl)` |
-| **HashMap** | 哈希表 | `set(key, val)`, `get(key)`, `has(key)`, `delete(key)`, `clear()` |
-| **Proxy** | 代理对象 | 构造函数 `new Proxy(target, handler)`, 拦截 get/set 等操作 |
-| **StringBuffer** | 字符串构建器 | `append(str)`, `toString()`, 高性能字符串拼接 |
+#### **console**
+提供标准输入输出与性能调试功能。
+- `log(...args)`: 在控制台打印普通信息。多参数将自动以逗号分隔。
+- `error(...args)`: 在控制台打印错误信息，支持输出调用堆栈。
+- `time(label)`: 开始一个以 `label` 命名的计时器。
+- `timeEnd(label)`: 停止计时器并在控制台输出经过的时间（毫秒）。
+
+#### **Math**
+提供常用数学常量与科学计算函数。
+- **常量**: `PI`, `E`, `Tau`, `DEG_PER_RAD`。
+- **方法**:
+  - `abs(x)`: 返回 x 的绝对值。
+  - `max(...args)` / `min(...args)`: 返回参数序列中的极大值或极小值。
+  - `random()`: 返回 [0, 1) 之间的伪随机数。
+  - `floor(x)` / `round(x)`: 向下取整或常规四舍五入。
+  - `pow(x, y)` / `log(x)` / `exp(x)`: 幂、自然对数及指数函数。
+  - `sin(x)` / `cos(x)` / `tan(x)`: 标准三角函数（弧度制）。
+
+#### **JSON**
+JSON 数据的序列化与反序列化工具。
+- `parse(text)`: 将符合规范的 JSON 字符串解析为脚本对象。
+- `stringify(obj, [indented])`: 将脚本对象序列化为文本。`indented` 为真时启用美化缩进。
+
+#### **StringBuffer**
+专为高性能大文本拼接设计的构建器。
+- `append(...args)`: 向末尾追加一个或多个连接项。
+- `appendLine(...args)`: 追加内容并附加平台相关的换行符。
+- `insert(index, str)`: 在指定索引偏移处插入字符串。
+- `clear()`: 重置缓冲区。
+- `toString()`: 输出构建完成的完整字符串。
+
+#### **Proxy**
+拦截并定义对象基本操作的自定义代理行为。
+- `new Proxy(target, handlers)`:
+  - **注意事项**: 必须提供完整的 `handlers` 对象，目前支持拦截 `get`, `set` 和 `unset`（即 `delete`）操作。
+
+#### **HotPatch**
+提供运行时的模块动态补丁与修复能力。
+- `replace(modulePath, script, [ignoreDeps])`: 完全替换指定路径的模块逻辑。
+- `incremental(modulePath, script, [ignoreDeps])`: 增量添加或更新模块成员。
+  - **注意事项**: 补丁脚本中的顶层代码（如变量初始化）会在应用时立即重新执行。
 
 ### 全局上下文
 - `global`: 指向当前 Domain 的全局作用域。

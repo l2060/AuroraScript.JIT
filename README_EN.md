@@ -155,28 +155,123 @@ The AuroraScript runtime provides a comprehensive standard library.
 
 ### Core Types
 
-| Type | Description | Key Methods |
-| :--- | :--- | :--- |
-| **Object** | Base object type | `keys()`, `values()`, `assign()`, `toString()` |
-| **String** | Textual data | `length`, `substring`, `indexOf`, `split`, `replace`, `trim` |
-| **Number** | Numeric values | `toFixed`, `toString`, `isNaN` |
-| **Boolean** | Logical values | `toString`, `valueOf` |
-| **Array** | Ordered collection | `push`, `pop`, `shift`, `slice`, `splice`, `join`, `map` |
-| **Function** | Callable object | `call`, `apply`, `bind` |
-| **Error** | Exception |  |
+#### **Object**
+The base object type from which all other objects derive.
+- **Static Methods**:
+  - `equal$(a, b)`: Strict equality comparison (reference check).
+  - `equal(a, b)`: Value-based equality comparison.
+  - `deepEqual(a, b)`: Deep recursive comparison of object contents.
+  - `assign(target, ...sources)`: Copies all enumerable own properties from one or more source objects to a target object.
+  - `keys(obj)`: Returns an array of a given object's own enumerable property names.
+  - `clone(obj)` / `deepClone(obj)`: Creates a shallow or deep copy of the object.
+  - `extends(proto, [target])`: Creates a new object with the specified prototype.
+  - `freeze(obj)`: Freezes an object, preventing new properties from being added or existing ones from being removed or modified.
+- **Instance Members**:
+  - `length`: [Read-only] Returns the number of properties owned by the object.
+  - `toString()`: Returns a string representation of the object.
+
+#### **Array**
+An ordered collection that supports dynamic resizing and common functional operations.
+- **Static Methods**:
+  - `from(iterable)`: Creates a new array from an array-like or iterable object.
+  - `isArray(obj)`: Determines whether the passed value is an Array.
+  - `of(...items)`: Creates a new array with a variable number of arguments.
+- **Instance Members**:
+  - `length`: [Property] Gets or sets the number of elements in the array.
+  - `push(...items)` / `pop()`: Adds or removes elements at the end of the array.
+  - `shift()` / `unshift(...items)`: Removes or adds elements at the beginning of the array.
+  - `slice(start, [end])`: Returns a shallow copy of a portion of an array.
+  - `join([sep])`: Joins all elements of an array into a string, separated by `sep` (default is `,`).
+  - `reverse()` / `sort([cmp])`: Reverses the array in place or sorts it using an optional comparator.
+  - `indexOf(val)` / `lastIndexOf(val)` / `has(val)`: Search and existence checks for elements.
+  - `map(cb)` / `filter(cb)` / `reduce(cb)` / `flat([depth])`: Closure-driven iteration and transformation operations.
+  - `some(cb)` / `every(cb)`: Logical predicate checks.
+
+#### **String**
+An immutable sequence of characters.
+- **Static Methods**:
+  - `fromCharCode(...codes)`: Returns a string created from the specified sequence of UTF-16 code units.
+  - `compare(a, b)`: Returns a number indicating whether a reference string comes before, after, or is the same as the given string.
+- **Instance Members**:
+  - `length`: [Property] Returns the number of characters in the string.
+  - `substring(start, [end])` / `slice(start, [end])`: Extracts a section of a string.
+  - `indexOf(sub)` / `lastIndexOf(sub)` / `contains(sub)`: Substring searching and matching.
+  - `startsWith(sub)` / `endsWith(sub)`: Prefix and suffix checks.
+  - `split(sep)`: Splits a string into an array of substrings.
+  - `replace(search, repl)`: Replaces matches with a replacement string or the result of a callback.
+  - `match(regex)` / `matchAll(regex)`: Pattern matching using regular expressions.
+  - `trim()` / `trimLeft()` / `trimRight()`: Removes whitespace from ends.
+  - `toLowerCase()` / `toUpperCase()`: Case conversion.
+  - `charCodeAt(index)`: Returns the numeric Unicode value of the character at the given index.
+
+#### **Date**
+Handling of dates and times.
+- **Static Methods**:
+  - `now()` / `utcNow()`: Returns the current local or UTC time.
+  - `parse(str)`: Parses a string representation of a date.
+- **Instance Properties**:
+  - `year` / `month` / `day` / `hour` / `minute` / `second` / `millisecond`: Access individual time components (read-only).
+  - `dayOfWeek` / `dayOfYear` / `ticks`: Access week index, day of year, or raw ticks.
+
+#### **HashMap**
+A high-performance, thread-safe key-value collection powered by `ConcurrentDictionary`.
+- **Instance Members**:
+  - `size`: [Property] Returns the number of elements in the collection.
+  - `set(key, val)` / `get(key)`: Access key-value pairs. Supports any type as a key.
+  - `has(key)` / `delete(key)`: Check for existence or remove a specific member.
+  - `getOrInsert(key, defaultVal/cb)`: Retrieves a value or atomically inserts a default/callback result if missing.
+  - `keys` / `values`: [Property] Returns iterable collections of all keys or values.
+  - `clear()`: Removes all elements from the collection.
+
+#### **Regex**
+Regular expression objects.
+- `test(str)`: Executes a search for a match between a regular expression and a specified string.
+
+---
 
 ### Standard Library
 
-| Object | Description | Key Methods |
-| :--- | :--- | :--- |
-| **console** | Logging I/O | `log(msg)`, `error(msg)`, `warn(msg)` |
-| **Math** | Math Utilities | `sin`, `cos`, `tan`, `sqrt`, `pow`, `random`, `PI`, `E` |
-| **JSON** | JSON Serialization | `parse(string)`, `stringify(object)` |
-| **Date** | Date Time | `now()`, `parse(string)`, constructors `new Date()` |
-| **Regex** | Regular Expressions | constructors `new Regex(pattern)`, `match(str)`, `replace(str, repl)` |
-| **HashMap** | Key-Value collection | `set(key, val)`, `get(key)`, `has(key)`, `delete(key)`, `clear()` |
-| **Proxy** | Object Proxying | constructors `new Proxy(target, handler)`, intercept get/set/etc. |
-| **StringBuffer** | String Builder | `append(str)`, `toString()`, high-perf string concatenation |
+#### **console**
+Standard I/O and performance debugging.
+- `log(...args)`: Prints general information to the console. Multiple arguments are automatically comma-separated.
+- `error(...args)`: Prints error information, including the call stack.
+- `time(label)`: Starts a timer with the given label.
+- `timeEnd(label)`: Stops the timer and prints the elapsed time in milliseconds.
+
+#### **Math**
+Common mathematical constants and functions.
+- **Constants**: `PI`, `E`, `Tau`, `DEG_PER_RAD`.
+- **Methods**:
+  - `abs(x)`: Returns the absolute value of x.
+  - `max(...args)` / `min(...args)`: Returns the largest or smallest of the provided numbers.
+  - `random()`: Returns a pseudo-random number in the range [0, 1).
+  - `floor(x)` / `round(x)`: Rounds down or to the nearest integer.
+  - `pow(x, y)` / `log(x)` / `exp(x)`: Power, natural logarithm, and exponential functions.
+  - `sin(x)` / `cos(x)` / `tan(x)`: Standard trigonometric functions (radians).
+
+#### **JSON**
+Utilities for JSON serialization and deserialization.
+- `parse(text)`: Parses a JSON string into a script object.
+- `stringify(obj, [indented])`: Serializes a script object to a JSON string. Enables pretty-printing if `indented` is true.
+
+#### **StringBuffer**
+A builder designed for high-performance large-scale string concatenation.
+- `append(...args)`: Appends one or more items to the end.
+- `appendLine(...args)`: Appends content followed by a platform-specific newline.
+- `insert(index, str)`: Inserts a string at the specified index offset.
+- `clear()`: Resets the buffer.
+- `toString()`: Generates the final concatenated string.
+
+#### **Proxy**
+Intercepts and defines custom behavior for fundamental object operations.
+- `new Proxy(target, handlers)`:
+  - **Notes**: A complete `handlers` object must be provided. It currently supports intercepting `get`, `set`, and `unset` (i.e., `delete`) operations.
+
+#### **HotPatch**
+Dynamic runtime module patching and repair.
+- `replace(modulePath, script, [ignoreDeps])`: Fully replaces the logic of a module at the specified path.
+- `incremental(modulePath, script, [ignoreDeps])`: Incrementally adds or updates module members.
+  - **Notes**: Top-level code in the patch script (e.g., variable initialization) will re-execute immediately upon application.
 
 ### Global Context
 - `global`: References the root global scope.
