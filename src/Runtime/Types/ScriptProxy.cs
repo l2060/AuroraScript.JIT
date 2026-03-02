@@ -1,38 +1,23 @@
-﻿using AuroraScript.Runtime.Types;
-using System;
+﻿using System;
 
-namespace AuroraScript.Runtime.Extensions
+namespace AuroraScript.Runtime.Types
 {
-    internal class ScriptProxyConstructor : ScriptType
-    {
-        internal readonly static ScriptProxyConstructor INSTANCE = new ScriptProxyConstructor();
-
-        internal ScriptProxyConstructor() : base("Proxy")
-        {
-            _prototype = Prototypes.ObjectPrototype;
-        }
-
-        public override void Construct(ScriptContext ctx, ScriptDatum[] args, ref ScriptDatum result)
-        {
-            if (args.TryGetObject(0, out var _object) && args.TryGetObject(1, out var options))
-            {
-                ScriptProxy proxy = new ScriptProxy(_object, options);
-                ScriptDatum.WriteAsObject(ref result, proxy);
-            }
-        }
-    }
-
-
-
-
-
-    internal class ScriptProxy : ScriptObject
+    /// <summary>
+    /// Represents a proxy object in AuroraScript that intercepts operations on a target object.
+    /// This allows for custom behavior when getting, setting, or deleting properties.
+    /// </summary>
+    public class ScriptProxy : ScriptObject
     {
         private readonly ClosureFunction _getter;
         private readonly ClosureFunction _setter;
         private readonly ClosureFunction _delete;
         private readonly ScriptObject _object;
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="ScriptProxy"/> class.
+        /// </summary>
+        /// <param name="__object">The target object to be proxied.</param>
+        /// <param name="options">An object containing "get", "set", or "unset" handler functions.</param>
         public ScriptProxy(ScriptObject __object, ScriptObject options)
         {
             if (options.GetPropertyValue("get") is ClosureFunction getFunc)
@@ -108,6 +93,14 @@ namespace AuroraScript.Runtime.Extensions
             }
         }
 
+        /// <summary>
+        /// Defines or modifies a property on the proxied object.
+        /// This operation is intercepted by the proxy's setter handler if defined.
+        /// </summary>
+        /// <param name="key">The name of the property to define.</param>
+        /// <param name="value">The value to assign to the property.</param>
+        /// <param name="writeable">Whether the property is writeable.</param>
+        /// <param name="enumerable">Whether the property is enumerable.</param>
         public sealed override void Define(String key, ScriptObject value, bool writeable = true, bool enumerable = true)
         {
             SetPropertyValue(null, key, value);

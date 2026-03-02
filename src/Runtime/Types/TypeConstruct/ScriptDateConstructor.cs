@@ -1,26 +1,40 @@
 ﻿using System;
 using System.Globalization;
 
-namespace AuroraScript.Runtime.Types
+namespace AuroraScript.Runtime.Types.TypeConstruct
 {
     /// <summary>
     /// Represents the native 'Date' constructor function in AuroraScript.
     /// Provides methods for retrieving the current time and parsing date strings.
     /// </summary>
-    internal class ScriptDateConstructor : BondingFunction
+    internal class ScriptDateConstructor : ScriptType
     {
         /// <summary> The global singleton instance of the Date constructor. </summary>
         internal static ScriptDateConstructor INSTANCE = new ScriptDateConstructor();
 
-        internal ScriptDateConstructor() : base(CONSTRUCTOR)
+        internal ScriptDateConstructor() : base("Date", true)
         {
-            _prototype = Prototypes.DateConstructorPrototype;
+            Define("now", new BondingFunction(NOW), writeable: false, enumerable: false);
+            Define("utcNow", new BondingFunction(UTC_NOW), writeable: false, enumerable: false);
+            Define("parse", new BondingFunction(PARSE), writeable: false, enumerable: false);
+            Frozen();
         }
 
-        /// <summary> Native implementation for the Date constructor (Date() or new Date()). </summary>
-        internal static void CONSTRUCTOR(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+
+
+        public override void Construct(ScriptContext ctx, ScriptDatum[] args, ref ScriptDatum result)
         {
-            PARSE(ctx, thisObject, args, ref result);
+            if (args.TryGetInteger(0, out var value)) // ticks
+            {
+                ScriptDatum.WriteAsDate(ref result, new ScriptDate(value));
+            }
+            else if (args.TryGetString(0, out var strValue)) // formatted string
+            {
+                if (DateTime.TryParseExact(strValue, formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
+                {
+                    ScriptDatum.WriteAsDate(ref result, new ScriptDate(dt));
+                }
+            }
         }
 
         /// <summary> Supported date formats for parsing strings. </summary>

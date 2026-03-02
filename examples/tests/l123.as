@@ -12,14 +12,13 @@ func testStr2() {
 
 
 
-function testInput() {
+func testInput() {
     INPUT_NUMBER('��������', '����һ��0-99��ֵ', 'number', input_change);
 
     INPUT_NUMBER('��������', '����һ��0-99��ֵ', 'number', (value) => {
         GIVE("esd", value);
         console.log(`����ֵ=${ value }`);
     });
-
 }
 
 

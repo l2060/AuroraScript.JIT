@@ -343,15 +343,66 @@ namespace AuroraScript.Runtime.Types
 
         internal ScriptArray MapInternal(ScriptContext ctx, ClosureFunction callback)
         {
-            var newArray = new ScriptArray(this);
-            var items = newArray._items;
-            for (int i = 0; i < _count; i++)
+            var count = _count;
+            var newArray = new ScriptArray(count);
+            var srcItems = _items;
+            var destItems = newArray._items;
+            for (int i = 0; i < count; i++)
             {
-                items[i] = callback.Invoke(ctx, _items[i], i);
+                destItems[i] = callback.Invoke(ctx, srcItems[i], i);
             }
             return newArray;
         }
 
+        internal ScriptDatum FindInternal(ScriptContext ctx, ClosureFunction callback)
+        {
+            var count = _count;
+            var items = _items;
+            for (int i = 0; i < count; i++)
+            {
+                var result = callback.Invoke(ctx, items[i], i);
+                if (ScriptDatum.IsTrue(result)) return items[i];
+            }
+            return ScriptDatum.Null;
+        }
+
+        internal int FindIndexInternal(ScriptContext ctx, ClosureFunction callback)
+        {
+            var count = _count;
+            var items = _items;
+            for (int i = 0; i < count; i++)
+            {
+                var result = callback.Invoke(ctx, items[i], i);
+                if (ScriptDatum.IsTrue(result)) return i;
+            }
+            return -1;
+        }
+
+
+        internal ScriptDatum FindLastInternal(ScriptContext ctx, ClosureFunction callback)
+        {
+            var count = _count;
+            var items = _items;
+            for (int i = count - 1; i >= 0; i--)
+            {
+                var item = items[i];
+                var result = callback.Invoke(ctx, item, i);
+                if (ScriptDatum.IsTrue(result)) return item;
+            }
+            return ScriptDatum.Null;
+        }
+
+        internal int FindLastIndexInternal(ScriptContext ctx, ClosureFunction callback)
+        {
+            var count = _count;
+            var items = _items;
+            for (int i = 0; i < count; i++)
+            {
+                var result = callback.Invoke(ctx, items[i], i);
+                if (ScriptDatum.IsTrue(result)) return i;
+            }
+            return -1;
+        }
 
         internal ScriptArray FilterInternal(ScriptContext ctx, ClosureFunction callback)
         {
@@ -368,9 +419,11 @@ namespace AuroraScript.Runtime.Types
 
         internal Boolean SomeInternal(ScriptContext ctx, ClosureFunction callback)
         {
-            for (int i = 0; i < _count; i++)
+            var count = _count;
+            var items = _items;
+            for (int i = 0; i < count; i++)
             {
-                var ok = callback.Invoke(ctx, _items[i], i);
+                var ok = callback.Invoke(ctx, items[i], i);
                 if (ScriptDatum.IsTrue(ok)) return true;
             }
             return false;
@@ -378,9 +431,11 @@ namespace AuroraScript.Runtime.Types
 
         internal Boolean EveryInternal(ScriptContext ctx, ClosureFunction callback)
         {
-            for (int i = 0; i < _count; i++)
+            var count = _count;
+            var items = _items;
+            for (int i = 0; i < count; i++)
             {
-                var ok = callback.Invoke(ctx, _items[i], i);
+                var ok = callback.Invoke(ctx, items[i], i);
                 if (!ScriptDatum.IsTrue(ok)) return false;
             }
             return true;
@@ -412,11 +467,13 @@ namespace AuroraScript.Runtime.Types
 
         internal ScriptDatum ReduceInternal(ScriptContext ctx, ClosureFunction callback)
         {
-            if (_count == 0) return ScriptDatum.Null;
-            ScriptDatum accumulator = _items[0];
-            for (int i = 1; i < _count; i++)
+            var count = _count;
+            var items = _items;
+            if (count == 0) return ScriptDatum.Null;
+            ScriptDatum accumulator = items[0];
+            for (int i = 1; i < count; i++)
             {
-                accumulator = callback.Invoke(ctx, accumulator, _items[i], i);
+                accumulator = callback.Invoke(ctx, accumulator, items[i], i);
             }
             return accumulator;
         }

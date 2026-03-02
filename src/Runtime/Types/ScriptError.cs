@@ -8,7 +8,7 @@
 
         internal ScriptErrorConstructor() : base("Error")
         {
-            _prototype = Prototypes.ObjectPrototype;
+
         }
 
         public override void Construct(ScriptContext ctx, ScriptDatum[] args, ref ScriptDatum result)

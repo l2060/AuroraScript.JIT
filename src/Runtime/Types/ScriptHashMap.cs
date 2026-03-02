@@ -14,7 +14,7 @@ namespace AuroraScript.Runtime.Types
 
         internal ScriptHashMapConstructor() : base("HashMap")
         {
-            _prototype = Prototypes.ObjectPrototype;
+
         }
 
         /// <summary> Constructs a new <see cref="ScriptHashMap"/> instance. </summary>

@@ -76,6 +76,49 @@ namespace AuroraScript.Runtime.Types
             }
         }
 
+        /// <summary> Native implementation for the 'find' method. Returns the value of the first element in the array that satisfies the provided testing function. </summary>
+        internal static void FIND(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            var array = thisObject as ScriptArray;
+            if (args.TryGetFunction(0, out var callback))
+            {
+                result = array.FindInternal(ctx, callback);
+            }
+        }
+
+        /// <summary> Native implementation for the 'findIndex' method. Returns the index of the first element in the array that satisfies the provided testing function. </summary>
+        internal static void FINDINDEX(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            var array = thisObject as ScriptArray;
+            if (args.TryGetFunction(0, out var callback))
+            {
+                var index = array.FindIndexInternal(ctx, callback);
+                ScriptDatum.WriteAsNumber(ref result, index);
+            }
+        }
+
+        /// <summary> Native implementation for the 'findLast' method. Returns the value of the last element in the array that satisfies the provided testing function. </summary>
+        internal static void FINDLAST(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            var array = thisObject as ScriptArray;
+            if (args.TryGetFunction(0, out var callback))
+            {
+                result = array.FindLastInternal(ctx, callback);
+            }
+        }
+
+        /// <summary> Native implementation for the 'findLastIndex' method. Returns the index of the last element in the array that satisfies the provided testing function. </summary>
+        internal static void FINDLASTINDEX(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            var array = thisObject as ScriptArray;
+            if (args.TryGetFunction(0, out var callback))
+            {
+                var index = array.FindLastIndexInternal(ctx, callback);
+                ScriptDatum.WriteAsNumber(ref result, index);
+            }
+        }
+
+
 
         /// <summary> Native implementation for the 'map' method. Creates a new array with the results of calling a function on every element. </summary>
         internal static void MAP(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)

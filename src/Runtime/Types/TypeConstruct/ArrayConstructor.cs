@@ -1,20 +1,41 @@
 ﻿using System;
 
-namespace AuroraScript.Runtime.Types
+namespace AuroraScript.Runtime.Types.TypeConstruct
 {
     /// <summary>
     /// Represents the native 'Array' constructor function in AuroraScript.
     /// Provides static methods like Array.from(), Array.of(), and Array.isArray().
     /// </summary>
-    internal class ArrayConstructor : BondingFunction
+    internal class ArrayConstructor : ScriptType
     {
         /// <summary> The global singleton instance of the Array constructor. </summary>
         internal readonly static ArrayConstructor INSTANCE = new ArrayConstructor();
 
-        internal ArrayConstructor() : base(CONSTRUCTOR)
+        internal ArrayConstructor() : base("Array", true)
         {
-            _prototype = Prototypes.ArrayConstructorPrototype;
+            Define("from", new BondingFunction(FROM), writeable: false, enumerable: false);
+            Define("isArray", new BondingFunction(IS_ARRAY), writeable: false, enumerable: false);
+            Define("of", new BondingFunction(OF), writeable: false, enumerable: false);
+            Frozen();
         }
+
+
+
+
+        public override void Construct(ScriptContext ctx, ScriptDatum[] args, ref ScriptDatum result)
+        {
+            var capacity = 0;
+            if (args.Length == 1)
+            {
+                var datum = args[0];
+                if (datum.Kind == ValueKind.Number)
+                {
+                    capacity = (int)datum.Number;
+                }
+            }
+            ScriptDatum.WriteAsArray(ref result, new ScriptArray(capacity));
+        }
+
 
         /// <summary> Native implementation for Array.from(). Creates an array from an iterable or array-like object. </summary>
         internal static void FROM(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
@@ -65,21 +86,6 @@ namespace AuroraScript.Runtime.Types
         internal static void IS_ARRAY(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             ScriptDatum.WriteAsBoolean(ref result, args.Length > 0 && args[0].Kind == ValueKind.Array);
-        }
-
-        /// <summary> Native implementation for the Array constructor (Array() or new Array()). </summary>
-        internal static void CONSTRUCTOR(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            var capacity = 0;
-            if (args.Length == 1)
-            {
-                var datum = args[0];
-                if (datum.Kind == ValueKind.Number)
-                {
-                    capacity = (int)datum.Number;
-                }
-            }
-            ScriptDatum.WriteAsArray(ref result, new ScriptArray(capacity));
         }
     }
 }

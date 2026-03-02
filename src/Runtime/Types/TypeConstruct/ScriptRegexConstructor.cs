@@ -1,6 +1,6 @@
 ﻿using AuroraScript.Runtime.Pool;
 
-namespace AuroraScript.Runtime.Types
+namespace AuroraScript.Runtime.Types.TypeConstruct
 {
     /// <summary>
     /// Represents the native 'Regex' constructor function in AuroraScript.
@@ -13,7 +13,7 @@ namespace AuroraScript.Runtime.Types
 
         internal ScriptRegexConstructor() : base("Regex")
         {
-            _prototype = Prototypes.ScriptObjectConstructorPrototype;
+
         }
 
         /// <summary>

@@ -1,4 +1,6 @@
-﻿namespace AuroraScript.Runtime.Types
+﻿using System;
+
+namespace AuroraScript.Runtime.Types
 {
 
     /// <summary>
@@ -8,15 +10,30 @@
     {
         /// <summary> Gets the name of the script type. </summary>
         public readonly string Name;
-
+        private readonly Boolean Callable;
         /// <summary>
         /// Initializes a new instance of the <see cref="ScriptType"/> class.
         /// </summary>
         /// <param name="name">The name of the type.</param>
-        protected ScriptType(string name)
+        /// <param name="callable">Can the type be called as a method?</param>
+        protected ScriptType(string name, Boolean callable = false)
         {
             Name = name;
+            Callable = callable;
+            _prototype = Prototypes.ObjectPrototype;
         }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, params ScriptDatum[] args)
+        {
+            if (Callable)
+            {
+                ScriptDatum result = default;
+                Construct(ctx, args, ref result);
+                return result;
+            }
+            return base.Invoke(ctx, args);
+        }
+
 
         /// <summary>
         /// Concrete types must implement this to handle instance construction.

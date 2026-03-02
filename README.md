@@ -184,6 +184,7 @@ AuroraScript 运行时提供了一套核心的标准库支持。
   - `join([sep])`: 用指定分隔符（默认 `,`）将元素连接成字符串。
   - `reverse()` / `sort([cmp])`: 反转数组或按指定比较器排序。
   - `indexOf(val)` / `lastIndexOf(val)` / `has(val)`: 元素查找与存在性检查。
+  - `find(cb)` / `findIndex(cb)` / `findLast(cb)` / `findLastIndex(cb)`: 查找满足条件的元素或其索引。
   - `map(cb)` / `filter(cb)` / `reduce(cb)` / `flat([depth])`: 闭包驱动的迭代与转换操作。
   - `some(cb)` / `every(cb)`: 逻辑谓词检查。
 

@@ -6,6 +6,7 @@ using AuroraScript.Runtime;
 using AuroraScript.Runtime.Extensions;
 using AuroraScript.Runtime.Interop;
 using AuroraScript.Runtime.Types;
+using AuroraScript.Runtime.Types.TypeConstruct;
 using System;
 using System.IO;
 using System.Linq;
@@ -57,27 +58,25 @@ namespace AuroraScript
             Options = options ?? throw new AuroraException("the parameter \"options\" cannot be empty");
             Global = new ScriptGlobal(this);
 
-            // Register standard constructors and global variables
+            // register standard types
             Global.Define("Array", ArrayConstructor.INSTANCE, writeable: false, enumerable: false);
             Global.Define("String", StringConstructor.INSTANCE, writeable: false, enumerable: false);
             Global.Define("Boolean", BooleanConstructor.INSTANCE, writeable: false, enumerable: false);
             Global.Define("Object", ScriptObjectConstructor.INSTANCE, writeable: false, enumerable: false);
             Global.Define("Number", NumberConstructor.INSTANCE, writeable: false, enumerable: false);
             Global.Define("Date", ScriptDateConstructor.INSTANCE, writeable: false, enumerable: false);
+
+            // register advanced type
             Global.Define("Error", ScriptErrorConstructor.INSTANCE, writeable: false, enumerable: false);
-
-
-
+            Global.Define("HashMap", ScriptHashMapConstructor.INSTANCE, writeable: false, enumerable: false);
+            Global.Define("Regex", ScriptRegexConstructor.INSTANCE, writeable: false, enumerable: false);
+            Global.Define("Proxy", ScriptProxyConstructor.INSTANCE, writeable: false, enumerable: false);
+            Global.Define("StringBuffer", StringBufferConstructor.INSTANCE, writeable: false, enumerable: false);
 
             // Optional standard libraries
             Global.Define("console", new ConsoleSupport(), writeable: false, enumerable: false);
             Global.Define("JSON", new JsonSupport(), writeable: false, enumerable: false);
             Global.Define("Math", new MathSupport(), writeable: false, enumerable: false);
-
-            Global.Define("HashMap", ScriptHashMapConstructor.INSTANCE, writeable: false, enumerable: false);
-            Global.Define("Regex", ScriptRegexConstructor.INSTANCE, writeable: false, enumerable: false);
-            Global.Define("Proxy", ScriptProxyConstructor.INSTANCE, writeable: false, enumerable: false);
-            Global.Define("StringBuffer", StringBufferConstructor.INSTANCE, writeable: false, enumerable: false);
 
             // Hot patch support
             Global.Define("HotPatch", HotPatchSupport.INSTANCE, writeable: false, enumerable: false);

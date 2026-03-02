@@ -1,24 +1,35 @@
 ﻿using System;
 using System.Linq;
 
-namespace AuroraScript.Runtime.Types
+namespace AuroraScript.Runtime.Types.TypeConstruct
 {
     /// <summary>
     /// Represents the native 'Object' constructor function in AuroraScript.
     /// Provides fundamental static methods like Object.keys(), Object.assign(), and equality checks.
     /// </summary>
-    internal class ScriptObjectConstructor : BondingFunction
+    internal class ScriptObjectConstructor : ScriptType
     {
         /// <summary> The global singleton instance of the Object constructor. </summary>
         internal static ScriptObjectConstructor INSTANCE = new ScriptObjectConstructor();
 
-        internal ScriptObjectConstructor() : base(CONSTRUCTOR)
+        internal ScriptObjectConstructor() : base("Object", true)
         {
-            _prototype = Prototypes.ScriptObjectConstructorPrototype;
+            // strict equal
+            Define("equal$", new BondingFunction(STRICT_EQUAL), writeable: false, enumerable: false);
+            // content equal  
+            Define("equal", new BondingFunction(VALUE_EQUAL), writeable: false, enumerable: false);
+            // deep content equal 
+            Define("deepEqual", new BondingFunction(DEEP_EQUAL), writeable: false, enumerable: false);
+            Define("assign", new BondingFunction(ASSIGN), writeable: false, enumerable: false);
+            Define("keys", new BondingFunction(KEYS), writeable: false, enumerable: false);
+            Define("clone", new BondingFunction(CLONE), writeable: false, enumerable: false);
+            Define("deepClone", new BondingFunction(DEEP_CLONE), writeable: false, enumerable: false);
+            Define("extends", new BondingFunction(EXTENDS), writeable: false, enumerable: false);
+            Define("freeze", new BondingFunction(FREEZE), writeable: false, enumerable: false);
+            Frozen();
         }
 
-        /// <summary> Native implementation for the Object constructor (Object() or new Object()). </summary>
-        internal static void CONSTRUCTOR(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        public override void Construct(ScriptContext ctx, ScriptDatum[] args, ref ScriptDatum result)
         {
             if (args.TryGetObject(0, out var scriptObject))
             {

@@ -184,6 +184,7 @@ An ordered collection that supports dynamic resizing and common functional opera
   - `join([sep])`: Joins all elements of an array into a string, separated by `sep` (default is `,`).
   - `reverse()` / `sort([cmp])`: Reverses the array in place or sorts it using an optional comparator.
   - `indexOf(val)` / `lastIndexOf(val)` / `has(val)`: Search and existence checks for elements.
+  - `find(cb)` / `findIndex(cb)` / `findLast(cb)` / `findLastIndex(cb)`: Finds elements or their indices that satisfy a condition.
   - `map(cb)` / `filter(cb)` / `reduce(cb)` / `flat([depth])`: Closure-driven iteration and transformation operations.
   - `some(cb)` / `every(cb)`: Logical predicate checks.
 
