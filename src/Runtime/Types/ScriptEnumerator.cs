@@ -12,7 +12,6 @@ namespace AuroraScript.Runtime.Types
         {
             DatumArray,
             ScriptArray,
-            ObjectList,
             String
         }
 
@@ -61,8 +60,8 @@ namespace AuroraScript.Runtime.Types
             return _kind switch
             {
                 IteratorKind.ScriptArray => _array._items[_index],
-                IteratorKind.String => ScriptDatum.FromString(StringValue.FromChar(_stringValue[_index])),
                 IteratorKind.DatumArray => _datumItems[_index],
+                IteratorKind.String => ScriptDatum.FromString(StringValue.FromChar(_stringValue[_index])),
                 _ => _datumItems[_index],
             };
         }
