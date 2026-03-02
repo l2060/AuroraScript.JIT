@@ -61,6 +61,7 @@
             ScriptObjectConstructorPrototype.Define("clone", new BondingFunction(ScriptObjectConstructor.CLONE), writeable: false, enumerable: false);
             ScriptObjectConstructorPrototype.Define("deepClone", new BondingFunction(ScriptObjectConstructor.DEEP_CLONE), writeable: false, enumerable: false);
             ScriptObjectConstructorPrototype.Define("extends", new BondingFunction(ScriptObjectConstructor.EXTENDS), writeable: false, enumerable: false);
+            ScriptObjectConstructorPrototype.Define("freeze", new BondingFunction(ScriptObjectConstructor.FREEZE), writeable: false, enumerable: false);
 
             ScriptObjectConstructorPrototype.Frozen();
 
@@ -161,6 +162,14 @@
             ScriptArrayPrototype.Define("unshift", new BondingFunction(ScriptArray.UNSHIFT), writeable: false, enumerable: false);
             ScriptArrayPrototype.Define("shift", new BondingFunction(ScriptArray.SHIFT), writeable: false, enumerable: false);
             ScriptArrayPrototype.Define("concat", new BondingFunction(ScriptArray.CONCAT), writeable: false, enumerable: false);
+
+            ScriptArrayPrototype.Define("map", new BondingFunction(ScriptArray.MAP), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("filter", new BondingFunction(ScriptArray.FILTER), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("some", new BondingFunction(ScriptArray.SOME), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("every", new BondingFunction(ScriptArray.EVERY), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("flat", new BondingFunction(ScriptArray.FLAT), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("reduce", new BondingFunction(ScriptArray.REDUCE), writeable: false, enumerable: false);
+
             ScriptArrayPrototype.Frozen();
 
             ArrayConstructorPrototype.Define("from", new BondingFunction(ArrayConstructor.FROM), writeable: false, enumerable: false);

@@ -341,6 +341,89 @@ namespace AuroraScript.Runtime.Types
             }
         }
 
+        internal ScriptArray MapInternal(ScriptContext ctx, ClosureFunction callback)
+        {
+            var newArray = new ScriptArray(this);
+            var items = newArray._items;
+            for (int i = 0; i < _count; i++)
+            {
+                items[i] = callback.Invoke(ctx, _items[i], i);
+            }
+            return newArray;
+        }
+
+
+        internal ScriptArray FilterInternal(ScriptContext ctx, ClosureFunction callback)
+        {
+            var newArray = new ScriptArray();
+            var items = _items;
+            for (int i = 0; i < _count; i++)
+            {
+                var ok = callback.Invoke(ctx, _items[i], i);
+                if (ScriptDatum.IsTrue(ok)) newArray.Push(items[i]);
+            }
+            return newArray;
+        }
+
+
+        internal Boolean SomeInternal(ScriptContext ctx, ClosureFunction callback)
+        {
+            for (int i = 0; i < _count; i++)
+            {
+                var ok = callback.Invoke(ctx, _items[i], i);
+                if (ScriptDatum.IsTrue(ok)) return true;
+            }
+            return false;
+        }
+
+        internal Boolean EveryInternal(ScriptContext ctx, ClosureFunction callback)
+        {
+            for (int i = 0; i < _count; i++)
+            {
+                var ok = callback.Invoke(ctx, _items[i], i);
+                if (!ScriptDatum.IsTrue(ok)) return false;
+            }
+            return true;
+        }
+
+
+        internal ScriptArray FlatInternal(int maxDeep)
+        {
+            var newArray = new ScriptArray();
+            void DoFlatten(ScriptArray source, int depth)
+            {
+                for (int i = 0; i < source._count; i++)
+                {
+                    var item = source._items[i];
+                    if (depth > 0 && item.Kind == ValueKind.Array)
+                    {
+                        DoFlatten(item.Object as ScriptArray, depth - 1);
+                    }
+                    else
+                    {
+                        newArray.Push(item);
+                    }
+                }
+            }
+            DoFlatten(this, maxDeep);
+            return newArray;
+        }
+
+
+        internal ScriptDatum ReduceInternal(ScriptContext ctx, ClosureFunction callback)
+        {
+            if (_count == 0) return ScriptDatum.Null;
+            ScriptDatum accumulator = _items[0];
+            for (int i = 1; i < _count; i++)
+            {
+                accumulator = callback.Invoke(ctx, accumulator, _items[i], i);
+            }
+            return accumulator;
+        }
+
+
+
+
         private void EnsureCapacity(int min)
         {
             if (_items.Length >= min) return;

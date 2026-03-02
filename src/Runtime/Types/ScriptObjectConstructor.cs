@@ -116,6 +116,14 @@ namespace AuroraScript.Runtime.Types
             }
         }
 
+        /// <summary> Native implementation for Object.freeze(). Freezes an object so that it can no longer be changed. </summary>
+        internal static void FREEZE(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            if (args.TryGetObject(0, out var prototype))
+            {
+                prototype.Frozen();
+            }
+        }
         /// <summary> Native implementation for shallow cloning an object. </summary>
         internal static void CLONE(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {

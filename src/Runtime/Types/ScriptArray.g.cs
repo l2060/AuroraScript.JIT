@@ -39,7 +39,7 @@ namespace AuroraScript.Runtime.Types
             }
         }
 
-  
+
         /// <summary> Native implementation for the 'has' method. Checks if the array contains an element. </summary>
         internal static void HAS(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
@@ -77,7 +77,69 @@ namespace AuroraScript.Runtime.Types
         }
 
 
+        /// <summary> Native implementation for the 'map' method. Creates a new array with the results of calling a function on every element. </summary>
+        internal static void MAP(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            var array = thisObject as ScriptArray;
+            if (args.TryGetFunction(0, out var callback))
+            {
+                var newArray = array.MapInternal(ctx, callback);
+                ScriptDatum.WriteAsArray(ref result, newArray);
+            }
+        }
 
+        /// <summary> Native implementation for the 'filter' method. Creates a new array with all elements that pass the test implemented by the provided function. </summary>
+        internal static void FILTER(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            var array = thisObject as ScriptArray;
+            if (args.TryGetFunction(0, out var callback))
+            {
+                var newArray = array.FilterInternal(ctx, callback);
+                ScriptDatum.WriteAsArray(ref result, newArray);
+            }
+        }
+
+        /// <summary> Native implementation for the 'some' method. Tests whether at least one element in the array passes the test implemented by the provided function. </summary>
+        internal static void SOME(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            var array = thisObject as ScriptArray;
+            if (args.TryGetFunction(0, out var callback))
+            {
+                var isOk = array.SomeInternal(ctx, callback);
+                ScriptDatum.WriteAsBoolean(ref result, isOk);
+            }
+        }
+
+        /// <summary> Native implementation for the 'every' method. Tests whether all elements in the array pass the test implemented by the provided function. </summary>
+        internal static void EVERY(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            var array = thisObject as ScriptArray;
+            if (args.TryGetFunction(0, out var callback))
+            {
+                var isOk = array.EveryInternal(ctx, callback);
+                ScriptDatum.WriteAsBoolean(ref result, isOk);
+            }
+        }
+
+        /// <summary> Native implementation for the 'flat' method. Creates a new array with all sub-array elements concatenated into it recursively up to the specified depth. </summary>
+        internal static void FLAT(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            var array = thisObject as ScriptArray;
+            if (!args.TryGetInt32(0, out var maxDeep)) maxDeep = 1;
+            var newArray = array.FlatInternal(maxDeep);
+            ScriptDatum.WriteAsArray(ref result, newArray);
+        }
+
+
+        /// <summary> Native implementation for the 'reduce' method. Executes a reducer function on each element of the array, resulting in a single output value. </summary>
+        internal static void REDUCE(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            var array = thisObject as ScriptArray;
+            if (args.TryGetFunction(0, out var callback))
+            {
+                result = array.ReduceInternal(ctx, callback);
+            }
+        }
 
 
 
