@@ -11,9 +11,8 @@ namespace AuroraScript.Runtime.Types
         /// <summary> Gets the underlying <see cref="DateTimeOffset"/> value. </summary>
         public DateTimeOffset DateTime { get; private set; }
 
-        private ScriptDate()
+        private ScriptDate() : base(Prototypes.DatePrototype)
         {
-            _prototype = Prototypes.DatePrototype;
         }
 
         /// <summary>

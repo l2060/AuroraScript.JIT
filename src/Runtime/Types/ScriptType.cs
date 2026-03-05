@@ -16,11 +16,10 @@ namespace AuroraScript.Runtime.Types
         /// </summary>
         /// <param name="name">The name of the type.</param>
         /// <param name="callable">Can the type be called as a method?</param>
-        protected ScriptType(string name, Boolean callable = false)
+        protected ScriptType(string name, Boolean callable = false) : base(Prototypes.ObjectPrototype)
         {
             Name = name;
             Callable = callable;
-            _prototype = Prototypes.ObjectPrototype;
         }
 
         internal override ScriptDatum Invoke(ScriptContext ctx, params ScriptDatum[] args)

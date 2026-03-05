@@ -55,8 +55,8 @@ namespace AuroraScript.Runtime
         /// </summary>
         public void Dispose()
         {
-            Global.Modules._properties.Clear();
-            Global._properties.Clear();
+            Global.Modules.ClearProperties();
+            Global.ClearProperties();
         }
 
         /// <summary>

@@ -37,10 +37,9 @@ namespace AuroraScript.Runtime
         /// </summary>
         /// <param name="engine">The engine instance.</param>
         /// <param name="prototype">The prototype object to inherit from. Typically another <see cref="ScriptGlobal"/> or null.</param>
-        internal ScriptGlobal(AuroraEngine engine, ScriptObject prototype = null)
+        internal ScriptGlobal(AuroraEngine engine, ScriptObject prototype = null) : base(prototype)
         {
             Engine = engine;
-            _prototype = prototype;
             // Define the 'modules' property on the global object, making it non-writable and non-enumerable.
             base.Define("modules", Modules, false, false);
         }

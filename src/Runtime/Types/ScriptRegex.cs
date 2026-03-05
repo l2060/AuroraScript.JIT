@@ -17,9 +17,8 @@ namespace AuroraScript.Runtime.Types
         /// </summary>
         /// <param name="regex">The underlying .NET Regex object.</param>
         /// <param name="flags">The regex flags (e.g., "g", "i", "m").</param>
-        public ScriptRegex(Regex regex, string flags)
+        public ScriptRegex(Regex regex, string flags) : base(Prototypes.RegexPrototype)
         {
-            this._prototype = Prototypes.RegexPrototype;
             _regex = regex;
             _flags = flags;
         }

@@ -17,9 +17,8 @@ namespace AuroraScript.Runtime.Types
         /// Initializes a new <see cref="ScriptArray"/> by copying another array.
         /// </summary>
         /// <param name="array">The source array to copy from.</param>
-        public ScriptArray(ScriptArray array)
+        public ScriptArray(ScriptArray array) : base(Prototypes.ScriptArrayPrototype)
         {
-            this._prototype = Prototypes.ScriptArrayPrototype;
             var capacity = array._count;
             _items = new ScriptDatum[Math.Max(4, capacity)];
             if (capacity > 0)
@@ -32,9 +31,8 @@ namespace AuroraScript.Runtime.Types
         /// Initializes a new <see cref="ScriptArray"/> with the specified initial capacity.
         /// </summary>
         /// <param name="capacity">The initial capacity of the array.</param>
-        public ScriptArray(int capacity)
+        public ScriptArray(int capacity) : base(Prototypes.ScriptArrayPrototype)
         {
-            this._prototype = Prototypes.ScriptArrayPrototype;
             if (capacity <= 0)
             {
                 _items = Array.Empty<ScriptDatum>();
@@ -55,9 +53,8 @@ namespace AuroraScript.Runtime.Types
         /// Initializes a new <see cref="ScriptArray"/> from a list of script objects.
         /// </summary>
         /// <param name="list">The source list.</param>
-        public ScriptArray(List<ScriptObject> list)
+        public ScriptArray(List<ScriptObject> list) : base(Prototypes.ScriptArrayPrototype)
         {
-            this._prototype = Prototypes.ScriptArrayPrototype;
             if (list == null || list.Count == 0)
             {
                 _items = Array.Empty<ScriptDatum>();
@@ -78,9 +75,8 @@ namespace AuroraScript.Runtime.Types
         /// Initializes a new <see cref="ScriptArray"/> from a span of <see cref="ScriptDatum"/>.
         /// </summary>
         /// <param name="array">The source span.</param>
-        public ScriptArray(Span<ScriptDatum> array)
+        public ScriptArray(Span<ScriptDatum> array) : base(Prototypes.ScriptArrayPrototype)
         {
-            this._prototype = Prototypes.ScriptArrayPrototype;
             if (array.Length == 0)
             {
                 _items = Array.Empty<ScriptDatum>();
@@ -101,9 +97,8 @@ namespace AuroraScript.Runtime.Types
         /// Initializes a new <see cref="ScriptArray"/> from an array of <see cref="ScriptDatum"/>.
         /// </summary>
         /// <param name="array">The source array.</param>
-        public ScriptArray(ScriptDatum[] array)
+        public ScriptArray(ScriptDatum[] array) : base(Prototypes.ScriptArrayPrototype)
         {
-            this._prototype = Prototypes.ScriptArrayPrototype;
             if (array.Length == 0)
             {
                 _items = Array.Empty<ScriptDatum>();
@@ -124,9 +119,8 @@ namespace AuroraScript.Runtime.Types
         /// Initializes a new <see cref="ScriptArray"/> from an array of <see cref="ScriptObject"/>.
         /// </summary>
         /// <param name="array">The source array.</param>
-        public ScriptArray(ScriptObject[] array)
+        public ScriptArray(ScriptObject[] array) : base(Prototypes.ScriptArrayPrototype)
         {
-            this._prototype = Prototypes.ScriptArrayPrototype;
             if (array == null || array.Length == 0)
             {
                 _items = Array.Empty<ScriptDatum>();
@@ -146,9 +140,8 @@ namespace AuroraScript.Runtime.Types
         /// <summary>
         /// Initializes an empty <see cref="ScriptArray"/>.
         /// </summary>
-        public ScriptArray()
+        public ScriptArray() : base(Prototypes.ScriptArrayPrototype)
         {
-            this._prototype = Prototypes.ScriptArrayPrototype;
             this._items = Array.Empty<ScriptDatum>();
             this._count = 0;
         }

@@ -34,9 +34,9 @@ namespace AuroraScript.Runtime.Types
         private ConcurrentDictionary<ScriptDatum, ScriptDatum> keyValues = new();
 
         /// <summary> Initializes a new instance of the <see cref="ScriptHashMap"/> class. </summary>
-        public ScriptHashMap()
+        public ScriptHashMap() : base(Prototypes.HashMapPrototype)
         {
-            _prototype = Prototypes.HashMapPrototype;
+
         }
 
         /// <summary> Adds or updates a value in the hash map. </summary>

@@ -1,4 +1,5 @@
-﻿using AuroraScript.Runtime.Util;
+﻿using AuroraScript.Runtime.Interop;
+using AuroraScript.Runtime.Property;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -26,10 +27,15 @@ namespace AuroraScript.Runtime.Types
     /// </summary>
     public partial class ScriptObject
     {
-        internal ScriptObject _prototype;
-        internal Dictionary<string, ObjectProperty> _properties;
-        private ObjectFlags flags = ObjectFlags.None;
+        private ScriptObject prototype;
+        /// <summary> Prototype object. </summary>
+        public ScriptObject Prototype => prototype;
 
+        internal PropertyDescriptor[] propertyValues = Array.Empty<PropertyDescriptor>();
+
+        internal HiddenClass hiddenClass = HiddenClass.Root;
+
+        private ObjectFlags flags = ObjectFlags.None;
         /// <summary>
         /// Gets a value indicating whether the object is frozen (read-only).
         /// </summary>
@@ -47,7 +53,7 @@ namespace AuroraScript.Runtime.Types
         /// <param name="placeholder">A placeholder flag to distinguish this constructor.</param>
         internal ScriptObject(ScriptObject prototype, bool placeholder)
         {
-            _prototype = prototype;
+            this.prototype = prototype;
             flags = ObjectFlags.Immutable;
         }
 
@@ -57,8 +63,7 @@ namespace AuroraScript.Runtime.Types
         /// <param name="prototype">The prototype object.</param>
         internal ScriptObject(ScriptObject prototype)
         {
-            _prototype = prototype;
-            _properties = new Dictionary<string, ObjectProperty>();
+            this.prototype = prototype;
         }
 
         /// <summary>
@@ -66,8 +71,7 @@ namespace AuroraScript.Runtime.Types
         /// </summary>
         public ScriptObject()
         {
-            _prototype = Prototypes.ObjectPrototype;
-            _properties = new Dictionary<string, ObjectProperty>();
+            prototype = Prototypes.ObjectPrototype;
         }
 
         /// <summary>
@@ -149,16 +153,16 @@ namespace AuroraScript.Runtime.Types
         /// Resolves a property by searching this object and its prototype chain.
         /// </summary>
         /// <param name="key">The property key.</param>
-        /// <returns>The <see cref="ObjectProperty"/> if found; otherwise, null.</returns>
-        internal ObjectProperty _resolveProperty(string key)
+        /// <returns>The <see cref="PropertyDescriptor"/> if found; otherwise, null.</returns>
+        internal PropertyDescriptor _resolveProperty(string key)
         {
-            if (_properties != null && _properties.TryGetValue(key, out var value))
+            if (hiddenClass.TryGet(key, out var meta))
             {
-                return value;
+                return propertyValues[meta.Slot];
             }
-            if (_prototype != null)
+            if (prototype != null)
             {
-                return _prototype._resolveProperty(key);
+                return prototype._resolveProperty(key);
             }
             return null;
         }
@@ -170,7 +174,7 @@ namespace AuroraScript.Runtime.Types
         /// <param name="force">If true, overrides read-only properties.</param>
         public void CopyPropertysFrom(ScriptObject scriptObject, bool force = false)
         {
-            RuntimeHelper.CopyProperties(scriptObject, this, force);
+            scriptObject.CopyProperties(this, force);
         }
 
         /// <summary>
@@ -194,23 +198,34 @@ namespace AuroraScript.Runtime.Types
             InternalDefine(key, value, writeable, enumerable, true);
         }
 
-        private void InternalDefine(string key, ScriptObject value, bool writeable = true, bool enumerable = true, bool force = false)
+        internal void InternalDefine(string key, ScriptObject value, bool writeable = true, bool enumerable = true, bool force = false)
         {
             if (Immutable) return;
             if (IsFrozen) ThrowHelper.ThrowFrozen();
-            if (!_properties.TryGetValue(key, out var existValue))
+            if (hiddenClass.TryGet(key, out var meta))
             {
-                existValue = new ObjectProperty(key, writeable, enumerable);
-                _properties[key] = existValue;
+                if (!force && !meta.Writable) ThrowHelper.ThrowDisableWritable();
             }
-            else
-            {
-                if (!force && !existValue.Writable) ThrowHelper.ThrowDisableWritable();
-            }
-            existValue.Value = value;
-            existValue.Writable = writeable;
-            existValue.Enumerable = enumerable;
+            hiddenClass = hiddenClass.AddProperty(key, writeable, enumerable, false, out meta);
+            //
+            var values = propertyValues;
+            if (meta.Slot >= values.Length) Resize();
+            propertyValues[meta.Slot] = new PropertyDescriptor(null, null, value);
         }
+
+
+
+
+
+
+
+        private void Resize()
+        {
+            var cap = Math.Max(propertyValues.Length, 2) * 2;
+            Array.Resize(ref this.propertyValues, cap);
+        }
+
+
 
         private ScriptObject InternalGetProperty(string key)
         {
@@ -235,15 +250,16 @@ namespace AuroraScript.Runtime.Types
 
         private bool InternalDeletePropertyValue(string key)
         {
-            if (_properties != null && _properties.TryGetValue(key, out var value))
+            if (hiddenClass.TryGet(key, out var meta))
             {
-                if (!value.Writable) ThrowHelper.ThrowDisableWritable();
-                _properties.Remove(key);
+                if (!meta.Writable) ThrowHelper.ThrowDisableWritable();
+                hiddenClass = hiddenClass.RemoveProperty(key);
+                propertyValues[meta.Slot] = default;
                 return true;
             }
-            if (_prototype != null)
+            if (prototype != null)
             {
-                return _prototype.DeletePropertyValue(key);
+                return prototype.DeletePropertyValue(key);
             }
             return false;
         }
@@ -254,7 +270,8 @@ namespace AuroraScript.Runtime.Types
         internal void ClearProperties()
         {
             if (Immutable || IsFrozen) return;
-            _properties?.Clear();
+            hiddenClass = HiddenClass.Root;
+            propertyValues = Array.Empty<PropertyDescriptor>();
         }
 
         /// <summary>
@@ -282,23 +299,27 @@ namespace AuroraScript.Runtime.Types
         /// <returns>A <see cref="ScriptEnumerator"/> containing enumerable property keys.</returns>
         public virtual ScriptEnumerator GetEnumerator()
         {
+
             var result = new List<ScriptDatum>();
             var current = this;
             while (current != null)
             {
                 if (!current.Immutable)
                 {
-                    foreach (var item in current._properties)
+                    // TODO 检查
+                    var hc = current.hiddenClass;
+                    var propertyCount = hc.PropertyCount;
+                    foreach (var item in hc._properties)
                     {
                         if (item.Value.Enumerable)
                         {
-                            result.Add(ScriptDatum.FromString(item.Value.Key));
+                            result.Add(ScriptDatum.FromString(item.Key));
                         }
                     }
                 }
-                current = current._prototype;
+                current = current.prototype;
             }
-            return new ScriptEnumerator(result.ToArray());
+            return new ScriptEnumerator(result);
         }
 
         /// <summary>
@@ -309,19 +330,16 @@ namespace AuroraScript.Runtime.Types
         {
             if (Immutable) return new List<string>();
             var list = new List<string>(8);
-            if (_properties != null)
+            foreach (var item in hiddenClass._properties)
             {
-                foreach (var item in _properties)
+                if (item.Value.Enumerable)
                 {
-                    if (item.Value.Enumerable)
-                    {
-                        list.Add(item.Key);
-                    }
+                    list.Add(item.Key);
                 }
             }
-            if (_prototype != null)
+            if (prototype != null)
             {
-                var result = _prototype.EnumerationKeys();
+                var result = prototype.EnumerationKeys();
                 if (result.Count > 0) list.AddRange(result);
             }
             return list;
@@ -335,5 +353,102 @@ namespace AuroraScript.Runtime.Types
         {
             return base.GetHashCode();
         }
+
+
+        /// <summary>
+        /// Copies all own properties from this object to a target object.
+        /// </summary>
+        /// <param name="target">The destination object to copy properties to.</param>
+        /// <param name="force">If true, overrides target properties even if they are marked as non-writable.</param>
+        public void CopyProperties(ScriptObject target, bool force = false)
+        {
+            if (Immutable) return;
+            foreach (var item in hiddenClass._properties)
+            {
+                var key = item.Key;
+                var meta = item.Value;
+                var property = propertyValues[meta.Slot];
+                if (target.hiddenClass.TryGet(key, out var targetMeta))
+                {
+                    if (targetMeta.Writable || force)
+                    {
+                        // We use InternalDefine to handle the value and basic flags, 
+                        // but we also need to copy the getter/setter if they exist.
+                        target.InternalDefine(key, property.Value, meta.Writable, meta.Enumerable, force);
+                        var targetProperty = target.propertyValues[targetMeta.Slot];
+                        targetProperty.Getter = property.Getter;
+                        targetProperty.Setter = property.Setter;
+                    }
+                }
+                else
+                {
+                    target.InternalDefine(key, property.Value, meta.Writable, meta.Enumerable, force);
+                    if (target.hiddenClass.TryGet(key, out targetMeta))
+                    {
+                        var targetProperty = target.propertyValues[targetMeta.Slot];
+                        targetProperty.Getter = property.Getter;
+                        targetProperty.Setter = property.Setter;
+                    }
+                }
+            }
+        }
+        /// <summary>
+        /// Creates a deep copy of the current script object, including all its own properties and nested objects.
+        /// </summary>
+        /// <returns>A new <see cref="ScriptObject"/> that is a deep copy of this instance.</returns>
+        public ScriptObject DeepClone()
+        {
+            switch (this)
+            {
+                case ScriptDate:
+                case ClrInstanceObject:
+                case ScriptRegex:
+                case ClosureFunction:
+                case ScriptType:
+                case ClrMethodBinding:
+                case BondingFunction:
+                    return this;
+                case ScriptArray array:
+                    {
+                        var newArray = new ScriptArray(array.Length);
+                        for (int i = 0; i < array.Length; i++)
+                        {
+                            newArray.SetElement(i, ScriptDatum.Clone(array.GetElement(i), true));
+                        }
+                        return newArray;
+                    }
+                default:
+                    return DeepCloneObject();
+            }
+        }
+
+        private ScriptObject DeepCloneObject()
+        {
+            var target = new ScriptObject(Prototype);
+            foreach (var item in hiddenClass._properties)
+            {
+                var key = item.Key;
+                var meta = item.Value;
+                var property = propertyValues[meta.Slot];
+
+                // Recursively clone the value
+                var newObject = ScriptObject.Null;
+                if (property.Value != null)
+                {
+                    newObject = property.Value.DeepClone();
+                }
+                target.InternalDefine(key, newObject, meta.Writable, meta.Enumerable, true);
+
+                // Copy accessors if they exist
+                if (target.hiddenClass.TryGet(key, out var targetMeta))
+                {
+                    var targetProp = target.propertyValues[targetMeta.Slot];
+                    targetProp.Getter = property.Getter;
+                    targetProp.Setter = property.Setter;
+                }
+            }
+            return target;
+        }
+
     }
 }

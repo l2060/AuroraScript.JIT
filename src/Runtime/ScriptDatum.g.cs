@@ -1,7 +1,6 @@
 ﻿using AuroraScript.Runtime;
 using AuroraScript.Runtime.Interop;
 using AuroraScript.Runtime.Types;
-using AuroraScript.Runtime.Util;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -263,8 +262,44 @@ namespace AuroraScript.Runtime
                 case ValueKind.String:
                     return d;
                 default:
-                    return RuntimeHelper.Clone(d, deepth);
+                    if (deepth)
+                    {
+                        return ScriptDatum.FromObject(d.Object.DeepClone());
+                    }
+                    else
+                    {
+                        return ShallowClone(d);
+                    }
             }
         }
+
+        private static ScriptDatum ShallowClone(ScriptDatum origin)
+        {
+            switch (origin.Object)
+            {
+                case ScriptDate date:
+                    return origin;
+                case ClrInstanceObject clrInstance:
+                    return origin;
+                case ScriptRegex regex:
+                    return origin;
+                case ClosureFunction closure:
+                    return origin;
+                case ScriptType clrType:
+                    return origin;
+                case ClrMethodBinding clrFunc:
+                    return origin;
+                case BondingFunction bonding:
+                    return origin;
+                case ScriptArray array:
+                    return ScriptDatum.FromArray(new ScriptArray(array));
+                default:
+                    var newObject = new ScriptObject();
+                    origin.Object.CopyProperties(newObject);
+                    return ScriptDatum.FromObject(newObject);
+            }
+        }
+
+
     }
 }

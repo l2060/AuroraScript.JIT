@@ -158,9 +158,9 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
         {
             if (args.TryGetObject(0, out var prototype))
             {
-                if (!args.TryGetObject(1, out var target)) target = new ScriptObject(prototype);
-                target._prototype = prototype;
-                ScriptDatum.WriteAsObject(ref result, target);
+                //if (!args.TryGetObject(1, out var target)) target = new ScriptObject(prototype);
+                //target._prototype = prototype;
+                //ScriptDatum.WriteAsObject(ref result, target);
             }
         }
     }

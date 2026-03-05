@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
+
 namespace Examples
 {
 
@@ -22,7 +23,7 @@ namespace Examples
             .WithAssemblyOut("123.dll")
             .WithEnableConfused(false)
             .WithCompilationMode(CompilationMode.Persistence)
-            .WithOptimizeOption(OptimizeOptions.Release);
+            .WithOptimizeOption(OptimizeOptions.Debug);
 
         private static readonly AuroraEngine engine = new AuroraEngine(engineOptions);
         private static readonly UserState userState = new UserState();
@@ -47,9 +48,6 @@ namespace Examples
             }
             engine.RegisterType<TestObject>();
             engine.RegisterType(typeof(Math), "Math2");
-
-
-
             try
             {
                 var sources = engine.SearchAllFileSource(Encoding.UTF8);

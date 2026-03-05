@@ -15,9 +15,8 @@ namespace AuroraScript.Runtime.Types
         /// <summary>
         /// Initializes a new instance of the <see cref="StringBuffer"/> class with an empty buffer.
         /// </summary>
-        public StringBuffer()
+        public StringBuffer() : base(Prototypes.StringBufferPrototype)
         {
-            _prototype = Prototypes.StringBufferPrototype;
             _builder = new StringBuilder();
         }
 
@@ -25,9 +24,8 @@ namespace AuroraScript.Runtime.Types
         /// Initializes a new instance of the <see cref="StringBuffer"/> class with the specified initial value.
         /// </summary>
         /// <param name="initialValue">The initial string value to add to the buffer.</param>
-        public StringBuffer(String initialValue)
+        public StringBuffer(String initialValue) : base(Prototypes.StringBufferPrototype)
         {
-            _prototype = Prototypes.StringBufferPrototype;
             _builder = new StringBuilder(initialValue);
         }
 

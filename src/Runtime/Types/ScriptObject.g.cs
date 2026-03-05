@@ -17,14 +17,7 @@ namespace AuroraScript.Runtime.Types
         /// <summary> Native implementation for the 'length' property of generic objects (returns property count). </summary>
         internal static void LENGTH(ScriptObject thisObject, ref ScriptDatum result)
         {
-            if (thisObject is ScriptObject obj && obj._properties != null)
-            {
-                ScriptDatum.WriteAsNumber(ref result, obj._properties.Count);
-            }
-            else
-            {
-                ScriptDatum.WriteAsNumber(ref result, 0);
-            }
+            ScriptDatum.WriteAsNumber(ref result, thisObject.hiddenClass.PropertyCount);
         }
 
         /// <summary> Native implementation for the base object 'toString' method. </summary>

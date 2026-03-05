@@ -19,7 +19,7 @@ namespace AuroraScript.Runtime.Types
     public class BondingFunction : ScriptObject
     {
         /// <summary> Gets or sets the target object used as the 'this' context for the call. </summary>
-        public ScriptObject Target;
+        public readonly ScriptObject Target;
 
         /// <summary> Gets the underlying CLR delegate. </summary>
         public readonly ClrDatumDelegate DatumMethod;
@@ -31,6 +31,12 @@ namespace AuroraScript.Runtime.Types
         public BondingFunction(ClrDatumDelegate callback) : base()
         {
             DatumMethod = callback ?? throw new ArgumentNullException(nameof(callback));
+        }
+
+        private BondingFunction(ClrDatumDelegate callback, ScriptObject target, ScriptObject prototype) : base(prototype)
+        {
+            DatumMethod = callback ?? throw new ArgumentNullException(nameof(callback));
+            Target = target;
         }
 
         /// <summary> Invokes the bonded native function with the provided arguments. </summary>
@@ -45,10 +51,7 @@ namespace AuroraScript.Runtime.Types
         /// <summary> Binds the function to a specific target object, creating a new bonded function. </summary>
         public BondingFunction Bind(ScriptObject target)
         {
-            var bind = new BondingFunction(DatumMethod);
-            // Copy the prototype chain
-            bind._prototype = this._prototype;
-            bind.Target = target;
+            var bind = new BondingFunction(DatumMethod, target, Prototype);
             return bind;
         }
 
