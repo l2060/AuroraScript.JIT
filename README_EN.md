@@ -262,6 +262,8 @@ A builder designed for high-performance large-scale string concatenation.
 - `insert(index, str)`: Inserts a string at the specified index offset.
 - `clear()`: Resets the buffer.
 - `toString()`: Generates the final concatenated string.
+- `release()`: Releases the object back to the pool.
+- `stringAndRelease()`: Returns the concatenated string and releases the object.
 
 #### **Proxy**
 Intercepts and defines custom behavior for fundamental object operations.

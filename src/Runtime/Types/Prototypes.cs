@@ -150,6 +150,8 @@ namespace AuroraScript.Runtime.Types
             StringBufferPrototype.Define("insert", new BondingFunction(StringBuffer.INSERT), writeable: false, enumerable: false);
             StringBufferPrototype.Define("appendLine", new BondingFunction(StringBuffer.APPEND_LINE), writeable: false, enumerable: false);
             StringBufferPrototype.Define("clear", new BondingFunction(StringBuffer.CLEAR), writeable: false, enumerable: false);
+            StringBufferPrototype.Define("release", new BondingFunction(StringBuffer.RELEASE), writeable: false, enumerable: false);
+            StringBufferPrototype.Define("stringAndRelease", new BondingFunction(StringBuffer.STRINGANDRELEASE), writeable: false, enumerable: false);
             StringBufferPrototype.Frozen();
         }
     }

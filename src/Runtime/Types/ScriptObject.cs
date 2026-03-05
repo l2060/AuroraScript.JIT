@@ -31,9 +31,9 @@ namespace AuroraScript.Runtime.Types
         /// <summary> Prototype object. </summary>
         public ScriptObject Prototype => prototype;
 
-        internal PropertyDescriptor[] propertyValues = Array.Empty<PropertyDescriptor>();
+        private PropertyDescriptor[] propertyValues = Array.Empty<PropertyDescriptor>();
 
-        internal HiddenClass hiddenClass = HiddenClass.Root;
+        private HiddenClass hiddenClass = HiddenClass.Root;
 
         private ObjectFlags flags = ObjectFlags.None;
         /// <summary>

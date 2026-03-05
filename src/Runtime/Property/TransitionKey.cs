@@ -30,5 +30,10 @@ namespace AuroraScript.Runtime.Property
             hash.Add(Flags);
             return hash.ToHashCode();
         }
+
+        public override string ToString()
+        {
+            return Name;
+        }
     }
 }

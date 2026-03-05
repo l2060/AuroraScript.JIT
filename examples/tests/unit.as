@@ -878,5 +878,5 @@ export func testHotPatch() {
             l -= k;
             r += k;
         }
-        console.log(buffer.toString());
+        console.log(buffer.stringAndRelease());
     }

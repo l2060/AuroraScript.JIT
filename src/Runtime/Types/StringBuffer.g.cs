@@ -10,7 +10,7 @@ namespace AuroraScript.Runtime.Types
         {
             if (thisObject is StringBuffer builder)
             {
-                ScriptDatum.WriteAsString(ref result, builder._builder.ToString());
+                ScriptDatum.WriteAsString(ref result, builder.ToString());
             }
         }
 
@@ -20,7 +20,7 @@ namespace AuroraScript.Runtime.Types
             {
                 for (int i = 0; i < args.Length; i++)
                 {
-                    builder._builder.Append(ScriptDatum.ToString(args[i]));
+                    builder.GetBuilder().Append(ScriptDatum.ToString(args[i]));
                 }
             }
         }
@@ -30,7 +30,7 @@ namespace AuroraScript.Runtime.Types
             {
                 if (args.TryGetInteger(0, out var index) && args.TryGetString(1, out var str))
                 {
-                    builder._builder.Insert((int)index, str);
+                    builder.GetBuilder().Insert((int)index, str);
                 }
             }
         }
@@ -40,19 +40,34 @@ namespace AuroraScript.Runtime.Types
             {
                 for (int i = 0; i < args.Length; i++)
                 {
-                    builder._builder.Append(ScriptDatum.ToString(args[i]));
+                    builder.GetBuilder().Append(ScriptDatum.ToString(args[i]));
                 }
-                builder._builder.AppendLine();
+                builder.GetBuilder().AppendLine();
             }
         }
         internal static void CLEAR(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             if (thisObject is StringBuffer builder)
             {
-                builder._builder.Clear();
+                builder.Reset();
             }
         }
 
+        internal static void RELEASE(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            if (thisObject is StringBuffer builder)
+            {
+                builder.Release();
+            }
+        }
 
+        internal static void STRINGANDRELEASE(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            if (thisObject is StringBuffer builder)
+            {
+                ScriptDatum.WriteAsString(ref result, builder.ToString());
+                builder.Release();
+            }
+        }
     }
 }
