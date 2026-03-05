@@ -21,6 +21,10 @@ namespace AuroraScript.Runtime.Property
         private readonly Dictionary<TransitionKey, WeakReference<HiddenClass>> _addTransitions;
         private readonly Dictionary<TransitionKey, WeakReference<HiddenClass>> _delTransitions;
 
+        internal readonly ushort _maxSlot;
+        private readonly HiddenClass _parent;
+        private readonly string _transitionName;
+
 
         public int PropertyCount => _properties.Count;
 
@@ -31,19 +35,28 @@ namespace AuroraScript.Runtime.Property
             _properties = ImmutableDictionary<string, PropertyMeta>.Empty;
             _addTransitions = new(4);
             _delTransitions = new(4);
+            _maxSlot = 0;
+            _parent = null!;
+            _transitionName = null!;
         }
 
-        private HiddenClass(ImmutableDictionary<string, PropertyMeta> props)
+        private HiddenClass(ImmutableDictionary<string, PropertyMeta> props, ushort maxSlot, HiddenClass parent, string transitionName)
         {
             _properties = props;
             _addTransitions = new(4);
             _delTransitions = new(4);
+            _maxSlot = maxSlot;
+            _parent = parent;
+            _transitionName = transitionName;
         }
 
 
         public HiddenClass RemoveProperty(string name)
         {
             if (!_properties.ContainsKey(name)) return this;
+
+            // Optimization: If this is the most recently added property, we can go back to the parent.
+            if (name == _transitionName) return _parent;
 
             var key = new TransitionKey(name, PropertyFlags.None);
             if (_delTransitions.TryGetValue(key, out var existing) && existing.TryGetTarget(out var existingShape))
@@ -52,7 +65,7 @@ namespace AuroraScript.Runtime.Property
             }
 
             var newProps = _properties.Remove(name);
-            var newShape = new HiddenClass(newProps);
+            var newShape = new HiddenClass(newProps, _maxSlot, null!, null!);
             _delTransitions[key] = new WeakReference<HiddenClass>(newShape);
 
             return newShape;
@@ -79,16 +92,20 @@ namespace AuroraScript.Runtime.Property
                 return hiddenClass;
             }
 
-            // Reuse slot if redefining, otherwise use next available slot
-            ushort slot = oldMeta.Slot;
-            if (!_properties.ContainsKey(name))
+            // Reuse slot if redefining, otherwise use next available slot tracked by _maxSlot
+            ushort slot = _maxSlot;
+            ushort nextMaxSlot = (ushort)(_maxSlot + 1);
+
+            if (oldMeta.Slot != 0 || _properties.ContainsKey(name))
             {
-                slot = (ushort)_properties.Count;
+                slot = oldMeta.Slot;
+                nextMaxSlot = _maxSlot;
             }
+
             meta = new PropertyMeta(slot, flags);
             // Use SetItem to handle both add and update (avoiding exceptions)
             var newProps = _properties.SetItem(name, meta);
-            var newShape = new HiddenClass(newProps);
+            var newShape = new HiddenClass(newProps, nextMaxSlot, this, name);
             _addTransitions[key] = new WeakReference<HiddenClass>(newShape);
 
             return newShape;

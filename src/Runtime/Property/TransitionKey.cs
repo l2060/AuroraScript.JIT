@@ -21,7 +21,7 @@ namespace AuroraScript.Runtime.Property
 
         public bool Equals(TransitionKey other) => Name == other.Name && Flags == other.Flags;
 
-        public override bool Equals(object? obj) => obj is TransitionKey other && Equals(other);
+        public override bool Equals(object obj) => obj is TransitionKey other && Equals(other);
 
         public override int GetHashCode()
         {

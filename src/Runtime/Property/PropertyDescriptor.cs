@@ -16,6 +16,8 @@ namespace AuroraScript.Runtime.Property
         public ClosureFunction Getter;
         /// <summary> The Setter Function of the property. </summary>
         public ClosureFunction Setter;
+        /// <summary> Gets a value indicating whether this property is an accessor (has a getter or setter). </summary>
+        public bool IsAccessor => Getter != null || Setter != null;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="PropertyDescriptor"/> class with a key, value, and attributes.
