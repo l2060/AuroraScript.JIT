@@ -1,4 +1,4 @@
-﻿@module("MD5_LIB");
+﻿@module(MD5_LIB);
 /**
 *
 *  MD5 (Message-Digest Algorithm)

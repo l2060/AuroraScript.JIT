@@ -23,7 +23,7 @@ namespace Examples
             .WithAssemblyOut("123.dll")
             .WithEnableConfused(false)
             .WithCompilationMode(CompilationMode.Persistence)
-            .WithOptimizeOption(OptimizeOptions.Debug);
+            .WithOptimizeOption(OptimizeOptions.Release);
 
         private static readonly AuroraEngine engine = new AuroraEngine(engineOptions);
         private static readonly UserState userState = new UserState();

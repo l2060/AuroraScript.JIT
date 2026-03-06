@@ -1,9 +1,12 @@
-﻿using AuroraScript.Runtime;
+﻿using AuroraScript;
+using AuroraScript.Runtime;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Mathematics;
 using BenchmarkDotNet.Order;
-using System.Runtime.CompilerServices;
+using System;
+using System.Text;
+using System.Threading.Tasks;
 
 
 namespace AuroraBenchmark
@@ -18,69 +21,67 @@ namespace AuroraBenchmark
     public class ScriptBenchmark
     {
 
+#pragma warning disable CS8618
+        private AuroraEngine engine;
+        private UserState userState;
+        private ScriptDomain domain;
+#pragma warning restore CS8618
 
-        [Benchmark]
-        public void TestDatum()
+        [GlobalSetup]
+        public async Task Setup()
         {
-            ScriptDatum a = ScriptDatum.FromNumber(123);
-            ScriptDatum b = ScriptDatum.FromNumber(123);
-            for (int i = 0; i < 10000000; i++)
-            {
-                ScriptDatum c = Add2(a, b);
-            }
+            EngineOptions engineOptions = EngineOptions.Default
+           .WithBaseDirectory("scripts")
+           .WithConsoleStdOut(Console.Out)
+           .WithConsoleErrorOut(Console.Error)
+           .WithDateTimeFormat("yyyy-MM-dd HH:mm:ss")
+           .WithAssemblyOut("123.dll")
+           .WithEnableConfused(false)
+           .WithCompilationMode(CompilationMode.Dynamic)
+           .WithOptimizeOption(OptimizeOptions.Release);
+
+
+            engine = new AuroraEngine(engineOptions);
+            engine.RegisterType<TestObject>();
+            engine.RegisterType<UserState>();
+            engine.RegisterType(typeof(Math), "Math2");
+            await engine.BuildAsync(engine.SearchAllFileSource(Encoding.UTF8));
+            userState = new UserState();
+            domain = TestCreateDomain();
         }
 
         [Benchmark]
-        public void TestDatumRef()
+        public ScriptDomain TestCreateDomain()
         {
+            var g = engine.NewEnvironment();
+            return engine.CreateDomain(g, userState);
+        }
 
-            ScriptDatum a = ScriptDatum.FromNumber(123);
-            ScriptDatum b = ScriptDatum.FromNumber(123);
-            for (int i = 0; i < 10000000; i++)
-            {
-                ScriptDatum c = default;
-                Add(in a, in b, ref c);
-            }
+        [Benchmark]
+        public void testDraw()
+        {
+            domain.Execute("UNIT_LIB", "testDraw");
         }
 
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Add(in ScriptDatum a, in ScriptDatum b, ref ScriptDatum result)
+        [Benchmark]
+        public void testMD5()
         {
-            if (a.Kind == ValueKind.Number && b.Kind == ValueKind.Number)
-            {
-                ScriptDatum.WriteAsNumber(ref result, a.Number + b.Number);
-            }
-            else if (ScriptDatum.TryToNumber(in a, out var aa) && ScriptDatum.TryToNumber(in b, out var bb))
-            {
-                ScriptDatum.WriteAsNumber(ref result, aa + bb);
-            }
-            else
-            {
-                ScriptDatum.WriteAsNumber(ref result, double.NaN);
-            }
+            domain.Execute("UNIT_LIB", "testMD5");
         }
 
 
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static ScriptDatum Add2(ScriptDatum a, ScriptDatum b)
+        [Benchmark]
+        public void testMD5_100()
         {
-            if (a.Kind == ValueKind.Number && b.Kind == ValueKind.Number)
-            {
-                return ScriptDatum.FromNumber(a.Number + b.Number);
-            }
-            else if (ScriptDatum.TryToNumber(in a, out var aa) && ScriptDatum.TryToNumber(in b, out var bb))
-            {
-                return ScriptDatum.FromNumber(aa + bb);
-            }
-            else
-            {
-                return ScriptDatum.FromNumber(double.NaN);
-            }
+            domain.Execute("UNIT_LIB", "testMD5_100");
         }
 
-
+        [Benchmark]
+        public void testFor1E()
+        {
+            domain.Execute("UNIT_LIB", "testFor1E");
+        }
 
     }
 }

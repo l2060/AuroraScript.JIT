@@ -1,4 +1,4 @@
-﻿@module("UNIT_LIB");
+﻿@module(UNIT_LIB);
 
 import md5 from 'md5';
 
@@ -10,6 +10,7 @@ var node = {
     E: "Hello",
     F: () => { console.log("reset"); }
 };
+
 node = Object.assign(node, { 你好: 'Hello' });
 
 const _boolean = true;
@@ -36,7 +37,7 @@ export function testMD5_100() {
     }
 }
 
-export func testFor(count = 1000000) {
+export func testFor1E(count = 100000000) {
     for (var o = 0; o < count; o++) {
         // .....
     }
@@ -97,15 +98,15 @@ function replacer(match, p1, p2, p3, offset, string) {
 export func testRegex(){
     var regex = /(?<animal>fox|cat) jumps over/;
     var paragraph = "The quick brown fox jumps over the lazy dog. It barked.";
-    const found = paragraph.match(regex);
+    const found1 = paragraph.match(regex);
 
     const paragraph2 = "The quick brown fox jumps over the lazy dog. It barked.";
     const regex2 = /[A-Z]/g;
-    const found = paragraph2.match(regex2);
+    const found2 = paragraph2.match(regex2);
 
     const str = "For more information, see Chapter 3.4.5.1";
     const re = /see (chapter \d+(\.\d)*)/i;
-    const found = str.match(re);
+    const found3 = str.match(re);
 
     var array = "test1test2".matchAll(/t(e)(st(\d?))/g);
     const newString = "abc12345#$*%".replace(/([^\d]*)(\d*)([^\w]*)/, replacer);
@@ -373,3 +374,36 @@ func testIfFalse() {
 func testMod() {
     var temp = 256 % 255;
 }
+
+
+ func testDraw() {
+        var buffer = new StringBuffer('\n');
+        var i = 0;
+        var j = 0;
+        var n = 21;
+        var r = Math.round(n / 2);
+        var l = r;
+        var k = 1;
+        for (i = 0; i < n; i++)
+        {
+            for (j = 0; j <= l; j++)
+            {
+                buffer.append("*");
+            }
+            while (j < r)
+            {
+                buffer.append(" ");
+                j++;
+            }
+            while (j < n)
+            {
+                buffer.append("*");
+                j++;
+            }
+            buffer.appendLine();
+            if (l == 0) k = -k;
+            l -= k;
+            r += k;
+        }
+        console.log(buffer.stringAndRelease());
+    }

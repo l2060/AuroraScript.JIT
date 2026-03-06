@@ -977,12 +977,6 @@ namespace AuroraScript.Compiler.Emits
                     EmitStoreName(nameExp, val, () =>
                     {
                         right.Accept(this);
-                        EnsureTop(typeof(ScriptDatum));
-                        if (resultNeeded)
-                        {
-                            _il.Emit(OpCodes.Dup);
-                            PushType(typeof(ScriptDatum));
-                        }
                     });
                 }
             }
@@ -1870,48 +1864,30 @@ namespace AuroraScript.Compiler.Emits
             {
                 if (val.Type == DeclareType.Property)
                 {
-                    if (_scope.ScopeType == Core.ScopeType.Function)
-                    {
-                        _il.Emit(OpCodes.Ldarg_0); // CILContext
-                        _il.Emit(OpCodes.Ldfld, typeof(ScriptContext).GetField("Module"));
-                    }
-                    else
-                    {
-                        _il.Emit(OpCodes.Ldarg_1); // ScriptModule
-                    }
+                    _il.Emit(OpCodes.Ldarg_0); // CILContext
+                    _il.Emit(OpCodes.Ldfld, typeof(ScriptContext).GetField("Module"));
                 }
                 else
                 {
-                    if (_scope.ScopeType == Core.ScopeType.Function)
-                    {
-                        _il.Emit(OpCodes.Ldarg_0); // CILContext
-                        _il.Emit(OpCodes.Ldfld, typeof(ScriptContext).GetField("Global"));
-                    }
-                    else
-                    {
-                        _il.Emit(OpCodes.Ldarg_0); // ScriptDomain
-                        _il.Emit(OpCodes.Ldfld, RuntimeMetadata.CILContext_Global);
-                    }
+                    _il.Emit(OpCodes.Ldarg_0); // ScriptDomain
+                    _il.Emit(OpCodes.Ldfld, RuntimeMetadata.CILContext_Global);
                 }
                 builder.LoadStringConstant(_il, nameExp.Identifier.Value);
-                PushType(typeof(string));
-
+                //PushType(typeof(string));
+                //PopType(); // Name
                 if (valueEmitter != null)
                 {
                     valueEmitter();
                     EnsureTop(typeof(ScriptObject));
+                    PopType(); // Value
                 }
                 else
                 {
                     throw new Exception();
                 }
-
                 _il.Emit(val?.VariableNode?.IsConst == true ? OpCodes.Ldc_I4_0 : OpCodes.Ldc_I4_1);
                 _il.Emit(OpCodes.Ldc_I4_1);
                 _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptObject_Define);
-                PopType(); // Value
-                PopType(); // Name
-                PopType(); // Target
             }
             else
             {
