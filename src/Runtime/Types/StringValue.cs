@@ -1,4 +1,5 @@
-﻿using AuroraScript.Runtime.Pool;
+﻿using AuroraScript;
+using AuroraScript.Runtime.Pool;
 using System.Runtime.CompilerServices;
 
 namespace AuroraScript.Runtime.Types
@@ -10,6 +11,8 @@ namespace AuroraScript.Runtime.Types
     /// </summary>
     public sealed partial class StringValue : ScriptImmutable
     {
+        private static StringPoolingStrategy _poolingStrategy = StringPoolingStrategy.None;
+
         /// <summary> Gets the underlying CLI string value. </summary>
         public readonly string Value;
 
@@ -47,7 +50,9 @@ namespace AuroraScript.Runtime.Types
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static StringValue Of(string value)
         {
-            return new StringValue(value);
+            return _poolingStrategy == StringPoolingStrategy.Intern
+                ? Intern(value)
+                : new StringValue(value);
         }
 
         /// <summary>
@@ -66,6 +71,16 @@ namespace AuroraScript.Runtime.Types
         /// </summary>
         /// <param name="ch">The character.</param>
         /// <returns>A cached <see cref="StringValue"/> instance.</returns>
+
+
+        /// <summary>
+        /// Configures the process-wide string pooling strategy used by <see cref="Of(string)"/>.
+        /// </summary>
+        internal static void ConfigurePooling(StringPoolingStrategy poolingStrategy)
+        {
+            _poolingStrategy = poolingStrategy;
+        }
+
         internal static StringValue FromChar(char ch)
         {
             var cached = _charCache[ch];

@@ -56,6 +56,7 @@ namespace AuroraScript
         public AuroraEngine(EngineOptions options)
         {
             Options = options ?? throw new AuroraException("the parameter \"options\" cannot be empty");
+            StringValue.ConfigurePooling(Options.StringPooling);
             Global = new ScriptGlobal(this);
 
             // register standard types

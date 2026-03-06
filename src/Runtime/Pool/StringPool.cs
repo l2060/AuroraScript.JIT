@@ -19,32 +19,41 @@ namespace AuroraScript.Runtime.Pool
         private int _allocCounter;
         private const int CleanupInterval = 1024;
 
+        private const int MaxPooledStringLength = 128;
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public StringValue Allocation(string key)
         {
-            var interned = string.Intern(key);
             ArgumentNullException.ThrowIfNull(key);
+
+            // Extremely long strings often have low reuse and increase dictionary pressure.
+            if (key.Length == 0 || key.Length > MaxPooledStringLength)
+            {
+                return new StringValue(key);
+            }
+
             if (_dict.TryGetValue(key, out var weakRef) && weakRef.TryGetTarget(out var cached))
             {
                 return cached;
             }
-            // 创建或修复弱引用
+
             var newValue = new StringValue(key);
             _dict.AddOrUpdate(
                 key,
                 static (_, v) => new WeakReference<StringValue>(v),
                 static (_, oldRef, v) =>
                 {
-                    if (oldRef.TryGetTarget(out var existing)) return oldRef;
+                    if (oldRef.TryGetTarget(out _)) return oldRef;
                     return new WeakReference<StringValue>(v);
                 },
                 newValue
             );
-            // 轻量级触发清理（不阻塞）
+
             if ((Interlocked.Increment(ref _allocCounter) & (CleanupInterval - 1)) == 0)
             {
                 _ = Task.Run(CleanupDeadEntries);
             }
+
             return newValue;
         }
 

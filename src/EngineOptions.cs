@@ -46,6 +46,23 @@ namespace AuroraScript
     }
 
     /// <summary>
+    /// Specifies how runtime string values are materialized when converting CLR strings
+    /// into <see cref="Runtime.Types.StringValue"/>.
+    /// </summary>
+    public enum StringPoolingStrategy
+    {
+        /// <summary>
+        /// Always allocate a new <see cref="Runtime.Types.StringValue"/> wrapper.
+        /// </summary>
+        None,
+
+        /// <summary>
+        /// Use runtime string pool with weak references for reusable wrappers.
+        /// </summary>
+        Intern,
+    }
+
+    /// <summary>
     /// Represents the configuration settings for an <see cref="AuroraEngine"/>.
     /// This record provides a fluent interface for configuring compilation, optimization, and environment behavior.
     /// </summary>
@@ -109,6 +126,11 @@ namespace AuroraScript
         /// Gets or sets the script file extension. Defaults to ".as".
         /// </summary>
         public string ExtName { get; set; } = ".as";
+
+        /// <summary>
+        /// Gets the strategy for allocating script string wrapper objects.
+        /// </summary>
+        public StringPoolingStrategy StringPooling { get; init; } = StringPoolingStrategy.None;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="EngineOptions"/> record.
@@ -227,6 +249,16 @@ namespace AuroraScript
                 throw new ArgumentException("Extensions can only start with \".\" or provide a sense of an extension", nameof(value));
             }
             return this with { ExtName = value };
+        }
+
+        /// <summary>
+        /// Configures the string pooling strategy and returns a new options instance.
+        /// </summary>
+        /// <param name="value">The string pooling strategy.</param>
+        /// <returns>A new <see cref="EngineOptions"/> instance with the updated setting.</returns>
+        public EngineOptions WithStringPooling(StringPoolingStrategy value)
+        {
+            return this with { StringPooling = value };
         }
     }
 }
