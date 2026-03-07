@@ -322,12 +322,24 @@ Hot-patching works via the `IncrementalCompiler`, which performs a partial JIT c
 
 Performance is a priority. We encourage community contributions to optimize further!
 
-| Method | Mean | StdDev | Allocated |
-| :--- | :---: | :---: | :---: |
-|  |  |  |  |
-|  |  |  |  |
-|  |  |  |  |
-|  |  |  |  |
+```
+
+BenchmarkDotNet v0.15.8, Windows 11 (10.0.26200.7922/25H2/2025Update/HudsonValley2)
+13th Gen Intel Core i7-13700KF 3.40GHz, 1 CPU, 24 logical and 16 physical cores
+.NET SDK 11.0.100-preview.1.26104.118
+  [Host]     : .NET 10.0.3 (10.0.3, 10.0.326.7603), X64 RyuJIT x86-64-v3
+  DefaultJob : .NET 10.0.3 (10.0.3, 10.0.326.7603), X64 RyuJIT x86-64-v3
+
+
+```
+| Method           | Mean           | Error       | StdDev      | Min            | Max            | Median         | Rank | Gen0     | Gen1   | Allocated  |
+|----------------- |---------------:|------------:|------------:|---------------:|---------------:|---------------:|-----:|---------:|-------:|-----------:|
+| TestCreateDomain |       5.430 μs |   0.1073 μs |   0.1235 μs |       5.227 μs |       5.639 μs |       5.446 μs |    1 |   0.8316 | 0.0305 |    13153 B |
+| testDraw         |      12.102 μs |   0.0410 μs |   0.0384 μs |      12.044 μs |      12.182 μs |      12.107 μs |    2 |   3.3722 |      - |    52984 B |
+| testMD5          |      20.807 μs |   0.0951 μs |   0.0889 μs |      20.661 μs |      20.933 μs |      20.823 μs |    3 |   6.5308 | 0.0305 |   102784 B |
+| testMD5_100      |   2,098.830 μs |  16.9814 μs |  15.8844 μs |   2,080.050 μs |   2,118.134 μs |   2,091.589 μs |    4 | 652.3438 | 3.9063 | 10253848 B |
+| testFor1E        | 149,988.511 μs | 836.7517 μs | 653.2807 μs | 149,167.533 μs | 151,322.000 μs | 150,000.250 μs |    5 |        - |      - |      192 B |
+
 
 > Measured on Intel Core i7-13700KF, .NET 10.0.1.
 

@@ -405,5 +405,5 @@ func testMod() {
             l -= k;
             r += k;
         }
-        console.log(buffer.stringAndRelease());
+        buffer.stringAndRelease();
     }

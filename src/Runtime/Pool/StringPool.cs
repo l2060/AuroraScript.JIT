@@ -43,7 +43,7 @@ namespace AuroraScript.Runtime.Pool
                 static (_, v) => new WeakReference<StringValue>(v),
                 static (_, oldRef, v) =>
                 {
-                    if (oldRef.TryGetTarget(out _)) return oldRef;
+                    if (oldRef.TryGetTarget(out var f)) return oldRef;
                     return new WeakReference<StringValue>(v);
                 },
                 newValue
