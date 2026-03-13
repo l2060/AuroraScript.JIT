@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
 
 namespace AuroraScript.Runtime.Types
 {
@@ -14,15 +13,7 @@ namespace AuroraScript.Runtime.Types
     /// <param name="result">The result to be returned to the script.</param>
     public delegate void ClrDatumDelegate([NotNull] ScriptContext ctx, ScriptObject module, [NotNull] Span<ScriptDatum> args, ref ScriptDatum result);
 
-    /// <summary>
-    /// A fixed-size stack-allocated buffer for passing arguments to bonded native functions.
-    /// Each call frame gets its own buffer, ensuring reentrant safety with zero heap allocation.
-    /// </summary>
-    [InlineArray(8)]
-    internal struct DatumBuffer
-    {
-        private ScriptDatum _element;
-    }
+
 
     /// <summary>
     /// Represents a function object that invokes a bonded native CLR method.
@@ -72,9 +63,9 @@ namespace AuroraScript.Runtime.Types
         {
             var target = Target;
             ScriptDatum result = default;
-            DatumBuffer buf = default;
+            DatumBuffer1 buf = default;
             buf[0] = arg1;
-            DatumMethod.Invoke(ctx, target, ((Span<ScriptDatum>)buf)[..1], ref result);
+            DatumMethod.Invoke(ctx, target, buf, ref result);
             return result;
         }
 
@@ -82,10 +73,10 @@ namespace AuroraScript.Runtime.Types
         {
             var target = Target;
             ScriptDatum result = default;
-            DatumBuffer buf = default;
+            DatumBuffer2 buf = default;
             buf[0] = arg1;
             buf[1] = arg2;
-            DatumMethod.Invoke(ctx, target, ((Span<ScriptDatum>)buf)[..2], ref result);
+            DatumMethod.Invoke(ctx, target, buf, ref result);
             return result;
         }
 
@@ -93,11 +84,11 @@ namespace AuroraScript.Runtime.Types
         {
             var target = Target;
             ScriptDatum result = default;
-            DatumBuffer buf = default;
+            DatumBuffer3 buf = default;
             buf[0] = arg1;
             buf[1] = arg2;
             buf[2] = arg3;
-            DatumMethod.Invoke(ctx, target, ((Span<ScriptDatum>)buf)[..3], ref result);
+            DatumMethod.Invoke(ctx, target, buf, ref result);
             return result;
         }
 
@@ -105,12 +96,12 @@ namespace AuroraScript.Runtime.Types
         {
             var target = Target;
             ScriptDatum result = default;
-            DatumBuffer buf = default;
+            DatumBuffer4 buf = default;
             buf[0] = arg1;
             buf[1] = arg2;
             buf[2] = arg3;
             buf[3] = arg4;
-            DatumMethod.Invoke(ctx, target, ((Span<ScriptDatum>)buf)[..4], ref result);
+            DatumMethod.Invoke(ctx, target, buf, ref result);
             return result;
         }
 
@@ -118,13 +109,13 @@ namespace AuroraScript.Runtime.Types
         {
             var target = Target;
             ScriptDatum result = default;
-            DatumBuffer buf = default;
+            DatumBuffer5 buf = default;
             buf[0] = arg1;
             buf[1] = arg2;
             buf[2] = arg3;
             buf[3] = arg4;
             buf[4] = arg5;
-            DatumMethod.Invoke(ctx, target, ((Span<ScriptDatum>)buf)[..5], ref result);
+            DatumMethod.Invoke(ctx, target, buf, ref result);
             return result;
         }
 
@@ -132,14 +123,14 @@ namespace AuroraScript.Runtime.Types
         {
             var target = Target;
             ScriptDatum result = default;
-            DatumBuffer buf = default;
+            DatumBuffer6 buf = default;
             buf[0] = arg1;
             buf[1] = arg2;
             buf[2] = arg3;
             buf[3] = arg4;
             buf[4] = arg5;
             buf[5] = arg6;
-            DatumMethod.Invoke(ctx, target, ((Span<ScriptDatum>)buf)[..6], ref result);
+            DatumMethod.Invoke(ctx, target, buf, ref result);
             return result;
         }
 
@@ -147,7 +138,7 @@ namespace AuroraScript.Runtime.Types
         {
             var target = Target;
             ScriptDatum result = default;
-            DatumBuffer buf = default;
+            DatumBuffer7 buf = default;
             buf[0] = arg1;
             buf[1] = arg2;
             buf[2] = arg3;
@@ -155,7 +146,7 @@ namespace AuroraScript.Runtime.Types
             buf[4] = arg5;
             buf[5] = arg6;
             buf[6] = arg7;
-            DatumMethod.Invoke(ctx, target, ((Span<ScriptDatum>)buf)[..7], ref result);
+            DatumMethod.Invoke(ctx, target, buf, ref result);
             return result;
         }
 
@@ -163,7 +154,7 @@ namespace AuroraScript.Runtime.Types
         {
             var target = Target;
             ScriptDatum result = default;
-            DatumBuffer buf = default;
+            DatumBuffer8 buf = default;
             buf[0] = arg1;
             buf[1] = arg2;
             buf[2] = arg3;
@@ -172,7 +163,7 @@ namespace AuroraScript.Runtime.Types
             buf[5] = arg6;
             buf[6] = arg7;
             buf[7] = arg8;
-            DatumMethod.Invoke(ctx, target, ((Span<ScriptDatum>)buf)[..8], ref result);
+            DatumMethod.Invoke(ctx, target, buf, ref result);
             return result;
         }
 

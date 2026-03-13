@@ -1,5 +1,4 @@
-﻿using AuroraScript;
-using AuroraScript.Runtime.Pool;
+﻿using AuroraScript.Runtime.Pool;
 using System.Runtime.CompilerServices;
 
 namespace AuroraScript.Runtime.Types
@@ -65,13 +64,6 @@ namespace AuroraScript.Runtime.Types
         {
             return StringPool.Instance.Allocation(value);
         }
-
-        /// <summary>
-        /// Returns a cached <see cref="StringValue"/> for the given ASCII character.
-        /// </summary>
-        /// <param name="ch">The character.</param>
-        /// <returns>A cached <see cref="StringValue"/> instance.</returns>
-
 
         /// <summary>
         /// Configures the process-wide string pooling strategy used by <see cref="Of(string)"/>.

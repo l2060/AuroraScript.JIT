@@ -117,63 +117,76 @@ namespace AuroraScript.Runtime.Interop
         internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1)
         {
             ScriptDatum result = default;
-            DatumBuffer buf = default;
+            DatumBuffer1 buf = default;
             buf[0] = arg1;
-            InvokeInternal(((Span<ScriptDatum>)buf)[..1], ref result);
+            InvokeInternal(buf, ref result);
             return result;
         }
 
         internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2)
         {
             ScriptDatum result = default;
-            DatumBuffer buf = default;
+            DatumBuffer2 buf = default;
             buf[0] = arg1;
             buf[1] = arg2;
-            InvokeInternal(((Span<ScriptDatum>)buf)[..2], ref result);
+            InvokeInternal(buf, ref result);
             return result;
         }
 
         internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3)
         {
             ScriptDatum result = default;
-            DatumBuffer buf = default;
+            DatumBuffer3 buf = default;
             buf[0] = arg1;
             buf[1] = arg2;
             buf[2] = arg3;
-            InvokeInternal(((Span<ScriptDatum>)buf)[..3], ref result);
+            InvokeInternal(buf, ref result);
             return result;
         }
 
         internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4)
         {
             ScriptDatum result = default;
-            DatumBuffer buf = default;
+            DatumBuffer4 buf = default;
             buf[0] = arg1;
             buf[1] = arg2;
             buf[2] = arg3;
             buf[3] = arg4;
-            InvokeInternal(((Span<ScriptDatum>)buf)[..4], ref result);
+            InvokeInternal(buf, ref result);
+            return result;
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5)
+        {
+            ScriptDatum result = default;
+            DatumBuffer5 buf = default;
+            buf[0] = arg1;
+            buf[1] = arg2;
+            buf[2] = arg3;
+            buf[3] = arg4;
+            buf[4] = arg5;
+            InvokeInternal(buf, ref result);
             return result;
         }
 
         internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6)
         {
             ScriptDatum result = default;
-            DatumBuffer buf = default;
+            DatumBuffer6 buf = default;
             buf[0] = arg1;
             buf[1] = arg2;
             buf[2] = arg3;
             buf[3] = arg4;
             buf[4] = arg5;
             buf[5] = arg6;
-            InvokeInternal(((Span<ScriptDatum>)buf)[..6], ref result);
+            InvokeInternal(buf, ref result);
             return result;
         }
 
         internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6, ScriptDatum arg7)
         {
             ScriptDatum result = default;
-            DatumBuffer buf = default;
+            DatumBuffer7 buf = default;
             buf[0] = arg1;
             buf[1] = arg2;
             buf[2] = arg3;
@@ -181,14 +194,14 @@ namespace AuroraScript.Runtime.Interop
             buf[4] = arg5;
             buf[5] = arg6;
             buf[6] = arg7;
-            InvokeInternal(((Span<ScriptDatum>)buf)[..7], ref result);
+            InvokeInternal(buf, ref result);
             return result;
         }
 
         internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6, ScriptDatum arg7, ScriptDatum arg8)
         {
             ScriptDatum result = default;
-            DatumBuffer buf = default;
+            DatumBuffer8 buf = default;
             buf[0] = arg1;
             buf[1] = arg2;
             buf[2] = arg3;
@@ -197,7 +210,7 @@ namespace AuroraScript.Runtime.Interop
             buf[5] = arg6;
             buf[6] = arg7;
             buf[7] = arg8;
-            InvokeInternal(((Span<ScriptDatum>)buf)[..8], ref result);
+            InvokeInternal(buf, ref result);
             return result;
         }
 

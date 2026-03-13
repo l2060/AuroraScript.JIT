@@ -104,64 +104,64 @@ namespace AuroraScript.Runtime.Types
 
         internal virtual ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1)
         {
-            DatumBuffer buffer = default;
+            DatumBuffer1 buffer = default;
             buffer[0] = arg1;
-            return Invoke(ctx, buffer[..1]);
+            return Invoke(ctx, buffer);
         }
 
         internal virtual ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2)
         {
-            DatumBuffer buffer = default;
+            DatumBuffer2 buffer = default;
             buffer[0] = arg1;
             buffer[1] = arg2;
-            return Invoke(ctx, buffer[..2]);
+            return Invoke(ctx, buffer);
         }
 
         internal virtual ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3)
         {
-            DatumBuffer buffer = default;
+            DatumBuffer3 buffer = default;
             buffer[0] = arg1;
             buffer[1] = arg2;
             buffer[2] = arg3;
-            return Invoke(ctx, buffer[..3]);
+            return Invoke(ctx, buffer);
         }
 
         internal virtual ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4)
         {
-            DatumBuffer buffer = default;
+            DatumBuffer4 buffer = default;
             buffer[0] = arg1;
             buffer[1] = arg2;
             buffer[2] = arg3;
             buffer[3] = arg4;
-            return Invoke(ctx, buffer[..4]);
+            return Invoke(ctx, buffer);
         }
 
         internal virtual ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5)
         {
-            DatumBuffer buffer = default;
+            DatumBuffer5 buffer = default;
             buffer[0] = arg1;
             buffer[1] = arg2;
             buffer[2] = arg3;
             buffer[3] = arg4;
             buffer[4] = arg5;
-            return Invoke(ctx, buffer[..5]);
+            return Invoke(ctx, buffer);
         }
 
         internal virtual ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6)
         {
-            DatumBuffer buffer = default;
+            DatumBuffer6 buffer = default;
             buffer[0] = arg1;
             buffer[1] = arg2;
             buffer[2] = arg3;
             buffer[3] = arg4;
             buffer[4] = arg5;
             buffer[5] = arg6;
-            return Invoke(ctx, buffer[..6]);
+            return Invoke(ctx, buffer);
         }
 
         internal virtual ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6, ScriptDatum arg7)
         {
-            DatumBuffer buffer = default;
+            DatumBuffer7 buffer = default;
             buffer[0] = arg1;
             buffer[1] = arg2;
             buffer[2] = arg3;
@@ -169,12 +169,12 @@ namespace AuroraScript.Runtime.Types
             buffer[4] = arg5;
             buffer[5] = arg6;
             buffer[6] = arg7;
-            return Invoke(ctx, buffer[..7]);
+            return Invoke(ctx, buffer);
         }
 
         internal virtual ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6, ScriptDatum arg7, ScriptDatum arg8)
         {
-            DatumBuffer buffer = default;
+            DatumBuffer8 buffer = default;
             buffer[0] = arg1;
             buffer[1] = arg2;
             buffer[2] = arg3;
@@ -183,7 +183,7 @@ namespace AuroraScript.Runtime.Types
             buffer[5] = arg6;
             buffer[6] = arg7;
             buffer[7] = arg8;
-            return Invoke(ctx, buffer[..8]);
+            return Invoke(ctx, buffer);
         }
 
         /// <summary>

@@ -49,7 +49,9 @@ namespace AuroraScript.Runtime.Types
             if (Callable)
             {
                 ScriptDatum result = default;
-                Construct(ctx, new ScriptDatum[] { arg1 }, ref result);
+                DatumBuffer1 buf = default;
+                buf[0] = arg1;
+                Construct(ctx, buf, ref result);
                 return result;
             }
             return base.Invoke(ctx, arg1);
@@ -60,7 +62,10 @@ namespace AuroraScript.Runtime.Types
             if (Callable)
             {
                 ScriptDatum result = default;
-                Construct(ctx, new ScriptDatum[] { arg1, arg2 }, ref result);
+                DatumBuffer2 buf = default;
+                buf[0] = arg1;
+                buf[1] = arg2;
+                Construct(ctx, buf, ref result);
                 return result;
             }
             return base.Invoke(ctx, arg1, arg2);
@@ -71,7 +76,11 @@ namespace AuroraScript.Runtime.Types
             if (Callable)
             {
                 ScriptDatum result = default;
-                Construct(ctx, new ScriptDatum[] { arg1, arg2, arg3 }, ref result);
+                DatumBuffer3 buf = default;
+                buf[0] = arg1;
+                buf[1] = arg2;
+                buf[2] = arg3;
+                Construct(ctx, buf, ref result);
                 return result;
             }
             return base.Invoke(ctx, arg1, arg2, arg3);
@@ -82,7 +91,12 @@ namespace AuroraScript.Runtime.Types
             if (Callable)
             {
                 ScriptDatum result = default;
-                Construct(ctx, new ScriptDatum[] { arg1, arg2, arg3, arg4 }, ref result);
+                DatumBuffer4 buf = default;
+                buf[0] = arg1;
+                buf[1] = arg2;
+                buf[2] = arg3;
+                buf[3] = arg4;
+                Construct(ctx, buf, ref result);
                 return result;
             }
             return base.Invoke(ctx, arg1, arg2, arg3, arg4);
@@ -93,7 +107,13 @@ namespace AuroraScript.Runtime.Types
             if (Callable)
             {
                 ScriptDatum result = default;
-                Construct(ctx, new ScriptDatum[] { arg1, arg2, arg3, arg4, arg5 }, ref result);
+                DatumBuffer5 buf = default;
+                buf[0] = arg1;
+                buf[1] = arg2;
+                buf[2] = arg3;
+                buf[3] = arg4;
+                buf[4] = arg5;
+                Construct(ctx, buf, ref result);
                 return result;
             }
             return base.Invoke(ctx, arg1, arg2, arg3, arg4, arg5);
@@ -104,7 +124,14 @@ namespace AuroraScript.Runtime.Types
             if (Callable)
             {
                 ScriptDatum result = default;
-                Construct(ctx, new ScriptDatum[] { arg1, arg2, arg3, arg4, arg5, arg6 }, ref result);
+                DatumBuffer6 buf = default;
+                buf[0] = arg1;
+                buf[1] = arg2;
+                buf[2] = arg3;
+                buf[3] = arg4;
+                buf[4] = arg5;
+                buf[5] = arg6;
+                Construct(ctx, buf, ref result);
                 return result;
             }
             return base.Invoke(ctx, arg1, arg2, arg3, arg4, arg5, arg6);
@@ -115,7 +142,15 @@ namespace AuroraScript.Runtime.Types
             if (Callable)
             {
                 ScriptDatum result = default;
-                Construct(ctx, new ScriptDatum[] { arg1, arg2, arg3, arg4, arg5, arg6, arg7 }, ref result);
+                DatumBuffer7 buf = default;
+                buf[0] = arg1;
+                buf[1] = arg2;
+                buf[2] = arg3;
+                buf[3] = arg4;
+                buf[4] = arg5;
+                buf[5] = arg6;
+                buf[6] = arg7;
+                Construct(ctx, buf, ref result);
                 return result;
             }
             return base.Invoke(ctx, arg1, arg2, arg3, arg4, arg5, arg6, arg7);
@@ -126,7 +161,16 @@ namespace AuroraScript.Runtime.Types
             if (Callable)
             {
                 ScriptDatum result = default;
-                Construct(ctx, new ScriptDatum[] { arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8 }, ref result);
+                DatumBuffer8 buf = default;
+                buf[0] = arg1;
+                buf[1] = arg2;
+                buf[2] = arg3;
+                buf[3] = arg4;
+                buf[4] = arg5;
+                buf[5] = arg6;
+                buf[6] = arg7;
+                buf[7] = arg8;
+                Construct(ctx, buf, ref result);
                 return result;
             }
             return base.Invoke(ctx, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
