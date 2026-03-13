@@ -11,7 +11,7 @@ namespace AuroraScript.Runtime
     /// <param name="ctx">The execution context for the function call.</param>
     /// <param name="args">The arguments passed to the function.</param>
     /// <returns>A <see cref="ScriptDatum"/> representing the result of the function execution.</returns>
-    public delegate ScriptDatum ScriptFunctionDelegate(ScriptContext ctx, ScriptDatum[] args);
+    public delegate ScriptDatum ScriptFunctionDelegate(ScriptContext ctx, Span<ScriptDatum> args);
 
     /// <summary>
     /// Represents the execution context for AuroraScript.

@@ -19,7 +19,7 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
             Frozen();
         }
 
-        public override void Construct(ScriptContext ctx, ScriptDatum[] args, ref ScriptDatum result)
+        public override void Construct(ScriptContext ctx, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             ScriptDatum.WriteAsBoolean(ref result, args.TryGetRef(0, ref result) && ScriptDatum.IsTrue(result));
         }

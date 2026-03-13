@@ -1,4 +1,5 @@
 ﻿using AuroraScript.Runtime.Pool;
+using System;
 
 namespace AuroraScript.Runtime.Types.TypeConstruct
 {
@@ -20,7 +21,7 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
         /// Native implementation for constructing a new Regex object.
         /// Handles pattern strings and optional flags.
         /// </summary>
-        public override void Construct(ScriptContext ctx, ScriptDatum[] args, ref ScriptDatum result)
+        public override void Construct(ScriptContext ctx, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             if (args.Length == 0)
             {

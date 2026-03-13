@@ -263,7 +263,8 @@ namespace AuroraScript
             ScriptObject stateObject = ClrMarshaller.ToScript(userState);
             var domain = new ScriptDomain(this, domainGlobal, stateObject);
             var ctx = new ScriptContext(domain);
-            EntryPoint.Invoke(null, [ctx, Array.Empty<ScriptDatum>()]);
+            var callDelegate = EntryPoint.CreateDelegate<ScriptFunctionDelegate>();
+            callDelegate(ctx, Span<ScriptDatum>.Empty);
             return domain;
         }
     }

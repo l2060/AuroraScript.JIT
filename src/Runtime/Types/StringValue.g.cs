@@ -463,7 +463,7 @@ namespace AuroraScript.Runtime.Types
             ScriptDatum.WriteAsNumber(ref result, str.Value[(int)index]);
         }
 
-        private static string InvokeReplaceCallback(ScriptContext ctx, ClosureFunction callback, ScriptDatum[] parameters)
+        private static string InvokeReplaceCallback(ScriptContext ctx, ClosureFunction callback, Span<ScriptDatum> parameters)
         {
             return ScriptDatum.ToString(callback.Invoke(ctx, parameters));
         }

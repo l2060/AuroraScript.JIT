@@ -59,10 +59,108 @@ namespace AuroraScript.Runtime.Types
         /// <param name="ctx">The execution context.</param>
         /// <param name="args">The arguments to pass to the function.</param>
         /// <returns>The result of the function execution.</returns>
-        internal override ScriptDatum Invoke(ScriptContext ctx, params ScriptDatum[] args)
+        internal override ScriptDatum Invoke(ScriptContext ctx, Span<ScriptDatum> args)
         {
             var context = ctx.With(Module, this);
             return TargetDelegate.Invoke(context, args);
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx)
+        {
+            var context = ctx.With(Module, this);
+            return TargetDelegate.Invoke(context, Span<ScriptDatum>.Empty);
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1)
+        {
+            var context = ctx.With(Module, this);
+            DatumBuffer buf = default;
+            buf[0] = arg1;
+            return TargetDelegate.Invoke(context, ((Span<ScriptDatum>)buf)[..1]);
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2)
+        {
+            var context = ctx.With(Module, this);
+            DatumBuffer buf = default;
+            buf[0] = arg1;
+            buf[1] = arg2;
+            return TargetDelegate.Invoke(context, ((Span<ScriptDatum>)buf)[..2]);
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3)
+        {
+            var context = ctx.With(Module, this);
+            DatumBuffer buf = default;
+            buf[0] = arg1;
+            buf[1] = arg2;
+            buf[2] = arg3;
+            return TargetDelegate.Invoke(context, ((Span<ScriptDatum>)buf)[..3]);
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4)
+        {
+            var context = ctx.With(Module, this);
+            DatumBuffer buf = default;
+            buf[0] = arg1;
+            buf[1] = arg2;
+            buf[2] = arg3;
+            buf[3] = arg4;
+            return TargetDelegate.Invoke(context, ((Span<ScriptDatum>)buf)[..4]);
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5)
+        {
+            var context = ctx.With(Module, this);
+            DatumBuffer buf = default;
+            buf[0] = arg1;
+            buf[1] = arg2;
+            buf[2] = arg3;
+            buf[3] = arg4;
+            buf[4] = arg5;
+            return TargetDelegate.Invoke(context, ((Span<ScriptDatum>)buf)[..5]);
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6)
+        {
+            var context = ctx.With(Module, this);
+            DatumBuffer buf = default;
+            buf[0] = arg1;
+            buf[1] = arg2;
+            buf[2] = arg3;
+            buf[3] = arg4;
+            buf[4] = arg5;
+            buf[5] = arg6;
+            return TargetDelegate.Invoke(context, ((Span<ScriptDatum>)buf)[..6]);
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6, ScriptDatum arg7)
+        {
+            var context = ctx.With(Module, this);
+            DatumBuffer buf = default;
+            buf[0] = arg1;
+            buf[1] = arg2;
+            buf[2] = arg3;
+            buf[3] = arg4;
+            buf[4] = arg5;
+            buf[5] = arg6;
+            buf[6] = arg7;
+            return TargetDelegate.Invoke(context, ((Span<ScriptDatum>)buf)[..7]);
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6, ScriptDatum arg7, ScriptDatum arg8)
+        {
+            var context = ctx.With(Module, this);
+            DatumBuffer buf = default;
+            buf[0] = arg1;
+            buf[1] = arg2;
+            buf[2] = arg3;
+            buf[3] = arg4;
+            buf[4] = arg5;
+            buf[5] = arg6;
+            buf[6] = arg7;
+            buf[7] = arg8;
+            return TargetDelegate.Invoke(context, buf);
         }
 
         /// <summary>

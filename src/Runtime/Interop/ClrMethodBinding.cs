@@ -63,6 +63,17 @@ namespace AuroraScript.Runtime.Interop
             _compiledInvokers = CompileInvokers(methods);
         }
 
+
+        private WeakReference<InternalCLRBoundCache> _lastBound;
+
+        // TODO 改为弱引用
+        private class InternalCLRBoundCache
+        {
+            public ClrInstanceObject Target;
+            public ClrMethodBinding Function;
+        }
+
+
         /// <summary>
         /// Creates a new binding for this method that is associated with a specific .NET instance.
         /// </summary>
@@ -70,7 +81,13 @@ namespace AuroraScript.Runtime.Interop
         /// <returns>A new <see cref="ClrMethodBinding"/> instance bound to the target.</returns>
         internal ClrMethodBinding Bound(ClrInstanceObject instance)
         {
-            return new ClrMethodBinding(_descriptor, _compiledInvokers, instance, _isStatic);
+            if (_lastBound != null && _lastBound.TryGetTarget(out var bound) && ReferenceEquals(bound.Target, instance))
+            {
+                return bound.Function;
+            }
+            var bind = new ClrMethodBinding(_descriptor, _compiledInvokers, instance, _isStatic);
+            _lastBound = new WeakReference<InternalCLRBoundCache>(new InternalCLRBoundCache() { Target = instance, Function = bind });
+            return bind;
         }
 
         /// <summary> Gets the name of the type containing this method. </summary>
@@ -83,7 +100,108 @@ namespace AuroraScript.Runtime.Interop
         /// <param name="ctx">The current script execution context.</param>
         /// <param name="args">The arguments passed to the method.</param>
         /// <returns>The result of the method invocation, converted to a <see cref="ScriptDatum"/>.</returns>
-        internal override ScriptDatum Invoke(ScriptContext ctx, params ScriptDatum[] args)
+        internal override ScriptDatum Invoke(ScriptContext ctx, Span<ScriptDatum> args)
+        {
+            ScriptDatum result = default;
+            InvokeInternal(args, ref result);
+            return result;
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx)
+        {
+            ScriptDatum result = default;
+            InvokeInternal(Span<ScriptDatum>.Empty, ref result);
+            return result;
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1)
+        {
+            ScriptDatum result = default;
+            DatumBuffer buf = default;
+            buf[0] = arg1;
+            InvokeInternal(((Span<ScriptDatum>)buf)[..1], ref result);
+            return result;
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2)
+        {
+            ScriptDatum result = default;
+            DatumBuffer buf = default;
+            buf[0] = arg1;
+            buf[1] = arg2;
+            InvokeInternal(((Span<ScriptDatum>)buf)[..2], ref result);
+            return result;
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3)
+        {
+            ScriptDatum result = default;
+            DatumBuffer buf = default;
+            buf[0] = arg1;
+            buf[1] = arg2;
+            buf[2] = arg3;
+            InvokeInternal(((Span<ScriptDatum>)buf)[..3], ref result);
+            return result;
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4)
+        {
+            ScriptDatum result = default;
+            DatumBuffer buf = default;
+            buf[0] = arg1;
+            buf[1] = arg2;
+            buf[2] = arg3;
+            buf[3] = arg4;
+            InvokeInternal(((Span<ScriptDatum>)buf)[..4], ref result);
+            return result;
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6)
+        {
+            ScriptDatum result = default;
+            DatumBuffer buf = default;
+            buf[0] = arg1;
+            buf[1] = arg2;
+            buf[2] = arg3;
+            buf[3] = arg4;
+            buf[4] = arg5;
+            buf[5] = arg6;
+            InvokeInternal(((Span<ScriptDatum>)buf)[..6], ref result);
+            return result;
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6, ScriptDatum arg7)
+        {
+            ScriptDatum result = default;
+            DatumBuffer buf = default;
+            buf[0] = arg1;
+            buf[1] = arg2;
+            buf[2] = arg3;
+            buf[3] = arg4;
+            buf[4] = arg5;
+            buf[5] = arg6;
+            buf[6] = arg7;
+            InvokeInternal(((Span<ScriptDatum>)buf)[..7], ref result);
+            return result;
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6, ScriptDatum arg7, ScriptDatum arg8)
+        {
+            ScriptDatum result = default;
+            DatumBuffer buf = default;
+            buf[0] = arg1;
+            buf[1] = arg2;
+            buf[2] = arg3;
+            buf[3] = arg4;
+            buf[4] = arg5;
+            buf[5] = arg6;
+            buf[6] = arg7;
+            buf[7] = arg8;
+            InvokeInternal(((Span<ScriptDatum>)buf)[..8], ref result);
+            return result;
+        }
+
+        private void InvokeInternal(Span<ScriptDatum> args, ref ScriptDatum result)
         {
             var targetHolder = _instance;
             if (!_isStatic && targetHolder == null)
@@ -99,13 +217,11 @@ namespace AuroraScript.Runtime.Interop
                 {
                     continue;
                 }
-                ScriptDatum result = default;
                 if (invoker.TryInvoke(targetInstance, args, ref result))
                 {
-                    return result;
+                    return;
                 }
             }
-
             throw new InvalidOperationException($"No matching method overload found on '{_descriptor.Type.FullName}'.");
         }
 

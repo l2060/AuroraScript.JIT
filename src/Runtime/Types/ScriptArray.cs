@@ -27,6 +27,8 @@ namespace AuroraScript.Runtime.Types
             }
         }
 
+
+
         /// <summary>
         /// Initializes a new <see cref="ScriptArray"/> with the specified initial capacity.
         /// </summary>
@@ -92,6 +94,7 @@ namespace AuroraScript.Runtime.Types
                 }
             }
         }
+
 
         /// <summary>
         /// Initializes a new <see cref="ScriptArray"/> from an array of <see cref="ScriptDatum"/>.

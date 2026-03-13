@@ -278,6 +278,8 @@ namespace AuroraScript.Compiler.Emits
                 // Call Initialize
                 il.Emit(OpCodes.Call, init);
             }
+
+            il.Emit(OpCodes.Ldsfld, RuntimeMetadata.ScriptDatum_Null);
             il.Emit(OpCodes.Ret);
         }
 
@@ -594,7 +596,7 @@ namespace AuroraScript.Compiler.Emits
             if (name == "$args")
             {
                 _il.Emit(OpCodes.Ldarg_1);
-                _il.Emit(OpCodes.Newobj, RuntimeMetadata.ScriptArray_Ctor);
+                _il.Emit(OpCodes.Newobj, RuntimeMetadata.ScriptArray_SpanCtor);
                 PushType(typeof(ScriptArray));
                 return;
             }
@@ -1614,7 +1616,7 @@ namespace AuroraScript.Compiler.Emits
             var funcName = node.Name?.Value;
 
             // Abstract ILGenerator retrieval
-            (method, _il) = builder.DefineMethod(_currentModule.Name, funcName, typeof(ScriptDatum), [typeof(ScriptContext), typeof(ScriptDatum[])]);
+            (method, _il) = builder.DefineMethod(_currentModule.Name, funcName, typeof(ScriptDatum), [typeof(ScriptContext), typeof(Span<ScriptDatum>)]);
             ilOffset = -1;
             _currentModule.Methods[node] = method;
             _scope = _scope.Enter(ScopeType.Function);
@@ -1967,12 +1969,47 @@ namespace AuroraScript.Compiler.Emits
             EnsureTop(typeof(ScriptObject));
             PopType();
 
-            // 2. Arguments (pushes Ctx and ArgsArray)
-            EmitCallArguments(node);
+            var hasSpread = node.Arguments.Any(x => x is SpreadExpression);
+            if (!hasSpread && node.Arguments.Count <= 8)
+            {
+                // Push Context
+                _il.Emit(OpCodes.Ldarg_0);
 
-            EmitNodeLocation(node);
-            // 3. Invoke (returns ScriptDatum)
-            _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptObject_Invoke);
+                // Push N arguments directly
+                for (int i = 0; i < node.Arguments.Count; i++)
+                {
+                    node.Arguments[i].Accept(this);
+                    EnsureTop(typeof(ScriptDatum));
+                    PopType();
+                }
+
+                EmitNodeLocation(node);
+
+                // Invoke (returns ScriptDatum)
+                MethodInfo invokeMethod = node.Arguments.Count switch
+                {
+                    0 => RuntimeMetadata.ScriptObject_Invoke_0,
+                    1 => RuntimeMetadata.ScriptObject_Invoke_1,
+                    2 => RuntimeMetadata.ScriptObject_Invoke_2,
+                    3 => RuntimeMetadata.ScriptObject_Invoke_3,
+                    4 => RuntimeMetadata.ScriptObject_Invoke_4,
+                    5 => RuntimeMetadata.ScriptObject_Invoke_5,
+                    6 => RuntimeMetadata.ScriptObject_Invoke_6,
+                    7 => RuntimeMetadata.ScriptObject_Invoke_7,
+                    8 => RuntimeMetadata.ScriptObject_Invoke_8,
+                    _ => RuntimeMetadata.ScriptObject_Invoke
+                };
+                _il.Emit(OpCodes.Callvirt, invokeMethod);
+            }
+            else
+            {
+                // 2. Arguments (pushes Ctx and ArgsArray)
+                EmitCallArguments(node);
+
+                EmitNodeLocation(node);
+                // 3. Invoke (returns ScriptDatum)
+                _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptObject_Invoke);
+            }
 
             if (node.NeedResult)
             {
@@ -2017,37 +2054,38 @@ namespace AuroraScript.Compiler.Emits
                     PopType();
                     _il.Emit(OpCodes.Stelem, typeof(ScriptDatum));
                 }
+                // Convert array to Span (implicitly for the Invoke call)
+                _il.Emit(OpCodes.Call, typeof(Span<ScriptDatum>).GetMethod("op_Implicit", [typeof(ScriptDatum[])]));
             }
             else
             {
                 // CILContext
                 _il.Emit(OpCodes.Ldarg_0);
 
-                // ScriptArray
-                _il.Emit(OpCodes.Ldc_I4, 0);
-                _il.Emit(OpCodes.Newobj, RuntimeMetadata.ScriptArray_CtorCapacity);
+                // List<ScriptDatum>
+                _il.Emit(OpCodes.Newobj, RuntimeMetadata.List_ScriptDatum_Ctor);
 
                 foreach (var arg in node.Arguments)
                 {
                     if (arg is SpreadExpression spread)
                     {
-                        _il.Emit(OpCodes.Dup); // ScriptArray
+                        _il.Emit(OpCodes.Dup); // List<ScriptDatum>
                         spread.Expression.Accept(this);
                         EnsureTop(typeof(ScriptObject));
                         PopType();
-                        _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_SpreadInto);
+                        _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_SpreadIntoList);
                     }
                     else
                     {
-                        _il.Emit(OpCodes.Dup); // ScriptArray
+                        _il.Emit(OpCodes.Dup); // List<ScriptDatum>
                         arg.Accept(this);
                         EnsureTop(typeof(ScriptDatum));
                         PopType();
-                        _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptArray_Push);
+                        _il.Emit(OpCodes.Callvirt, RuntimeMetadata.List_ScriptDatum_Add);
                     }
                 }
-                // Convert to Array
-                _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptArray_ToDatumArray);
+                // Convert to Span using CollectionsMarshal.AsSpan
+                _il.Emit(OpCodes.Call, RuntimeMetadata.CollectionsMarshal_AsSpan);
             }
         }
 

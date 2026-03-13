@@ -1,4 +1,6 @@
-﻿namespace AuroraScript.Runtime.Types
+﻿using System;
+
+namespace AuroraScript.Runtime.Types
 {
 
 
@@ -11,7 +13,7 @@
 
         }
 
-        public override void Construct(ScriptContext ctx, ScriptDatum[] args, ref ScriptDatum result)
+        public override void Construct(ScriptContext ctx, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             if (args.TryGetString(0, out var errString))
             {

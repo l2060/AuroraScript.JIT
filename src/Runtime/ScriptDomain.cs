@@ -140,7 +140,9 @@ namespace AuroraScript.Runtime
             }
 
             ScriptContext ctx = new ScriptContext(this, userState);
-            return closure.InvokeClr(ctx, arguments);
+            var result = closure.InvokeClr(ctx, arguments);
+            ctx.Next = null;
+            return result;
         }
 
         /// <summary>

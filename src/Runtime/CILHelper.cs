@@ -1,5 +1,6 @@
 using AuroraScript.Runtime.Types;
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
 namespace AuroraScript.Runtime
@@ -798,10 +799,30 @@ namespace AuroraScript.Runtime
         }
 
         /// <summary>
+        /// Spreads an object's elements or properties into a list.
+        /// Optimized for the spread operator (...) in function calls.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void SpreadIntoList(List<ScriptDatum> list, ScriptObject val)
+        {
+            if (val is ScriptArray source)
+            {
+                if (source.Length > 0)
+                {
+                    list.AddRange(source._items);
+                }
+            }
+            else
+            {
+                list.Add(ScriptDatum.FromObject(val));
+            }
+        }
+
+        /// <summary>
         /// Creates a new instance of a script type with the given arguments.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static ScriptDatum New(ScriptObject type, ScriptContext ctx, ScriptDatum[] args)
+        public static ScriptDatum New(ScriptObject type, ScriptContext ctx, Span<ScriptDatum> args)
         {
             if (type is ScriptType typed)
             {
@@ -817,7 +838,7 @@ namespace AuroraScript.Runtime
         /// Attempts to get an argument at the specified index, returning a default value if missing.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static ScriptDatum TryGetArg(ScriptDatum[] args, int index, ScriptDatum defaultValue)
+        public static ScriptDatum TryGetArg(Span<ScriptDatum> args, int index, ScriptDatum defaultValue)
         {
             if (index >= 0 && index < args.Length)
             {
@@ -830,7 +851,7 @@ namespace AuroraScript.Runtime
         /// Gets an argument at the specified index. Returns default (null) if missing.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static ScriptDatum GetArg(ScriptDatum[] args, int index)
+        public static ScriptDatum GetArg(Span<ScriptDatum> args, int index)
         {
             if (index >= 0 && index < args.Length)
             {

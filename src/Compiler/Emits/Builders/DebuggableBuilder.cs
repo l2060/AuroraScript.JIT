@@ -32,7 +32,7 @@ namespace AuroraScript.Compiler.Emits.Builders
         public override (MethodInfo Method, ILGenerator IL) DefineDomainInitMethod()
         {
             _typeBuilder = _moduleBuilder.DefineType(EntryPointTypeName, TypeAttributes.Public | TypeAttributes.Class);
-            var methodBuilder = _typeBuilder.DefineMethod(EntryPointMethodName, MethodAttributes.Public | MethodAttributes.Static, typeof(void), [typeof(ScriptContext), typeof(ScriptDatum[])]);
+            var methodBuilder = _typeBuilder.DefineMethod(EntryPointMethodName, MethodAttributes.Public | MethodAttributes.Static, typeof(ScriptDatum), [typeof(ScriptContext), typeof(Span<ScriptDatum>)]);
             RegisterType(EntryPointTypeName, _typeBuilder);
             return (methodBuilder, methodBuilder.GetILGenerator());
         }
