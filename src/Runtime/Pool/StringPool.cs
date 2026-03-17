@@ -32,7 +32,7 @@ namespace AuroraScript.Runtime.Pool
                 return new StringValue(key);
             }
 
-            if (_dict.TryGetValue(key, out var weakRef) && weakRef.TryGetTarget(out var cached))
+            if (_dict.TryGetValue(key, out var weakRef) && weakRef.TryGetTarget(out StringValue cached))
             {
                 return cached;
             }
@@ -43,7 +43,7 @@ namespace AuroraScript.Runtime.Pool
                 static (_, v) => new WeakReference<StringValue>(v),
                 static (_, oldRef, v) =>
                 {
-                    if (oldRef.TryGetTarget(out var f)) return oldRef;
+                    if (oldRef.TryGetTarget(out StringValue _)) return oldRef;
                     return new WeakReference<StringValue>(v);
                 },
                 newValue
@@ -64,7 +64,7 @@ namespace AuroraScript.Runtime.Pool
         {
             foreach (var (key, weakRef) in _dict)
             {
-                if (!weakRef.TryGetTarget(out _))
+                if (!weakRef.TryGetTarget(out StringValue _))
                 {
                     _dict.TryRemove(key, out _);
                 }

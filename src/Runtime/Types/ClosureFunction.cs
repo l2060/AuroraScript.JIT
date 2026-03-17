@@ -62,13 +62,27 @@ namespace AuroraScript.Runtime.Types
         internal override ScriptDatum Invoke(ScriptContext ctx, Span<ScriptDatum> args)
         {
             var context = ctx.With(Module, this);
-            return TargetDelegate.Invoke(context, args);
+            try
+            {
+                return TargetDelegate.Invoke(context, args);
+            }
+            finally
+            {
+                context.Release();
+            }
         }
 
         internal override ScriptDatum Invoke(ScriptContext ctx)
         {
             var context = ctx.With(Module, this);
-            return TargetDelegate.Invoke(context, Span<ScriptDatum>.Empty);
+            try
+            {
+                return TargetDelegate.Invoke(context, Span<ScriptDatum>.Empty);
+            }
+            finally
+            {
+                context.Release();
+            }
         }
 
         internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1)
@@ -76,7 +90,14 @@ namespace AuroraScript.Runtime.Types
             var context = ctx.With(Module, this);
             DatumBuffer1 buf = default;
             buf[0] = arg1;
-            return TargetDelegate.Invoke(context, buf);
+            try
+            {
+                return TargetDelegate.Invoke(context, buf);
+            }
+            finally
+            {
+                context.Release();
+            }
         }
 
         internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2)
@@ -85,7 +106,14 @@ namespace AuroraScript.Runtime.Types
             DatumBuffer2 buf = default;
             buf[0] = arg1;
             buf[1] = arg2;
-            return TargetDelegate.Invoke(context, buf);
+            try
+            {
+                return TargetDelegate.Invoke(context, buf);
+            }
+            finally
+            {
+                context.Release();
+            }
         }
 
         internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3)
@@ -95,7 +123,14 @@ namespace AuroraScript.Runtime.Types
             buf[0] = arg1;
             buf[1] = arg2;
             buf[2] = arg3;
-            return TargetDelegate.Invoke(context, buf);
+            try
+            {
+                return TargetDelegate.Invoke(context, buf);
+            }
+            finally
+            {
+                context.Release();
+            }
         }
 
         internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4)
@@ -106,7 +141,14 @@ namespace AuroraScript.Runtime.Types
             buf[1] = arg2;
             buf[2] = arg3;
             buf[3] = arg4;
-            return TargetDelegate.Invoke(context, buf);
+            try
+            {
+                return TargetDelegate.Invoke(context, buf);
+            }
+            finally
+            {
+                context.Release();
+            }
         }
 
         internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5)
@@ -118,7 +160,14 @@ namespace AuroraScript.Runtime.Types
             buf[2] = arg3;
             buf[3] = arg4;
             buf[4] = arg5;
-            return TargetDelegate.Invoke(context, buf);
+            try
+            {
+                return TargetDelegate.Invoke(context, buf);
+            }
+            finally
+            {
+                context.Release();
+            }
         }
 
         internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6)
@@ -131,7 +180,14 @@ namespace AuroraScript.Runtime.Types
             buf[3] = arg4;
             buf[4] = arg5;
             buf[5] = arg6;
-            return TargetDelegate.Invoke(context, buf);
+            try
+            {
+                return TargetDelegate.Invoke(context, buf);
+            }
+            finally
+            {
+                context.Release();
+            }
         }
 
         internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6, ScriptDatum arg7)
@@ -145,7 +201,14 @@ namespace AuroraScript.Runtime.Types
             buf[4] = arg5;
             buf[5] = arg6;
             buf[6] = arg7;
-            return TargetDelegate.Invoke(context, buf);
+            try
+            {
+                return TargetDelegate.Invoke(context, buf);
+            }
+            finally
+            {
+                context.Release();
+            }
         }
 
         internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6, ScriptDatum arg7, ScriptDatum arg8)
@@ -160,7 +223,14 @@ namespace AuroraScript.Runtime.Types
             buf[5] = arg6;
             buf[6] = arg7;
             buf[7] = arg8;
-            return TargetDelegate.Invoke(context, buf);
+            try
+            {
+                return TargetDelegate.Invoke(context, buf);
+            }
+            finally
+            {
+                context.Release();
+            }
         }
 
         /// <summary>
@@ -181,6 +251,10 @@ namespace AuroraScript.Runtime.Types
             catch (Exception ex)
             {
                 throw new AuroraRuntimeException(ex, ctx.StackTrace());
+            }
+            finally
+            {
+                context.Release();
             }
         }
 

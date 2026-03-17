@@ -3,6 +3,8 @@ using AuroraScript.Runtime;
 using AuroraScript.Runtime.Interop;
 using AuroraScript.Runtime.Types;
 using System;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace Examples
@@ -40,6 +42,24 @@ namespace Examples
             }
         }
 
+        public static void MD5_NATIVE(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            var input = args.Length > 0 ? ScriptDatum.ToString(args[0]) : string.Empty;
+            using var md5 = MD5.Create();
+            var bytes = Encoding.UTF8.GetBytes(input);
+            var hash = md5.ComputeHash(bytes);
+            Span<char> hex = stackalloc char[hash.Length];
+
+
+            int idx = 0;
+            foreach (var b in hash)
+            {
+                hex[idx++] = b.ToString("x2")[0];// GetHex((byte)(b >> 4));
+            }
+            result = ScriptDatum.FromString(new string(hex));
+
+            static char GetHex(byte val) => (char)(val < 10 ? '0' + val : 'a' + (val - 10));
+        }
 
     }
 }
