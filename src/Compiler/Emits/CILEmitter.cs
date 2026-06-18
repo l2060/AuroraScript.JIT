@@ -1812,7 +1812,7 @@ namespace AuroraScript.Compiler.Emits
                 5 => new[] { typeof(ScriptContext), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum) },
                 6 => new[] { typeof(ScriptContext), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum) },
                 7 => new[] { typeof(ScriptContext), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum) },
-                _ => new[] { typeof(ScriptContext), typeof(ScriptDatum[]) }
+                _ => new[] { typeof(ScriptContext), typeof(Span<ScriptDatum>) }
             };
 
             // Abstract ILGenerator retrieval
@@ -2467,6 +2467,7 @@ namespace AuroraScript.Compiler.Emits
                 if (node.Arguments.Count == 0)
                 {
                     _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_Array_Empty);
+                    _il.Emit(OpCodes.Call, typeof(Span<ScriptDatum>).GetMethod("op_Implicit", [typeof(ScriptDatum[])]));
                     return;
                 }
 
@@ -2486,9 +2487,7 @@ namespace AuroraScript.Compiler.Emits
             }
             else
             {
-                // ScriptArray
-                _il.Emit(OpCodes.Ldc_I4, 0);
-                _il.Emit(OpCodes.Newobj, RuntimeMetadata.ScriptArray_CtorCapacity);
+                _il.Emit(OpCodes.Newobj, RuntimeMetadata.List_ScriptDatum_Ctor);
 
                 foreach (var arg in node.Arguments)
                 {
