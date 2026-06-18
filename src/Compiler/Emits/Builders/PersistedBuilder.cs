@@ -36,7 +36,7 @@ namespace AuroraScript.Compiler.Emits.Builders
         {
             //
             var typeBuilder = _moduleBuilder.DefineType(ConfuseTypeName(module.ModuleName, ConfuseTarget.Class), TypeAttributes.Public | TypeAttributes.Class | TypeAttributes.Sealed);
-            var methodBuilder = typeBuilder.DefineMethod(ConfuseTypeName("Initialize", ConfuseTarget.Method), MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig, typeof(void), [typeof(ScriptContext), typeof(ScriptDatum[])]);
+            var methodBuilder = typeBuilder.DefineMethod(ConfuseTypeName("Initialize", ConfuseTarget.Method), MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig, typeof(void), [typeof(ScriptContext), typeof(Span<ScriptDatum>)]);
             ISymbolDocumentWriter symbolDoc = null;
             symbolDoc = _moduleBuilder.DefineDocument(module.FullPath, Guid.Empty, Guid.Empty, SymDocumentType.Text);
             _sourceDocumentMap.Add(module.FullPath, symbolDoc);
@@ -47,7 +47,7 @@ namespace AuroraScript.Compiler.Emits.Builders
         public override (MethodInfo Method, ILGenerator IL) DefineDomainInitMethod()
         {
             var typeBuilder = _moduleBuilder.DefineType(EntryPointTypeName, TypeAttributes.Public | TypeAttributes.Class);
-            var methodBuilder = typeBuilder.DefineMethod(EntryPointMethodName, MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig, typeof(void), [typeof(ScriptContext), typeof(ScriptDatum[])]);
+            var methodBuilder = typeBuilder.DefineMethod(EntryPointMethodName, MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig, typeof(ScriptDatum), [typeof(ScriptContext), typeof(Span<ScriptDatum>)]);
             RegisterType(EntryPointTypeName, typeBuilder);
             return (methodBuilder, methodBuilder.GetILGenerator());
         }

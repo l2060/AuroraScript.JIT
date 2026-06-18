@@ -3,6 +3,7 @@ using AuroraScript.Compiler.Emits;
 using AuroraScript.Compiler.Emits.Builders;
 using AuroraScript.Core;
 using AuroraScript.Runtime.Interop;
+using AuroraScript.Runtime.Pool;
 using AuroraScript.Runtime.Types;
 using System;
 
@@ -22,6 +23,7 @@ namespace AuroraScript.Runtime
     /// </summary>
     public sealed class ScriptDomain : IDisposable
     {
+        internal readonly ScriptContextPool ContextPool = new();
         /// <summary>
         /// The global environment for this script domain.
         /// </summary>
@@ -139,8 +141,15 @@ namespace AuroraScript.Runtime
                 throw new AuroraException($"{methodName} is not a valid script method");
             }
 
-            ScriptContext ctx = new ScriptContext(this, userState);
-            return closure.InvokeClr(ctx, arguments);
+            var ctx = ContextPool.Rent(this, userState, module, null);
+            try
+            {
+                return closure.InvokeClr(ctx, arguments);
+            }
+            finally
+            {
+                ctx.Release();
+            }
         }
 
         /// <summary>

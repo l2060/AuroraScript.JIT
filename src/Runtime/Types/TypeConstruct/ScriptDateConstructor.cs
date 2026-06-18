@@ -22,7 +22,7 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
 
 
 
-        public override void Construct(ScriptContext ctx, ScriptDatum[] args, ref ScriptDatum result)
+        public override void Construct(ScriptContext ctx, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             if (args.TryGetInteger(0, out var value)) // ticks
             {

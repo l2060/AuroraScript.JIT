@@ -19,7 +19,52 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary> Overridden to throw an exception as null cannot be invoked. </summary>
-        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum[] args)
+        internal override ScriptDatum Invoke(ScriptContext ctx, Span<ScriptDatum> args)
+        {
+            throw new AuroraRuntimeException("cannot be called of null.");
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx)
+        {
+            throw new AuroraRuntimeException("cannot be called of null.");
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1)
+        {
+            throw new AuroraRuntimeException("cannot be called of null.");
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2)
+        {
+            throw new AuroraRuntimeException("cannot be called of null.");
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3)
+        {
+            throw new AuroraRuntimeException("cannot be called of null.");
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4)
+        {
+            throw new AuroraRuntimeException("cannot be called of null.");
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5)
+        {
+            throw new AuroraRuntimeException("cannot be called of null.");
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6)
+        {
+            throw new AuroraRuntimeException("cannot be called of null.");
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6, ScriptDatum arg7)
+        {
+            throw new AuroraRuntimeException("cannot be called of null.");
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6, ScriptDatum arg7, ScriptDatum arg8)
         {
             throw new AuroraRuntimeException("cannot be called of null.");
         }

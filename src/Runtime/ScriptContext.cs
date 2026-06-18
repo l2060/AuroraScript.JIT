@@ -2,6 +2,7 @@ using AuroraScript.Core;
 using AuroraScript.Runtime.Types;
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 
 namespace AuroraScript.Runtime
 {
@@ -11,7 +12,7 @@ namespace AuroraScript.Runtime
     /// <param name="ctx">The execution context for the function call.</param>
     /// <param name="args">The arguments passed to the function.</param>
     /// <returns>A <see cref="ScriptDatum"/> representing the result of the function execution.</returns>
-    public delegate ScriptDatum ScriptFunctionDelegate(ScriptContext ctx, ScriptDatum[] args);
+    public delegate ScriptDatum ScriptFunctionDelegate(ScriptContext ctx, Span<ScriptDatum> args);
 
     /// <summary>
     /// Represents a compiled script function that accepts no explicit arguments.
@@ -67,25 +68,25 @@ namespace AuroraScript.Runtime
     public class ScriptContext
     {
         /// <summary> The script domain associated with this context. </summary>
-        public readonly ScriptDomain Domain;
+        public ScriptDomain Domain;
 
         /// <summary> The engine instance that is executing the script. </summary>
-        public readonly AuroraEngine Engine;
+        public AuroraEngine Engine;
 
         /// <summary> The global variables and functions available in this context. </summary>
-        public readonly ScriptGlobal Global;
+        public ScriptGlobal Global;
 
         /// <summary> The current script module being executed. </summary>
-        public readonly ScriptModule Module;
+        public ScriptModule Module;
 
         /// <summary> A user-defined state object associated with this execution context. </summary>
-        public readonly ScriptObject UserState;
+        public ScriptObject UserState;
 
         /// <summary> An array of captured values (upvalues) available to the current function. </summary>
-        internal readonly Upvalue[] Upvalues;
+        internal Upvalue[] Upvalues;
 
         /// <summary> The closure function that is the target of this execution context. </summary>
-        public readonly ClosureFunction Target;
+        public ClosureFunction Target;
 
         /// <summary> The next context in a linked list or stack of execution contexts (e.g., for call frames). </summary>
         public ScriptContext Next;
@@ -100,13 +101,7 @@ namespace AuroraScript.Runtime
         /// </summary>
         internal ScriptContext(ScriptDomain domain, ScriptObject userState, ScriptModule module, ClosureFunction closure = null)
         {
-            Domain = domain;
-            Engine = domain.Engine;
-            Global = domain.Global;
-            UserState = userState;
-            Module = module;
-            Target = closure;
-            Upvalues = closure?.Upvalues;
+            Reset(domain, userState, module, closure);
         }
 
         /// <summary>
@@ -114,10 +109,7 @@ namespace AuroraScript.Runtime
         /// </summary>
         public ScriptContext(ScriptDomain domain)
         {
-            Domain = domain;
-            Engine = domain.Engine;
-            Global = domain.Global;
-            UserState = domain.UserState;
+            Reset(domain, domain.UserState, null, null);
         }
 
         /// <summary>
@@ -125,10 +117,7 @@ namespace AuroraScript.Runtime
         /// </summary>
         public ScriptContext(ScriptDomain domain, ScriptObject userState)
         {
-            Domain = domain;
-            Engine = domain.Engine;
-            Global = domain.Global;
-            UserState = userState;
+            Reset(domain, userState, null, null);
         }
 
         /// <summary>
@@ -137,9 +126,8 @@ namespace AuroraScript.Runtime
         /// </summary>
         public ScriptContext With(ScriptModule module, ClosureFunction closure = null)
         {
-            var next = new ScriptContext(Domain, UserState, module, closure);
-            this.Next = next;
-            next.Previous = this;
+            var next = Domain.ContextPool.Rent(Domain, UserState, module, closure);
+            LinkNext(next);
             return next;
         }
 
@@ -149,9 +137,8 @@ namespace AuroraScript.Runtime
         /// </summary>
         public ScriptContext With(ClosureFunction closure)
         {
-            var next = new ScriptContext(Domain, UserState, closure.Module, closure);
-            this.Next = next;
-            next.Previous = this;
+            var next = Domain.ContextPool.Rent(Domain, UserState, closure.Module, closure);
+            LinkNext(next);
             return next;
         }
 
@@ -160,10 +147,45 @@ namespace AuroraScript.Runtime
         /// </summary>
         public ScriptContext With(ScriptModule module, ClosureFunction closure, ScriptObject userState)
         {
-            var next = new ScriptContext(Domain, userState ?? UserState, module, closure);
+            var next = Domain.ContextPool.Rent(Domain, userState ?? UserState, module, closure);
+            LinkNext(next);
+            return next;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void LinkNext(ScriptContext next)
+        {
             this.Next = next;
             next.Previous = this;
-            return next;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void Reset(ScriptDomain domain, ScriptObject userState, ScriptModule module, ClosureFunction closure)
+        {
+            Domain = domain;
+            Engine = domain.Engine;
+            Global = domain.Global;
+            UserState = userState;
+            Module = module;
+            Target = closure;
+            Upvalues = closure?.Upvalues;
+            Next = null;
+            Previous = null;
+            Location = 0;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void Release()
+        {
+            var prev = Previous;
+            if (prev != null)
+            {
+                prev.Next = null;
+                Previous = null;
+            }
+            Next = null;
+            Location = 0;
+            Domain.ContextPool.Return(this);
         }
 
 

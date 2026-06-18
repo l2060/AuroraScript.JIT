@@ -55,7 +55,7 @@ namespace AuroraScript.Runtime.Interop
         /// <param name="ctx">The current script execution context.</param>
         /// <param name="args">The arguments passed to the constructor.</param>
         /// <param name="result">The resulting <see cref="ScriptDatum"/> containing the new <see cref="ClrInstanceObject"/>.</param>
-        public override void Construct(ScriptContext ctx, ScriptDatum[] args, ref ScriptDatum result)
+        public override void Construct(ScriptContext ctx, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             var constructors = _constructors.Value;
             if (constructors.Length == 0)

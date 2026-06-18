@@ -35,6 +35,7 @@ namespace Examples
             g.Define("GIVE", new BondingFunction(Functions.GIVE), false, true);
             g.Define("CREATE_TIMER", new BondingFunction(Functions.CREATE_TIMER));
             g.Define("INPUT_NUMBER", new BondingFunction(Functions.CLIENT_INPUT_NUMBER), false, true);
+            g.Define("md5_native", new BondingFunction(Functions.MD5_NATIVE), false, true);
             var fo = new TestObject();
             g.SetPropertyValue("fo", fo);
         }
@@ -187,8 +188,8 @@ namespace Examples
             // closure1 returns { a, b }
             var result = domain.Execute("MAIN", "main");
             Console.WriteLine($"closure1 result type: {result.Kind}");
-            RunAndReportUnitTests(domain);
-            // BenchmarkScript(domain, "DEBUG_TEST", "main");
+            //RunAndReportUnitTests(domain);
+            //BenchmarkScript(domain, "DEBUG_TEST", "main");
             BenchmarkScript(domain, "UNIT_LIB", "testEmpty");
             BenchmarkScript(domain, "UNIT_LIB", "testMD5");
             BenchmarkScript(domain, "UNIT_LIB", "testClosure");
@@ -200,7 +201,8 @@ namespace Examples
             BenchmarkScript(domain, "UNIT_LIB", "testJson");
             BenchmarkScript(domain, "UNIT_LIB", "testClrType", new StringValue("PI"), new NumberValue(Math.PI));
 
-            BenchmarkScript(domain, "UNIT_LIB", "testMD5_1000");
+
+
             BenchmarkScript(domain, "UNIT_LIB", "testIterator");
             BenchmarkScript(domain, "UNIT_LIB", "test");
             BenchmarkScript(domain, "UNIT_LIB", "testClrFunc");
@@ -209,13 +211,14 @@ namespace Examples
             BenchmarkScript(domain, "UNIT_LIB", "testProxy");
             BenchmarkScript(domain, "UNIT_LIB", "testArray", new NumberValue(1_000_000));
             BenchmarkScript(domain, "UNIT_LIB", "testPeculiarity", new NumberValue(1_000_000), BooleanValue.True);
-            BenchmarkScript(domain, "UNIT_LIB", "testFor", new NumberValue(10000_0000));
             BenchmarkScript(domain, "UNIT_LIB", "benchmarkNumbers", NumberValue.Of(1_000_000));
             BenchmarkScript(domain, "UNIT_LIB", "benchmarkArrays", NumberValue.Of(1_000_000));
             BenchmarkScript(domain, "UNIT_LIB", "benchmarkClosure", NumberValue.Of(1_000_000));
             BenchmarkScript(domain, "UNIT_LIB", "benchmarkObjects", NumberValue.Of(200_000));
             BenchmarkScript(domain, "UNIT_LIB", "benchmarkStrings", NumberValue.Of(1_000_000));
 
+            BenchmarkScript(domain, "UNIT_LIB", "testFor", new NumberValue(10000_0000));
+            BenchmarkScript(domain, "UNIT_LIB", "testMD5_1000");
             BenchmarkScript(domain, "UNIT_LIB", "testDraw");
             Console.WriteLine("Verification complete!");
 

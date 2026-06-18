@@ -10,7 +10,7 @@ using System.Text;
 
 namespace AuroraScript.Compiler
 {
-    internal delegate ScriptDatum DynamicCallMethod(ScriptContext ctx, ScriptDatum[] args);
+    internal delegate ScriptDatum DynamicCallMethod(ScriptContext ctx, Span<ScriptDatum> args);
     internal class IncrementalCompiler(ScriptDomain _domain, EngineOptions _options, CILEmitter _codeGenerator)
     {
         public readonly ScriptDomain Domain = _domain;

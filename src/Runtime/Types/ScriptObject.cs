@@ -97,9 +97,100 @@ namespace AuroraScript.Runtime.Types
         /// <param name="args">The arguments for invocation.</param>
         /// <returns>The result of the invocation.</returns>
         /// <exception cref="AuroraRuntimeException">Thrown if the object is not a function.</exception>
-        internal virtual ScriptDatum Invoke(ScriptContext ctx, params ScriptDatum[] args)
+        internal virtual ScriptDatum Invoke(ScriptContext ctx, Span<ScriptDatum> args)
         {
             throw new AuroraRuntimeException("Object cannot be called.");
+        }
+
+
+
+        internal virtual ScriptDatum Invoke(ScriptContext ctx)
+        {
+            return Invoke(ctx, Span<ScriptDatum>.Empty);
+        }
+
+        internal virtual ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1)
+        {
+            DatumBuffer1 buffer = default;
+            buffer[0] = arg1;
+            return Invoke(ctx, buffer);
+        }
+
+        internal virtual ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2)
+        {
+            DatumBuffer2 buffer = default;
+            buffer[0] = arg1;
+            buffer[1] = arg2;
+            return Invoke(ctx, buffer);
+        }
+
+        internal virtual ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3)
+        {
+            DatumBuffer3 buffer = default;
+            buffer[0] = arg1;
+            buffer[1] = arg2;
+            buffer[2] = arg3;
+            return Invoke(ctx, buffer);
+        }
+
+        internal virtual ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4)
+        {
+            DatumBuffer4 buffer = default;
+            buffer[0] = arg1;
+            buffer[1] = arg2;
+            buffer[2] = arg3;
+            buffer[3] = arg4;
+            return Invoke(ctx, buffer);
+        }
+
+        internal virtual ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5)
+        {
+            DatumBuffer5 buffer = default;
+            buffer[0] = arg1;
+            buffer[1] = arg2;
+            buffer[2] = arg3;
+            buffer[3] = arg4;
+            buffer[4] = arg5;
+            return Invoke(ctx, buffer);
+        }
+
+        internal virtual ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6)
+        {
+            DatumBuffer6 buffer = default;
+            buffer[0] = arg1;
+            buffer[1] = arg2;
+            buffer[2] = arg3;
+            buffer[3] = arg4;
+            buffer[4] = arg5;
+            buffer[5] = arg6;
+            return Invoke(ctx, buffer);
+        }
+
+        internal virtual ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6, ScriptDatum arg7)
+        {
+            DatumBuffer7 buffer = default;
+            buffer[0] = arg1;
+            buffer[1] = arg2;
+            buffer[2] = arg3;
+            buffer[3] = arg4;
+            buffer[4] = arg5;
+            buffer[5] = arg6;
+            buffer[6] = arg7;
+            return Invoke(ctx, buffer);
+        }
+
+        internal virtual ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6, ScriptDatum arg7, ScriptDatum arg8)
+        {
+            DatumBuffer8 buffer = default;
+            buffer[0] = arg1;
+            buffer[1] = arg2;
+            buffer[2] = arg3;
+            buffer[3] = arg4;
+            buffer[4] = arg5;
+            buffer[5] = arg6;
+            buffer[6] = arg7;
+            buffer[7] = arg8;
+            return Invoke(ctx, buffer);
         }
 
         /// <summary>

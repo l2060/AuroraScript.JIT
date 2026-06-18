@@ -281,6 +281,8 @@ namespace AuroraScript.Compiler.Emits
                 // Call Initialize
                 il.Emit(OpCodes.Call, init);
             }
+
+            il.Emit(OpCodes.Ldsfld, RuntimeMetadata.ScriptDatum_Null);
             il.Emit(OpCodes.Ret);
         }
 
@@ -616,7 +618,7 @@ namespace AuroraScript.Compiler.Emits
             if (name == "$args")
             {
                 _il.Emit(OpCodes.Ldarg_1);
-                _il.Emit(OpCodes.Newobj, RuntimeMetadata.ScriptArray_Ctor);
+                _il.Emit(OpCodes.Newobj, RuntimeMetadata.ScriptArray_SpanCtor);
                 PushType(typeof(ScriptArray));
                 return;
             }
@@ -2479,6 +2481,8 @@ namespace AuroraScript.Compiler.Emits
                     PopType();
                     _il.Emit(OpCodes.Stelem, typeof(ScriptDatum));
                 }
+                // Convert array to Span (implicitly for the Invoke call)
+                _il.Emit(OpCodes.Call, typeof(Span<ScriptDatum>).GetMethod("op_Implicit", [typeof(ScriptDatum[])]));
             }
             else
             {
@@ -2490,23 +2494,23 @@ namespace AuroraScript.Compiler.Emits
                 {
                     if (arg is SpreadExpression spread)
                     {
-                        _il.Emit(OpCodes.Dup); // ScriptArray
+                        _il.Emit(OpCodes.Dup); // List<ScriptDatum>
                         spread.Expression.Accept(this);
                         EnsureTop(typeof(ScriptObject));
                         PopType();
-                        _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_SpreadInto);
+                        _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_SpreadIntoList);
                     }
                     else
                     {
-                        _il.Emit(OpCodes.Dup); // ScriptArray
+                        _il.Emit(OpCodes.Dup); // List<ScriptDatum>
                         arg.Accept(this);
                         EnsureTop(typeof(ScriptDatum));
                         PopType();
-                        _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptArray_Push);
+                        _il.Emit(OpCodes.Callvirt, RuntimeMetadata.List_ScriptDatum_Add);
                     }
                 }
-                // Convert to Array
-                _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptArray_ToDatumArray);
+                // Convert to Span using CollectionsMarshal.AsSpan
+                _il.Emit(OpCodes.Call, RuntimeMetadata.CollectionsMarshal_AsSpan);
             }
         }
 

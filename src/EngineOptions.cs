@@ -130,7 +130,7 @@ namespace AuroraScript
         /// <summary>
         /// Gets the strategy for allocating script string wrapper objects.
         /// </summary>
-        public StringPoolingStrategy StringPooling { get; init; } = StringPoolingStrategy.None;
+        public StringPoolingStrategy StringPooling { get; init; } = StringPoolingStrategy.Intern;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="EngineOptions"/> record.

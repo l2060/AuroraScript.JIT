@@ -73,9 +73,49 @@ namespace AuroraScript.Runtime.Types
             FuncName = funcName;
         }
 
-        internal override ScriptDatum Invoke(ScriptContext ctx, params ScriptDatum[] args)
+        internal override ScriptDatum Invoke(ScriptContext ctx, Span<ScriptDatum> args)
         {
             return InvokeArray(ctx, args);
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx)
+        {
+            return Invoke0(ctx);
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1)
+        {
+            return Invoke1(ctx, arg1);
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2)
+        {
+            return Invoke2(ctx, arg1, arg2);
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3)
+        {
+            return Invoke3(ctx, arg1, arg2, arg3);
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4)
+        {
+            return Invoke4(ctx, arg1, arg2, arg3, arg4);
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5)
+        {
+            return Invoke5(ctx, arg1, arg2, arg3, arg4, arg5);
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6)
+        {
+            return Invoke6(ctx, arg1, arg2, arg3, arg4, arg5, arg6);
+        }
+
+        internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6, ScriptDatum arg7)
+        {
+            return Invoke7(ctx, arg1, arg2, arg3, arg4, arg5, arg6, arg7);
         }
 
         internal ScriptDatum Invoke0(ScriptContext ctx)
@@ -227,7 +267,7 @@ namespace AuroraScript.Runtime.Types
             }
         }
 
-        private ScriptDatum InvokeArray(ScriptContext ctx, ScriptDatum[] args)
+        private ScriptDatum InvokeArray(ScriptContext ctx, Span<ScriptDatum> args)
         {
             var context = ctx.With(Module, this);
             return fastArity switch
@@ -244,7 +284,7 @@ namespace AuroraScript.Runtime.Types
             };
         }
 
-        private static ScriptDatum GetArg(ScriptDatum[] args, int index)
+        private static ScriptDatum GetArg(Span<ScriptDatum> args, int index)
         {
             return index >= 0 && index < args.Length ? args[index] : ScriptDatum.Null;
         }

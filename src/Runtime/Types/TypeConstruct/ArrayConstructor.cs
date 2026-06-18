@@ -22,7 +22,7 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
 
 
 
-        public override void Construct(ScriptContext ctx, ScriptDatum[] args, ref ScriptDatum result)
+        public override void Construct(ScriptContext ctx, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             var capacity = 0;
             if (args.Length == 1)

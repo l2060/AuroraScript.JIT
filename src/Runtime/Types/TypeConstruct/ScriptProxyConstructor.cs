@@ -1,4 +1,6 @@
-﻿namespace AuroraScript.Runtime.Types.TypeConstruct
+﻿using System;
+
+namespace AuroraScript.Runtime.Types.TypeConstruct
 {
     internal class ScriptProxyConstructor : ScriptType
     {
@@ -9,7 +11,7 @@
 
         }
 
-        public override void Construct(ScriptContext ctx, ScriptDatum[] args, ref ScriptDatum result)
+        public override void Construct(ScriptContext ctx, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             if (args.TryGetObject(0, out var _object) && args.TryGetObject(1, out var options))
             {

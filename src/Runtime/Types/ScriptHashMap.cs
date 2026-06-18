@@ -1,4 +1,5 @@
-﻿using System.Collections.Concurrent;
+﻿using System;
+using System.Collections.Concurrent;
 using System.Linq;
 
 namespace AuroraScript.Runtime.Types
@@ -18,7 +19,7 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary> Constructs a new <see cref="ScriptHashMap"/> instance. </summary>
-        public override void Construct(ScriptContext ctx, ScriptDatum[] args, ref ScriptDatum result)
+        public override void Construct(ScriptContext ctx, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             ScriptHashMap proxy = new ScriptHashMap();
             ScriptDatum.WriteAsObject(ref result, proxy);

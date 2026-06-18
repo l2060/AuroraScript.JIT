@@ -19,7 +19,7 @@ namespace AuroraScript.Compiler.Emits.Builders
             var dynamicMethod = new DynamicMethod(
                 module.ModuleName,
                 typeof(ScriptDatum),
-                [typeof(ScriptContext), typeof(ScriptDatum[])],
+                [typeof(ScriptContext), typeof(Span<ScriptDatum>)],
                 typeof(DynamicBuilder).Module,
                 true
             );
@@ -32,7 +32,7 @@ namespace AuroraScript.Compiler.Emits.Builders
             var dynamicMethod = new DynamicMethod("Initialize",
                 //$"Module_{module.ModuleName}_Initialize",
                 typeof(void),
-                [typeof(ScriptContext), typeof(ScriptDatum[])],
+                [typeof(ScriptContext), typeof(Span<ScriptDatum>)],
                 typeof(DynamicBuilder).Module,
                 true
             );
@@ -45,8 +45,8 @@ namespace AuroraScript.Compiler.Emits.Builders
         {
             var dynamicMethod = new DynamicMethod(
                 EntryPointMethodName,
-                typeof(void),
-                [typeof(ScriptContext), typeof(ScriptDatum[])],
+                typeof(ScriptDatum),
+                [typeof(ScriptContext), typeof(Span<ScriptDatum>)],
                 typeof(DynamicBuilder).Module,
                 true
             );
