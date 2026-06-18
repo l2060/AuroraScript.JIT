@@ -1,16 +1,10 @@
-﻿using System;
-using System.Runtime.InteropServices;
+using System;
 
 namespace AuroraScript.Runtime.Property
 {
-    [StructLayout(LayoutKind.Explicit, Size = 8)]
     internal readonly struct TransitionKey : IEquatable<TransitionKey>
     {
-
-        [FieldOffset(0)]
         public readonly string Name;
-
-        [FieldOffset(8)]
         public readonly PropertyFlags Flags;
 
         public TransitionKey(string name, PropertyFlags flags)

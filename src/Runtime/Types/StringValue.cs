@@ -50,6 +50,7 @@ namespace AuroraScript.Runtime.Types
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static StringValue Of(string value)
         {
+            if (string.IsNullOrEmpty(value)) return Empty;
             return _poolingStrategy == StringPoolingStrategy.Intern
                 ? Intern(value)
                 : new StringValue(value);

@@ -88,6 +88,11 @@ namespace AuroraScript.Runtime.Interop
         /// <returns>The script object representing the static member's value or a method binding.</returns>
         internal sealed override ScriptObject GetPropertyValue(ScriptContext ctx, String key)
         {
+            return ScriptDatum.ToObject(GetPropertyDatum(ctx, key));
+        }
+
+        internal sealed override ScriptDatum GetPropertyDatum(ScriptContext ctx, String key)
+        {
             if ((_access & TypeAccess.Static) != TypeAccess.Static)
             {
                 throw new InvalidOperationException($"CLR type '{_descriptor.Type.FullName}' does not have static member access rights.");
@@ -96,15 +101,15 @@ namespace AuroraScript.Runtime.Interop
             if (getter != null)
             {
                 var value = getter(null);
-                return ClrMarshaller.ToScript(value);
+                return ScriptDatum.FromObject(ClrMarshaller.ToScript(value));
             }
             var method = _descriptor.GetMethods(key, true);
             if (method != null)
             {
-                return method;
+                return ScriptDatum.FromObject(method);
             }
             ThrowHelper.ThrowNotfoundProperty(key);
-            return ScriptObject.Null;
+            return ScriptDatum.Null;
         }
 
         /// <summary>
@@ -115,13 +120,18 @@ namespace AuroraScript.Runtime.Interop
         /// <param name="value">The new value to assign to the property.</param>
         internal sealed override void SetPropertyValue(ScriptContext ctx, String key, ScriptObject value)
         {
+            SetPropertyDatum(ctx, key, ScriptDatum.FromObject(value));
+        }
+
+        internal sealed override void SetPropertyDatum(ScriptContext ctx, String key, ScriptDatum value)
+        {
             var setter = _descriptor.GetSetter(key);
             if (setter != null)
             {
                 var targetType = setter.Type;
                 if (targetType != null)
                 {
-                    if (!ClrMarshaller.TryConvertArgument(value, targetType, out var converted))
+                    if (!ClrMarshaller.TryConvertArgument(ScriptDatum.ToObject(value), targetType, out var converted))
                     {
                         throw new InvalidOperationException($"Cannot convert script value to '{targetType.FullName}'.");
                     }

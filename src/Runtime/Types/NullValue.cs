@@ -36,8 +36,18 @@ namespace AuroraScript.Runtime.Types
             throw new AuroraRuntimeException(string.Format("Cannot read properties of undefined (reading '{0}')", key));
         }
 
+        internal sealed override ScriptDatum GetPropertyDatum(ScriptContext ctx, string key)
+        {
+            throw new AuroraRuntimeException(string.Format("Cannot read properties of undefined (reading '{0}')", key));
+        }
+
         /// <summary> Throws Exception: Cannot set properties of null. </summary>
         internal sealed override void SetPropertyValue(ScriptContext ctx, string key, ScriptObject value)
+        {
+            throw new AuroraRuntimeException(string.Format("Cannot read properties of undefined (reading '{0}')", key));
+        }
+
+        internal sealed override void SetPropertyDatum(ScriptContext ctx, string key, ScriptDatum value)
         {
             throw new AuroraRuntimeException(string.Format("Cannot read properties of undefined (reading '{0}')", key));
         }

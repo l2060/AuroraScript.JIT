@@ -222,6 +222,11 @@ namespace AuroraScript.Runtime.Types
             _items[index] = datum;
         }
 
+        internal void SetElementValue(int index, ScriptDatum datum)
+        {
+            SetElement(index, in datum);
+        }
+
 
         /// <summary> Determines whether the array contains a specific element. </summary>
         /// <param name="element">The element to locate in the array.</param>

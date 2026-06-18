@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace AuroraScript.Runtime.Types
@@ -41,7 +41,7 @@ namespace AuroraScript.Runtime.Types
             _index = 0;
         }
 
-        /// <summary> Initializes a new instance of the <see cref="ScriptEnumerator"/> from a raw <see cref="ScriptDatum"/> array. </summary>
+        /// <summary> Initializes a new instance of the <see cref="ScriptEnumerator"/> from a raw <see cref="ScriptDatum"/> list. </summary>
         public ScriptEnumerator(List<ScriptDatum> items)
         {
             _kind = IteratorKind.DatumArray;
@@ -50,7 +50,6 @@ namespace AuroraScript.Runtime.Types
             _length = _datumItems.Length;
             _index = 0;
         }
-
 
         private ScriptEnumerator(string value)
         {

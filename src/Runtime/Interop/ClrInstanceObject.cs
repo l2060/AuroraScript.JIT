@@ -36,20 +36,25 @@ namespace AuroraScript.Runtime.Interop
         /// <returns>The result of the member access, converted to a script object.</returns>
         internal sealed override ScriptObject GetPropertyValue(ScriptContext ctx, String key)
         {
+            return ScriptDatum.ToObject(GetPropertyDatum(ctx, key));
+        }
+
+        internal sealed override ScriptDatum GetPropertyDatum(ScriptContext ctx, String key)
+        {
             var getter = Descriptor.GetGetter(key);
             if (getter != null)
             {
                 var value = getter(Instance);
-                return ClrMarshaller.ToScript(value);
+                return ScriptDatum.FromObject(ClrMarshaller.ToScript(value));
             }
             var method = Descriptor.GetMethods(key, false);
             if (method != null)
             {
-                return method.Bound(this);
+                return ScriptDatum.FromObject(method.Bound(this));
             }
 
             Trace.TraceWarning($"CLR Instance ({Descriptor.Type.Name}): Property or method '{key}' not found.");
-            return ScriptObject.Null;
+            return ScriptDatum.Null;
         }
 
         /// <summary>
@@ -60,13 +65,18 @@ namespace AuroraScript.Runtime.Interop
         /// <param name="value">The new script value to assign.</param>
         internal sealed override void SetPropertyValue(ScriptContext ctx, String key, ScriptObject value)
         {
+            SetPropertyDatum(ctx, key, ScriptDatum.FromObject(value));
+        }
+
+        internal sealed override void SetPropertyDatum(ScriptContext ctx, String key, ScriptDatum value)
+        {
             var setter = Descriptor.GetSetter(key);
             if (setter != null)
             {
                 var targetType = setter.Type;
                 if (targetType != null)
                 {
-                    if (!ClrMarshaller.TryConvertArgument(value, targetType, out var converted))
+                    if (!ClrMarshaller.TryConvertArgument(ScriptDatum.ToObject(value), targetType, out var converted))
                     {
                         throw new InvalidOperationException($"Cannot convert script value to '{targetType.FullName}'.");
                     }

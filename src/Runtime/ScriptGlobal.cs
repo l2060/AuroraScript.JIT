@@ -86,12 +86,17 @@ namespace AuroraScript.Runtime
         /// <returns>The property value if found; otherwise, <see cref="ScriptObject.Null"/>.</returns>
         internal sealed override ScriptObject GetPropertyValue(ScriptContext ctx, string key)
         {
-            var obj = base.GetPropertyValue(ctx, key);
-            if (obj == Null && Engine.ClrRegistry.TryGetClrType(key, out var clrType))
+            return ScriptDatum.ToObject(GetPropertyDatum(ctx, key));
+        }
+
+        internal sealed override ScriptDatum GetPropertyDatum(ScriptContext ctx, string key)
+        {
+            var datum = base.GetPropertyDatum(ctx, key);
+            if (datum.Kind == ValueKind.Null && Engine.ClrRegistry.TryGetClrType(key, out var clrType))
             {
-                return clrType;
+                return ScriptDatum.FromObject(clrType);
             }
-            return obj;
+            return datum;
         }
 
         /// <summary>

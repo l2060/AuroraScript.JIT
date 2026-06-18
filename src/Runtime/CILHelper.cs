@@ -1,6 +1,8 @@
 using AuroraScript.Runtime.Types;
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using AuroraScript.Runtime.Property;
 
 namespace AuroraScript.Runtime
 {
@@ -36,6 +38,27 @@ namespace AuroraScript.Runtime
             {
                 return ScriptDatum.FromString(ScriptDatum.ToString(a) + ScriptDatum.ToString(b));
             }
+        }
+
+        /// <summary>Concatenates a script value with a literal string on the right.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum AddStringRight(ScriptDatum a, string b)
+        {
+            return ScriptDatum.FromString(ScriptDatum.ToString(a) + b);
+        }
+
+        /// <summary>Concatenates a literal string on the left with a script value.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum AddStringLeft(string a, ScriptDatum b)
+        {
+            return ScriptDatum.FromString(a + ScriptDatum.ToString(b));
+        }
+
+        /// <summary>Concatenates a script value, literal string, and script value in one pass.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum AddStringMiddle(ScriptDatum a, string b, ScriptDatum c)
+        {
+            return ScriptDatum.FromString(string.Concat(ScriptDatum.ToString(a), b, ScriptDatum.ToString(c)));
         }
 
         /// <summary>
@@ -390,9 +413,43 @@ namespace AuroraScript.Runtime
             else
             {
                 string key = ScriptDatum.ToString(index);
-                ScriptObject value = obj.GetPropertyValue(key);
-                return ScriptDatum.FromObject(value);
+                return obj.GetPropertyDatum(null, key);
             }
+        }
+
+        /// <summary>
+        /// Gets the length of arrays and strings without going through the generic property path.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum GetLength(ScriptObject obj, ScriptContext ctx)
+        {
+            if (obj is ScriptArray array)
+            {
+                return ScriptDatum.FromNumber(array.Length);
+            }
+            if (obj is StringValue str)
+            {
+                return ScriptDatum.FromNumber(str.Value.Length);
+            }
+            return obj.GetPropertyDatum(ctx, "length");
+        }
+
+        /// <summary>
+        /// Reads two fixed property names in sequence, keeping the chain in one helper call.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum GetProperty2(ScriptObject obj, ScriptContext ctx, string name0, string name1)
+        {
+            return ScriptDatum.ToObject(obj.GetPropertyDatum(ctx, name0)).GetPropertyDatum(ctx, name1);
+        }
+
+        /// <summary>
+        /// Reads three fixed property names in sequence, keeping the chain in one helper call.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum GetProperty3(ScriptObject obj, ScriptContext ctx, string name0, string name1, string name2)
+        {
+            return ScriptDatum.ToObject(ScriptDatum.ToObject(obj.GetPropertyDatum(ctx, name0)).GetPropertyDatum(ctx, name1)).GetPropertyDatum(ctx, name2);
         }
 
         /// <summary>
@@ -409,8 +466,265 @@ namespace AuroraScript.Runtime
             else
             {
                 string key = ScriptDatum.ToString(index);
-                obj.SetPropertyValue(key, ScriptDatum.ToObject(value));
+                obj.SetPropertyDatum(null, key, value);
             }
+        }
+
+        /// <summary>Creates a plain three-property object literal using a cached hidden class.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptObject CreateObject3(
+            string name0,
+            ScriptDatum value0,
+            string name1,
+            ScriptDatum value1,
+            string name2,
+            ScriptDatum value2)
+        {
+            var shape = HiddenClass.GetLiteralShape(name0, name1, name2);
+            var values = new PropertyDescriptor[Math.Max(shape._maxSlot, (ushort)4)];
+            values[0] = new PropertyDescriptor(null, null, value0);
+            values[1] = new PropertyDescriptor(null, null, value1);
+            values[2] = new PropertyDescriptor(null, null, value2);
+            return new ScriptObject(shape, values);
+        }
+
+        /// <summary>Invokes a named property as a method without allocating a bound native wrapper.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum InvokeProperty(ScriptObject receiver, ScriptContext ctx, string name, ScriptDatum[] args)
+        {
+            if (receiver.TryResolveProperty(name, out var property) &&
+                property.Getter == null &&
+                property.Value is BondingFunction { Target: null } nativeFunction)
+            {
+                ScriptDatum result = default;
+                nativeFunction.DatumMethod.Invoke(ctx, receiver, args, ref result);
+                return result;
+            }
+            var function = receiver.GetPropertyValue(ctx, name);
+            return function.Invoke(ctx, args);
+        }
+
+        /// <summary>Invokes a named zero-argument method without allocating an argument array for native methods.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum InvokeProperty0(ScriptObject receiver, ScriptContext ctx, string name)
+        {
+            if (receiver.TryResolveProperty(name, out var property) &&
+                property.Getter == null &&
+                property.Value is BondingFunction { Target: null } nativeFunction)
+            {
+                ScriptDatum result = default;
+                nativeFunction.DatumMethod.Invoke(ctx, receiver, Span<ScriptDatum>.Empty, ref result);
+                return result;
+            }
+            var function = receiver.GetPropertyValue(ctx, name);
+            return function.Invoke(ctx, Array.Empty<ScriptDatum>());
+        }
+
+        /// <summary>Invokes a named one-argument method without allocating an argument array for native methods.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum InvokeProperty1(ScriptObject receiver, ScriptContext ctx, string name, ScriptDatum arg0)
+        {
+            if (receiver.TryResolveProperty(name, out var property) &&
+                property.Getter == null &&
+                property.Value is BondingFunction { Target: null } nativeFunction)
+            {
+                var args = MemoryMarshal.CreateSpan(ref arg0, 1);
+                ScriptDatum result = default;
+                nativeFunction.DatumMethod.Invoke(ctx, receiver, args, ref result);
+                return result;
+            }
+            var function = receiver.GetPropertyValue(ctx, name);
+            return function.Invoke(ctx, arg0);
+        }
+
+        /// <summary>Invokes a named two-argument method without allocating an argument array for native methods or closures.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum InvokeProperty2(ScriptObject receiver, ScriptContext ctx, string name, ScriptDatum arg0, ScriptDatum arg1)
+        {
+            if (receiver.TryResolveProperty(name, out var property) &&
+                property.Getter == null &&
+                property.Value is BondingFunction { Target: null } nativeFunction)
+            {
+                var args = new[] { arg0, arg1 };
+                ScriptDatum result = default;
+                nativeFunction.DatumMethod.Invoke(ctx, receiver, args, ref result);
+                return result;
+            }
+            var function = receiver.GetPropertyValue(ctx, name);
+            return Invoke2(function, ctx, arg0, arg1);
+        }
+
+        /// <summary>Invokes a named three-argument method without allocating an argument array for native methods or closures.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum InvokeProperty3(ScriptObject receiver, ScriptContext ctx, string name, ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2)
+        {
+            if (receiver.TryResolveProperty(name, out var property) &&
+                property.Getter == null &&
+                property.Value is BondingFunction { Target: null } nativeFunction)
+            {
+                var args = new[] { arg0, arg1, arg2 };
+                ScriptDatum result = default;
+                nativeFunction.DatumMethod.Invoke(ctx, receiver, args, ref result);
+                return result;
+            }
+            var function = receiver.GetPropertyValue(ctx, name);
+            return Invoke3(function, ctx, arg0, arg1, arg2);
+        }
+
+        /// <summary>Invokes a named four-argument method without allocating an argument array for native methods or closures.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum InvokeProperty4(ScriptObject receiver, ScriptContext ctx, string name, ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3)
+        {
+            if (receiver.TryResolveProperty(name, out var property) &&
+                property.Getter == null &&
+                property.Value is BondingFunction { Target: null } nativeFunction)
+            {
+                var args = new[] { arg0, arg1, arg2, arg3 };
+                ScriptDatum result = default;
+                nativeFunction.DatumMethod.Invoke(ctx, receiver, args, ref result);
+                return result;
+            }
+            var function = receiver.GetPropertyValue(ctx, name);
+            return Invoke4(function, ctx, arg0, arg1, arg2, arg3);
+        }
+
+        /// <summary>Invokes a named five-argument method, using closure-specific fast paths when possible.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum InvokeProperty5(ScriptObject receiver, ScriptContext ctx, string name, ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4)
+        {
+            if (receiver.TryResolveProperty(name, out var property) &&
+                property.Getter == null &&
+                property.Value is BondingFunction { Target: null } nativeFunction)
+            {
+                var args = new[] { arg0, arg1, arg2, arg3, arg4 };
+                ScriptDatum result = default;
+                nativeFunction.DatumMethod.Invoke(ctx, receiver, args, ref result);
+                return result;
+            }
+            var function = receiver.GetPropertyValue(ctx, name);
+            return Invoke5(function, ctx, arg0, arg1, arg2, arg3, arg4);
+        }
+
+        /// <summary>Invokes a named six-argument method, using closure-specific fast paths when possible.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum InvokeProperty6(ScriptObject receiver, ScriptContext ctx, string name, ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5)
+        {
+            if (receiver.TryResolveProperty(name, out var property) &&
+                property.Getter == null &&
+                property.Value is BondingFunction { Target: null } nativeFunction)
+            {
+                var args = new[] { arg0, arg1, arg2, arg3, arg4, arg5 };
+                ScriptDatum result = default;
+                nativeFunction.DatumMethod.Invoke(ctx, receiver, args, ref result);
+                return result;
+            }
+            var function = receiver.GetPropertyValue(ctx, name);
+            return Invoke6(function, ctx, arg0, arg1, arg2, arg3, arg4, arg5);
+        }
+
+        /// <summary>Invokes a named seven-argument method, using closure-specific fast paths when possible.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum InvokeProperty7(ScriptObject receiver, ScriptContext ctx, string name, ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6)
+        {
+            if (receiver.TryResolveProperty(name, out var property) &&
+                property.Getter == null &&
+                property.Value is BondingFunction { Target: null } nativeFunction)
+            {
+                var args = new[] { arg0, arg1, arg2, arg3, arg4, arg5, arg6 };
+                ScriptDatum result = default;
+                nativeFunction.DatumMethod.Invoke(ctx, receiver, args, ref result);
+                return result;
+            }
+            var function = receiver.GetPropertyValue(ctx, name);
+            return Invoke7(function, ctx, arg0, arg1, arg2, arg3, arg4, arg5, arg6);
+        }
+
+        /// <summary>Invokes a zero-argument script object, using closure-specific fast paths when possible.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum Invoke0(ScriptObject function, ScriptContext ctx)
+        {
+            if (function is ClosureFunction closure)
+            {
+                return closure.Invoke0(ctx);
+            }
+            return function.Invoke(ctx, Array.Empty<ScriptDatum>());
+        }
+
+        /// <summary>Invokes a one-argument script object, using closure-specific fast paths when possible.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum Invoke1(ScriptObject function, ScriptContext ctx, ScriptDatum arg0)
+        {
+            if (function is ClosureFunction closure)
+            {
+                return closure.Invoke1(ctx, arg0);
+            }
+            return function.Invoke(ctx, arg0);
+        }
+
+        /// <summary>Invokes a two-argument script object, using closure-specific fast paths when possible.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum Invoke2(ScriptObject function, ScriptContext ctx, ScriptDatum arg0, ScriptDatum arg1)
+        {
+            if (function is ClosureFunction closure)
+            {
+                return closure.Invoke2(ctx, arg0, arg1);
+            }
+            return function.Invoke(ctx, arg0, arg1);
+        }
+
+        /// <summary>Invokes a three-argument script object, using closure-specific fast paths when possible.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum Invoke3(ScriptObject function, ScriptContext ctx, ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2)
+        {
+            if (function is ClosureFunction closure)
+            {
+                return closure.Invoke3(ctx, arg0, arg1, arg2);
+            }
+            return function.Invoke(ctx, arg0, arg1, arg2);
+        }
+
+        /// <summary>Invokes a four-argument script object, using closure-specific fast paths when possible.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum Invoke4(ScriptObject function, ScriptContext ctx, ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3)
+        {
+            if (function is ClosureFunction closure)
+            {
+                return closure.Invoke4(ctx, arg0, arg1, arg2, arg3);
+            }
+            return function.Invoke(ctx, arg0, arg1, arg2, arg3);
+        }
+
+        /// <summary>Invokes a five-argument script object, using closure-specific fast paths when possible.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum Invoke5(ScriptObject function, ScriptContext ctx, ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4)
+        {
+            if (function is ClosureFunction closure)
+            {
+                return closure.Invoke5(ctx, arg0, arg1, arg2, arg3, arg4);
+            }
+            return function.Invoke(ctx, arg0, arg1, arg2, arg3, arg4);
+        }
+
+        /// <summary>Invokes a six-argument script object, using closure-specific fast paths when possible.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum Invoke6(ScriptObject function, ScriptContext ctx, ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5)
+        {
+            if (function is ClosureFunction closure)
+            {
+                return closure.Invoke6(ctx, arg0, arg1, arg2, arg3, arg4, arg5);
+            }
+            return function.Invoke(ctx, arg0, arg1, arg2, arg3, arg4, arg5);
+        }
+
+        /// <summary>Invokes a seven-argument script object, using closure-specific fast paths when possible.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum Invoke7(ScriptObject function, ScriptContext ctx, ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6)
+        {
+            if (function is ClosureFunction closure)
+            {
+                return closure.Invoke7(ctx, arg0, arg1, arg2, arg3, arg4, arg5, arg6);
+            }
+            return function.Invoke(ctx, arg0, arg1, arg2, arg3, arg4, arg5, arg6);
         }
 
         /// <summary>
@@ -849,6 +1163,84 @@ namespace AuroraScript.Runtime
         public static ScriptFunctionDelegate ResolveDelegate(ScriptModule module, int id)
         {
             return DynamicMethodRegistry.Resolve(id);
+        }
+
+        /// <summary>
+        /// Resolves a compiled zero-argument method delegate by its ID from the global registry.
+        /// </summary>
+        /// <param name="module">The module context (currently unused in resolution).</param>
+        /// <param name="id">The unique ID of the compiled method.</param>
+        /// <returns>The resolved zero-argument script function delegate.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptFunctionDelegate0 ResolveDelegate0(ScriptModule module, int id)
+        {
+            return DynamicMethodRegistry.Resolve0(id);
+        }
+
+        /// <summary>
+        /// Resolves a compiled one-argument method delegate by its ID from the global registry.
+        /// </summary>
+        /// <param name="module">The module context (currently unused in resolution).</param>
+        /// <param name="id">The unique ID of the compiled method.</param>
+        /// <returns>The resolved one-argument script function delegate.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptFunctionDelegate1 ResolveDelegate1(ScriptModule module, int id)
+        {
+            return DynamicMethodRegistry.Resolve1(id);
+        }
+
+        /// <summary>
+        /// Resolves a compiled two-argument method delegate by its ID from the global registry.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptFunctionDelegate2 ResolveDelegate2(ScriptModule module, int id)
+        {
+            return DynamicMethodRegistry.Resolve2(id);
+        }
+
+        /// <summary>
+        /// Resolves a compiled three-argument method delegate by its ID from the global registry.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptFunctionDelegate3 ResolveDelegate3(ScriptModule module, int id)
+        {
+            return DynamicMethodRegistry.Resolve3(id);
+        }
+
+        /// <summary>
+        /// Resolves a compiled four-argument method delegate by its ID from the global registry.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptFunctionDelegate4 ResolveDelegate4(ScriptModule module, int id)
+        {
+            return DynamicMethodRegistry.Resolve4(id);
+        }
+
+        /// <summary>
+        /// Resolves a compiled five-argument method delegate by its ID from the global registry.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptFunctionDelegate5 ResolveDelegate5(ScriptModule module, int id)
+        {
+            return DynamicMethodRegistry.Resolve5(id);
+        }
+
+        /// <summary>
+        /// Resolves a compiled six-argument method delegate by its ID from the global registry.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptFunctionDelegate6 ResolveDelegate6(ScriptModule module, int id)
+        {
+            return DynamicMethodRegistry.Resolve6(id);
+        }
+
+        /// <summary>
+        /// Resolves a compiled seven-argument method delegate by its ID from the global registry.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptFunctionDelegate7 ResolveDelegate7(ScriptModule module, int id)
+        {
+            return DynamicMethodRegistry.Resolve7(id);
         }
 
         /// <summary>

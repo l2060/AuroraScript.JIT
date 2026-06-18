@@ -61,6 +61,11 @@ namespace AuroraScript.Runtime.Types
 
         internal sealed override ScriptObject GetPropertyValue(ScriptContext ctx, String key)
         {
+            return ScriptDatum.ToObject(GetPropertyDatum(ctx, key));
+        }
+
+        internal sealed override ScriptDatum GetPropertyDatum(ScriptContext ctx, String key)
+        {
             if (_getter != null)
             {
                 if (ctx != null)
@@ -71,13 +76,17 @@ namespace AuroraScript.Runtime.Types
                 {
                     ctx = new ScriptContext(_getter.Domain);
                 }
-                var result = _getter.Invoke(ctx, [ScriptDatum.FromObject(_object), ScriptDatum.FromString(key)]);
-                return ScriptDatum.ToObject(result);
+                return _getter.Invoke(ctx, [ScriptDatum.FromObject(_object), ScriptDatum.FromString(key)]);
             }
-            return ScriptObject.Null;
+            return ScriptDatum.Null;
         }
 
         internal sealed override void SetPropertyValue(ScriptContext ctx, string key, ScriptObject value)
+        {
+            SetPropertyDatum(ctx, key, ScriptDatum.FromObject(value));
+        }
+
+        internal sealed override void SetPropertyDatum(ScriptContext ctx, string key, ScriptDatum value)
         {
             if (_setter != null)
             {
@@ -89,7 +98,7 @@ namespace AuroraScript.Runtime.Types
                 {
                     ctx = new ScriptContext(_getter.Domain);
                 }
-                _setter.Invoke(ctx, [ScriptDatum.FromObject(_object), ScriptDatum.FromString(key), ScriptDatum.FromObject(value)]);
+                _setter.Invoke(ctx, [ScriptDatum.FromObject(_object), ScriptDatum.FromString(key), value]);
             }
         }
 

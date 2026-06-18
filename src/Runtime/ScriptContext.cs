@@ -14,6 +14,51 @@ namespace AuroraScript.Runtime
     public delegate ScriptDatum ScriptFunctionDelegate(ScriptContext ctx, ScriptDatum[] args);
 
     /// <summary>
+    /// Represents a compiled script function that accepts no explicit arguments.
+    /// </summary>
+    /// <param name="ctx">The execution context for the function call.</param>
+    /// <returns>A <see cref="ScriptDatum"/> representing the result of the function execution.</returns>
+    public delegate ScriptDatum ScriptFunctionDelegate0(ScriptContext ctx);
+
+    /// <summary>
+    /// Represents a compiled script function that accepts one explicit argument.
+    /// </summary>
+    /// <param name="ctx">The execution context for the function call.</param>
+    /// <param name="arg0">The first script argument.</param>
+    /// <returns>A <see cref="ScriptDatum"/> representing the result of the function execution.</returns>
+    public delegate ScriptDatum ScriptFunctionDelegate1(ScriptContext ctx, ScriptDatum arg0);
+
+    /// <summary>
+    /// Represents a compiled script function that accepts two explicit arguments.
+    /// </summary>
+    public delegate ScriptDatum ScriptFunctionDelegate2(ScriptContext ctx, ScriptDatum arg0, ScriptDatum arg1);
+
+    /// <summary>
+    /// Represents a compiled script function that accepts three explicit arguments.
+    /// </summary>
+    public delegate ScriptDatum ScriptFunctionDelegate3(ScriptContext ctx, ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2);
+
+    /// <summary>
+    /// Represents a compiled script function that accepts four explicit arguments.
+    /// </summary>
+    public delegate ScriptDatum ScriptFunctionDelegate4(ScriptContext ctx, ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3);
+
+    /// <summary>
+    /// Represents a compiled script function that accepts five explicit arguments.
+    /// </summary>
+    public delegate ScriptDatum ScriptFunctionDelegate5(ScriptContext ctx, ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4);
+
+    /// <summary>
+    /// Represents a compiled script function that accepts six explicit arguments.
+    /// </summary>
+    public delegate ScriptDatum ScriptFunctionDelegate6(ScriptContext ctx, ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5);
+
+    /// <summary>
+    /// Represents a compiled script function that accepts seven explicit arguments.
+    /// </summary>
+    public delegate ScriptDatum ScriptFunctionDelegate7(ScriptContext ctx, ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6);
+
+    /// <summary>
     /// Represents the execution context for AuroraScript.
     /// This object maintains the state for a specific function execution, including 
     /// references to the domain, global variables, current module, and captured upvalues.
@@ -153,9 +198,14 @@ namespace AuroraScript.Runtime
             var c = this.Next;
             while (c != null)
             {
-                UnionNumber m = new UnionNumber(c.Location);
-                var moduleMeta = Global.modulePathHash[m.Int32ValueH];
-                stackTraces.Add(new AuroraStackTrace(moduleMeta.ModulePath, c.Target?.FuncName, m.Int32ValueL));
+                if (c.Location > 0)
+                {
+                    UnionNumber m = new UnionNumber(c.Location);
+                    if (Global.modulePathHash.TryGetValue(m.Int32ValueH, out var moduleMeta))
+                    {
+                        stackTraces.Add(new AuroraStackTrace(moduleMeta.ModulePath, c.Target?.FuncName, m.Int32ValueL));
+                    }
+                }
                 c = c.Next;
             }
             stackTraces.Reverse();

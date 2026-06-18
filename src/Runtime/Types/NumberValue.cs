@@ -64,6 +64,16 @@ namespace AuroraScript.Runtime.Types
             {
                 return Zero;
             }
+            if (value == 1d) return Num1;
+            if (value == 2d) return Num2;
+            if (value == 3d) return Num3;
+            if (value == 4d) return Num4;
+            if (value == 5d) return Num5;
+            if (value == 6d) return Num6;
+            if (value == 7d) return Num7;
+            if (value == 8d) return Num8;
+            if (value == 9d) return Num9;
+            if (value == -1d) return Negative1;
             return new NumberValue(value);
         }
     }
