@@ -22,6 +22,7 @@ namespace Examples
             .WithDateTimeFormat("yyyy-MM-dd HH:mm:ss")
             .WithAssemblyOut("123.dll")
             .WithEnableConfused(false)
+            .WithEnableHotReload(false)
             .WithCompilationMode(CompilationMode.Persistence)
             .WithOptimizeOption(OptimizeOptions.Release);
 
@@ -32,6 +33,7 @@ namespace Examples
         private static void GlobalConfiguration(ScriptGlobal g)
         {
             g.Define("PI", new NumberValue(Math.PI), writeable: false, enumerable: true);
+            g.Define("ENABLE_HOT_RELOAD", engineOptions.EnableHotReload ? BooleanValue.True : BooleanValue.False, writeable: false, enumerable: true);
             g.Define("GIVE", new BondingFunction(Functions.GIVE), false, true);
             g.Define("CREATE_TIMER", new BondingFunction(Functions.CREATE_TIMER));
             g.Define("INPUT_NUMBER", new BondingFunction(Functions.CLIENT_INPUT_NUMBER), false, true);
@@ -75,14 +77,14 @@ namespace Examples
 
 
             //Console.WriteLine("OK");
-            for (int i = 0; i < 10; i++)
-            {
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-                GC.Collect();
-                Thread.Sleep(100);
-            }
-            Console.ReadLine();
+            //for (int i = 0; i < 10; i++)
+            //{
+            //    GC.Collect();
+            //    GC.WaitForPendingFinalizers();
+            //    GC.Collect();
+            //    Thread.Sleep(100);
+            //}
+            //Console.ReadLine();
         }
 
         /// <summary>
@@ -92,7 +94,11 @@ namespace Examples
         private static void TestHotPatch(ScriptDomain domain)
         {
             //  domain = engine.CreateEmptyDomain(null);
-
+            if (!engineOptions.EnableHotReload)
+            {
+                Console.WriteLine("Engine Options EnableHotReload = false : Skip HotPatch Test Unit.");
+                return;
+            }
             // version 1
             domain.DynamicPatch(engine.MemorySource("testPatch", "func good(){ console.log('version:1'); }"), HotPatchType.Replace);
             domain.Execute("testPatch", "good");
@@ -159,8 +165,16 @@ namespace Examples
 
 
             TestHotPatch(domain);
+            TestCompileBlock(domain);
 
-            BenchmarkScript(domain, "UNIT_LIB", "testHotPatch");
+            if (engineOptions.EnableHotReload)
+            {
+                BenchmarkScript(domain, "UNIT_LIB", "testHotPatch");
+            }
+            else
+            {
+                Console.WriteLine("Engine Options EnableHotReload = false : Skip Script HotPatch Test Unit.");
+            }
 
             var context = domain.Execute("MD5_LIB", "MD5", null, StringValue.Of("12345"));
             Console.WriteLine($"MD5('12345') = {ScriptDatum.ToString(context)}");
@@ -230,6 +244,27 @@ namespace Examples
 
 
 
+        private static void TestCompileBlock(ScriptDomain domain)
+        {
+            var block = engine.CompileBlock("""
+function clamp(v, min, max) {
+    if (v < min) return min;
+    if (v > max) return max;
+    return v;
+}
+
+return clamp(x, 0, 100) + PI;
+""", new CompileBlockOptions
+            {
+                Parameters = ["x"],
+                SourceName = "examples/compile-block.as"
+            });
+
+            var value = block.Invoke(domain, ScriptDatum.FromNumber(125));
+            Console.WriteLine($"CompileBlock clamp(125) + PI = {ScriptDatum.ToString(value)}");
+            BenchmarkBlock(domain, block, "CompileBlockClamp", ScriptDatum.FromNumber(125));
+        }
+
         private static void BenchmarkScript(ScriptDomain domain, string module, string method, params ScriptObject[] args)
         {
             var beforeAlloc = GC.GetAllocatedBytesForCurrentThread();
@@ -257,6 +292,29 @@ namespace Examples
 
 
         }
+
+        private static void BenchmarkBlock(ScriptDomain domain, CompiledBlock block, string name, params ScriptDatum[] args)
+        {
+            var beforeAlloc = GC.GetAllocatedBytesForCurrentThread();
+            Exception _ex = null;
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            try
+            {
+                block.Invoke(domain, args);
+            }
+            catch (Exception ex)
+            {
+                _ex = ex;
+            }
+            finally
+            {
+                var useTime = stopwatch.ElapsedMilliseconds;
+                var afterAlloc = GC.GetAllocatedBytesForCurrentThread();
+                var allocatedBytes = afterAlloc - beforeAlloc;
+                WriteBenchmarkResult("BLOCK", name, _ex == null, useTime, allocatedBytes / 1024.0);
+            }
+        }
+
         private static void WriteBenchmarkResult(string module, string method, Boolean status, double elapsedMs, double allocatedKb)
         {
             var originalColor = Console.ForegroundColor;

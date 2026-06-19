@@ -100,6 +100,10 @@ export func patchFunc() {
 
 
 export func testHotPatch() {
+    if (!ENABLE_HOT_RELOAD) {
+        console.log("Skip script hot patch test: hot reload disabled");
+        return true;
+    }
     var newCode =
     |> @module(UNIT_LIB);
     |> export func patchFunc() {

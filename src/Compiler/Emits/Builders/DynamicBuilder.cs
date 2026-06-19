@@ -27,6 +27,19 @@ namespace AuroraScript.Compiler.Emits.Builders
             return (dynamicMethod, dynamicMethod.GetILGenerator());
         }
 
+        public override (MethodInfo Method, ILGenerator IL) DefineBlockMethod(string methodName)
+        {
+            var dynamicMethod = new DynamicMethod(
+                methodName,
+                typeof(ScriptDatum),
+                [typeof(ScriptContext), typeof(Span<ScriptDatum>)],
+                typeof(DynamicBuilder).Module,
+                true
+            );
+
+            return (dynamicMethod, dynamicMethod.GetILGenerator());
+        }
+
         public override (MethodInfo Method, ILGenerator IL) DefineModuleInitMethod(ModuleDeclaration module)
         {
             var dynamicMethod = new DynamicMethod("Initialize",

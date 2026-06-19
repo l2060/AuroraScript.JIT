@@ -89,6 +89,12 @@ namespace AuroraScript
         public OptimizeOptions OptimizeOption { get; init; } = OptimizeOptions.Release;
 
         /// <summary>
+        /// Gets a value indicating whether runtime hot reload and dynamic patching are enabled.
+        /// Disable this to allow more aggressive module-local call optimizations.
+        /// </summary>
+        public bool EnableHotReload { get; init; } = true;
+
+        /// <summary>
         /// Gets a value indicating whether obfuscation (confusion) is enabled.
         /// When enabled:
         /// 1. Null, Number, and Boolean constants are hidden.
@@ -168,6 +174,16 @@ namespace AuroraScript
         public EngineOptions WithOptimizeOption(OptimizeOptions value)
         {
             return this with { OptimizeOption = value };
+        }
+
+        /// <summary>
+        /// Sets whether runtime hot reload and dynamic patching are enabled and returns a new options instance.
+        /// </summary>
+        /// <param name="value">True to keep hot reload enabled; false to allow more aggressive static optimizations.</param>
+        /// <returns>A new <see cref="EngineOptions"/> instance with the updated hot reload setting.</returns>
+        public EngineOptions WithEnableHotReload(bool value)
+        {
+            return this with { EnableHotReload = value };
         }
 
         /// <summary>

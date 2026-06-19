@@ -99,6 +99,35 @@ var domain = engine.CreateDomain();
 domain.Execute("MAIN", "main");
 ```
 
+### 编译轻量脚本块 (CompileBlock)
+
+`CompileBlock` 用于编译高性能、轻量型的匿名脚本块。它不创建模块、不注册到 `global.modules`，也不参与热重载；适合规则表达式、公式、过滤器、AI/业务决策片段等需要频繁调用的小段脚本。
+
+```csharp
+var block = engine.CompileBlock("""
+function clamp(v, min, max) {
+    if (v < min) return min;
+    if (v > max) return max;
+    return v;
+}
+
+return clamp(x, 0, 100) + PI;
+""", new CompileBlockOptions
+{
+    Parameters = ["x"],
+    SourceName = "rules/clamp.as"
+});
+
+var domain = engine.CreateEmptyDomain(g =>
+{
+    g.Define("PI", new NumberValue(Math.PI), writeable: false, enumerable: true);
+});
+
+var result = block.Invoke(domain, ScriptDatum.FromNumber(125));
+```
+
+`CompileBlock` 的源码会被当作匿名函数体处理，因此可以直接编写 `return`、`if`、`for`、`var` 和局部 `function`。编译阶段通过 `Parameters` 声明参数名，运行时按位置传入参数。无捕获、固定参数数量的局部函数会走直接调用路径；捕获外层变量的局部函数会自动保留闭包语义。
+
 ### 编写脚本
 
 语法示例：
@@ -284,6 +313,17 @@ JSON 数据的序列化与反序列化工具。
 ## 🔥 热修复 (Hot-fix)
 
 AuroraScript 提供了强大的热修复能力，允许您在不重启应用程序或丢失运行时状态的情况下，动态更新正在运行的 `ScriptDomain` 中的脚本逻辑。
+
+热修复由 `EngineOptions.EnableHotReload` 控制，默认值为 `true`。关闭后将禁用 `DynamicPatch` 和脚本侧 `HotPatch` API，并允许编译器启用更激进的模块内直连优化：
+
+```csharp
+var options = EngineOptions.Default
+    .WithEnableHotReload(false)
+    .WithCompilationMode(CompilationMode.Persistence)
+    .WithOptimizeOption(OptimizeOptions.Release);
+```
+
+关闭热重载适合生产环境中不需要动态补丁、但更关注调用性能和更轻 CIL 调用链的场景。需要运行时替换脚本逻辑时，应保持 `EnableHotReload=true`。
 
 ### 1. .NET API (宿主侧)
 通过 `domain.DynamicPatch` 方法从宿主程序应用补丁：

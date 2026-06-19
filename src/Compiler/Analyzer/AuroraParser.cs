@@ -122,6 +122,33 @@ namespace AuroraScript.Compiler.Analyzer
             return this.Root;
         }
 
+        public BlockStatement ParseBlockBody()
+        {
+            using (scopeStack.Scope(ScopeType.FUNCTION))
+            {
+                var block = new BlockStatement { IsFunction = true };
+                while (true)
+                {
+                    if (this.Lexer.TestNext(Symbols.KW_EOF)) break;
+                    var node = ParseStatement();
+                    if (node == null) continue;
+
+                    node.IsIndependent = true;
+                    if (node is FunctionDeclaration func)
+                    {
+                        block.Functions.Add(func);
+                        func.Parent = block;
+                    }
+                    else
+                    {
+                        block.AddNode(node);
+                    }
+                }
+                SetSourceRecursive(block);
+                return block;
+            }
+        }
+
         private Statement ParseStatement()
         {
             var token = this.Lexer.LookAtHead();

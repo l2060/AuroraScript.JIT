@@ -419,6 +419,15 @@ namespace AuroraScript.Runtime
         }
 
         /// <summary>
+        /// Gets an element or property from a script value without forcing the emitter to materialize an object first.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum GetElement(ScriptDatum obj, ScriptDatum index)
+        {
+            return GetElement(ScriptDatum.ToObject(obj), index);
+        }
+
+        /// <summary>
         /// Gets the length of arrays and strings without going through the generic property path.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -436,6 +445,28 @@ namespace AuroraScript.Runtime
         }
 
         /// <summary>
+        /// Gets the length of a script value without forcing the emitter to materialize an object first.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum GetLength(ScriptDatum obj, ScriptContext ctx)
+        {
+            if (obj.Kind == ValueKind.String)
+            {
+                return ScriptDatum.FromNumber(obj.String.Value.Length);
+            }
+            return GetLength(ScriptDatum.ToObject(obj), ctx);
+        }
+
+        /// <summary>
+        /// Reads a fixed property name from a script value without forcing the emitter to materialize an object first.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum GetProperty(ScriptDatum obj, ScriptContext ctx, string name)
+        {
+            return ScriptDatum.ToObject(obj).GetPropertyDatum(ctx, name);
+        }
+
+        /// <summary>
         /// Reads two fixed property names in sequence, keeping the chain in one helper call.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -445,12 +476,30 @@ namespace AuroraScript.Runtime
         }
 
         /// <summary>
+        /// Reads two fixed property names from a script value in sequence.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum GetProperty2(ScriptDatum obj, ScriptContext ctx, string name0, string name1)
+        {
+            return GetProperty2(ScriptDatum.ToObject(obj), ctx, name0, name1);
+        }
+
+        /// <summary>
         /// Reads three fixed property names in sequence, keeping the chain in one helper call.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum GetProperty3(ScriptObject obj, ScriptContext ctx, string name0, string name1, string name2)
         {
             return ScriptDatum.ToObject(ScriptDatum.ToObject(obj.GetPropertyDatum(ctx, name0)).GetPropertyDatum(ctx, name1)).GetPropertyDatum(ctx, name2);
+        }
+
+        /// <summary>
+        /// Reads three fixed property names from a script value in sequence.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum GetProperty3(ScriptDatum obj, ScriptContext ctx, string name0, string name1, string name2)
+        {
+            return GetProperty3(ScriptDatum.ToObject(obj), ctx, name0, name1, name2);
         }
 
         /// <summary>
@@ -469,6 +518,15 @@ namespace AuroraScript.Runtime
                 string key = ScriptDatum.ToString(index);
                 obj.SetPropertyDatum(null, key, value);
             }
+        }
+
+        /// <summary>
+        /// Sets an element or property on a script value without forcing the emitter to materialize an object first.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void SetElement(ScriptDatum obj, ScriptDatum index, ScriptDatum value)
+        {
+            SetElement(ScriptDatum.ToObject(obj), index, value);
         }
 
         /// <summary>Creates a plain three-property object literal using a cached hidden class.</summary>
@@ -546,7 +604,9 @@ namespace AuroraScript.Runtime
                 property.Getter == null &&
                 property.Value is BondingFunction { Target: null } nativeFunction)
             {
-                var args = new[] { arg0, arg1 };
+                DatumBuffer2 args = default;
+                args[0] = arg0;
+                args[1] = arg1;
                 ScriptDatum result = default;
                 nativeFunction.DatumMethod.Invoke(ctx, receiver, args, ref result);
                 return result;
@@ -563,7 +623,10 @@ namespace AuroraScript.Runtime
                 property.Getter == null &&
                 property.Value is BondingFunction { Target: null } nativeFunction)
             {
-                var args = new[] { arg0, arg1, arg2 };
+                DatumBuffer3 args = default;
+                args[0] = arg0;
+                args[1] = arg1;
+                args[2] = arg2;
                 ScriptDatum result = default;
                 nativeFunction.DatumMethod.Invoke(ctx, receiver, args, ref result);
                 return result;
@@ -580,7 +643,11 @@ namespace AuroraScript.Runtime
                 property.Getter == null &&
                 property.Value is BondingFunction { Target: null } nativeFunction)
             {
-                var args = new[] { arg0, arg1, arg2, arg3 };
+                DatumBuffer4 args = default;
+                args[0] = arg0;
+                args[1] = arg1;
+                args[2] = arg2;
+                args[3] = arg3;
                 ScriptDatum result = default;
                 nativeFunction.DatumMethod.Invoke(ctx, receiver, args, ref result);
                 return result;
@@ -597,7 +664,12 @@ namespace AuroraScript.Runtime
                 property.Getter == null &&
                 property.Value is BondingFunction { Target: null } nativeFunction)
             {
-                var args = new[] { arg0, arg1, arg2, arg3, arg4 };
+                DatumBuffer5 args = default;
+                args[0] = arg0;
+                args[1] = arg1;
+                args[2] = arg2;
+                args[3] = arg3;
+                args[4] = arg4;
                 ScriptDatum result = default;
                 nativeFunction.DatumMethod.Invoke(ctx, receiver, args, ref result);
                 return result;
@@ -614,7 +686,13 @@ namespace AuroraScript.Runtime
                 property.Getter == null &&
                 property.Value is BondingFunction { Target: null } nativeFunction)
             {
-                var args = new[] { arg0, arg1, arg2, arg3, arg4, arg5 };
+                DatumBuffer6 args = default;
+                args[0] = arg0;
+                args[1] = arg1;
+                args[2] = arg2;
+                args[3] = arg3;
+                args[4] = arg4;
+                args[5] = arg5;
                 ScriptDatum result = default;
                 nativeFunction.DatumMethod.Invoke(ctx, receiver, args, ref result);
                 return result;
@@ -631,7 +709,14 @@ namespace AuroraScript.Runtime
                 property.Getter == null &&
                 property.Value is BondingFunction { Target: null } nativeFunction)
             {
-                var args = new[] { arg0, arg1, arg2, arg3, arg4, arg5, arg6 };
+                DatumBuffer7 args = default;
+                args[0] = arg0;
+                args[1] = arg1;
+                args[2] = arg2;
+                args[3] = arg3;
+                args[4] = arg4;
+                args[5] = arg5;
+                args[6] = arg6;
                 ScriptDatum result = default;
                 nativeFunction.DatumMethod.Invoke(ctx, receiver, args, ref result);
                 return result;
@@ -726,6 +811,38 @@ namespace AuroraScript.Runtime
                 return closure.Invoke7(ctx, arg0, arg1, arg2, arg3, arg4, arg5, arg6);
             }
             return function.Invoke(ctx, arg0, arg1, arg2, arg3, arg4, arg5, arg6);
+        }
+
+        /// <summary>Creates a direct-call context for a known module-local function.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptContext EnterDirect(ScriptContext ctx, string name)
+        {
+            var closure = (ClosureFunction)ScriptDatum.ToObject(ctx.Module.GetPropertyDatum(ctx, name));
+            return ctx.With(ctx.Module, closure);
+        }
+
+        /// <summary>Creates a direct-call context for a cached module-local function.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptContext EnterDirect(ScriptContext ctx, ClosureFunction closure)
+        {
+            return ctx.With(closure);
+        }
+
+        /// <summary>Releases a direct-call context and returns the script result.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum LeaveDirect(ScriptContext context, ScriptDatum result)
+        {
+            return ReturnDirect(context, result);
+        }
+
+        private static ScriptDatum ReturnDirect(ScriptContext context, ScriptDatum result)
+        {
+            while (context.Next != null)
+            {
+                context.Next.ReleaseLinked();
+            }
+            context.Release();
+            return result;
         }
 
         /// <summary>
@@ -1141,6 +1258,53 @@ namespace AuroraScript.Runtime
             if (type is ScriptType typed)
             {
                 ScriptDatum result = default;
+                typed.Construct(ctx, args, ref result);
+                return result;
+            }
+            ThrowHelper.ThrowNotConstructor(type?.ToString() ?? "null");
+            return default;
+        }
+
+        /// <summary>Creates a new script object with no constructor arguments.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum New0(ScriptObject type, ScriptContext ctx)
+        {
+            if (type is ScriptType typed)
+            {
+                ScriptDatum result = default;
+                typed.Construct(ctx, Span<ScriptDatum>.Empty, ref result);
+                return result;
+            }
+            ThrowHelper.ThrowNotConstructor(type?.ToString() ?? "null");
+            return default;
+        }
+
+        /// <summary>Creates a new script object with one constructor argument.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum New1(ScriptObject type, ScriptContext ctx, ScriptDatum arg0)
+        {
+            if (type is ScriptType typed)
+            {
+                ScriptDatum result = default;
+                DatumBuffer1 args = default;
+                args[0] = arg0;
+                typed.Construct(ctx, args, ref result);
+                return result;
+            }
+            ThrowHelper.ThrowNotConstructor(type?.ToString() ?? "null");
+            return default;
+        }
+
+        /// <summary>Creates a new script object with two constructor arguments.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum New2(ScriptObject type, ScriptContext ctx, ScriptDatum arg0, ScriptDatum arg1)
+        {
+            if (type is ScriptType typed)
+            {
+                ScriptDatum result = default;
+                DatumBuffer2 args = default;
+                args[0] = arg0;
+                args[1] = arg1;
                 typed.Construct(ctx, args, ref result);
                 return result;
             }

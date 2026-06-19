@@ -118,10 +118,16 @@ namespace AuroraScript.Compiler.Emits
 
         // CILHelper
         public static readonly MethodInfo CILHelper_GetElement = typeof(CILHelper).GetMethod(nameof(CILHelper.GetElement), [typeof(ScriptObject), typeof(ScriptDatum)]);
+        public static readonly MethodInfo CILHelper_GetElementDatum = typeof(CILHelper).GetMethod(nameof(CILHelper.GetElement), [typeof(ScriptDatum), typeof(ScriptDatum)]);
         public static readonly MethodInfo CILHelper_SetElement = typeof(CILHelper).GetMethod(nameof(CILHelper.SetElement), [typeof(ScriptObject), typeof(ScriptDatum), typeof(ScriptDatum)]);
+        public static readonly MethodInfo CILHelper_SetElementDatum = typeof(CILHelper).GetMethod(nameof(CILHelper.SetElement), [typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum)]);
         public static readonly MethodInfo CILHelper_GetLength = typeof(CILHelper).GetMethod(nameof(CILHelper.GetLength), [typeof(ScriptObject), typeof(ScriptContext)]);
+        public static readonly MethodInfo CILHelper_GetLengthDatum = typeof(CILHelper).GetMethod(nameof(CILHelper.GetLength), [typeof(ScriptDatum), typeof(ScriptContext)]);
+        public static readonly MethodInfo CILHelper_GetProperty = typeof(CILHelper).GetMethod(nameof(CILHelper.GetProperty), [typeof(ScriptDatum), typeof(ScriptContext), typeof(string)]);
         public static readonly MethodInfo CILHelper_GetProperty2 = typeof(CILHelper).GetMethod(nameof(CILHelper.GetProperty2), [typeof(ScriptObject), typeof(ScriptContext), typeof(string), typeof(string)]);
+        public static readonly MethodInfo CILHelper_GetProperty2Datum = typeof(CILHelper).GetMethod(nameof(CILHelper.GetProperty2), [typeof(ScriptDatum), typeof(ScriptContext), typeof(string), typeof(string)]);
         public static readonly MethodInfo CILHelper_GetProperty3 = typeof(CILHelper).GetMethod(nameof(CILHelper.GetProperty3), [typeof(ScriptObject), typeof(ScriptContext), typeof(string), typeof(string), typeof(string)]);
+        public static readonly MethodInfo CILHelper_GetProperty3Datum = typeof(CILHelper).GetMethod(nameof(CILHelper.GetProperty3), [typeof(ScriptDatum), typeof(ScriptContext), typeof(string), typeof(string), typeof(string)]);
         public static readonly MethodInfo CILHelper_CreateObject3 = typeof(CILHelper).GetMethod(nameof(CILHelper.CreateObject3), [typeof(string), typeof(ScriptDatum), typeof(string), typeof(ScriptDatum), typeof(string), typeof(ScriptDatum)]);
         public static readonly MethodInfo CILHelper_InvokeProperty = typeof(CILHelper).GetMethod(nameof(CILHelper.InvokeProperty), [typeof(ScriptObject), typeof(ScriptContext), typeof(string), typeof(ScriptDatum[])]);
         public static readonly MethodInfo CILHelper_InvokeProperty0 = typeof(CILHelper).GetMethod(nameof(CILHelper.InvokeProperty0), [typeof(ScriptObject), typeof(ScriptContext), typeof(string)]);
@@ -140,6 +146,9 @@ namespace AuroraScript.Compiler.Emits
         public static readonly MethodInfo CILHelper_Invoke5 = typeof(CILHelper).GetMethod(nameof(CILHelper.Invoke5), [typeof(ScriptObject), typeof(ScriptContext), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum)]);
         public static readonly MethodInfo CILHelper_Invoke6 = typeof(CILHelper).GetMethod(nameof(CILHelper.Invoke6), [typeof(ScriptObject), typeof(ScriptContext), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum)]);
         public static readonly MethodInfo CILHelper_Invoke7 = typeof(CILHelper).GetMethod(nameof(CILHelper.Invoke7), [typeof(ScriptObject), typeof(ScriptContext), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum)]);
+        public static readonly MethodInfo CILHelper_EnterDirect = typeof(CILHelper).GetMethod(nameof(CILHelper.EnterDirect), [typeof(ScriptContext), typeof(string)]);
+        public static readonly MethodInfo CILHelper_EnterDirectClosure = typeof(CILHelper).GetMethod(nameof(CILHelper.EnterDirect), [typeof(ScriptContext), typeof(ClosureFunction)]);
+        public static readonly MethodInfo CILHelper_LeaveDirect = typeof(CILHelper).GetMethod(nameof(CILHelper.LeaveDirect), [typeof(ScriptContext), typeof(ScriptDatum)]);
         public static readonly MethodInfo CILHelper_Add = typeof(CILHelper).GetMethod(nameof(CILHelper.Add), [typeof(ScriptDatum), typeof(ScriptDatum)]);
         public static readonly MethodInfo CILHelper_AddStringRight = typeof(CILHelper).GetMethod(nameof(CILHelper.AddStringRight), [typeof(ScriptDatum), typeof(string)]);
         public static readonly MethodInfo CILHelper_AddStringLeft = typeof(CILHelper).GetMethod(nameof(CILHelper.AddStringLeft), [typeof(string), typeof(ScriptDatum)]);
@@ -184,6 +193,9 @@ namespace AuroraScript.Compiler.Emits
         public static readonly MethodInfo CILHelper_SpreadInto = typeof(CILHelper).GetMethod(nameof(CILHelper.SpreadInto), [typeof(ScriptArray), typeof(ScriptObject)]);
         public static readonly MethodInfo CILHelper_SpreadIntoList = typeof(CILHelper).GetMethod(nameof(CILHelper.SpreadIntoList), [typeof(List<ScriptDatum>), typeof(ScriptObject)]);
         public static readonly MethodInfo CILHelper_New = typeof(CILHelper).GetMethod(nameof(CILHelper.New), [typeof(ScriptObject), typeof(ScriptContext), typeof(Span<ScriptDatum>)]);
+        public static readonly MethodInfo CILHelper_New0 = typeof(CILHelper).GetMethod(nameof(CILHelper.New0), [typeof(ScriptObject), typeof(ScriptContext)]);
+        public static readonly MethodInfo CILHelper_New1 = typeof(CILHelper).GetMethod(nameof(CILHelper.New1), [typeof(ScriptObject), typeof(ScriptContext), typeof(ScriptDatum)]);
+        public static readonly MethodInfo CILHelper_New2 = typeof(CILHelper).GetMethod(nameof(CILHelper.New2), [typeof(ScriptObject), typeof(ScriptContext), typeof(ScriptDatum), typeof(ScriptDatum)]);
         public static readonly MethodInfo CILHelper_TryGetArg = typeof(CILHelper).GetMethod(nameof(CILHelper.TryGetArg), [typeof(Span<ScriptDatum>), typeof(int), typeof(ScriptDatum)]);
         public static readonly MethodInfo CILHelper_GetArg = typeof(CILHelper).GetMethod(nameof(CILHelper.GetArg), [typeof(Span<ScriptDatum>), typeof(int)]);
         public static readonly MethodInfo CILHelper_ResolveDelegate = typeof(CILHelper).GetMethod(nameof(CILHelper.ResolveDelegate), [typeof(ScriptModule), typeof(int)]);

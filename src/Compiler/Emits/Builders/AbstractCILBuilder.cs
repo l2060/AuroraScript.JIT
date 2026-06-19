@@ -36,10 +36,23 @@ namespace AuroraScript.Compiler.Emits.Builders
         }
 
         public abstract (MethodInfo Method, ILGenerator IL) DefineDynamicMethod(ModuleDeclaration module);
+        public virtual (MethodInfo Method, ILGenerator IL) DefineBlockMethod(string methodName)
+        {
+            throw new NotImplementedException();
+        }
         public abstract (MethodInfo Method, ILGenerator IL) DefineModuleInitMethod(ModuleDeclaration module);
         public abstract (MethodInfo Method, ILGenerator IL) DefineDomainInitMethod();
 
         public abstract (MethodInfo Method, ILGenerator IL) DefineMethod(string moduleName, string methodName, Type returnType, Type[] parameterTypes);
+
+        public virtual FieldInfo DefineModuleField(string moduleName, string fieldName, Type fieldType)
+        {
+            if (!TryResolveType(moduleName, out var typeBuilder))
+            {
+                throw new Exception($"Module {moduleName} not defined");
+            }
+            return typeBuilder.DefineField(ConfuseTypeName(fieldName, ConfuseTarget.Constant), fieldType, FieldAttributes.Private | FieldAttributes.Static);
+        }
 
         public abstract void SetLocalSymInfo(LocalBuilder local, String name);
 

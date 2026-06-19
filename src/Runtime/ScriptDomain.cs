@@ -180,6 +180,10 @@ namespace AuroraScript.Runtime
         public void DynamicPatch(ScriptSource source, HotPatchType patchType)
         {
             EngineOptions ExeOptions = Engine.Options;
+            if (!ExeOptions.EnableHotReload)
+            {
+                throw new AuroraException("Dynamic patching is disabled by EngineOptions.EnableHotReload.");
+            }
             DynamicBuilder builder = new DynamicBuilder(ExeOptions);
             var emitter = new CILEmitter(builder, ExeOptions);
             var compiler = new IncrementalCompiler(this, ExeOptions, emitter);

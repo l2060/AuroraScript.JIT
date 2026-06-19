@@ -16,7 +16,7 @@ namespace AuroraScript.Compiler.Emits
 {
     internal class CILEmitter(AbstractCILBuilder builder, EngineOptions Options) : IAstVisitor
     {
-        private record ModuleState(String Name, int Hash, MethodInfo Init, ILGenerator IL, Dictionary<FunctionDeclaration, MethodInfo> Methods)
+        private record ModuleState(String Name, int Hash, MethodInfo Init, ILGenerator IL, Dictionary<FunctionDeclaration, MethodInfo> Methods, Dictionary<FunctionDeclaration, FieldInfo> DirectClosures)
         {
 
         }
@@ -30,9 +30,17 @@ namespace AuroraScript.Compiler.Emits
         private CodeScope _scope = new CodeScope(null, ScopeType.Global);
         private ILGenerator _il;
         private readonly Dictionary<string, ModuleState> _modules = new();
+        private readonly Dictionary<string, Dictionary<string, FunctionDeclaration>> _moduleFunctionNames = new();
+        private readonly Dictionary<string, HashSet<string>> _moduleAssignedNames = new();
+        private readonly HashSet<FunctionDeclaration> _directLocalFunctions = new();
         private ModuleState _currentModule;
         private HotPatchType _patchType = 0;
         private bool IsPatching => _patchType != 0;
+        private bool _isCompilingBlock;
+        private bool EnableDirectModuleCalls => !Options.EnableHotReload &&
+            Options.OptimizeOption == OptimizeOptions.Release &&
+            Options.CompilationMode != CompilationMode.Dynamic &&
+            !IsPatching;
 
         private readonly Dictionary<DeclareObject, LocalBuilder> _locals = new();
         private readonly Dictionary<DeclareObject, int> _upvalueMap = new();
@@ -59,12 +67,93 @@ namespace AuroraScript.Compiler.Emits
 
 
 
+        public MethodInfo CompileBlock(BlockStatement block, IReadOnlyList<string> parameters, string sourceName)
+        {
+            var methodName = "__compile_block_" + Guid.NewGuid().ToString("N");
+            var (method, il) = builder.DefineBlockMethod(methodName);
+            _il = il;
+            _currentModule = new ModuleState(
+                methodName,
+                sourceName.GetHashCode(),
+                method,
+                il,
+                new Dictionary<FunctionDeclaration, MethodInfo>(),
+                new Dictionary<FunctionDeclaration, FieldInfo>());
+
+            var oldScope = _scope;
+            var oldStackState = _stackManager.GetState();
+            var oldNextBlockParameters = _nextBlockParameters;
+            var oldConstantPool = new Dictionary<object, LocalBuilder>(_constantPool);
+            var oldLocals = new Dictionary<DeclareObject, LocalBuilder>(_locals);
+            var oldUpvalueMap = new Dictionary<DeclareObject, int>(_upvalueMap);
+            var oldLocalScopeCaptureIndex = new Dictionary<DeclareObject, LocalCaptureInfo>(_localScopeCaptureIndex);
+            var oldScopeUpvaluesArray = _scopeUpvaluesArray;
+            var oldIsCompilingBlock = _isCompilingBlock;
+
+            ilOffset = -1;
+            lastLocation = long.MinValue;
+            _isCompilingBlock = true;
+            _stackManager.Clear();
+            _constantPool.Clear();
+            _locals.Clear();
+            _upvalueMap.Clear();
+            _localScopeCaptureIndex.Clear();
+            _scopeUpvaluesArray = null;
+            _scope = new CodeScope(null, ScopeType.Global).Enter(ScopeType.Function);
+
+            var hoister = new ConstantHoister();
+            InitializeConstantPool(hoister.GetLiteralStats(block));
+
+            var parameterNames = parameters ?? Array.Empty<string>();
+            _nextBlockParameters = parameterNames;
+            for (var i = 0; i < parameterNames.Count; i++)
+            {
+                var name = parameterNames[i];
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    throw new AuroraEmitException(block, "CompileBlock parameter names cannot be empty.");
+                }
+                var declare = _scope.Declare(name, DeclareType.Variable, MemberAccess.Internal);
+                var local = _il.DeclareLocal(typeof(ScriptDatum));
+                WriteLocalSymbol(local, name);
+                _locals[declare] = local;
+                _il.Emit(OpCodes.Ldarg_1);
+                _il.Emit(OpCodes.Ldc_I4, i);
+                _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_GetArg);
+                _il.Emit(OpCodes.Stloc, local);
+            }
+
+            block.Accept(this);
+
+            if (block.ChildNodes.LastOrDefault() is not ReturnStatement)
+            {
+                builder.LoadNull(_il);
+                _il.Emit(OpCodes.Ret);
+            }
+
+            _scope = oldScope;
+            _stackManager.RestoreState(oldStackState);
+            _nextBlockParameters = oldNextBlockParameters;
+            _constantPool.Clear();
+            foreach (var kv in oldConstantPool) _constantPool.Add(kv.Key, kv.Value);
+            _locals.Clear();
+            foreach (var kv in oldLocals) _locals.Add(kv.Key, kv.Value);
+            _upvalueMap.Clear();
+            foreach (var kv in oldUpvalueMap) _upvalueMap.Add(kv.Key, kv.Value);
+            _localScopeCaptureIndex.Clear();
+            foreach (var kv in oldLocalScopeCaptureIndex) _localScopeCaptureIndex.Add(kv.Key, kv.Value);
+            _scopeUpvaluesArray = oldScopeUpvaluesArray;
+            _isCompilingBlock = oldIsCompilingBlock;
+
+            return method;
+        }
+
         public DynamicCallMethod VisitHotPatch(ModuleDeclaration mainModule, ModuleDeclaration[] modules, HotPatchType patchType, IEnumerable<string> existingProperties)
         {
             _patchType = patchType;
             var (patchMethod, patchIL) = builder.DefineDynamicMethod(mainModule);
             var pathHash = mainModule.ModulePath.GetHashCode();
-            _modules[mainModule.ModuleName] = new ModuleState(mainModule.ModuleName, pathHash, patchMethod, patchIL, new Dictionary<FunctionDeclaration, MethodInfo>());
+            _modules[mainModule.ModuleName] = new ModuleState(mainModule.ModuleName, pathHash, patchMethod, patchIL, new Dictionary<FunctionDeclaration, MethodInfo>(), new Dictionary<FunctionDeclaration, FieldInfo>());
             _il = patchIL;
 
             // 1. Dependency registration and initialization
@@ -78,7 +167,7 @@ namespace AuroraScript.Compiler.Emits
                 var moduleName = module.ModuleName;
                 var (moduleInitMethod, moduleIL) = builder.DefineModuleInitMethod(module);
                 var depPathHash = module.ModulePath.GetHashCode();
-                _modules[moduleName] = new ModuleState(moduleName, depPathHash, moduleInitMethod, moduleIL, new Dictionary<FunctionDeclaration, MethodInfo>());
+                _modules[moduleName] = new ModuleState(moduleName, depPathHash, moduleInitMethod, moduleIL, new Dictionary<FunctionDeclaration, MethodInfo>(), new Dictionary<FunctionDeclaration, FieldInfo>());
 
                 // Register/Ensure
                 _il.Emit(OpCodes.Ldloc, globalLoc);
@@ -243,7 +332,7 @@ namespace AuroraScript.Compiler.Emits
 
                 // ModuleState update
                 var pathHash = module.ModulePath.GetHashCode();
-                _modules[moduleName] = new ModuleState(moduleName, pathHash, moduleInitMethod, moduleIL, new Dictionary<FunctionDeclaration, MethodInfo>());
+                _modules[moduleName] = new ModuleState(moduleName, pathHash, moduleInitMethod, moduleIL, new Dictionary<FunctionDeclaration, MethodInfo>(), new Dictionary<FunctionDeclaration, FieldInfo>());
 
                 // 2. Register Module
                 il.Emit(OpCodes.Ldloc, globalLoc);
@@ -328,6 +417,21 @@ namespace AuroraScript.Compiler.Emits
         /// <param name="targetType"></param>
         private void EnsureTop(Type targetType) => _stackManager.EnsureTop(_il, targetType);
 
+        private Type EmitObjectLike(Expression expression)
+        {
+            expression.Accept(this);
+            var topType = PopType();
+            if (topType == typeof(ScriptDatum) || typeof(ScriptObject).IsAssignableFrom(topType))
+            {
+                return topType == typeof(ScriptDatum) ? typeof(ScriptDatum) : typeof(ScriptObject);
+            }
+
+            PushType(topType);
+            EnsureTop(typeof(ScriptObject));
+            PopType();
+            return typeof(ScriptObject);
+        }
+
         private void EmitToBooleanFromTop()
         {
             var topType = PopType();
@@ -355,6 +459,7 @@ namespace AuroraScript.Compiler.Emits
             ilOffset = -1;
             lastLocation = long.MinValue;
             _constantPool.Clear();
+            InitializeModuleCallOptimization(node);
             var hoister = new ConstantHoister();
             var stats = hoister.GetLiteralStats(node);
             InitializeConstantPool(stats);
@@ -363,6 +468,101 @@ namespace AuroraScript.Compiler.Emits
 
             _il.Emit(OpCodes.Ret);
             _scope = _scope.Leave();
+        }
+
+        private void InitializeModuleCallOptimization(ModuleDeclaration node)
+        {
+            if (!EnableDirectModuleCalls)
+            {
+                return;
+            }
+
+            var functions = new Dictionary<string, FunctionDeclaration>(StringComparer.Ordinal);
+            var assigned = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var function in node.Functions)
+            {
+                if (function.Flags == FunctionFlags.Declare || function.Name == null)
+                {
+                    continue;
+                }
+                functions.TryAdd(function.Name.Value, function);
+            }
+            CollectAssignedNames(node, assigned);
+            _moduleFunctionNames[node.ModuleName] = functions;
+            _moduleAssignedNames[node.ModuleName] = assigned;
+        }
+
+        private static void CollectAssignedNames(AstNode node, HashSet<string> assigned)
+        {
+            if (node == null)
+            {
+                return;
+            }
+            if (node is AssignmentExpression { Left: NameExpression name })
+            {
+                assigned.Add(name.Identifier.Value);
+            }
+
+            foreach (var child in node.ChildNodes)
+            {
+                CollectAssignedNames(child, assigned);
+            }
+        }
+
+        private static int GetFastFunctionArity(FunctionDeclaration function)
+        {
+            if (UsesArgumentsObject(function.Body)) return -1;
+
+            var parameters = function.Parameters;
+            if (parameters == null || parameters.Count == 0) return 0;
+            if (parameters.Count is >= 1 and <= 7 && parameters.All(static parameter => parameter.Initializer == null)) return parameters.Count;
+            return -1;
+        }
+
+        private static bool UsesArgumentsObject(AstNode node)
+        {
+            if (node == null) return false;
+            if (node is NameExpression nameNode && nameNode.Identifier.Value == "$args") return true;
+
+            foreach (var child in EnumerateScanChildren(node))
+            {
+                if (child is FunctionDeclaration) continue;
+                if (UsesArgumentsObject(child)) return true;
+            }
+
+            return false;
+        }
+
+        private static IEnumerable<AstNode> EnumerateScanChildren(AstNode node)
+        {
+            switch (node)
+            {
+                case FunctionCallExpression call:
+                    if (call.Target != null) yield return call.Target;
+                    foreach (var argument in call.Arguments) yield return argument;
+                    yield break;
+                case GetPropertyExpression getProperty:
+                    if (getProperty.Object != null) yield return getProperty.Object;
+                    if (getProperty.Property != null) yield return getProperty.Property;
+                    yield break;
+                case GetElementExpression getElement:
+                    if (getElement.Object != null) yield return getElement.Object;
+                    if (getElement.Index != null) yield return getElement.Index;
+                    yield break;
+                case BinaryExpression binary:
+                    if (binary.Left != null) yield return binary.Left;
+                    if (binary.Right != null) yield return binary.Right;
+                    yield break;
+                case AssignmentExpression assignment:
+                    if (assignment.Left != null) yield return assignment.Left;
+                    if (assignment.Right != null) yield return assignment.Right;
+                    yield break;
+            }
+
+            foreach (var child in node.ChildNodes)
+            {
+                yield return child;
+            }
         }
 
         protected override void VisitImportDeclaration(ImportDeclaration node)
@@ -698,9 +898,7 @@ namespace AuroraScript.Compiler.Emits
             }
 
             // 1. Visit Object
-            node.Object.Accept(this);
-            EnsureTop(typeof(ScriptObject));
-            PopType(); // Receiver Object
+            var receiverType = EmitObjectLike(node.Object);
             _il.Emit(OpCodes.Ldarg_0);
             // 2. Property name
             if (node.Property is NameExpression nameExp)
@@ -716,7 +914,8 @@ namespace AuroraScript.Compiler.Emits
                 PopType(); // Name
             }
             // 3. Call GetPropertyValue
-            _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptObject_GetPropertyDatum);
+            _il.Emit(receiverType == typeof(ScriptDatum) ? OpCodes.Call : OpCodes.Callvirt,
+                receiverType == typeof(ScriptDatum) ? RuntimeMetadata.CILHelper_GetProperty : RuntimeMetadata.ScriptObject_GetPropertyDatum);
             PushType(typeof(ScriptDatum));
         }
 
@@ -729,11 +928,9 @@ namespace AuroraScript.Compiler.Emits
 
             if (propertyName.Identifier.Value == "length")
             {
-                node.Object.Accept(this);
-                EnsureTop(typeof(ScriptObject));
-                PopType();
+                var receiverType = EmitObjectLike(node.Object);
                 _il.Emit(OpCodes.Ldarg_0);
-                _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_GetLength);
+                _il.Emit(OpCodes.Call, receiverType == typeof(ScriptDatum) ? RuntimeMetadata.CILHelper_GetLengthDatum : RuntimeMetadata.CILHelper_GetLength);
                 PushType(typeof(ScriptDatum));
                 return true;
             }
@@ -743,14 +940,12 @@ namespace AuroraScript.Compiler.Emits
                 inner.Object is GetPropertyExpression rootChain &&
                 rootChain.Property is NameExpression rootProperty)
             {
-                rootChain.Object.Accept(this);
-                EnsureTop(typeof(ScriptObject));
-                PopType();
+                var receiverType = EmitObjectLike(rootChain.Object);
                 _il.Emit(OpCodes.Ldarg_0);
                 builder.LoadStringConstant(_il, rootProperty.Identifier.Value);
                 builder.LoadStringConstant(_il, innerProperty.Identifier.Value);
                 builder.LoadStringConstant(_il, propertyName.Identifier.Value);
-                _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_GetProperty3);
+                _il.Emit(OpCodes.Call, receiverType == typeof(ScriptDatum) ? RuntimeMetadata.CILHelper_GetProperty3Datum : RuntimeMetadata.CILHelper_GetProperty3);
                 PushType(typeof(ScriptDatum));
                 return true;
             }
@@ -758,13 +953,11 @@ namespace AuroraScript.Compiler.Emits
             if (node.Object is GetPropertyExpression innerChain &&
                 innerChain.Property is NameExpression innerName)
             {
-                innerChain.Object.Accept(this);
-                EnsureTop(typeof(ScriptObject));
-                PopType();
+                var receiverType = EmitObjectLike(innerChain.Object);
                 _il.Emit(OpCodes.Ldarg_0);
                 builder.LoadStringConstant(_il, innerName.Identifier.Value);
                 builder.LoadStringConstant(_il, propertyName.Identifier.Value);
-                _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_GetProperty2);
+                _il.Emit(OpCodes.Call, receiverType == typeof(ScriptDatum) ? RuntimeMetadata.CILHelper_GetProperty2Datum : RuntimeMetadata.CILHelper_GetProperty2);
                 PushType(typeof(ScriptDatum));
                 return true;
             }
@@ -841,13 +1034,11 @@ namespace AuroraScript.Compiler.Emits
 
         protected override void VisitGetElementExpression(GetElementExpression node)
         {
-            node.Object.Accept(this);
-            EnsureTop(typeof(ScriptObject));
-            PopType(); // Object
+            var receiverType = EmitObjectLike(node.Object);
             node.Index.Accept(this);
             EnsureTop(typeof(ScriptDatum));
             PopType(); // Index
-            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_GetElement);
+            _il.Emit(OpCodes.Call, receiverType == typeof(ScriptDatum) ? RuntimeMetadata.CILHelper_GetElementDatum : RuntimeMetadata.CILHelper_GetElement);
             PushType(typeof(ScriptDatum));
         }
 
@@ -918,9 +1109,7 @@ namespace AuroraScript.Compiler.Emits
 
         protected override void VisitSetElementExpression(SetElementExpression node)
         {
-            node.Object.Accept(this);
-            EnsureTop(typeof(ScriptObject));
-            PopType(); // Object
+            var receiverType = EmitObjectLike(node.Object);
             node.Index.Accept(this);
             EnsureTop(typeof(ScriptDatum));
             PopType(); // Index
@@ -928,7 +1117,7 @@ namespace AuroraScript.Compiler.Emits
             EnsureTop(typeof(ScriptDatum));
             PopType(); // Value
 
-            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_SetElement);
+            _il.Emit(OpCodes.Call, receiverType == typeof(ScriptDatum) ? RuntimeMetadata.CILHelper_SetElementDatum : RuntimeMetadata.CILHelper_SetElement);
         }
 
         protected override void VisitBinaryExpression(BinaryExpression node)
@@ -1531,6 +1720,17 @@ namespace AuroraScript.Compiler.Emits
             // We analyze to find escaped locals. For function bodies, we also pass parameter names to see if they escape.
             analyzer.Analyze(node, _scope, paramNames);
 
+            if (_isCompilingBlock)
+            {
+                foreach (var func in node.Functions)
+                {
+                    if (CanDirectLocalFunction(func, _scope))
+                    {
+                        _directLocalFunctions.Add(func);
+                    }
+                }
+            }
+
             if (analyzer.EscapedLocals.Count > 0) // and  || analyzer.Upvalues.Any()
             {
                 // We have new local variables that escape from this block.
@@ -1658,6 +1858,14 @@ namespace AuroraScript.Compiler.Emits
         {
             if (node.Flags == FunctionFlags.Declare) return;
 
+            if (_directLocalFunctions.Contains(node))
+            {
+                CompileFunction(node);
+                _il.Emit(OpCodes.Pop);
+                PopType();
+                return;
+            }
+
             if (_scope.ScopeType == Core.ScopeType.Module)
             {
                 _il.Emit(OpCodes.Ldarg_0);
@@ -1715,62 +1923,6 @@ namespace AuroraScript.Compiler.Emits
 
         private void CompileFunction(FunctionDeclaration node)
         {
-            static int GetFastFunctionArity(FunctionDeclaration function)
-            {
-                if (UsesArgumentsObject(function.Body)) return -1;
-
-                var parameters = function.Parameters;
-                if (parameters == null || parameters.Count == 0) return 0;
-                if (parameters.Count is >= 1 and <= 7 && parameters.All(static parameter => parameter.Initializer == null)) return parameters.Count;
-                return -1;
-            }
-
-            static bool UsesArgumentsObject(AstNode node)
-            {
-                if (node == null) return false;
-                if (node is NameExpression nameNode && nameNode.Identifier.Value == "$args") return true;
-
-                foreach (var child in EnumerateScanChildren(node))
-                {
-                    if (child is FunctionDeclaration) continue;
-                    if (UsesArgumentsObject(child)) return true;
-                }
-
-                return false;
-            }
-
-            static IEnumerable<AstNode> EnumerateScanChildren(AstNode node)
-            {
-                switch (node)
-                {
-                    case FunctionCallExpression call:
-                        if (call.Target != null) yield return call.Target;
-                        foreach (var argument in call.Arguments) yield return argument;
-                        yield break;
-                    case GetPropertyExpression getProperty:
-                        if (getProperty.Object != null) yield return getProperty.Object;
-                        if (getProperty.Property != null) yield return getProperty.Property;
-                        yield break;
-                    case GetElementExpression getElement:
-                        if (getElement.Object != null) yield return getElement.Object;
-                        if (getElement.Index != null) yield return getElement.Index;
-                        yield break;
-                    case BinaryExpression binary:
-                        if (binary.Left != null) yield return binary.Left;
-                        if (binary.Right != null) yield return binary.Right;
-                        yield break;
-                    case AssignmentExpression assignment:
-                        if (assignment.Left != null) yield return assignment.Left;
-                        if (assignment.Right != null) yield return assignment.Right;
-                        yield break;
-                }
-
-                foreach (var child in node.ChildNodes)
-                {
-                    yield return child;
-                }
-            }
-
             // Check if already compiled
             if (_currentModule.Methods.TryGetValue(node, out var method))
             {
@@ -1820,6 +1972,10 @@ namespace AuroraScript.Compiler.Emits
             ilOffset = -1;
             lastLocation = long.MinValue;
             _currentModule.Methods[node] = method;
+            if (IsDirectModuleFunction(node) && !_currentModule.DirectClosures.ContainsKey(node))
+            {
+                _currentModule.DirectClosures[node] = builder.DefineModuleField(_currentModule.Name, $"__direct_{node.Name.Value}", typeof(ClosureFunction));
+            }
             _scope = _scope.Enter(ScopeType.Function);
 
             var oldConstantPool = new Dictionary<object, LocalBuilder>(_constantPool);
@@ -2042,6 +2198,11 @@ namespace AuroraScript.Compiler.Emits
                 _ => RuntimeMetadata.ClosureFunction_Ctor
             };
             _il.Emit(OpCodes.Newobj, closureCtor);
+            if (_currentModule.DirectClosures.TryGetValue(node, out var directClosureField))
+            {
+                _il.Emit(OpCodes.Dup);
+                _il.Emit(OpCodes.Stsfld, directClosureField);
+            }
             PushType(typeof(ClosureFunction));
         }
 
@@ -2219,6 +2380,16 @@ namespace AuroraScript.Compiler.Emits
 
         protected override void VisitCallExpression(FunctionCallExpression node)
         {
+            if (TryEmitDirectLocalCall(node))
+            {
+                return;
+            }
+
+            if (TryEmitDirectModuleCall(node))
+            {
+                return;
+            }
+
             if (node.Target is GetPropertyExpression { Property: NameExpression name } propertyCall)
             {
                 var hasSpread = node.Arguments.Any(x => x is SpreadExpression);
@@ -2438,12 +2609,183 @@ namespace AuroraScript.Compiler.Emits
             }
         }
 
+        private bool TryEmitDirectLocalCall(FunctionCallExpression node)
+        {
+            if (!_isCompilingBlock ||
+                node.Target is not NameExpression targetName ||
+                node.Arguments.Any(static x => x is SpreadExpression))
+            {
+                return false;
+            }
+
+            FunctionDeclaration function = null;
+            foreach (var candidate in _directLocalFunctions)
+            {
+                if (candidate.Name?.Value == targetName.Identifier.Value)
+                {
+                    function = candidate;
+                    break;
+                }
+            }
+            if (function == null ||
+                !_currentModule.Methods.TryGetValue(function, out var method) ||
+                method is DynamicMethod && node.Arguments.Count != GetFastFunctionArity(function))
+            {
+                return false;
+            }
+
+            var arity = GetFastFunctionArity(function);
+            if (arity < 0 || arity != node.Arguments.Count)
+            {
+                return false;
+            }
+
+            _il.Emit(OpCodes.Ldarg_0);
+            for (var i = 0; i < node.Arguments.Count; i++)
+            {
+                node.Arguments[i].Accept(this);
+                EnsureTop(typeof(ScriptDatum));
+                PopType();
+            }
+
+            EmitNodeLocation(node);
+            _il.Emit(OpCodes.Call, method);
+            if (node.NeedResult)
+            {
+                PushType(typeof(ScriptDatum));
+            }
+            else
+            {
+                _il.Emit(OpCodes.Pop);
+            }
+            return true;
+        }
+
+        private bool TryEmitDirectModuleCall(FunctionCallExpression node)
+        {
+            if (!EnableDirectModuleCalls ||
+                node.Target is not NameExpression targetName ||
+                node.Arguments.Any(static x => x is SpreadExpression) ||
+                !_moduleFunctionNames.TryGetValue(_currentModule.Name, out var functionNames) ||
+                !_moduleAssignedNames.TryGetValue(_currentModule.Name, out var assignedNames) ||
+                !functionNames.TryGetValue(targetName.Identifier.Value, out var function) ||
+                assignedNames.Contains(targetName.Identifier.Value) ||
+                !_currentModule.Methods.TryGetValue(function, out var method) ||
+                !_currentModule.DirectClosures.TryGetValue(function, out var directClosureField) ||
+                method is DynamicMethod)
+            {
+                return false;
+            }
+
+            var arity = GetFastFunctionArity(function);
+            if (arity < 0 || arity != node.Arguments.Count)
+            {
+                return false;
+            }
+
+            var directContext = _il.DeclareLocal(typeof(ScriptContext));
+            WriteLocalSymbol(directContext, name: null);
+
+            _il.Emit(OpCodes.Ldarg_0);
+            _il.Emit(OpCodes.Ldsfld, directClosureField);
+            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_EnterDirectClosure);
+            _il.Emit(OpCodes.Stloc, directContext);
+
+            _il.Emit(OpCodes.Ldloc, directContext);
+
+            for (var i = 0; i < node.Arguments.Count; i++)
+            {
+                node.Arguments[i].Accept(this);
+                EnsureTop(typeof(ScriptDatum));
+                PopType();
+            }
+
+            EmitNodeLocation(node);
+            _il.Emit(OpCodes.Call, method);
+            var directResult = _il.DeclareLocal(typeof(ScriptDatum));
+            WriteLocalSymbol(directResult, name: null);
+            _il.Emit(OpCodes.Stloc, directResult);
+            _il.Emit(OpCodes.Ldloc, directContext);
+            _il.Emit(OpCodes.Ldloc, directResult);
+            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_LeaveDirect);
+
+            if (node.NeedResult)
+            {
+                PushType(typeof(ScriptDatum));
+            }
+            else
+            {
+                _il.Emit(OpCodes.Pop);
+            }
+            return true;
+        }
+
+        private bool CanDirectLocalFunction(FunctionDeclaration function, CodeScope parentScope)
+        {
+            if (function.Flags == FunctionFlags.Declare ||
+                function.Name == null ||
+                GetFastFunctionArity(function) < 0)
+            {
+                return false;
+            }
+
+            var analyzer = new ClosureAnalyzer();
+            analyzer.Analyze(function, parentScope);
+            return analyzer.Upvalues.Count == 0 && analyzer.EscapedLocals.Count == 0;
+        }
+
+        private bool IsDirectModuleFunction(FunctionDeclaration function)
+        {
+            return EnableDirectModuleCalls &&
+                function.Name != null &&
+                _moduleFunctionNames.TryGetValue(_currentModule.Name, out var functionNames) &&
+                functionNames.TryGetValue(function.Name.Value, out var moduleFunction) &&
+                ReferenceEquals(moduleFunction, function) &&
+                _moduleAssignedNames.TryGetValue(_currentModule.Name, out var assignedNames) &&
+                !assignedNames.Contains(function.Name.Value) &&
+                GetFastFunctionArity(function) >= 0;
+        }
+
         protected override void VisitNewExpression(NewExpression node)
         {
             // 1. Target
             node.Expression.Target.Accept(this);
             EnsureTop(typeof(ScriptObject));
             PopType();
+
+            var hasSpread = node.Expression.Arguments.Any(x => x is SpreadExpression);
+            if (!hasSpread && node.Expression.Arguments.Count == 0)
+            {
+                _il.Emit(OpCodes.Ldarg_0);
+                _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_New0);
+                PushType(typeof(ScriptDatum));
+                return;
+            }
+
+            if (!hasSpread && node.Expression.Arguments.Count == 1)
+            {
+                _il.Emit(OpCodes.Ldarg_0);
+                node.Expression.Arguments[0].Accept(this);
+                EnsureTop(typeof(ScriptDatum));
+                PopType();
+                _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_New1);
+                PushType(typeof(ScriptDatum));
+                return;
+            }
+
+            if (!hasSpread && node.Expression.Arguments.Count == 2)
+            {
+                _il.Emit(OpCodes.Ldarg_0);
+                for (var i = 0; i < 2; i++)
+                {
+                    node.Expression.Arguments[i].Accept(this);
+                    EnsureTop(typeof(ScriptDatum));
+                    PopType();
+                }
+                _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_New2);
+                PushType(typeof(ScriptDatum));
+                return;
+            }
 
             // 2. Arguments (pushes Ctx and ArgsArray)
             EmitCallArguments(node.Expression);

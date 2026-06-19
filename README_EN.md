@@ -98,6 +98,35 @@ var domain = engine.CreateDomain();
 domain.Execute("MAIN", "main");
 ```
 
+### Compiling Lightweight Script Blocks (CompileBlock)
+
+`CompileBlock` compiles a high-performance lightweight anonymous script block. It does not create a module, does not register anything in `global.modules`, and does not participate in hot reload. It is intended for frequently invoked small scripts such as rules, formulas, filters, or business decision snippets.
+
+```csharp
+var block = engine.CompileBlock("""
+function clamp(v, min, max) {
+    if (v < min) return min;
+    if (v > max) return max;
+    return v;
+}
+
+return clamp(x, 0, 100) + PI;
+""", new CompileBlockOptions
+{
+    Parameters = ["x"],
+    SourceName = "rules/clamp.as"
+});
+
+var domain = engine.CreateEmptyDomain(g =>
+{
+    g.Define("PI", new NumberValue(Math.PI), writeable: false, enumerable: true);
+});
+
+var result = block.Invoke(domain, ScriptDatum.FromNumber(125));
+```
+
+The source is treated as an anonymous function body, so you can write `return`, `if`, `for`, `var`, and local `function` declarations directly. Parameter names are declared at compile time through `Parameters`, and runtime values are passed positionally. Non-capturing local functions with fixed arity use a direct-call path; local functions that capture outer variables automatically keep closure semantics.
+
 ### Writing Scripts
 
 AuroraScript uses a syntax familiar to JavaScript developers:
@@ -284,6 +313,17 @@ Dynamic runtime module patching and repair.
 ## 🔥 HotPatch (Hot-fix)
 
 AuroraScript provides powerful hot-fix capabilities, allowing you to update script logic in a running `ScriptDomain` without restarting the application or losing runtime state.
+
+Hot patching is controlled by `EngineOptions.EnableHotReload`, which defaults to `true`. Disabling it blocks `DynamicPatch` and the script-side `HotPatch` API, and allows the compiler to enable more aggressive module-local direct-call optimizations:
+
+```csharp
+var options = EngineOptions.Default
+    .WithEnableHotReload(false)
+    .WithCompilationMode(CompilationMode.Persistence)
+    .WithOptimizeOption(OptimizeOptions.Release);
+```
+
+Disable hot reload for production workloads that do not need runtime patching and prioritize faster call paths and lighter generated CIL. Keep `EnableHotReload=true` when scripts must be replaced or incrementally updated at runtime.
 
 ### 1. .NET API (Host Side)
 Use `domain.DynamicPatch` to apply patches from the host:

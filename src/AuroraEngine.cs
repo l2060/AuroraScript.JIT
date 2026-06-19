@@ -1,4 +1,5 @@
 ﻿using AuroraScript.Compiler;
+using AuroraScript.Compiler.Analyzer;
 using AuroraScript.Compiler.Emits;
 using AuroraScript.Compiler.Emits.Builders;
 using AuroraScript.Core;
@@ -195,6 +196,39 @@ namespace AuroraScript
             {
                 EntryPoint = builder.GetRuntimeEntryPoint();
             }
+        }
+
+        /// <summary>
+        /// Compiles a lightweight script block as an anonymous function body.
+        /// </summary>
+        /// <param name="source">The script block source.</param>
+        /// <param name="options">The block compilation options.</param>
+        /// <returns>A compiled block that can be invoked directly.</returns>
+        public CompiledBlock CompileBlock(string source, CompileBlockOptions options = null)
+        {
+            if (source == null)
+            {
+                throw new ArgumentNullException(nameof(source));
+            }
+
+            options ??= new CompileBlockOptions();
+            var sourceName = string.IsNullOrWhiteSpace(options.SourceName) ? "__compile_block__.as" : options.SourceName;
+            var scriptSource = MemorySource(sourceName, source);
+            var lexer = new AuroraLexer(Options.BaseDirectory, scriptSource);
+            var parser = new AuroraParser(lexer, Options);
+            var block = parser.ParseBlockBody();
+
+            var builderOptions = Options with
+            {
+                CompilationMode = CompilationMode.Dynamic,
+                EnableHotReload = false,
+                OptimizeOption = OptimizeOptions.Release
+            };
+            var builder = new DynamicBuilder(builderOptions);
+            var emitter = new CILEmitter(builder, builderOptions);
+            var method = emitter.CompileBlock(block, options.Parameters, sourceName);
+            var target = method.CreateDelegate<ScriptFunctionDelegate>();
+            return new CompiledBlock(this, target);
         }
 
         /// <summary>
