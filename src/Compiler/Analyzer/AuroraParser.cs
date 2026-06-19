@@ -130,6 +130,7 @@ namespace AuroraScript.Compiler.Analyzer
                 while (true)
                 {
                     if (this.Lexer.TestNext(Symbols.KW_EOF)) break;
+                    RejectModuleOnlyBlockStatement();
                     var node = ParseStatement();
                     if (node == null) continue;
 
@@ -146,6 +147,24 @@ namespace AuroraScript.Compiler.Analyzer
                 }
                 SetSourceRecursive(block);
                 return block;
+            }
+        }
+
+        private void RejectModuleOnlyBlockStatement()
+        {
+            var token = this.Lexer.LookAtHead();
+            if (token == null || token == Token.EOF)
+            {
+                return;
+            }
+
+            if (token.Symbol == Symbols.PT_METAINFO ||
+                token.Symbol == Symbols.KW_IMPORT ||
+                token.Symbol == Symbols.KW_INCLUDE ||
+                token.Symbol == Symbols.KW_EXPORT ||
+                token.Symbol == Symbols.KW_DECLARE)
+            {
+                throw new AuroraParseException(this.Lexer.FullPath, token, $"CompileBlock does not support module-level statement '{token.Value}'.");
             }
         }
 

@@ -19,6 +19,14 @@ namespace AuroraScript.Runtime
         }
 
         /// <summary>
+        /// Invokes the compiled block in the specified domain without arguments.
+        /// </summary>
+        public ScriptDatum Invoke(ScriptDomain domain)
+        {
+            return Invoke(domain, Array.Empty<ScriptDatum>());
+        }
+
+        /// <summary>
         /// Invokes the compiled block in the specified domain with raw script arguments.
         /// </summary>
         public ScriptDatum Invoke(ScriptDomain domain, params ScriptDatum[] arguments)

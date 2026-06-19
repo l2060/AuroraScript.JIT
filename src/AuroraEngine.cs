@@ -9,6 +9,7 @@ using AuroraScript.Runtime.Interop;
 using AuroraScript.Runtime.Types;
 using AuroraScript.Runtime.Types.TypeConstruct;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -212,6 +213,7 @@ namespace AuroraScript
             }
 
             options ??= new CompileBlockOptions();
+            ValidateCompileBlockParameters(options.Parameters);
             var sourceName = string.IsNullOrWhiteSpace(options.SourceName) ? "__compile_block__.as" : options.SourceName;
             var scriptSource = MemorySource(sourceName, source);
             var lexer = new AuroraLexer(Options.BaseDirectory, scriptSource);
@@ -229,6 +231,72 @@ namespace AuroraScript
             var method = emitter.CompileBlock(block, options.Parameters, sourceName);
             var target = method.CreateDelegate<ScriptFunctionDelegate>();
             return new CompiledBlock(this, target);
+        }
+
+        private static void ValidateCompileBlockParameters(IReadOnlyList<string> parameters)
+        {
+            if (parameters == null)
+            {
+                return;
+            }
+
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            for (var i = 0; i < parameters.Count; i++)
+            {
+                var name = parameters[i];
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    throw new ArgumentException("CompileBlock parameter names cannot be empty.", nameof(parameters));
+                }
+
+                if (!IsValidCompileBlockParameterName(name))
+                {
+                    throw new ArgumentException($"Invalid CompileBlock parameter name '{name}'.", nameof(parameters));
+                }
+
+                if (!names.Add(name))
+                {
+                    throw new ArgumentException($"Duplicate CompileBlock parameter name '{name}'.", nameof(parameters));
+                }
+            }
+        }
+
+        private static bool IsValidCompileBlockParameterName(string name)
+        {
+            if (name == "global" || name == "$args" || name == "$state")
+            {
+                return false;
+            }
+
+            if (name.Length == 0)
+            {
+                return false;
+            }
+
+            if (!IsIdentifierStart(name[0]))
+            {
+                return false;
+            }
+
+            for (var i = 1; i < name.Length; i++)
+            {
+                if (!IsIdentifierPart(name[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool IsIdentifierStart(char c)
+        {
+            return c == '_' || c == '$' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= 0x4e00 && c <= 0x9fbb);
+        }
+
+        private static bool IsIdentifierPart(char c)
+        {
+            return IsIdentifierStart(c) || (c >= '0' && c <= '9');
         }
 
         /// <summary>
