@@ -93,6 +93,7 @@ namespace AuroraScript.Runtime
 
         /// <summary> The previous context in a linked list or stack of execution contexts (e.g., for call frames). </summary>
         public ScriptContext Previous;
+        internal ScriptContext PoolNext;
         /// <summary> The current execution location or instruction pointer within the code. </summary>
         public Int64 Location;
 
@@ -186,6 +187,15 @@ namespace AuroraScript.Runtime
             Next = null;
             Location = 0;
             Domain.ContextPool.Return(this);
+        }
+
+        internal void ReleaseLinked()
+        {
+            while (Next != null)
+            {
+                Next.ReleaseLinked();
+            }
+            Release();
         }
 
 

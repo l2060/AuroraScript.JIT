@@ -121,7 +121,7 @@ namespace AuroraScript.Runtime.Types
         internal ScriptDatum Invoke0(ScriptContext ctx)
         {
             var context = ctx.With(Module, this);
-            return fastArity switch
+            var result = fastArity switch
             {
                 0 => ((ScriptFunctionDelegate0)targetDelegate).Invoke(context),
                 1 => ((ScriptFunctionDelegate1)targetDelegate).Invoke(context, ScriptDatum.Null),
@@ -133,12 +133,13 @@ namespace AuroraScript.Runtime.Types
                 7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(context, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
                 _ => ((ScriptFunctionDelegate)targetDelegate).Invoke(context, Array.Empty<ScriptDatum>())
             };
+            return ReturnAndRelease(context, result);
         }
 
         internal ScriptDatum Invoke1(ScriptContext ctx, ScriptDatum arg0)
         {
             var context = ctx.With(Module, this);
-            return fastArity switch
+            var result = fastArity switch
             {
                 0 => ((ScriptFunctionDelegate0)targetDelegate).Invoke(context),
                 1 => ((ScriptFunctionDelegate1)targetDelegate).Invoke(context, arg0),
@@ -150,12 +151,13 @@ namespace AuroraScript.Runtime.Types
                 7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(context, arg0, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
                 _ => ((ScriptFunctionDelegate)targetDelegate).Invoke(context, [arg0])
             };
+            return ReturnAndRelease(context, result);
         }
 
         internal ScriptDatum Invoke2(ScriptContext ctx, ScriptDatum arg0, ScriptDatum arg1)
         {
             var context = ctx.With(Module, this);
-            return fastArity switch
+            var result = fastArity switch
             {
                 0 => ((ScriptFunctionDelegate0)targetDelegate).Invoke(context),
                 1 => ((ScriptFunctionDelegate1)targetDelegate).Invoke(context, arg0),
@@ -167,12 +169,13 @@ namespace AuroraScript.Runtime.Types
                 7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(context, arg0, arg1, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
                 _ => ((ScriptFunctionDelegate)targetDelegate).Invoke(context, [arg0, arg1])
             };
+            return ReturnAndRelease(context, result);
         }
 
         internal ScriptDatum Invoke3(ScriptContext ctx, ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2)
         {
             var context = ctx.With(Module, this);
-            return fastArity switch
+            var result = fastArity switch
             {
                 0 => ((ScriptFunctionDelegate0)targetDelegate).Invoke(context),
                 1 => ((ScriptFunctionDelegate1)targetDelegate).Invoke(context, arg0),
@@ -184,12 +187,13 @@ namespace AuroraScript.Runtime.Types
                 7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(context, arg0, arg1, arg2, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
                 _ => ((ScriptFunctionDelegate)targetDelegate).Invoke(context, [arg0, arg1, arg2])
             };
+            return ReturnAndRelease(context, result);
         }
 
         internal ScriptDatum Invoke4(ScriptContext ctx, ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3)
         {
             var context = ctx.With(Module, this);
-            return fastArity switch
+            var result = fastArity switch
             {
                 0 => ((ScriptFunctionDelegate0)targetDelegate).Invoke(context),
                 1 => ((ScriptFunctionDelegate1)targetDelegate).Invoke(context, arg0),
@@ -201,12 +205,13 @@ namespace AuroraScript.Runtime.Types
                 7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
                 _ => ((ScriptFunctionDelegate)targetDelegate).Invoke(context, [arg0, arg1, arg2, arg3])
             };
+            return ReturnAndRelease(context, result);
         }
 
         internal ScriptDatum Invoke5(ScriptContext ctx, ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4)
         {
             var context = ctx.With(Module, this);
-            return fastArity switch
+            var result = fastArity switch
             {
                 0 => ((ScriptFunctionDelegate0)targetDelegate).Invoke(context),
                 1 => ((ScriptFunctionDelegate1)targetDelegate).Invoke(context, arg0),
@@ -218,12 +223,13 @@ namespace AuroraScript.Runtime.Types
                 7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3, arg4, ScriptDatum.Null, ScriptDatum.Null),
                 _ => ((ScriptFunctionDelegate)targetDelegate).Invoke(context, [arg0, arg1, arg2, arg3, arg4])
             };
+            return ReturnAndRelease(context, result);
         }
 
         internal ScriptDatum Invoke6(ScriptContext ctx, ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5)
         {
             var context = ctx.With(Module, this);
-            return fastArity switch
+            var result = fastArity switch
             {
                 0 => ((ScriptFunctionDelegate0)targetDelegate).Invoke(context),
                 1 => ((ScriptFunctionDelegate1)targetDelegate).Invoke(context, arg0),
@@ -235,12 +241,13 @@ namespace AuroraScript.Runtime.Types
                 7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3, arg4, arg5, ScriptDatum.Null),
                 _ => ((ScriptFunctionDelegate)targetDelegate).Invoke(context, [arg0, arg1, arg2, arg3, arg4, arg5])
             };
+            return ReturnAndRelease(context, result);
         }
 
         internal ScriptDatum Invoke7(ScriptContext ctx, ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6)
         {
             var context = ctx.With(Module, this);
-            return fastArity switch
+            var result = fastArity switch
             {
                 0 => ((ScriptFunctionDelegate0)targetDelegate).Invoke(context),
                 1 => ((ScriptFunctionDelegate1)targetDelegate).Invoke(context, arg0),
@@ -252,6 +259,7 @@ namespace AuroraScript.Runtime.Types
                 7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3, arg4, arg5, arg6),
                 _ => ((ScriptFunctionDelegate)targetDelegate).Invoke(context, [arg0, arg1, arg2, arg3, arg4, arg5, arg6])
             };
+            return ReturnAndRelease(context, result);
         }
 
         /// <summary>Invokes the closure from CLR code and wraps script stack information on failure.</summary>
@@ -263,14 +271,19 @@ namespace AuroraScript.Runtime.Types
             }
             catch (Exception ex)
             {
-                throw new AuroraRuntimeException(ex, ctx.StackTrace());
+                var stackTrace = ctx.StackTrace();
+                while (ctx.Next != null)
+                {
+                    ctx.Next.ReleaseLinked();
+                }
+                throw new AuroraRuntimeException(ex, stackTrace);
             }
         }
 
         private ScriptDatum InvokeArray(ScriptContext ctx, Span<ScriptDatum> args)
         {
             var context = ctx.With(Module, this);
-            return fastArity switch
+            var result = fastArity switch
             {
                 0 => ((ScriptFunctionDelegate0)targetDelegate).Invoke(context),
                 1 => ((ScriptFunctionDelegate1)targetDelegate).Invoke(context, GetArg(args, 0)),
@@ -282,6 +295,17 @@ namespace AuroraScript.Runtime.Types
                 7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(context, GetArg(args, 0), GetArg(args, 1), GetArg(args, 2), GetArg(args, 3), GetArg(args, 4), GetArg(args, 5), GetArg(args, 6)),
                 _ => ((ScriptFunctionDelegate)targetDelegate).Invoke(context, args)
             };
+            return ReturnAndRelease(context, result);
+        }
+
+        private static ScriptDatum ReturnAndRelease(ScriptContext context, ScriptDatum result)
+        {
+            while (context.Next != null)
+            {
+                context.Next.ReleaseLinked();
+            }
+            context.Release();
+            return result;
         }
 
         private static ScriptDatum GetArg(Span<ScriptDatum> args, int index)
