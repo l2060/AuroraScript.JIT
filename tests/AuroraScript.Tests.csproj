@@ -25,7 +25,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\AuroraScript.csproj" />
+    <ProjectReference Include="..\src\AuroraScript.csproj" />
   </ItemGroup>
 
 </Project>
