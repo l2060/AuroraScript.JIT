@@ -19,7 +19,7 @@
 		<Title>AuroraScript</Title>
 		<PackageIcon>icon.png</PackageIcon>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
-		<RepositoryUrl>https://github.com/l2060/AuroraScript</RepositoryUrl>
+		<RepositoryUrl>https://github.com/l2060/AuroraScript.JIT.git</RepositoryUrl>
 		<RepositoryType>git</RepositoryType>
 		<PackageTags>script;scriptengine;aurora</PackageTags>
 		<PackageLicenseFile>LICENSE</PackageLicenseFile>
@@ -29,6 +29,7 @@
 		<ApplicationIcon>icon.ico</ApplicationIcon>
 		<AssemblyTitle>AuroraScript</AssemblyTitle>
 		<GenerateDocumentationFile>True</GenerateDocumentationFile>
+		<PackageProjectUrl>https://github.com/l2060/AuroraScript.JIT.git</PackageProjectUrl>
 	</PropertyGroup>	
 	
 	
