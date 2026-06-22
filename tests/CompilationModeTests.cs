@@ -1,4 +1,5 @@
 using AuroraScript.Tests.Infrastructure;
+using System;
 using System.IO;
 using System.Threading.Tasks;
 using Xunit;
@@ -10,7 +11,9 @@ public sealed class CompilationModeTests
     [Theory]
     [InlineData(CompilationMode.Dynamic)]
     [InlineData(CompilationMode.OnlyRun)]
+#if NET9_0_OR_GREATER
     [InlineData(CompilationMode.Persistence)]
+#endif
     public async Task ReleaseCompilationModesProduceSameResult(CompilationMode mode)
     {
         using var workspace = new TestWorkspace();
@@ -31,6 +34,19 @@ public sealed class CompilationModeTests
             ScriptAssert.Equal(42, TestWorkspace.Execute(engine.CreateDomain(), "run", arguments: AuroraScript.Runtime.ScriptDatum.FromNumber(20)));
         }
     }
+
+#if NET8_0
+    [Fact]
+    public async Task PersistenceModeRequiresNet9OrLater()
+    {
+        using var workspace = new TestWorkspace();
+        var error = await Assert.ThrowsAsync<PlatformNotSupportedException>(() => workspace.CompileModuleAsync(
+            "@module(TEST); export func run() { return 42; }",
+            CompilationMode.Persistence));
+
+        Assert.Contains(".NET 9.0", error.Message);
+    }
+#endif
 
     [Theory]
     [InlineData(false)]

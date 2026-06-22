@@ -19,7 +19,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 [assembly: InternalsVisibleTo("AuroraScript.Generated")]
-[assembly: InternalsVisibleTo("CompilerBenchmark")]
+[assembly: InternalsVisibleTo("Benchmark")]
 [assembly: InternalsVisibleTo("AuroraScript.Tests")]
 
 namespace AuroraScript
@@ -356,17 +356,13 @@ namespace AuroraScript
         /// Creates an empty script domain with optional custom global configuration and user state.
         /// </summary>
         /// <param name="globalConfiguration">A callback to configure the global environment for the domain.</param>
-        /// <param name="userState">Optional state object to pass to the domain context.</param>
+        /// <param name="userState">Optional script object state to pass to the domain context.</param>
         /// <returns>A new <see cref="ScriptDomain"/> instance.</returns>
-        public ScriptDomain CreateEmptyDomain(Action<ScriptGlobal> globalConfiguration, object userState = null)
+        public ScriptDomain CreateEmptyDomain(Action<ScriptGlobal> globalConfiguration, ScriptObject userState = null)
         {
-            ScriptObject stateObject = ScriptObject.Null;
             var domainGlobal = ScriptGlobal.With(this, Global);
             globalConfiguration?.Invoke(domainGlobal);
-            if (userState != null)
-            {
-                stateObject = ClrMarshaller.ToScript(userState);
-            }
+            var stateObject = userState ?? ScriptObject.Null;
             return new ScriptDomain(this, domainGlobal, stateObject);
         }
 
@@ -374,10 +370,10 @@ namespace AuroraScript
         /// Creates a script domain and initializes it by executing the script entry point.
         /// </summary>
         /// <param name="globalConfiguration">A callback to configure the global environment for the domain.</param>
-        /// <param name="userState">Optional state object to pass to the domain context.</param>
+        /// <param name="userState">Optional script object state to pass to the domain context.</param>
         /// <returns>A new <see cref="ScriptDomain"/> instance.</returns>
         /// <exception cref="Exception">Thrown if assembly initialization fails.</exception>
-        public ScriptDomain CreateDomain(Action<ScriptGlobal> globalConfiguration, object userState = null)
+        public ScriptDomain CreateDomain(Action<ScriptGlobal> globalConfiguration, ScriptObject userState = null)
         {
             var domainGlobal = ScriptGlobal.With(this, Global);
             globalConfiguration?.Invoke(domainGlobal);
@@ -389,13 +385,13 @@ namespace AuroraScript
         /// Each script domain has its own global object but shares prototypes.
         /// </summary>
         /// <param name="domainGlobal">The global environment to use for the domain. If null, a new one is created inheriting from the engine's global.</param>
-        /// <param name="userState">Optional state object to pass to the domain context.</param>
+        /// <param name="userState">Optional script object state to pass to the domain context.</param>
         /// <returns>A new <see cref="ScriptDomain"/> instance after initialization.</returns>
         /// <exception cref="Exception">Thrown if assembly initialization fails.</exception>
-        public ScriptDomain CreateDomain(ScriptGlobal domainGlobal = null, object userState = null)
+        public ScriptDomain CreateDomain(ScriptGlobal domainGlobal = null, ScriptObject userState = null)
         {
             domainGlobal ??= ScriptGlobal.With(this, Global);
-            ScriptObject stateObject = ClrMarshaller.ToScript(userState);
+            ScriptObject stateObject = userState ?? ScriptObject.Null;
             var domain = new ScriptDomain(this, domainGlobal, stateObject);
             var ctx = new ScriptContext(domain);
             var entryPoint = _entryPointDelegate ?? throw new AuroraException("The engine has not been built.");

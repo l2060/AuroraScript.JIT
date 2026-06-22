@@ -3100,7 +3100,11 @@ namespace AuroraScript.Compiler.Emits
 
         protected override void VisitDebuggerExpression(DebuggerStatement node)
         {
-            if (builder is PersistedBuilder && Options.OptimizeOption == OptimizeOptions.Debug)
+            if (
+#if NET9_0_OR_GREATER
+                builder is PersistedBuilder &&
+#endif
+                Options.OptimizeOption == OptimizeOptions.Debug)
             {
                 _il.Emit(OpCodes.Break);
             }

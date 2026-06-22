@@ -5,9 +5,7 @@ using AuroraScript.Compiler.Emits;
 using AuroraScript.Compiler.Emits.Builders;
 using AuroraScript.Core;
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Configs;
-using BenchmarkDotNet.Exporters;
 using BenchmarkDotNet.Mathematics;
 using BenchmarkDotNet.Order;
 using System;
@@ -15,7 +13,7 @@ using System.IO;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CompilerBenchmark
+namespace AuroraBenchmark
 {
     [MemoryDiagnoser]
     [ShortRunJob]
@@ -27,115 +25,112 @@ namespace CompilerBenchmark
     [CategoriesColumn]
     public class CompilerPipelineBenchmarks
     {
-        private string _baseDirectory;
-        private string _smallSource;
-        private string _largeSource;
-        private string _commentsWhitespaceSource;
-        private string _stringsTemplatesRegexSource;
-        private string _unicodeIdentifiersSource;
-        private string _compileBlockSource;
-        private string _multiModuleMainPath;
-        private EngineOptions _benchmarkOptions;
-        private ModuleDeclaration[] _parsedLargeModules;
+#pragma warning disable CS8618
+        private string baseDirectory;
+        private string smallSource;
+        private string largeSource;
+        private string commentsWhitespaceSource;
+        private string stringsTemplatesRegexSource;
+        private string unicodeIdentifiersSource;
+        private string compileBlockSource;
+        private string multiModuleMainPath;
+        private EngineOptions benchmarkOptions;
+        private ModuleDeclaration[] parsedLargeModules;
+#pragma warning restore CS8618
 
         [GlobalSetup]
         public void Setup()
         {
-            _baseDirectory = Path.Combine(AppContext.BaseDirectory, "compiler-benchmark-scripts");
-            Directory.CreateDirectory(_baseDirectory);
+            baseDirectory = Path.Combine(AppContext.BaseDirectory, "compiler-benchmark-scripts");
+            Directory.CreateDirectory(baseDirectory);
 
-            _smallSource = CreateSmallSource();
-            _largeSource = CreateLargeSource(180);
-            _commentsWhitespaceSource = CreateCommentsWhitespaceSource(600);
-            _stringsTemplatesRegexSource = CreateStringsTemplatesRegexSource(140);
-            _unicodeIdentifiersSource = CreateUnicodeIdentifierSource(260);
-            _compileBlockSource = CreateCompileBlockSource();
+            smallSource = CreateSmallSource();
+            largeSource = CreateLargeSource(180);
+            commentsWhitespaceSource = CreateCommentsWhitespaceSource(600);
+            stringsTemplatesRegexSource = CreateStringsTemplatesRegexSource(140);
+            unicodeIdentifiersSource = CreateUnicodeIdentifierSource(260);
+            compileBlockSource = CreateCompileBlockSource();
             CreateMultiModuleScripts();
-            _benchmarkOptions = CreateOptions();
-            _parsedLargeModules = new[] { (ModuleDeclaration)Parse("emit_large.as", _largeSource) };
+            benchmarkOptions = CreateOptions();
+            parsedLargeModules = new[] { (ModuleDeclaration)Parse("emit_large.as", largeSource) };
         }
 
         public int GetSourceBytes(string benchmarkName)
         {
-            if (benchmarkName.Contains("Large", StringComparison.Ordinal)) return Encoding.UTF8.GetByteCount(_largeSource);
-            if (benchmarkName.Contains("SingleModule", StringComparison.Ordinal)) return Encoding.UTF8.GetByteCount(_largeSource);
-            if (benchmarkName.Contains("CommentsWhitespace", StringComparison.Ordinal)) return Encoding.UTF8.GetByteCount(_commentsWhitespaceSource);
-            if (benchmarkName.Contains("StringsTemplatesRegex", StringComparison.Ordinal)) return Encoding.UTF8.GetByteCount(_stringsTemplatesRegexSource);
-            if (benchmarkName.Contains("TemplateInterpolation", StringComparison.Ordinal)) return Encoding.UTF8.GetByteCount(_stringsTemplatesRegexSource);
-            if (benchmarkName.Contains("UnicodeIdentifiers", StringComparison.Ordinal)) return Encoding.UTF8.GetByteCount(_unicodeIdentifiersSource);
-            if (benchmarkName.Contains("CompileBlock", StringComparison.Ordinal)) return Encoding.UTF8.GetByteCount(_compileBlockSource);
-            if (benchmarkName.Contains("MultiModule", StringComparison.Ordinal)) return GetFileBytes(_multiModuleMainPath) + GetFileBytes(Path.Combine(_baseDirectory, "dep.as"));
-            return Encoding.UTF8.GetByteCount(_smallSource);
-        }
-
-        private static int GetFileBytes(string path)
-        {
-            return File.Exists(path) ? checked((int)new FileInfo(path).Length) : 0;
+            if (benchmarkName.Contains("Large", StringComparison.Ordinal)) return Encoding.UTF8.GetByteCount(largeSource);
+            if (benchmarkName.Contains("SingleModule", StringComparison.Ordinal)) return Encoding.UTF8.GetByteCount(largeSource);
+            if (benchmarkName.Contains("CommentsWhitespace", StringComparison.Ordinal)) return Encoding.UTF8.GetByteCount(commentsWhitespaceSource);
+            if (benchmarkName.Contains("StringsTemplatesRegex", StringComparison.Ordinal)) return Encoding.UTF8.GetByteCount(stringsTemplatesRegexSource);
+            if (benchmarkName.Contains("TemplateInterpolation", StringComparison.Ordinal)) return Encoding.UTF8.GetByteCount(stringsTemplatesRegexSource);
+            if (benchmarkName.Contains("UnicodeIdentifiers", StringComparison.Ordinal)) return Encoding.UTF8.GetByteCount(unicodeIdentifiersSource);
+            if (benchmarkName.Contains("CompileBlock", StringComparison.Ordinal)) return Encoding.UTF8.GetByteCount(compileBlockSource);
+            if (benchmarkName.Contains("MultiModule", StringComparison.Ordinal)) return GetFileBytes(multiModuleMainPath) + GetFileBytes(Path.Combine(baseDirectory, "dep.as"));
+            return Encoding.UTF8.GetByteCount(smallSource);
         }
 
         [BenchmarkCategory("lexer")]
         [Benchmark]
         public int LexerOnly_Small()
         {
-            return Lex("small.as", _smallSource);
+            return Lex("small.as", smallSource);
         }
 
         [BenchmarkCategory("lexer")]
         [Benchmark]
         public int LexerOnly_Large()
         {
-            return Lex("large.as", _largeSource);
+            return Lex("large.as", largeSource);
         }
 
         [BenchmarkCategory("lexer")]
         [Benchmark]
         public int LexerOnly_CommentsWhitespace()
         {
-            return Lex("comments_whitespace.as", _commentsWhitespaceSource);
+            return Lex("comments_whitespace.as", commentsWhitespaceSource);
         }
 
         [BenchmarkCategory("lexer")]
         [Benchmark]
         public int LexerOnly_StringsTemplatesRegex()
         {
-            return Lex("strings_templates_regex.as", _stringsTemplatesRegexSource);
+            return Lex("strings_templates_regex.as", stringsTemplatesRegexSource);
         }
 
         [BenchmarkCategory("lexer")]
         [Benchmark]
         public int LexerOnly_UnicodeIdentifiers()
         {
-            return Lex("unicode_identifiers.as", _unicodeIdentifiersSource);
+            return Lex("unicode_identifiers.as", unicodeIdentifiersSource);
         }
 
         [BenchmarkCategory("parser")]
         [Benchmark]
         public object ParseOnly_Small()
         {
-            return Parse("small.as", _smallSource);
+            return Parse("small.as", smallSource);
         }
 
         [BenchmarkCategory("parser")]
         [Benchmark]
         public object ParseOnly_Large()
         {
-            return Parse("large.as", _largeSource);
+            return Parse("large.as", largeSource);
         }
 
         [BenchmarkCategory("parser")]
         [Benchmark]
         public object ParseOnly_TemplateInterpolation()
         {
-            return Parse("strings_templates_regex.as", _stringsTemplatesRegexSource);
+            return Parse("strings_templates_regex.as", stringsTemplatesRegexSource);
         }
 
         [BenchmarkCategory("emitter")]
         [Benchmark]
         public void EmitOnly_ParsedLargeModule()
         {
-            var builder = new DynamicBuilder(_benchmarkOptions);
-            var emitter = new CILEmitter(builder, _benchmarkOptions);
-            emitter.Visit(_parsedLargeModules);
+            var builder = new DynamicBuilder(benchmarkOptions);
+            var emitter = new CILEmitter(builder, benchmarkOptions);
+            emitter.Visit(parsedLargeModules);
         }
 
         [BenchmarkCategory("compile")]
@@ -144,7 +139,7 @@ namespace CompilerBenchmark
         {
             var options = CreateOptions();
             var engine = new AuroraEngine(options);
-            await engine.BuildAsync(new TextSource(_baseDirectory, Path.Combine(_baseDirectory, "single.as"), _largeSource));
+            await engine.BuildAsync(new TextSource(baseDirectory, Path.Combine(baseDirectory, "single.as"), largeSource));
         }
 
         [BenchmarkCategory("compile")]
@@ -153,7 +148,7 @@ namespace CompilerBenchmark
         {
             var options = CreateOptions();
             var engine = new AuroraEngine(options);
-            await engine.BuildAsync(engine.FileSource(_multiModuleMainPath, Encoding.UTF8));
+            await engine.BuildAsync(engine.FileSource(multiModuleMainPath, Encoding.UTF8));
         }
 
         [BenchmarkCategory("compile")]
@@ -161,13 +156,18 @@ namespace CompilerBenchmark
         public void CompileBlock()
         {
             var engine = new AuroraEngine(CreateOptions());
-            engine.CompileBlock(_compileBlockSource);
+            engine.CompileBlock(compileBlockSource);
+        }
+
+        private static int GetFileBytes(string path)
+        {
+            return File.Exists(path) ? checked((int)new FileInfo(path).Length) : 0;
         }
 
         private AuroraLexer CreateLexer(string fileName, string source)
         {
-            var fullPath = Path.Combine(_baseDirectory, fileName);
-            return new AuroraLexer(_baseDirectory, new TextSource(_baseDirectory, fullPath, source));
+            var fullPath = Path.Combine(baseDirectory, fileName);
+            return new AuroraLexer(baseDirectory, new TextSource(baseDirectory, fullPath, source));
         }
 
         private int Lex(string fileName, string source)
@@ -186,7 +186,7 @@ namespace CompilerBenchmark
         private EngineOptions CreateOptions()
         {
             return EngineOptions.Default
-                .WithBaseDirectory(_baseDirectory)
+                .WithBaseDirectory(baseDirectory)
                 .WithCompilationMode(CompilationMode.Dynamic)
                 .WithOptimizeOption(OptimizeOptions.Release)
                 .WithConsoleStdOut(TextWriter.Null)
@@ -195,8 +195,8 @@ namespace CompilerBenchmark
 
         private void CreateMultiModuleScripts()
         {
-            var dependencyPath = Path.Combine(_baseDirectory, "dep.as");
-            _multiModuleMainPath = Path.Combine(_baseDirectory, "main.as");
+            var dependencyPath = Path.Combine(baseDirectory, "dep.as");
+            multiModuleMainPath = Path.Combine(baseDirectory, "main.as");
 
             File.WriteAllText(dependencyPath, """
 @module(DEP_BENCH);
@@ -210,7 +210,7 @@ export func add(a, b) {
 }
 """, Encoding.UTF8);
 
-            File.WriteAllText(_multiModuleMainPath, """
+            File.WriteAllText(multiModuleMainPath, """
 @module(MAIN_BENCH);
 
 import dep from 'dep';
@@ -273,13 +273,11 @@ export func run(value = 10) {
             builder.AppendLine("    var value = 0;");
             for (var i = 0; i < blocks; i++)
             {
-                builder.AppendLine("    // this is a row comment with enough text to exercise scanning");
+                builder.AppendLine("    // scanner comment workload");
                 builder.AppendLine("    /* block comment line 1");
                 builder.AppendLine("       block comment line 2");
                 builder.AppendLine("       block comment line 3 */");
-                builder.AppendLine();
                 builder.Append("    value = value + ").Append(i % 17).AppendLine(";");
-                builder.AppendLine();
             }
             builder.AppendLine("    return value;");
             builder.AppendLine("}");
@@ -310,13 +308,13 @@ export func run(value = 10) {
             builder.AppendLine("@module(UNICODE_IDENTIFIERS_BENCH);");
             builder.AppendLine();
             builder.AppendLine("export func run() {");
-            builder.AppendLine("    var 总数 = 0;");
+            builder.AppendLine("    var total = 0;");
             for (var i = 0; i < declarations; i++)
             {
-                builder.Append("    var 名称").Append(i).Append(" = ").Append(i).AppendLine(";");
-                builder.Append("    总数 = 总数 + 名称").Append(i).AppendLine(";");
+                builder.Append("    var name").Append(i).Append(" = ").Append(i).AppendLine(";");
+                builder.Append("    total = total + name").Append(i).AppendLine(";");
             }
-            builder.AppendLine("    return 总数;");
+            builder.AppendLine("    return total;");
             builder.AppendLine("}");
             return builder.ToString();
         }

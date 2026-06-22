@@ -9,385 +9,615 @@
 # AuroraScript
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/l2060/AuroraScript)
-[![Version](https://img.shields.io/badge/version-1.0.0-orange.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-2.0.0-orange.svg)](src/AuroraScript.csproj)
+[![Target](https://img.shields.io/badge/.NET-8.0%20%7C%209.0%20%7C%2010.0-blueviolet.svg)](src/AuroraScript.csproj)
 
-AuroraScript is a lightweight, weak-typed script execution engine built on .NET. It compiles scripts directly into CIL (Common Intermediate Language) and executes them using the .NET JIT compiler, designed to be extremely fast, embeddable, and high-performance.
+AuroraScript is a lightweight scripting engine for .NET host applications. Scripts are compiled to CIL and executed by the .NET runtime, making the engine suitable for embedded rules, business logic, configurable workflows, hot fixes, and small expressions.
 
-While inspired by JavaScript syntax and mechanisms, AuroraScript is a distinct language with its own optimizations and features, and does not adhere to ECMA specifications. It leverages native .NET infrastructure for execution, interop, and debugging.
+AuroraScript borrows familiar syntax from JavaScript, including expressions, objects, arrays, closures, and modules. It is not an ECMAScript implementation and does not attempt to match browser or Node.js semantics. The capabilities documented here are based on the current source code and test suite.
 
 > [!NOTE]
-> 🚧 **Work in Progress**: The project is still in development. Performance and API stability are improving. We welcome **PRs** and **Issues** to help make AuroraScript better!
+> The project is still under active development. Public APIs, performance behavior, and language edges may change. Pin the NuGet version and run your own regression suite before production use.
 
-## ✨ Features
+## Supported Platforms
 
-- **High Performance**: No third-party dependencies. Compiles to native CIL/MSIL, leveraging the .NET JIT compiler for execution.
-- **Weak Typed**: Flexible variable typing similar to JavaScript.
-- **Native Interop**: Seamlessly register and use .NET (CLR) types and functions within scripts.
-- **Debugging Support**: Full Visual Studio debugger support. (VS Code extension currently provides syntax highlighting only).
-- **Module System**:
-  - `import xxx from 'xxx'`: Import module exports.
-  - `include 'xxx.as'`: Embed script files directly.
-  - `@module("NAME")`: Define module name.
-- **Advanced Control Flow**:
-  - `debugger`: Programmatic breakpoint.
-  - `where` / `for` loop enhancements.
-- **Compilation Modes**:
-  - `Persistence`: Compiles to persistent assemblies (DLL) with PDB symbols. Supports source-level debugging and programmatic breakpoints. Fully inspectable and dumpable.
-  - `OnlyRun`: Transient in-memory compilation. No managed debug mapping. Transparent to external profilers/dumpers; code resides in readable memory segments.
-  - `Dynamic`: Emits CIL via `DynamicMethod`. Metadata-free for peak performance. Black-box execution: non-inspectable and non-dumpable.
-- **HotPatch (Hot-fix)**: Update script logic in a running domain without losing state. Supports `Replace` and `Incremental` modes via .NET or script APIs.
-- **Obfuscation**: Built-in support for obscuring constants, member names, and code structure.
-- **Modern Syntax**:
-  - Closures, Lambdas, and Function Pointers.
-  - Destructuring assignment: `var { a, b } = obj;` and `var [ a, ...b ] = arr;`.
-  - Spread operator: `...` for arrays and objects.
-  - Template literals: Multi-line strings with `` ` `` or `|>` syntax.
-- **Standard Library**: Built-in support for `Math`, `JSON`, `Date`, `Regex`, `HashMap`, `Proxy`, and `StringBuffer`.
+NuGet package: `AuroraScript.JIT`
 
-## 🚀 Getting Started
+The current `2.0.0` package targets:
 
-### Installation via NuGet
+| Target framework | Support |
+|---|---|
+| `net8.0` | Supports `Dynamic` / `OnlyRun`; does not support `CompilationMode.Persistence` |
+| `net9.0` | Supports `Dynamic` / `OnlyRun` / `Persistence` |
+| `net10.0` | Supports `Dynamic` / `OnlyRun` / `Persistence` |
 
-You can easily install the AuroraScript engine via NuGet:
+The project is built as `AnyCPU`. The runtime has no native dependency, so `Dynamic` and `OnlyRun` are expected to work on x64 and ARM64. `Persistence` produces an IL-only assembly and no longer marks generated script DLLs as x64, but ARM64 should still be validated on the target OS before being promised as a supported production platform.
+
+## Highlights
+
+- **CIL/JIT execution**: Scripts are compiled to .NET IL instead of being interpreted in a dispatch loop.
+- **Easy embedding**: Use `AuroraEngine` to compile scripts and `ScriptDomain` to isolate and execute module functions.
+- **Three compilation modes**: Choose between dynamic methods, in-memory assemblies, and persisted DLL/PDB output.
+- **CLR interop**: Register CLR types and call constructors, properties, fields, instance methods, static methods, overloads, optional parameters, and `params` arguments from scripts.
+- **Runtime hot patching**: Apply patches from the host with `DynamicPatch` or from scripts with `HotPatch.replace` / `HotPatch.incremental`.
+- **Modules and domain isolation**: Supports `@module`, `import`, and `include`. Each `ScriptDomain` has its own global object and module instances.
+- **CompileBlock**: Compile small script blocks outside the module system for formulas, filters, and high-frequency rules.
+- **Built-in standard objects**: `Object`, `Array`, `String`, `Date`, `Regex`, `HashMap`, `StringBuffer`, `JSON`, `Math`, `console`, `Proxy`, and `HotPatch`.
+- **Broad regression coverage**: Tests cover lexing, parsing, expressions, statements, modules, compilation modes, CLR interop, JSON, hot reload, concurrency, and release regressions.
+
+## Installation
 
 ```bash
 dotnet add package AuroraScript.JIT
 ```
 
-### Manual Installation
-
-Clone the repository:
+Build from source:
 
 ```bash
 git clone https://github.com/l2060/AuroraScript.git
 cd AuroraScript
-```
-
-### Compiling the Project
-
-To build the core engine library:
-
-```bash
 dotnet build src/AuroraScript.csproj -c Release
 ```
 
-## 📖 Usage
+## Quick Start
 
-### Running a Script (Host Application)
-
-You can host the engine in your own .NET application.
+### Host Code
 
 ```csharp
 using AuroraScript;
 using AuroraScript.Runtime;
+using System.Text;
 
-// 1. Initialize Engine
-var options = EngineOptions.Default.WithBaseDirectory("./scripts/");
+var options = EngineOptions.Default
+    .WithBaseDirectory("./scripts")
+    .WithCompilationMode(CompilationMode.Dynamic)
+    .WithOptimizeOption(OptimizeOptions.Release);
+
 var engine = new AuroraEngine(options);
+engine.RegisterType(typeof(Math), "Math2");
 
-// 2. Register CLR Types/Functions
-engine.RegisterType<Math>("Math2");
-
-// 3. Compile Scripts (Search and build all .as files in base directory)
 await engine.BuildAsync(engine.SearchAllFileSource(Encoding.UTF8));
 
-// 4. Create Domain & Execute
 var domain = engine.CreateDomain();
-// Execute 'main' function in 'MAIN' module
-domain.Execute("MAIN", "main");
+var result = domain.Execute("MAIN", "main", ScriptDatum.FromNumber(20));
+Console.WriteLine(result);
 ```
 
-### Compiling Lightweight Script Blocks (CompileBlock)
+### Script Code
 
-`CompileBlock` compiles a high-performance lightweight anonymous script block. It does not create a module, does not register anything in `global.modules`, and does not participate in hot reload. It is intended for frequently invoked small scripts such as rules, formulas, filters, or business decision snippets.
+```javascript
+@module(MAIN);
+
+export func main(value) {
+    var total = Math2.Abs(-value);
+    var items = [1, 2, 3];
+
+    for (var item in items) {
+        total = total + item;
+    }
+
+    return total;
+}
+```
+
+### User State
 
 ```csharp
+using AuroraScript.Runtime;
+using AuroraScript.Runtime.Types;
+
+public sealed class MyState : ScriptObject
+{
+    public MyState()
+    {
+        Define("Name", StringValue.Of("Aurora"));
+        Define("Count", NumberValue.Of(3));
+    }
+}
+
+var userState = new MyState();
+var domain = engine.CreateDomain(userState: userState);
+```
+
+`userState` must inherit from `ScriptObject`. Scripts can access it through `$state`:
+
+```javascript
+@module(MAIN);
+
+export func name() {
+    return $state.Name;
+}
+```
+
+### Global Values and Functions
+
+```csharp
+var domain = engine.CreateDomain(global =>
+{
+    global.Define("HOST_ADD", (Func<int, int, int>)((a, b) => a + b));
+    global.Define("HOST_NAME", "Aurora");
+});
+```
+
+```javascript
+@module(MAIN);
+
+export declare func HOST_ADD(left, right);
+
+export func run() {
+    return HOST_NAME + ":" + HOST_ADD(20, 22);
+}
+```
+
+## CompileBlock
+
+`CompileBlock` treats source text as an anonymous function body. It does not create a module and does not participate in hot reload. It is intended for formulas, rules, filters, and small snippets that are invoked frequently.
+
+```csharp
+var engine = new AuroraEngine(EngineOptions.Default.WithBaseDirectory("."));
+
 var block = engine.CompileBlock("""
-function clamp(v, min, max) {
+func clamp(v, min, max) {
     if (v < min) return min;
     if (v > max) return max;
     return v;
 }
 
-return clamp(x, 0, 100) + PI;
+return clamp(x, 0, 100);
 """, new CompileBlockOptions
 {
     Parameters = ["x"],
     SourceName = "rules/clamp.as"
 });
 
-var domain = engine.CreateEmptyDomain(g =>
-{
-    g.Define("PI", new NumberValue(Math.PI), writeable: false, enumerable: true);
-});
-
-var result = block.Invoke(domain, ScriptDatum.FromNumber(125));
+var result = block.Invoke(ScriptDatum.FromNumber(125));
 ```
 
-The source is treated as an anonymous function body, so you can write `return`, `if`, `for`, `var`, and local `function` declarations directly. Parameter names are declared at compile time through `Parameters`, and runtime values are passed positionally. Non-capturing local functions with fixed arity use a direct-call path; local functions that capture outer variables automatically keep closure semantics.
+Parameter names are declared through `CompileBlockOptions.Parameters`; runtime values are passed positionally. Parameter names cannot be empty, duplicated, or equal to `global`, `$args`, or `$state`.
 
-### Writing Scripts
+## Compilation Modes
 
-AuroraScript uses a syntax familiar to JavaScript developers:
+| Mode | Description | Typical use |
+|---|---|---|
+| `Dynamic` | Emits CIL through `DynamicMethod` and does not produce a persisted assembly | Fast runtime execution, rules, small scripts |
+| `OnlyRun` | Runs through a collectible dynamic assembly in memory | In-memory execution that is easier for runtime tools to observe |
+| `Persistence` | Generates a DLL and can include debug symbols | Debugging, diagnostics, persisted script assemblies |
+
+Limitations:
+
+- `Persistence` requires `net9.0` or later. On `net8.0`, using it throws `PlatformNotSupportedException`.
+- Visual Studio source-level script debugging depends on `Persistence` mode and debug optimization settings.
+
+## Hot Patching
+
+Hot patching is controlled by `EngineOptions.EnableHotReload` and is enabled by default. Disabling it blocks host-side `DynamicPatch` and script-side `HotPatch`, and allows the compiler to use more aggressive module-local direct-call optimizations.
+
+Host side:
+
+```csharp
+domain.DynamicPatch(
+    engine.MemorySource("main.as", "@module(MAIN); export func run() { return 42; }"),
+    HotPatchType.Replace);
+```
+
+Script side:
 
 ```javascript
-@module("MAIN");
+HotPatch.replace("main.as", "@module(MAIN); export func run() { return 42; }");
+HotPatch.incremental("main.as", "export func added() { return 1; }");
+```
 
-func main() {
-    console.log("Hello, AuroraScript!");
-    
-    // Using imported CLR library
-    var res = Math2.Abs(-100);
-    console.log("Abs result: " + res);
+Notes:
 
-    var list = [1, 2, 3, 4, 5];
-    for (var item in list) {
-        if (item % 2 == 0) {
-            console.log("Even number: " + item);
-        }
-    }
+- `Replace` clears existing members of the target module before applying new code.
+- `Incremental` preserves existing members and adds or updates members declared in the patch.
+- Top-level code in the patch source is executed when the patch is applied.
+
+## Language Features
+
+The current test suite and examples cover:
+
+- `var` / `const` / `func` / `function` / `return`
+- `if` / `else` / `for` / `for-in` / `while` / `break` / `continue`
+- `try` / `catch` / `finally` / `throw`
+- `enum`
+- closures, recursion, default parameters, `$args`
+- expression lambdas: `(a, b) => a + b`
+- block lambdas: `(value) => { return value * 2; }`
+- object literals, array literals, sparse arrays
+- object and array destructuring
+- object shorthand and object/array spread
+- template strings and nested templates
+- regex literals and regex/division disambiguation
+- `typeof`, `in`, `delete`, increment/decrement, compound assignment
+
+## Built-in API
+
+### Global Objects
+
+- `Array`
+- `String`
+- `Boolean`
+- `Object`
+- `Number`
+- `Date`
+- `Error`
+- `HashMap`
+- `Regex`
+- `Proxy`
+- `StringBuffer`
+- `console`
+- `JSON`
+- `Math`
+- `HotPatch`
+- `global`
+- `$state`
+- `$args`
+
+### Object
+
+Static members:
+
+- `Object.equal$(a, b)`
+- `Object.equal(a, b)`
+- `Object.deepEqual(a, b)`
+- `Object.assign(target, ...sources)`
+- `Object.keys(obj)`
+- `Object.clone(obj)`
+- `Object.deepClone(obj)`
+- `Object.freeze(obj)`
+
+Instance members:
+
+- `obj.length`
+- `obj.toString()`
+
+> `Object.extends` is registered in the constructor, but the current implementation does not return an effective value, so it is not documented as a usable API.
+
+### Array
+
+Static members:
+
+- `Array.from(iterable, [mapCallback])`
+- `Array.isArray(value)`
+- `Array.of(...items)`
+
+Instance members:
+
+- `length`
+- `has(value)`
+- `indexOf(value)`
+- `lastIndexOf(value)`
+- `push(...items)`
+- `pop()`
+- `sort([compare])`
+- `join([separator])`
+- `slice(start, [end])`
+- `reverse()`
+- `unshift(...items)`
+- `shift()`
+- `concat(...items)`
+- `find(callback)`
+- `findIndex(callback)`
+- `findLast(callback)`
+- `findLastIndex(callback)`
+- `map(callback)`
+- `filter(callback)`
+- `some(callback)`
+- `every(callback)`
+- `flat([depth])`
+- `reduce(callback)`
+
+### String
+
+Static members:
+
+- `String.fromCharCode(code)`
+- `String.valueOf(value)`
+- `String.compare(a, b)`
+
+Instance members:
+
+- `length`
+- `contains(text)`
+- `indexOf(text)`
+- `lastIndexOf(text)`
+- `startsWith(text)`
+- `endsWith(text)`
+- `substring(start, [end])`
+- `slice(start, [end])`
+- `split(separator)`
+- `match(regex)`
+- `matchAll(regex)`
+- `replace(search, replacement)`
+- `padLeft(width, [char])`
+- `padRight(width, [char])`
+- `trim()`
+- `trimLeft()`
+- `trimRight()`
+- `toString()`
+- `charCodeAt(index)`
+- `toLowerCase()`
+- `toUpperCase()`
+
+### Date
+
+Static members:
+
+- `Date.now()`
+- `Date.utcNow()`
+- `Date.parse(value)`
+
+Instance members:
+
+- `year`
+- `month`
+- `day`
+- `hour`
+- `minute`
+- `second`
+- `millisecond`
+- `dayOfWeek`
+- `dayOfYear`
+- `ticks`
+- `toString([format])`
+
+### HashMap
+
+- `set(key, value)`
+- `get(key)`
+- `getOrInsert(key, valueOrCallback)`
+- `has(key)`
+- `delete(key)`
+- `clear()`
+- `keys`
+- `values`
+- `size`
+
+### Regex
+
+- `test(text)`
+
+Strings also provide `match(regex)` and `matchAll(regex)`.
+
+### StringBuffer
+
+- `append(...items)`
+- `appendLine(...items)`
+- `insert(index, value)`
+- `clear()`
+- `toString()`
+- `release()`
+- `stringAndRelease()`
+
+### JSON
+
+- `JSON.parse(text)`
+- `JSON.stringify(value, [indented])`
+
+JSON supports script primitives, objects, arrays, HashMap, and related script values. Circular references throw a runtime exception.
+
+### Math
+
+Commonly used members covered by the runtime and tests include:
+
+- `Math.PI`
+- `Math.E`
+- `Math.abs(x)`
+- `Math.max(...values)`
+- `Math.min(...values)`
+- `Math.random()`
+- `Math.floor(x)`
+- `Math.round(x)`
+- `Math.pow(x, y)`
+- `Math.log(x)`
+- `Math.exp(x)`
+- `Math.sin(x)`
+- `Math.cos(x)`
+- `Math.tan(x)`
+
+### console
+
+- `console.log(...args)`
+- `console.error(...args)`
+- `console.time(label)`
+- `console.timeEnd(label)`
+
+Output writers can be configured with `EngineOptions.WithConsoleStdOut` and `WithConsoleErrorOut`.
+
+### Proxy
+
+```javascript
+var proxy = new Proxy(target, {
+    get: (obj, key) => obj[key],
+    set: (obj, key, value) => { obj[key] = value; return value; }
+});
+```
+
+`Proxy` construction requires `get` and `set` handlers. Tests cover property read, write, and delete-related behavior.
+
+## CLR Interop
+
+Register a CLR type:
+
+```csharp
+engine.RegisterType<HostCalculator>("Calculator");
+```
+
+Use it from script:
+
+```javascript
+@module(MAIN);
+
+export func run() {
+    var host = new Calculator(5);
+    host.Value = 7;
+    host.Field = 3;
+    return [host.Add(2), Calculator.Multiply(3, 4), host.Value, host.Field];
 }
 ```
 
-## 🐞 Debugging Scripts
+Tested capabilities:
 
-AuroraScript supports full-featured debugging within **Visual Studio**.
+- constructors
+- property and field get/set
+- instance and static methods
+- overload resolution
+- optional parameters
+- `params` arguments
+- global CLR values, collections, and delegates
+- type access restrictions: `TypeAccess.All`, `Constructor`, `Static`
+- duplicate aliases and registry lifetime errors
 
-### 1. Visual Studio Debugging
-When using `Persistence` mode, you can debug your scripts:
-- **Breakpoints**: Set breakpoints in `.as` files.
-- **Stepping**: Step Over, Step Into, Step Out.
-- **Variables**: Inspect local variables, objects, and arrays.
-- **Call Stack**: View the mixed call stack of script and C#.
+## Tests
 
-### 2. Start Debugging
-1.  Enable debugger in your C# host (if applicable).
-2.  Set breakpoints in your `.as` files within Visual Studio.
-3.  Run your host application.
+Test project: `tests/AuroraScript.Tests`
 
-*Visual Studio Debugging Example:*
-![Debugger Demo](documents/debugger.png)
+Current `net10.0` test discovery finds **282** test cases. Breakdown by test class:
 
+| Test class | Cases | Focus |
+|---|---:|---|
+| `LexerTests` | 37 | Lexing, numbers/strings/regex, comments, malformed tokens |
+| `ParserSyntaxTests` | 79 | Grammar branches, modules, import/include/export, syntax diagnostics |
+| `ExpressionExecutionTests` | 35 | Expressions, operators, member/index access, spread, assignment |
+| `StatementExecutionTests` | 7 | Control flow, loops, closures, recursion, exceptions, domain isolation |
+| `LanguageFeatureExecutionTests` | 16 | enum, lambdas, sparse arrays, truthiness, templates, assignment semantics |
+| `ModuleCompilationTests` | 12 | Dependencies, parallel compile, cycles, error aggregation, cancellation |
+| `CompileBlockTests` | 21 | CompileBlock parameters, invocation modes, invalid inputs, diagnostics |
+| `CompilationModeTests` | 5 | Dynamic/OnlyRun/Persistence behavior and hot-reload settings |
+| `RuntimeApiAndErrorTests` | 9 | Runtime APIs, error paths, `$state`, disposed domains |
+| `BuiltInLibraryTests` | 8 | Math, String, Array, JSON, HashMap, Regex, StringBuffer, Console |
+| `AdvancedRuntimeTypeTests` | 6 | Constructors, Object, freeze, Date, Proxy |
+| `ClrInteropTests` | 5 | CLR constructors/properties/fields/methods/overloads/access restrictions |
+| `SerializationTests` | 9 | JSON serialization/deserialization, circular references, malformed JSON |
+| `ScriptDatumTests` | 4 | Datum payloads, equality, CLR collection conversion, Span helpers |
+| `HotReloadTests` | 4 | Disabled hot reload, incremental patch, replacement patch, domain isolation |
+| `ConcurrentRuntimeTests` | 3 | Same-domain/multi-domain concurrency, detached closure concurrency |
+| `ReleaseRegressionTests` | 9 | Release direct calls, closure slots, stack balance, confusion, empty modules |
+| `ClosureFunctionContextTests` | 3 | Context pool lifetime and detached invocation |
+| `EngineOptionsAndSourceTests` | 10 | EngineOptions, source paths, extensions, parallelism, null input |
 
-### 3. VS Code Extension
-The current VS Code extension provides **Syntax Highlighting** and code colorizing to improve development experience.
-- To install: Open `vscode-extension`, run `npm install`, `npm run package`, and install the generated `.vsix`.
+Coverage summary:
 
+- Lexer: keywords, identifiers, Unicode, operators, numbers, strings, regex, comments, CRLF locations, malformed tokens.
+- Parser: module metadata, import/include/export, declarations, expressions, lambdas, destructuring, control flow, exceptions, templates, regex, diagnostics.
+- CompileBlock: parameter validation, local functions, domain/no-domain invocation, module-only rejection, source names, null input.
+- Expressions/statements: precedence, arithmetic, bitwise operations, comparison, logical operators, member access, spread, assignment, loops, exceptions, closures, recursion.
+- Module compilation: relative paths, diamond dependencies, duplicate roots, wide dependency graphs, cycles, error aggregation, cancellation, concurrent builds.
+- Compilation modes: Dynamic, OnlyRun, Persistence parity; net8 Persistence limitation.
+- Runtime APIs and errors: pre-build use, missing modules/methods, script stack traces, const writes, `$state`, disposal.
+- Built-ins: Math, String, Array, JSON, HashMap, Regex, StringBuffer, Console, Date, Proxy.
+- CLR interop, serialization, ScriptDatum, hot reload, concurrency, and release regressions.
 
-*Built-in type definitions for easier development:*
-![Type Definitions](documents/lib.d.as.png)
+Run tests:
 
-## 📚 Built-in API
+```bash
+dotnet test tests/AuroraScript.Tests/AuroraScript.Tests.csproj
+```
 
-The AuroraScript runtime provides a comprehensive standard library.
+The test project targets `net8.0;net9.0;net10.0`. Running each target requires the matching .NET runtime on the machine.
 
-### Core Types
+## Benchmark
 
-#### **Object**
-The base object type from which all other objects derive.
-- **Static Methods**:
-  - `equal$(a, b)`: Strict equality comparison (reference check).
-  - `equal(a, b)`: Value-based equality comparison.
-  - `deepEqual(a, b)`: Deep recursive comparison of object contents.
-  - `assign(target, ...sources)`: Copies all enumerable own properties from one or more source objects to a target object.
-  - `keys(obj)`: Returns an array of a given object's own enumerable property names.
-  - `clone(obj)` / `deepClone(obj)`: Creates a shallow or deep copy of the object.
-  - `extends(proto, [target])`: Creates a new object with the specified prototype.
-  - `freeze(obj)`: Freezes an object, preventing new properties from being added or existing ones from being removed or modified.
-- **Instance Members**:
-  - `length`: [Read-only] Returns the number of properties owned by the object.
-  - `toString()`: Returns a string representation of the object.
+The unified benchmark project lives in `benchmark/` and includes runtime metrics plus compiler pipeline metrics.
 
-#### **Array**
-An ordered collection that supports dynamic resizing and common functional operations.
-- **Static Methods**:
-  - `from(iterable)`: Creates a new array from an array-like or iterable object.
-  - `isArray(obj)`: Determines whether the passed value is an Array.
-  - `of(...items)`: Creates a new array with a variable number of arguments.
-- **Instance Members**:
-  - `length`: [Property] Gets or sets the number of elements in the array.
-  - `push(...items)` / `pop()`: Adds or removes elements at the end of the array.
-  - `shift()` / `unshift(...items)`: Removes or adds elements at the beginning of the array.
-  - `slice(start, [end])`: Returns a shallow copy of a portion of an array.
-  - `join([sep])`: Joins all elements of an array into a string, separated by `sep` (default is `,`).
-  - `reverse()` / `sort([cmp])`: Reverses the array in place or sorts it using an optional comparator.
-  - `indexOf(val)` / `lastIndexOf(val)` / `has(val)`: Search and existence checks for elements.
-  - `find(cb)` / `findIndex(cb)` / `findLast(cb)` / `findLastIndex(cb)`: Finds elements or their indices that satisfy a condition.
-  - `map(cb)` / `filter(cb)` / `reduce(cb)` / `flat([depth])`: Closure-driven iteration and transformation operations.
-  - `some(cb)` / `every(cb)`: Logical predicate checks.
+Smoke run:
 
-#### **String**
-An immutable sequence of characters.
-- **Static Methods**:
-  - `fromCharCode(...codes)`: Returns a string created from the specified sequence of UTF-16 code units.
-  - `compare(a, b)`: Returns a number indicating whether a reference string comes before, after, or is the same as the given string.
-- **Instance Members**:
-  - `length`: [Property] Returns the number of characters in the string.
-  - `substring(start, [end])` / `slice(start, [end])`: Extracts a section of a string.
-  - `indexOf(sub)` / `lastIndexOf(sub)` / `contains(sub)`: Substring searching and matching.
-  - `startsWith(sub)` / `endsWith(sub)`: Prefix and suffix checks.
-  - `split(sep)`: Splits a string into an array of substrings.
-  - `replace(search, repl)`: Replaces matches with a replacement string or the result of a callback.
-  - `match(regex)` / `matchAll(regex)`: Pattern matching using regular expressions.
-  - `trim()` / `trimLeft()` / `trimRight()`: Removes whitespace from ends.
-  - `toLowerCase()` / `toUpperCase()`: Case conversion.
-  - `charCodeAt(index)`: Returns the numeric Unicode value of the character at the given index.
+```bash
+dotnet run --project benchmark/Benchmark.csproj -c Release -- --smoke
+```
 
-#### **Date**
-Handling of dates and times.
-- **Static Methods**:
-  - `now()` / `utcNow()`: Returns the current local or UTC time.
-  - `parse(str)`: Parses a string representation of a date.
-- **Instance Properties**:
-  - `year` / `month` / `day` / `hour` / `minute` / `second` / `millisecond`: Access individual time components (read-only).
-  - `dayOfWeek` / `dayOfYear` / `ticks`: Access week index, day of year, or raw ticks.
+Simple CSV-like comparison:
 
-#### **HashMap**
-A high-performance, thread-safe key-value collection powered by `ConcurrentDictionary`.
-- **Instance Members**:
-  - `size`: [Property] Returns the number of elements in the collection.
-  - `set(key, val)` / `get(key)`: Access key-value pairs. Supports any type as a key.
-  - `has(key)` / `delete(key)`: Check for existence or remove a specific member.
-  - `getOrInsert(key, defaultVal/cb)`: Retrieves a value or atomically inserts a default/callback result if missing.
-  - `keys` / `values`: [Property] Returns iterable collections of all keys or values.
-  - `clear()`: Removes all elements from the collection.
+```bash
+dotnet run --project benchmark/Benchmark.csproj -c Release -- --compare
+```
 
-#### **Regex**
-Regular expression objects.
-- `test(str)`: Executes a search for a match between a regular expression and a specified string.
+BenchmarkDotNet run:
+
+```bash
+dotnet run --project benchmark/Benchmark.csproj -c Release
+```
+
+Current key metrics include:
+
+- domain creation, empty calls, function calls, module calls, closure calls
+- object, array, HashMap, string, JSON, Regex, and CLR interop paths
+- Lexer, Parser, Emitter, single/multi-module compile, and CompileBlock
+
+The latest summarized results come from the `RuntimeBenchmarks` and `CompilerPipelineBenchmarks` reports generated on 2026-06-22 under `benchmark/bin/Release/net10.0/BenchmarkDotNet.Artifacts/results/`. The older `ScriptBenchmark` report in the same directory is historical and is no longer used as the current benchmark reference.
+
+Environment:
+
+- BenchmarkDotNet `0.15.8`
+- Windows 11 `10.0.26200.8655`
+- Intel Core i7-13700KF
+- .NET SDK `10.0.301`
+- Runtime `.NET 10.0.9`
+- Job `ShortRun`
+
+Runtime summary:
+
+| Metric | Scale | Mean | Allocated | Notes |
+|---|---:|---:|---:|---|
+| `EmptyCall` | 1 call | 152 ns | 0 B | Low host-to-script empty call overhead |
+| `CreateDomain` | 1 domain | 2.8 us | 5.32 KB | Lightweight domain creation |
+| `NumericLoop` | 10,000 | 78.0 us | 48 B | Numeric loops are effectively allocation-free |
+| `FunctionCallLoop` | 10,000 | 1.10 ms | 48 B | Local function calls are almost allocation-free |
+| `ModuleCallLoop` | 10,000 | 1.32 ms | 48 B | Module calls are roughly 20% slower than local calls |
+| `ClosureInvoke` | 10,000 | 660 us | 208 B | Stable low allocation |
+| `ObjectCreateSetGet` | 10,000 | 1.97 ms | 1.91 MB | Object creation/property writes allocate linearly |
+| `ArrayPushIndex` | 10,000 | 930 us | 768 KB | Gen2 appears; array growth path needs attention |
+| `HashMapSetGet` | 10,000 | 7.10 ms | 4.51 MB | High allocation and Gen2 activity |
+| `JsonStringify` | 10,000 | 7.11 ms | 7.55 MB | JSON serialization allocates heavily |
+| `JsonParse` | 10,000 | 10.76 ms | 8.54 MB | JSON parsing allocates heavily |
+| `RegexMatchAll` | 10,000 | 30.67 ms | 32.58 MB | One of the heaviest regular runtime paths |
+| `StringBufferAppend` | 10,000 | 1.33 ms | 408 KB | Much better than direct string concatenation |
+| `StringConcat` | 10,000 | 55.71 ms | 457.79 MB | Very expensive; use `StringBuffer` for this pattern |
+| `ClrPropertyGetSet` | 10,000 | 592 us | 234 KB | CLR property access is relatively healthy |
+| `ClrArrayArgument` | 10,000 | 6.89 ms | 4.04 MB | Script-array to CLR-array conversion still allocates heavily |
+| `ClrInstanceMethod` | 10,000 | 8.31 ms | 2.90 MB | Instance method interop still has optimization headroom |
+| `ClrStaticMethod` | 10,000 | 11.59 ms | 4.04 MB | Static method binding/argument conversion is a clear hotspot |
+
+Compiler pipeline summary:
+
+| Metric | Mean | Allocated | Notes |
+|---|---:|---:|---|
+| `CompileBlock` | 28.8 us | 17.85 KB | Low compile cost for small script blocks |
+| `FullCompile_MultiModule` | 358 us | 64.5 KB | Current multi-module sample is small and healthy |
+| `FullCompile_SingleModule` | 7.25 ms | 2.78 MB | Main cost for large-module full compilation |
+| `EmitOnly_ParsedLargeModule` | 4.31 ms | 1.24 MB | Emitter is a major large-module hotspot |
+| `LexerOnly_Large` | 579 us | 21.26 KB | Large-source lexing allocates little |
+| `ParseOnly_Large` | 845 us | 1.53 MB | AST construction is the main parser allocation cost |
+| `ParseOnly_TemplateInterpolation` | 166 us | 412.59 KB | Template interpolation parsing allocates relatively heavily |
+
+Observed hotspots:
+
+- `StringConcat` allocates about `457.79 MB` for 10,000 iterations. This is expected for repeated immutable-string concatenation, but it is far too expensive for hot paths; use `StringBuffer`.
+- `RegexMatchAll` allocates about `32.58 MB` per 10,000 iterations. Match result arrays and capture/group objects are good future optimization targets.
+- CLR interop paths `ClrStaticMethod` and `ClrArrayArgument` allocate about `4.04 MB/10,000`; static binding and script-array to CLR-array conversion remain hotspots.
+- `HashMapSetGet` triggers Gen2 at 10,000 iterations, likely due to string key creation and dictionary growth.
+- `ArrayPushIndex` also shows Gen2 at 10,000 iterations; array growth strategy and benchmark capacity setup should be reviewed.
+- `ParseOnly_TemplateInterpolation` allocates heavily relative to source size and is worth a focused parser optimization pass.
+
+## Examples
+
+- [examples/tests/main.as](examples/tests/main.as): module loading and entry-point sample.
+- [examples/tests/unit.as](examples/tests/unit.as): built-in types, standard library, and language feature samples.
+- [tests/AuroraScript.Tests](tests/AuroraScript.Tests): recommended behavioral specification.
+- [benchmark/scripts/runtime.as](benchmark/scripts/runtime.as): runtime benchmark script.
+
+## VS Code Extension
+
+The `vscode-extension` directory contains the VS Code extension project. It currently focuses on syntax highlighting and basic editing support.
+
+```bash
+npm install
+npm run package
+```
+
+Then install the generated `.vsix`.
 
 ---
 
-### Standard Library
-
-#### **console**
-Standard I/O and performance debugging.
-- `log(...args)`: Prints general information to the console. Multiple arguments are automatically comma-separated.
-- `error(...args)`: Prints error information, including the call stack.
-- `time(label)`: Starts a timer with the given label.
-- `timeEnd(label)`: Stops the timer and prints the elapsed time in milliseconds.
-
-#### **Math**
-Common mathematical constants and functions.
-- **Constants**: `PI`, `E`, `Tau`, `DEG_PER_RAD`.
-- **Methods**:
-  - `abs(x)`: Returns the absolute value of x.
-  - `max(...args)` / `min(...args)`: Returns the largest or smallest of the provided numbers.
-  - `random()`: Returns a pseudo-random number in the range [0, 1).
-  - `floor(x)` / `round(x)`: Rounds down or to the nearest integer.
-  - `pow(x, y)` / `log(x)` / `exp(x)`: Power, natural logarithm, and exponential functions.
-  - `sin(x)` / `cos(x)` / `tan(x)`: Standard trigonometric functions (radians).
-
-#### **JSON**
-Utilities for JSON serialization and deserialization.
-- `parse(text)`: Parses a JSON string into a script object.
-- `stringify(obj, [indented])`: Serializes a script object to a JSON string. Enables pretty-printing if `indented` is true.
-
-#### **StringBuffer**
-A builder designed for high-performance large-scale string concatenation.
-- `append(...args)`: Appends one or more items to the end.
-- `appendLine(...args)`: Appends content followed by a platform-specific newline.
-- `insert(index, str)`: Inserts a string at the specified index offset.
-- `clear()`: Resets the buffer.
-- `toString()`: Generates the final concatenated string.
-- `release()`: Releases the object back to the pool.
-- `stringAndRelease()`: Returns the concatenated string and releases the object.
-
-#### **Proxy**
-Intercepts and defines custom behavior for fundamental object operations.
-- `new Proxy(target, handlers)`:
-  - **Notes**: A complete `handlers` object must be provided. It currently supports intercepting `get`, `set`, and `unset` (i.e., `delete`) operations.
-
-#### **HotPatch**
-Dynamic runtime module patching and repair.
-- `replace(modulePath, script, [ignoreDeps])`: Fully replaces the logic of a module at the specified path.
-- `incremental(modulePath, script, [ignoreDeps])`: Incrementally adds or updates module members.
-  - **Notes**: Top-level code in the patch script (e.g., variable initialization) will re-execute immediately upon application.
-
-### Global Context
-- `global`: References the root global scope.
-- `$state`: Access user-injected state object (from C# `ExecuteOptions.WithUserState`).
-- `$args`: Array of arguments passed to the current function.
-
-## 🔥 HotPatch (Hot-fix)
-
-AuroraScript provides powerful hot-fix capabilities, allowing you to update script logic in a running `ScriptDomain` without restarting the application or losing runtime state.
-
-Hot patching is controlled by `EngineOptions.EnableHotReload`, which defaults to `true`. Disabling it blocks `DynamicPatch` and the script-side `HotPatch` API, and allows the compiler to enable more aggressive module-local direct-call optimizations:
-
-```csharp
-var options = EngineOptions.Default
-    .WithEnableHotReload(false)
-    .WithCompilationMode(CompilationMode.Persistence)
-    .WithOptimizeOption(OptimizeOptions.Release);
-```
-
-Disable hot reload for production workloads that do not need runtime patching and prioritize faster call paths and lighter generated CIL. Keep `EnableHotReload=true` when scripts must be replaced or incrementally updated at runtime.
-
-### 1. .NET API (Host Side)
-Use `domain.DynamicPatch` to apply patches from the host:
-
-```csharp
-// Apply a replacement patch
-domain.DynamicPatch(engine.MemorySource("module.as", "func newFunc() { ... }"), HotPatchType.Replace);
-
-// Apply an incremental patch
-domain.DynamicPatch(engine.MemorySource("module.as", "var newVar = 1;"), HotPatchType.Incremental);
-```
-
-### 2. Script API (Script Side)
-The global `HotPatch` object allows scripts to patch themselves or other modules:
-
-```javascript
-// Replace all members of 'MAIN' module
-HotPatch.replace("MAIN", "func main() { console.log('Fixed!'); }");
-
-// Incrementally add/update members in 'UTILS' module
-HotPatch.incremental("UTILS", "func helper() { return 42; }");
-```
-
-### 3. Working Mechanism
-Hot-patching works via the `IncrementalCompiler`, which performs a partial JIT compilation. It links the new code to the existing `ScriptGlobal` environment and updates the `ScriptObject` representing the target module.
-
-### 4. Precautions & Best Practices
-- **Top-level Re-execution**: When a module is patched, its top-level code (variable initializations, etc.) will re-execute.
-- **Function Signatures**: Ensure new function signatures match existing call sites to maintain compatibility.
-- **Replace vs. Incremental**: 
-    - `Replace`: Destructive. Clears all existing properties of the module before applying new code.
-    - `Incremental`: Safe. Keeps existing properties and only updates or adds new members.
-- **State Persistence**: Variables defined at the module level will be re-initialized if they are part of the patch code.
-
-## 📊 Benchmark Results
-
-Performance is a priority. We encourage community contributions to optimize further!
-
-```
-
-BenchmarkDotNet v0.15.8, Windows 11 (10.0.26200.8655/25H2/2025Update/HudsonValley2)
-13th Gen Intel Core i7-13700KF 3.40GHz, 1 CPU, 24 logical and 16 physical cores
-.NET SDK 10.0.301
-  [Host]     : .NET 10.0.9 (10.0.9, 10.0.926.27113), X64 RyuJIT x86-64-v3
-  DefaultJob : .NET 10.0.9 (10.0.9, 10.0.926.27113), X64 RyuJIT x86-64-v3
-
-
-```
-| Method           | Mean           | Error       | StdDev      | Min            | Max            | Median         | Rank | Gen0     | Gen1   | Allocated  |
-|----------------- |---------------:|------------:|------------:|---------------:|---------------:|---------------:|-----:|---------:|-------:|-----------:|
-| TestCreateDomain |       8.281 μs |   0.1096 μs |   0.1026 μs |       8.144 μs |       8.422 μs |       8.335 μs |    1 |   0.8392 | 0.0305 |    13296 B |
-| testDraw         |       9.468 μs |   0.0539 μs |   0.0504 μs |       9.366 μs |       9.540 μs |       9.472 μs |    2 |   0.0610 |      - |     1136 B |
-| testMD5          |      27.030 μs |   0.0751 μs |   0.0702 μs |      26.929 μs |      27.173 μs |      27.059 μs |    3 |   0.2441 |      - |     4209 B |
-| testMD5_100      |   2,654.943 μs |   7.4476 μs |   6.9664 μs |   2,641.647 μs |   2,667.250 μs |   2,653.588 μs |    4 |  23.4375 |      - |   420913 B |
-| testFor1E        | 152,446.394 μs | 851.0526 μs | 710.6675 μs | 151,119.125 μs | 153,495.750 μs | 152,681.200 μs |    5 |        - |      - |          - |
-
-
-> Measured on Intel Core i7-13700KF, .NET 10.0.9.
-
-## 📂 Examples
-
-- [**Basic Tests**](examples/tests/main.as): Syntax and module loading.
-- [**Benchmarks**](benchmark/scripts/unit.as): Performance scripts.
-
----
-
-Made with ❤️ by [l2060](https://github.com/l2060)
+Made by [l2060](https://github.com/l2060)

@@ -16,6 +16,7 @@ using System.Reflection.PortableExecutable;
 
 namespace AuroraScript.Compiler.Emits.Builders
 {
+#if NET9_0_OR_GREATER
     internal class PersistedBuilder : AbstractCILBuilder
     {
         private readonly PersistedAssemblyBuilder _assemblyBuilder;
@@ -91,10 +92,10 @@ namespace AuroraScript.Compiler.Emits.Builders
 
             Func<IEnumerable<Blob>, BlobContentId> idProvider = content => pdbContentId;
             var peHeader = new PEHeaderBuilder(
-                machine: Machine.Amd64,           // 根据架构选择
+                machine: Machine.I386,
                 sectionAlignment: 0x2000,            // 标准对齐
                 fileAlignment: 0x200,                // 标准文件对齐
-                imageBase: 0x0000000140000000UL, // 64位或32位基址
+                imageBase: 0x10000000,
                 majorLinkerVersion: 14,              // 现代链接器版本
                 minorLinkerVersion: 0,
                 majorOperatingSystemVersion: 6,      // Windows 10/11
@@ -324,4 +325,52 @@ namespace AuroraScript.Compiler.Emits.Builders
         private ConcurrentDictionary<String, FieldBuilder> consts = new ConcurrentDictionary<string, FieldBuilder>();
 
     }
+#else
+    internal class PersistedBuilder : AbstractCILBuilder
+    {
+        public PersistedBuilder(EngineOptions options) : base(options)
+        {
+            throw new PlatformNotSupportedException("CompilationMode.Persistence requires .NET 9.0 or later.");
+        }
+
+        public byte[] Serialize()
+        {
+            throw new PlatformNotSupportedException("CompilationMode.Persistence requires .NET 9.0 or later.");
+        }
+
+        public override (MethodInfo Method, ILGenerator IL) DefineModuleInitMethod(ModuleDeclaration module)
+        {
+            throw new PlatformNotSupportedException("CompilationMode.Persistence requires .NET 9.0 or later.");
+        }
+
+        public override (MethodInfo Method, ILGenerator IL) DefineDomainInitMethod()
+        {
+            throw new PlatformNotSupportedException("CompilationMode.Persistence requires .NET 9.0 or later.");
+        }
+
+        public override (MethodInfo Method, ILGenerator IL) DefineMethod(string moduleName, string methodName, Type returnType, Type[] parameterTypes)
+        {
+            throw new PlatformNotSupportedException("CompilationMode.Persistence requires .NET 9.0 or later.");
+        }
+
+        public override MethodInfo GetRuntimeEntryPoint() => null;
+
+        public override void SetLocalSymInfo(LocalBuilder local, string name)
+        {
+        }
+
+        public override void MarkSequencePoint(AstNode node, ILGenerator il)
+        {
+        }
+
+        public override void MarkSequencePoint(SourceSpan range, ILGenerator il)
+        {
+        }
+
+        public override (MethodInfo Method, ILGenerator IL) DefineDynamicMethod(ModuleDeclaration module)
+        {
+            throw new PlatformNotSupportedException("CompilationMode.Persistence requires .NET 9.0 or later.");
+        }
+    }
+#endif
 }

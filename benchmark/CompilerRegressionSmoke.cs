@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace CompilerBenchmark
+namespace AuroraBenchmark
 {
     internal static class CompilerRegressionSmoke
     {

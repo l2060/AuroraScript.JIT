@@ -1,4 +1,4 @@
-﻿<p align="center">
+<p align="center">
   <img src="icon.png" width="128" alt="AuroraScript Logo" />
 </p>
 
@@ -9,385 +9,615 @@
 # AuroraScript
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/l2060/AuroraScript)
-[![Version](https://img.shields.io/badge/version-1.0.0-orange.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-2.0.0-orange.svg)](src/AuroraScript.csproj)
+[![Target](https://img.shields.io/badge/.NET-8.0%20%7C%209.0%20%7C%2010.0-blueviolet.svg)](src/AuroraScript.csproj)
 
-AuroraScript 是一个基于 .NET 构建的轻量级、弱类型脚本执行引擎。它将脚本直接编译为 CIL（通用中间语言），并通过 .NET JIT 编译器执行。旨在提供极致的性能、易于嵌入且高度可扩展。
+AuroraScript 是一个面向 .NET 宿主程序的轻量脚本引擎。脚本会被编译为 CIL，并通过 .NET 运行时执行，适合把规则、业务逻辑、配置化流程、热修复逻辑和小型表达式嵌入到 C# 应用中。
 
-虽然在语法和机制上借鉴了 JavaScript，但 AuroraScript 是一门独立的语言，拥有自己的优化和特性，并不遵守 ECMA 规范。它充分利用了原生 .NET 基础设施进行执行、互操作和调试。
+AuroraScript 的语法借鉴了 JavaScript 的表达式、对象、数组、闭包和模块写法，但它不是 ECMAScript 实现，也不承诺兼容浏览器或 Node.js 语义。README 中列出的能力均以当前源码和测试覆盖为准。
 
 > [!NOTE]
-> 🚧 **Work in Progress**: 本项目仍处于开发阶段，性能和 API 稳定性正在持续改进中。我们非常欢迎大家提交 **PR** 和 **Issue** 来共同壮大 AuroraScript！
+> 项目仍在持续开发中。公开 API、性能和语义边界仍可能调整；用于生产前建议固定 NuGet 版本并跑自己的回归测试。
 
-## ✨ 特性
+## 支持平台
 
-- **高性能**：无第三方依赖，编译为原生 CIL/MSIL，利用 .NET JIT 编译器执行。
-- **弱类型系统**：类似 JavaScript 的灵活变量类型。
-- **原生互操作**：可无缝注册和在脚本中使用 .NET (CLR) 类型和函数。
-- **调试支持**：目前仅支持 **Visual Studio** 调试（断点、步进、变量查看等）。
-- **模块化系统**：
-  - 支持 `import xxx from 'xxx'` 导入模块导出项。
-  - 支持 `include 'xxx.as'` 直接嵌入脚本文件。
-  - 支持 `@module("MODULENAME")` 自定义模块名称。
-- **高级控制流**：
-  - 支持 `debugger` 指令进行编程式断点。
-  - 增强的 `where` / `for` loop 支持。
-- **编译模式 (Compilation Modes)**：
-  - `Persistence`：持久化程序集模式。编译为包含 PDB 符号的持久化 DLL。支持源码级调试和编程式断点。完全可检索、可被外部进程 Dump。
-  - `OnlyRun`：临时内存编译模式。内存中即时编译执行。无托管调试映射关系。对外部性能分析器和 Dump 工具透明，代码驻留在可读内存段。
-  - `Dynamic`：高性能动态执行模式。通过 `DynamicMethod` 发射 CIL。无元数据开销，提供极致性能。黑盒执行：不可检索也不可被外部进程 Dump。
-- **热修复 (Hot-fix)**：支持在不丢失状态的情况下动态更新脚本逻辑。提供 `Replace` 和 `Incremental` 两种模式，支持 .NET API 或脚本 API 调用。
-- **混淆支持 (Obfuscation)**：内置对比特、成员名和代码结构的混淆功能。
-- **现代语法支持**：
-  - 支持闭包（Closures）、Lambda 表达式和函数指针。
-  - 对象解构：`var { a, b } = obj;`。
-  - 数组解构：`var [ a, ...b ] = arr;`。
-  - 展开运算符（Spread Operator）：`...` 支持数组和对象展开。
-  - 文本模板：支持多行文本模板（`` ` `` 或 `|>` 语法）。
-- **标准库**：内置 `Math`, `JSON`, `Date`, `Regex`, `HashMap`, `Proxy`, `StringBuffer` 等实用对象。
+NuGet 包名：`AuroraScript.JIT`
 
-## 🚀 快速开始
+当前 `2.0.0` 包发布为多目标框架：
 
-### NuGet 安装
+| 目标框架 | 支持情况 |
+|---|---|
+| `net8.0` | 支持 `Dynamic` / `OnlyRun`；不支持 `CompilationMode.Persistence` |
+| `net9.0` | 支持 `Dynamic` / `OnlyRun` / `Persistence` |
+| `net10.0` | 支持 `Dynamic` / `OnlyRun` / `Persistence` |
 
-您可以通过 NuGet 快速安装 AuroraScript 引擎：
+平台目标为 `AnyCPU`。运行时没有 native 依赖，`Dynamic` 和 `OnlyRun` 模式理论上可在 x64 与 ARM64 上运行。`Persistence` 模式生成 IL-only 程序集；已避免 x64 PE 标记，但仍建议在目标 ARM64 系统上执行完整测试后再正式声明支持。
+
+## 引擎特色
+
+- **CIL/JIT 执行**：脚本编译为 .NET IL，运行时走 CLR/JIT，不依赖解释器循环执行主逻辑。
+- **嵌入简单**：通过 `AuroraEngine` 编译脚本，通过 `ScriptDomain` 隔离运行环境并执行模块函数。
+- **三种编译模式**：可在动态执行、可检查内存程序集、持久化 DLL/PDB 之间取舍。
+- **CLR 互操作**：支持注册 CLR 类型，脚本可调用构造函数、属性、字段、实例方法、静态方法、重载、可选参数和 `params` 参数。
+- **运行时热更新**：支持宿主侧 `DynamicPatch` 和脚本侧 `HotPatch.replace` / `HotPatch.incremental`。
+- **模块与作用域隔离**：支持 `@module`、`import`、`include`，每个 `ScriptDomain` 拥有独立 global 和模块实例。
+- **CompileBlock**：可编译不进入模块系统的小段脚本，适合公式、过滤器、规则判断等高频小逻辑。
+- **内置标准对象**：包含 `Object`、`Array`、`String`、`Date`、`Regex`、`HashMap`、`StringBuffer`、`JSON`、`Math`、`console`、`Proxy`、`HotPatch`。
+- **测试覆盖广**：测试覆盖词法、语法、表达式、语句、模块、编译模式、CLR 互操作、JSON、热重载、并发和回归场景。
+
+## 安装
 
 ```bash
 dotnet add package AuroraScript.JIT
 ```
 
-### 手动安装
-
-克隆仓库到本地：
+源码构建：
 
 ```bash
 git clone https://github.com/l2060/AuroraScript.git
 cd AuroraScript
-```
-
-### 编译项目
-
-构建核心引擎库：
-
-```bash
 dotnet build src/AuroraScript.csproj -c Release
 ```
 
-## 📖 使用指南
+## 快速使用
 
-### 运行脚本 (宿主程序)
-
-在您的 .NET 应用程序中托管引擎：
+### 宿主代码
 
 ```csharp
 using AuroraScript;
 using AuroraScript.Runtime;
+using System.Text;
 
-// 1. 初始化引擎配置
-var options = EngineOptions.Default.WithBaseDirectory("./scripts/");
+var options = EngineOptions.Default
+    .WithBaseDirectory("./scripts")
+    .WithCompilationMode(CompilationMode.Dynamic)
+    .WithOptimizeOption(OptimizeOptions.Release);
+
 var engine = new AuroraEngine(options);
+engine.RegisterType(typeof(Math), "Math2");
 
-// 2. 注册 CLR 类型或函数 (可选)
-engine.RegisterType<Math>("Math2");
-
-// 3. 编译脚本 (搜索并构建基础目录下所有 .as 文件)
 await engine.BuildAsync(engine.SearchAllFileSource(Encoding.UTF8));
 
-// 4. 创建 Domain 并执行
 var domain = engine.CreateDomain();
-// 执行 'MAIN' 模块中的 'main' 函数
-domain.Execute("MAIN", "main");
+var result = domain.Execute("MAIN", "main", ScriptDatum.FromNumber(20));
+Console.WriteLine(result);
 ```
 
-### 编译轻量脚本块 (CompileBlock)
+### 脚本代码
 
-`CompileBlock` 用于编译高性能、轻量型的匿名脚本块。它不创建模块、不注册到 `global.modules`，也不参与热重载；适合规则表达式、公式、过滤器、AI/业务决策片段等需要频繁调用的小段脚本。
+```javascript
+@module(MAIN);
+
+export func main(value) {
+    var total = Math2.Abs(-value);
+    var items = [1, 2, 3];
+
+    for (var item in items) {
+        total = total + item;
+    }
+
+    return total;
+}
+```
+
+### 注入宿主状态
 
 ```csharp
+using AuroraScript.Runtime;
+using AuroraScript.Runtime.Types;
+
+public sealed class MyState : ScriptObject
+{
+    public MyState()
+    {
+        Define("Name", StringValue.Of("Aurora"));
+        Define("Count", NumberValue.Of(3));
+    }
+}
+
+var userState = new MyState();
+var domain = engine.CreateDomain(userState: userState);
+```
+
+`userState` 必须继承 `ScriptObject`。脚本中可通过 `$state` 访问该对象：
+
+```javascript
+@module(MAIN);
+
+export func name() {
+    return $state.Name;
+}
+```
+
+### 配置全局变量或函数
+
+```csharp
+var domain = engine.CreateDomain(global =>
+{
+    global.Define("HOST_ADD", (Func<int, int, int>)((a, b) => a + b));
+    global.Define("HOST_NAME", "Aurora");
+});
+```
+
+```javascript
+@module(MAIN);
+
+export declare func HOST_ADD(left, right);
+
+export func run() {
+    return HOST_NAME + ":" + HOST_ADD(20, 22);
+}
+```
+
+## CompileBlock
+
+`CompileBlock` 会把源码当作匿名函数体编译，不创建模块，也不参与热重载。它适合公式、规则、过滤器和需要频繁调用的小段逻辑。
+
+```csharp
+var engine = new AuroraEngine(EngineOptions.Default.WithBaseDirectory("."));
+
 var block = engine.CompileBlock("""
-function clamp(v, min, max) {
+func clamp(v, min, max) {
     if (v < min) return min;
     if (v > max) return max;
     return v;
 }
 
-return clamp(x, 0, 100) + PI;
+return clamp(x, 0, 100);
 """, new CompileBlockOptions
 {
     Parameters = ["x"],
     SourceName = "rules/clamp.as"
 });
 
-var domain = engine.CreateEmptyDomain(g =>
-{
-    g.Define("PI", new NumberValue(Math.PI), writeable: false, enumerable: true);
-});
-
-var result = block.Invoke(domain, ScriptDatum.FromNumber(125));
+var result = block.Invoke(ScriptDatum.FromNumber(125));
 ```
 
-`CompileBlock` 的源码会被当作匿名函数体处理，因此可以直接编写 `return`、`if`、`for`、`var` 和局部 `function`。编译阶段通过 `Parameters` 声明参数名，运行时按位置传入参数。无捕获、固定参数数量的局部函数会走直接调用路径；捕获外层变量的局部函数会自动保留闭包语义。
+参数名通过 `CompileBlockOptions.Parameters` 声明，运行时按位置传入。参数名不能为空、不能重复，且不能使用 `global`、`$args`、`$state`。
 
-### 编写脚本
+## 编译模式
 
-语法示例：
+| 模式 | 说明 | 适用场景 |
+|---|---|---|
+| `Dynamic` | 使用 `DynamicMethod` 发射 CIL，不产生可持久化程序集 | 高性能运行、规则执行、小型脚本 |
+| `OnlyRun` | 使用可回收动态程序集在内存中运行 | 需要更容易被运行时工具观察的内存执行 |
+| `Persistence` | 生成可保存的 DLL，并可带调试符号 | 调试、诊断、需要落盘程序集的场景 |
+
+限制：
+
+- `Persistence` 需要 `net9.0` 或更高版本；`net8.0` 下调用会抛出 `PlatformNotSupportedException`。
+- Visual Studio 源码级脚本调试依赖 `Persistence` 模式和 Debug 优化设置。
+
+## 热修复
+
+热修复由 `EngineOptions.EnableHotReload` 控制，默认启用。关闭后会禁用 `DynamicPatch` 和脚本侧 `HotPatch`，并允许编译器使用更激进的模块内直接调用优化。
+
+宿主侧：
+
+```csharp
+domain.DynamicPatch(
+    engine.MemorySource("main.as", "@module(MAIN); export func run() { return 42; }"),
+    HotPatchType.Replace);
+```
+
+脚本侧：
 
 ```javascript
-@module("MAIN");
+HotPatch.replace("main.as", "@module(MAIN); export func run() { return 42; }");
+HotPatch.incremental("main.as", "export func added() { return 1; }");
+```
 
-func main() {
-    console.log("你好, AuroraScript!");
+注意：
 
-    // 调用注册的 CLR 库
-    var res = Math2.Abs(-100);
-    console.log("Abs 结果: " + res);
+- `Replace` 会清空目标模块现有成员后应用新代码。
+- `Incremental` 会保留现有成员，并添加或更新补丁中声明的成员。
+- 补丁源码中的顶层代码会在应用补丁时执行。
 
-    var list = [1, 2, 3, 4, 5];
-    for (var item in list) {
-        if (item % 2 == 0) {
-            console.log("偶数: " + item);
-        }
-    }
+## 语言能力
+
+当前测试覆盖和示例中使用的语法包括：
+
+- `var` / `const` / `func` / `function` / `return`
+- `if` / `else` / `for` / `for-in` / `while` / `break` / `continue`
+- `try` / `catch` / `finally` / `throw`
+- `enum`
+- 闭包、递归、默认参数、`$args`
+- 表达式 Lambda：`(a, b) => a + b`
+- 块 Lambda：`(value) => { return value * 2; }`
+- 对象字面量、数组字面量、稀疏数组
+- 对象/数组解构
+- 对象 shorthand 和对象/数组 spread
+- 模板字符串和嵌套模板
+- 正则字面量与除法语义区分
+- `typeof`、`in`、`delete`、自增自减、复合赋值
+
+## 内置 API
+
+### 全局对象
+
+- `Array`
+- `String`
+- `Boolean`
+- `Object`
+- `Number`
+- `Date`
+- `Error`
+- `HashMap`
+- `Regex`
+- `Proxy`
+- `StringBuffer`
+- `console`
+- `JSON`
+- `Math`
+- `HotPatch`
+- `global`
+- `$state`
+- `$args`
+
+### Object
+
+静态成员：
+
+- `Object.equal$(a, b)`
+- `Object.equal(a, b)`
+- `Object.deepEqual(a, b)`
+- `Object.assign(target, ...sources)`
+- `Object.keys(obj)`
+- `Object.clone(obj)`
+- `Object.deepClone(obj)`
+- `Object.freeze(obj)`
+
+实例成员：
+
+- `obj.length`
+- `obj.toString()`
+
+> `Object.extends` 当前在构造器中注册，但实现体未返回有效结果，因此 README 不把它列为可用 API。
+
+### Array
+
+静态成员：
+
+- `Array.from(iterable, [mapCallback])`
+- `Array.isArray(value)`
+- `Array.of(...items)`
+
+实例成员：
+
+- `length`
+- `has(value)`
+- `indexOf(value)`
+- `lastIndexOf(value)`
+- `push(...items)`
+- `pop()`
+- `sort([compare])`
+- `join([separator])`
+- `slice(start, [end])`
+- `reverse()`
+- `unshift(...items)`
+- `shift()`
+- `concat(...items)`
+- `find(callback)`
+- `findIndex(callback)`
+- `findLast(callback)`
+- `findLastIndex(callback)`
+- `map(callback)`
+- `filter(callback)`
+- `some(callback)`
+- `every(callback)`
+- `flat([depth])`
+- `reduce(callback)`
+
+### String
+
+静态成员：
+
+- `String.fromCharCode(code)`
+- `String.valueOf(value)`
+- `String.compare(a, b)`
+
+实例成员：
+
+- `length`
+- `contains(text)`
+- `indexOf(text)`
+- `lastIndexOf(text)`
+- `startsWith(text)`
+- `endsWith(text)`
+- `substring(start, [end])`
+- `slice(start, [end])`
+- `split(separator)`
+- `match(regex)`
+- `matchAll(regex)`
+- `replace(search, replacement)`
+- `padLeft(width, [char])`
+- `padRight(width, [char])`
+- `trim()`
+- `trimLeft()`
+- `trimRight()`
+- `toString()`
+- `charCodeAt(index)`
+- `toLowerCase()`
+- `toUpperCase()`
+
+### Date
+
+静态成员：
+
+- `Date.now()`
+- `Date.utcNow()`
+- `Date.parse(value)`
+
+实例成员：
+
+- `year`
+- `month`
+- `day`
+- `hour`
+- `minute`
+- `second`
+- `millisecond`
+- `dayOfWeek`
+- `dayOfYear`
+- `ticks`
+- `toString([format])`
+
+### HashMap
+
+- `set(key, value)`
+- `get(key)`
+- `getOrInsert(key, valueOrCallback)`
+- `has(key)`
+- `delete(key)`
+- `clear()`
+- `keys`
+- `values`
+- `size`
+
+### Regex
+
+- `test(text)`
+
+字符串还提供 `match(regex)` 和 `matchAll(regex)`。
+
+### StringBuffer
+
+- `append(...items)`
+- `appendLine(...items)`
+- `insert(index, value)`
+- `clear()`
+- `toString()`
+- `release()`
+- `stringAndRelease()`
+
+### JSON
+
+- `JSON.parse(text)`
+- `JSON.stringify(value, [indented])`
+
+JSON 支持脚本基础值、对象、数组、HashMap 等类型；循环引用会抛出运行时异常。
+
+### Math
+
+常量和函数以当前 `MathSupport` 为准，测试覆盖常见数学函数、随机数和错误路径。常用成员包括：
+
+- `Math.PI`
+- `Math.E`
+- `Math.abs(x)`
+- `Math.max(...values)`
+- `Math.min(...values)`
+- `Math.random()`
+- `Math.floor(x)`
+- `Math.round(x)`
+- `Math.pow(x, y)`
+- `Math.log(x)`
+- `Math.exp(x)`
+- `Math.sin(x)`
+- `Math.cos(x)`
+- `Math.tan(x)`
+
+### console
+
+- `console.log(...args)`
+- `console.error(...args)`
+- `console.time(label)`
+- `console.timeEnd(label)`
+
+输出目标可通过 `EngineOptions.WithConsoleStdOut` 和 `WithConsoleErrorOut` 配置。
+
+### Proxy
+
+```javascript
+var proxy = new Proxy(target, {
+    get: (obj, key) => obj[key],
+    set: (obj, key, value) => { obj[key] = value; return value; }
+});
+```
+
+构造 `Proxy` 时必须提供 `get` 和 `set` handler。测试覆盖了属性读取、写入和删除相关路径。
+
+## CLR 互操作
+
+注册 CLR 类型：
+
+```csharp
+engine.RegisterType<HostCalculator>("Calculator");
+```
+
+脚本中使用：
+
+```javascript
+@module(MAIN);
+
+export func run() {
+    var host = new Calculator(5);
+    host.Value = 7;
+    host.Field = 3;
+    return [host.Add(2), Calculator.Multiply(3, 4), host.Value, host.Field];
 }
 ```
 
-## 🐞 脚本调试
+已测试能力：
 
-AuroraScript 支持功能完备的 **Visual Studio** 调试体验。
+- 构造函数
+- 属性和字段读写
+- 实例方法和静态方法
+- 重载选择
+- 可选参数
+- `params` 参数
+- CLR 集合和委托的全局注入
+- 类型访问限制：`TypeAccess.All`、`Constructor`、`Static`
+- 注册表重复 alias 和释放后的错误处理
 
-### 1. Visual Studio 调试
-在 `Persistence` 模式下并开启Debug编译优化，您可以直接在 Visual Studio 中调试脚本：
-- **断点 (Breakpoints)**：在 `.as` 文件中自由设置断点。
-- **单步执行**: 支持逐语句 (F11)、逐过程 (F10) 和跳出 (Shift+F11)。
-- **变量查看**: 支持查看本地变量、对象成员及代码堆栈。
-- **调试指令**: 支持 `debugger` 指令进行编程式断点。
+## 测试
 
-### 2. 启动调试
-1.  在 C# 宿主程序中设置好断点。
-2.  运行宿主程序。
-3.  命中断点后即可在 Visual Studio 中进行调试。
+测试项目：`tests/AuroraScript.Tests`
 
+当前 `net10.0` test discovery 共发现 **282** 个测试用例。按测试类统计：
 
-![Debugger Demo](documents/debugger.png)
+| 测试类 | 用例数 | 覆盖重点 |
+|---|---:|---|
+| `LexerTests` | 37 | 词法、数字/字符串/正则、注释、错误 token |
+| `ParserSyntaxTests` | 79 | 语法分支、模块声明、import/include/export、错误语法诊断 |
+| `ExpressionExecutionTests` | 35 | 表达式、运算符、成员/索引访问、spread、赋值 |
+| `StatementExecutionTests` | 7 | 控制流、循环、闭包、递归、异常、Domain 隔离 |
+| `LanguageFeatureExecutionTests` | 16 | enum、Lambda、稀疏数组、truthiness、模板、赋值语义 |
+| `ModuleCompilationTests` | 12 | 模块依赖、并行编译、循环依赖、错误聚合、取消 |
+| `CompileBlockTests` | 21 | CompileBlock 参数、调用方式、错误输入和诊断 |
+| `CompilationModeTests` | 5 | Dynamic/OnlyRun/Persistence 行为和热重载开关 |
+| `RuntimeApiAndErrorTests` | 9 | 运行时 API、错误路径、`$state`、释放后行为 |
+| `BuiltInLibraryTests` | 8 | Math、String、Array、JSON、HashMap、Regex、StringBuffer、Console |
+| `AdvancedRuntimeTypeTests` | 6 | 构造器、Object、freeze、Date、Proxy |
+| `ClrInteropTests` | 5 | CLR 构造/属性/字段/方法/重载/访问限制 |
+| `SerializationTests` | 9 | JSON 序列化/反序列化、循环引用、异常 JSON |
+| `ScriptDatumTests` | 4 | Datum payload、相等性、CLR 集合转换、Span helper |
+| `HotReloadTests` | 4 | 热重载禁用、增量补丁、替换补丁、Domain 隔离 |
+| `ConcurrentRuntimeTests` | 3 | 同域/多域并发、detached closure 并发 |
+| `ReleaseRegressionTests` | 9 | Release 直连调用、闭包槽位、栈平衡、混淆、空模块 |
+| `ClosureFunctionContextTests` | 3 | 上下文池生命周期和 detached 调用 |
+| `EngineOptionsAndSourceTests` | 10 | EngineOptions、Source 路径、扩展名、并行度、空输入 |
 
-### 3. VS Code 插件
-目前的 VS Code 插件主要用于提供**代码着色**（语法高亮）能力，提升编写体验。
-- 安装方式：打开 `vscode-extension`，运行 `npm install` 与 `npm run package`，随后安装生成的 `.vsix` 文件。
+覆盖范围摘要：
 
+- Lexer：关键字、标识符、Unicode、运算符、数字、字符串、正则、注释、CRLF 位置、错误 token。
+- Parser：模块元数据、import/include/export、声明、表达式、Lambda、解构、控制流、异常、模板、正则、错误诊断。
+- CompileBlock：参数校验、局部函数、domain/no-domain 调用、模块语法拒绝、source name、空输入。
+- 表达式/语句：优先级、算术、位运算、比较、逻辑、成员访问、spread、赋值、循环、异常、闭包、递归。
+- 模块编译：相对路径、菱形依赖、重复根、并行依赖图、循环依赖、错误聚合、取消、并发 build。
+- 编译模式：Dynamic、OnlyRun、Persistence 的行为一致性；net8 下 Persistence 限制。
+- 运行时 API 和错误：未 Build 使用、缺失模块/方法、脚本堆栈、const 写入、`$state`、释放。
+- 内置库：Math、String、Array、JSON、HashMap、Regex、StringBuffer、Console、Date、Proxy。
+- CLR 互操作、序列化、ScriptDatum、热重载、并发运行、Release 回归。
 
-*内置类型定义文件提供智能提示支持：*
-![Type Definitions](documents/lib.d.as.png)
+运行测试：
 
-## 📚 内置 API (Built-in API)
+```bash
+dotnet test tests/AuroraScript.Tests/AuroraScript.Tests.csproj
+```
 
-AuroraScript 运行时提供了一套核心的标准库支持。
+当前测试项目多目标到 `net8.0;net9.0;net10.0`。运行对应测试需要本机安装相应 .NET runtime。
 
-### 核心类型 (Core Types)
+## Benchmark
 
-#### **Object**
-基础对象类型，所有对象的基类。
-- **静态方法**:
-  - `equal$(a, b)`: 严格相等比较（引用一致性）。
-  - `equal(a, b)`: 基本值相等比较。
-  - `deepEqual(a, b)`: 深度递归比较对象内容。
-  - `assign(target, ...sources)`: 将源对象的所有可枚举属性复制到目标对象。
-  - `keys(obj)`: 返回包含对象所有自身可枚举属性名称的数组。
-  - `clone(obj)` / `deepClone(obj)`: 对对象进行浅拷贝或深拷贝。
-  - `extends(proto, [target])`: 创建一个以 `proto` 为原型的新对象，可选传入 `target` 进行初始化。
-  - `freeze(obj)`: 冻结对象，防止添加、删除或修改属性。
-- **实例成员**:
-  - `length`: [只读] 返回对象拥有的属性数量。
-  - `toString()`: 返回对象的字符串表示。
+统一 Benchmark 项目位于 `benchmark/`，包含运行时指标和编译器 pipeline 指标。
 
-#### **Array**
-有序集合类型，支持动态扩容与常用链式操作。
-- **静态方法**:
-  - `from(iterable)`: 从类数组或可迭代对象创建一个新数组。
-  - `isArray(obj)`: 检查对象是否为数组类型。
-  - `of(...items)`: 根据提供的参数创建一个新数组。
-- **实例成员**:
-  - `length`: [属性] 获取或设置数组长度。
-  - `push(...items)` / `pop()`: 在末尾添加或移除元素。
-  - `shift()` / `unshift(...items)`: 在开头移除或添加元素。
-  - `slice(start, [end])`: 提取数组的一部分，不改变原数组。
-  - `join([sep])`: 用指定分隔符（默认 `,`）将元素连接成字符串。
-  - `reverse()` / `sort([cmp])`: 反转数组或按指定比较器排序。
-  - `indexOf(val)` / `lastIndexOf(val)` / `has(val)`: 元素查找与存在性检查。
-  - `find(cb)` / `findIndex(cb)` / `findLast(cb)` / `findLastIndex(cb)`: 查找满足条件的元素或其索引。
-  - `map(cb)` / `filter(cb)` / `reduce(cb)` / `flat([depth])`: 闭包驱动的迭代与转换操作。
-  - `some(cb)` / `every(cb)`: 逻辑谓词检查。
+快速 smoke：
 
-#### **String**
-不可变的文本序列。
-- **静态方法**:
-  - `fromCharCode(...codes)`: 从一组 UTF-16 代码单元创建字符串。
-  - `compare(a, b)`: 返回两个字符串的比较结果。
-- **实例成员**:
-  - `length`: [属性] 获取字符串字符数。
-  - `substring(start, [end])` / `slice(start, [end])`: 截取子字符串。
-  - `indexOf(sub)` / `lastIndexOf(sub)` / `contains(sub)`: 子串查找与匹配。
-  - `startsWith(sub)` / `endsWith(sub)`: 前后缀检查。
-  - `split(sep)`: 按分隔符拆分为字符串数组。
-  - `replace(search, repl)`: 替换匹配项。支持正则匹配及回调函数处理。
-  - `match(regex)` / `matchAll(regex)`: 结合正则进行模式检索。
-  - `trim()` / `trimLeft()` / `trimRight()`: 去除空格或指定空白字符。
-  - `toLowerCase()` / `toUpperCase()`: 大小写风格转换。
-  - `charCodeAt(index)`: 获取指定位置字符的编码值。
+```bash
+dotnet run --project benchmark/Benchmark.csproj -c Release -- --smoke
+```
 
-#### **Date**
-日期与时间处理。
-- **静态方法**:
-  - `now()` / `utcNow()`: 获取当前本地或 UTC 时间。
-  - `parse(str)`: 解析日期字符串。
-- **实例属性**:
-  - `year` / `month` / `day` / `hour` / `minute` / `second` / `millisecond`: 获取时间各分量（只读）。
-  - `dayOfWeek` / `dayOfYear` / `ticks`: 获取星期、年内天数或原始计时周期。
+输出简易 CSV 对比：
 
-#### **HashMap**
-高性能、线程安全的键值对集合，底层基于 `ConcurrentDictionary`。
-- **实例成员**:
-  - `size`: [属性] 获取集合内元素数量。
-  - `set(key, val)` / `get(key)`: 存取键值对。支持任意类型作为键。
-  - `has(key)` / `delete(key)`: 检查存在性或删除特定成员。
-  - `getOrInsert(key, defaultVal/cb)`: 获取键值，若不存在则原子性地插入默认值或回调结果。
-  - `keys` / `values`: [属性] 获取所有键或值的迭代集合。
-  - `clear()`: 清空整个集合。
+```bash
+dotnet run --project benchmark/Benchmark.csproj -c Release -- --compare
+```
 
-#### **Regex**
-正则表达式对象。
-- `test(str)`: 检查字符串是否匹配定义的模式。
+运行 BenchmarkDotNet：
+
+```bash
+dotnet run --project benchmark/Benchmark.csproj -c Release
+```
+
+当前重点指标包括：
+
+- Domain 创建、空调用、函数调用、模块调用、闭包调用
+- 对象、数组、HashMap、字符串、JSON、Regex、CLR 互操作
+- Lexer、Parser、Emitter、单模块/多模块编译、CompileBlock
+
+最近一次结果来自 `benchmark/bin/Release/net10.0/BenchmarkDotNet.Artifacts/results/` 下 2026-06-22 生成的 `RuntimeBenchmarks` 和 `CompilerPipelineBenchmarks` 报告。旧的 `ScriptBenchmark` 报告是历史文件，已不作为当前指标参考。
+
+测试环境：
+
+- BenchmarkDotNet `0.15.8`
+- Windows 11 `10.0.26200.8655`
+- Intel Core i7-13700KF
+- .NET SDK `10.0.301`
+- Runtime `.NET 10.0.9`
+- Job `ShortRun`
+
+运行时核心结果：
+
+| 指标 | 规模 | Mean | Allocated | 观察 |
+|---|---:|---:|---:|---|
+| `EmptyCall` | 1 call | 152 ns | 0 B | 宿主到脚本空调用开销低且无分配 |
+| `CreateDomain` | 1 domain | 2.8 us | 5.32 KB | Domain 创建较轻量 |
+| `NumericLoop` | 10,000 | 78.0 us | 48 B | 数值循环接近零分配 |
+| `FunctionCallLoop` | 10,000 | 1.10 ms | 48 B | 局部函数调用基本无分配 |
+| `ModuleCallLoop` | 10,000 | 1.32 ms | 48 B | 模块调用比局部调用慢约 20% |
+| `ClosureInvoke` | 10,000 | 660 us | 208 B | 闭包调用分配稳定 |
+| `ObjectCreateSetGet` | 10,000 | 1.97 ms | 1.91 MB | 对象创建/属性写入有线性分配 |
+| `ArrayPushIndex` | 10,000 | 930 us | 768 KB | 出现 Gen2，需关注数组增长/大对象路径 |
+| `HashMapSetGet` | 10,000 | 7.10 ms | 4.51 MB | 分配偏高，且触发 Gen2 |
+| `JsonStringify` | 10,000 | 7.11 ms | 7.55 MB | JSON 序列化分配较高 |
+| `JsonParse` | 10,000 | 10.76 ms | 8.54 MB | JSON 解析分配较高 |
+| `RegexMatchAll` | 10,000 | 30.67 ms | 32.58 MB | 当前最重的常规运行时路径之一 |
+| `StringBufferAppend` | 10,000 | 1.33 ms | 408 KB | 明显优于直接字符串拼接 |
+| `StringConcat` | 10,000 | 55.71 ms | 457.79 MB | 异常重，展示了应优先使用 `StringBuffer` 的场景 |
+| `ClrPropertyGetSet` | 10,000 | 592 us | 234 KB | CLR 属性访问相对健康 |
+| `ClrArrayArgument` | 10,000 | 6.89 ms | 4.04 MB | 数组参数转换仍有较高分配 |
+| `ClrInstanceMethod` | 10,000 | 8.31 ms | 2.90 MB | 实例方法调用仍有优化空间 |
+| `ClrStaticMethod` | 10,000 | 11.59 ms | 4.04 MB | 静态方法绑定/参数转换是明显热点 |
+
+编译器 pipeline 结果：
+
+| 指标 | Mean | Allocated | 观察 |
+|---|---:|---:|---|
+| `CompileBlock` | 28.8 us | 17.85 KB | 小段脚本编译开销较低 |
+| `FullCompile_MultiModule` | 358 us | 64.5 KB | 当前多模块样例较小，结果健康 |
+| `FullCompile_SingleModule` | 7.25 ms | 2.78 MB | 大模块完整编译主要成本 |
+| `EmitOnly_ParsedLargeModule` | 4.31 ms | 1.24 MB | Emitter 是大模块编译主要热点 |
+| `LexerOnly_Large` | 579 us | 21.26 KB | 大源码词法阶段分配较低 |
+| `ParseOnly_Large` | 845 us | 1.53 MB | AST 构建带来主要分配 |
+| `ParseOnly_TemplateInterpolation` | 166 us | 412.59 KB | 模板插值解析分配偏高 |
+
+异常点分析：
+
+- `StringConcat` 的 10,000 次场景分配约 `457.79 MB`，属于预期但非常重的用法问题；性能敏感场景应使用 `StringBuffer`。
+- `RegexMatchAll` 每 10,000 次分配约 `32.58 MB`，说明当前 match 结果对象构造成本高，适合后续优化结果数组、capture/group 对象分配。
+- CLR 互操作中 `ClrStaticMethod`、`ClrArrayArgument` 分配约 `4.04 MB/10,000`，静态调用和脚本数组到 CLR 数组转换仍是热点。
+- `HashMapSetGet` 10,000 次触发 Gen2，可能来自字符串 key 构造和字典扩容，应作为集合路径的后续优化点。
+- `ArrayPushIndex` 10,000 次也出现 Gen2，建议后续检查数组扩容策略和 benchmark 是否应预设容量。
+- 编译器侧 `ParseOnly_TemplateInterpolation` 分配相对源码规模偏高，模板解析可作为专项优化点。
+
+## 示例
+
+- [examples/tests/main.as](examples/tests/main.as)：模块加载和脚本入口示例。
+- [examples/tests/unit.as](examples/tests/unit.as)：内置类型、标准库和语言特性示例。
+- [tests/AuroraScript.Tests](tests/AuroraScript.Tests)：推荐作为行为规格参考。
+- [benchmark/scripts/runtime.as](benchmark/scripts/runtime.as)：运行时性能指标脚本。
+
+## VS Code 插件
+
+`vscode-extension` 目录包含 VS Code 插件工程，当前主要提供语法高亮和基础编辑体验。可进入该目录执行：
+
+```bash
+npm install
+npm run package
+```
+
+然后安装生成的 `.vsix`。
 
 ---
 
-### 标准库 (Standard Library)
-
-#### **console**
-提供标准输入输出与性能调试功能。
-- `log(...args)`: 在控制台打印普通信息。多参数将自动以逗号分隔。
-- `error(...args)`: 在控制台打印错误信息，支持输出调用堆栈。
-- `time(label)`: 开始一个以 `label` 命名的计时器。
-- `timeEnd(label)`: 停止计时器并在控制台输出经过的时间（毫秒）。
-
-#### **Math**
-提供常用数学常量与科学计算函数。
-- **常量**: `PI`, `E`, `Tau`, `DEG_PER_RAD`。
-- **方法**:
-  - `abs(x)`: 返回 x 的绝对值。
-  - `max(...args)` / `min(...args)`: 返回参数序列中的极大值或极小值。
-  - `random()`: 返回 [0, 1) 之间的伪随机数。
-  - `floor(x)` / `round(x)`: 向下取整或常规四舍五入。
-  - `pow(x, y)` / `log(x)` / `exp(x)`: 幂、自然对数及指数函数。
-  - `sin(x)` / `cos(x)` / `tan(x)`: 标准三角函数（弧度制）。
-
-#### **JSON**
-JSON 数据的序列化与反序列化工具。
-- `parse(text)`: 将符合规范的 JSON 字符串解析为脚本对象。
-- `stringify(obj, [indented])`: 将脚本对象序列化为文本。`indented` 为真时启用美化缩进。
-
-#### **StringBuffer**
-专为高性能大文本拼接设计的构建器。
-- `append(...args)`: 向末尾追加一个或多个连接项。
-- `appendLine(...args)`: 追加内容并附加平台相关的换行符。
-- `insert(index, str)`: 在指定索引偏移处插入字符串。
-- `clear()`: 重置缓冲区。
-- `toString()`: 输出构建完成的完整字符串。
-- `release()`: 释放对象。
-- `stringAndRelease()`: 获取字符串并释放对象。
-
-#### **Proxy**
-拦截并定义对象基本操作的自定义代理行为。
-- `new Proxy(target, handlers)`:
-  - **注意事项**: 必须提供完整的 `handlers` 对象，目前支持拦截 `get`, `set` 和 `unset`（即 `delete`）操作。
-
-#### **HotPatch**
-提供运行时的模块动态补丁与修复能力。
-- `replace(modulePath, script, [ignoreDeps])`: 完全替换指定路径的模块逻辑。
-- `incremental(modulePath, script, [ignoreDeps])`: 增量添加或更新模块成员。
-  - **注意事项**: 补丁脚本中的顶层代码（如变量初始化）会在应用时立即重新执行。
-
-### 全局上下文
-- `global`: 指向当前 Domain 的全局作用域。
-- `$state`: 访问用户注入的状态对象 (通过 C# `ExecuteOptions.WithUserState` 传入)。
-- `$args`: 当前函数的入参数组。
-
-## 🔥 热修复 (Hot-fix)
-
-AuroraScript 提供了强大的热修复能力，允许您在不重启应用程序或丢失运行时状态的情况下，动态更新正在运行的 `ScriptDomain` 中的脚本逻辑。
-
-热修复由 `EngineOptions.EnableHotReload` 控制，默认值为 `true`。关闭后将禁用 `DynamicPatch` 和脚本侧 `HotPatch` API，并允许编译器启用更激进的模块内直连优化：
-
-```csharp
-var options = EngineOptions.Default
-    .WithEnableHotReload(false)
-    .WithCompilationMode(CompilationMode.Persistence)
-    .WithOptimizeOption(OptimizeOptions.Release);
-```
-
-关闭热重载适合生产环境中不需要动态补丁、但更关注调用性能和更轻 CIL 调用链的场景。需要运行时替换脚本逻辑时，应保持 `EnableHotReload=true`。
-
-### 1. .NET API (宿主侧)
-通过 `domain.DynamicPatch` 方法从宿主程序应用补丁：
-
-```csharp
-// 应用替换式补丁 (Replace)
-domain.DynamicPatch(engine.MemorySource("module.as", "func newFunc() { ... }"), HotPatchType.Replace);
-
-// 应用增量式补丁 (Incremental)
-domain.DynamicPatch(engine.MemorySource("module.as", "var newVar = 1;"), HotPatchType.Incremental);
-```
-
-### 2. 脚本 API (脚本侧)
-全局 `HotPatch` 对象允许脚本自行或为其他模块应用补丁：
-
-```javascript
-// 替换 'MAIN' 模块的所有成员
-HotPatch.replace("MAIN", "func main() { console.log('已修复!'); }");
-
-// 增量更新 'UTILS' 模块的成员
-HotPatch.incremental("UTILS", "func helper() { return 42; }");
-```
-
-### 3. 工作原理
-热修复通过 `IncrementalCompiler` 实现局部 JIT 编译。它将新代码链接到现有的 `ScriptGlobal` 环境中，并更新代表目标模块的 `ScriptObject` 实例。
-
-### 4. 注意事项
-- **顶层代码执行**：补丁模块应用时，其顶层代码（变量初始化等）会重新执行。
-- **函数签名**：确保新函数的参数签名与现有调用处保持一致，以维持兼容性。
-- **替换 vs 增量**：
-    - `Replace` 模式：具有破坏性。在应用新代码前会清空模块的所有现有属性。
-    - `Incremental` 模式：安全。保留现有属性，仅更新或添加新成员。
-- **状态持久化**：如果补丁代码中包含模块级变量定义，这些变量会被重新初始化。
-
-## 📊 性能基准 (Benchmark)
-
-我们在性能优化上投入了大量精力，但仍有提升空间。欢迎社区贡献代码！
-
-```
-
-BenchmarkDotNet v0.15.8, Windows 11 (10.0.26200.8655/25H2/2025Update/HudsonValley2)
-13th Gen Intel Core i7-13700KF 3.40GHz, 1 CPU, 24 logical and 16 physical cores
-.NET SDK 10.0.301
-  [Host]     : .NET 10.0.9 (10.0.9, 10.0.926.27113), X64 RyuJIT x86-64-v3
-  DefaultJob : .NET 10.0.9 (10.0.9, 10.0.926.27113), X64 RyuJIT x86-64-v3
-
-
-```
-| Method           | Mean           | Error       | StdDev      | Min            | Max            | Median         | Rank | Gen0     | Gen1   | Allocated  |
-|----------------- |---------------:|------------:|------------:|---------------:|---------------:|---------------:|-----:|---------:|-------:|-----------:|
-| TestCreateDomain |       8.281 μs |   0.1096 μs |   0.1026 μs |       8.144 μs |       8.422 μs |       8.335 μs |    1 |   0.8392 | 0.0305 |    13296 B |
-| testDraw         |       9.468 μs |   0.0539 μs |   0.0504 μs |       9.366 μs |       9.540 μs |       9.472 μs |    2 |   0.0610 |      - |     1136 B |
-| testMD5          |      27.030 μs |   0.0751 μs |   0.0702 μs |      26.929 μs |      27.173 μs |      27.059 μs |    3 |   0.2441 |      - |     4209 B |
-| testMD5_100      |   2,654.943 μs |   7.4476 μs |   6.9664 μs |   2,641.647 μs |   2,667.250 μs |   2,653.588 μs |    4 |  23.4375 |      - |   420913 B |
-| testFor1E        | 152,446.394 μs | 851.0526 μs | 710.6675 μs | 151,119.125 μs | 153,495.750 μs | 152,681.200 μs |    5 |        - |      - |          - |
-
-
-> 测试环境: Intel Core i7-13700KF, .NET 10.0.9.
-
-## 📂 示例
-
-- [**Basic Tests**](examples/tests/main.as): 语法结构和模块加载示例。
-- [**Benchmarks**](benchmark/scripts/unit.as): 性能测试脚本。
-
----
-
-Made with ❤️ by [l2060](https://github.com/l2060)
+Made by [l2060](https://github.com/l2060)

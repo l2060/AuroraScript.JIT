@@ -1,21 +1,21 @@
-﻿using System;
+using AuroraScript.Runtime;
+using AuroraScript.Runtime.Types;
 
 namespace Examples
 {
-    internal class UserState
+    internal class UserState : ScriptObject
     {
-        public String Name { get; set; } = "Hanks";
-        public String Identity { get; set; }
-
-        public String Nick { get; set; } = "Bpp";
-        public Int32 Age { get; set; } = 18;
-
-        public Object Context { get; set; }
-
-
-        public void Test(Double offset, String str)
+        public UserState()
         {
+            Define("Name", StringValue.Of("Hanks"));
+            Define("Identity", ScriptObject.Null);
+            Define("Nick", StringValue.Of("Bpp"));
+            Define("Age", NumberValue.Of(18));
+            Define("Context", ScriptObject.Null);
+        }
 
+        public void Test(double offset, string str)
+        {
         }
     }
 }

@@ -1331,6 +1331,7 @@ namespace AuroraScript.Compiler.Analyzer
         {
             if (value.Length == 0) return 0;
 
+#if NET9_0_OR_GREATER
             var lookup = _nameIds.GetAlternateLookup<ReadOnlySpan<char>>();
             if (lookup.TryGetValue(value, out var id))
             {
@@ -1338,6 +1339,13 @@ namespace AuroraScript.Compiler.Analyzer
             }
 
             var text = value.ToString();
+#else
+            var text = value.ToString();
+            if (_nameIds.TryGetValue(text, out var id))
+            {
+                return id;
+            }
+#endif
             id = _names.Count;
             _names.Add(text);
             _nameIds.Add(text, id);

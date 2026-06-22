@@ -2,12 +2,12 @@
 
 	<PropertyGroup>
 		<OutputType>Library</OutputType>
-		<TargetFrameworks>net10.0</TargetFrameworks>
+		<TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
 		<ImplicitUsings>disable</ImplicitUsings>
 		<Nullable>disable</Nullable>
 		<LangVersion>preview</LangVersion>
 		<AllowUnsafeBlocks>True</AllowUnsafeBlocks>
-		<PlatformTarget>x64</PlatformTarget>
+		<PlatformTarget>AnyCPU</PlatformTarget>
 		<Platforms>AnyCPU;x64</Platforms>
 		<InvariantGlobalization>true</InvariantGlobalization>
 	</PropertyGroup>
@@ -15,7 +15,7 @@
 	<PropertyGroup>
 		<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
 		<PackageId>AuroraScript.JIT</PackageId>
-		<Version>1.1.0</Version>
+		<Version>2.0.0</Version>
 		<Title>AuroraScript</Title>
 		<PackageIcon>icon.png</PackageIcon>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
