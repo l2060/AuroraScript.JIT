@@ -3,6 +3,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Reflection.Emit;
+using System.Runtime.CompilerServices;
 
 namespace AuroraScript.Runtime.Interop
 {
@@ -319,6 +321,12 @@ namespace AuroraScript.Runtime.Interop
                 private static MethodInvoker CompileMethod(MethodInfo method)
                 {
                     var parameters = method.GetParameters();
+                    var direct = TryCompileDynamicInvoker(method, parameters);
+                    if (direct != null)
+                    {
+                        return new MethodInvoker(method.IsStatic, direct);
+                    }
+
                     var call = CompileCallDelegate(method, parameters);
                     return new MethodInvoker(method.IsStatic, (object target, Span<ScriptDatum> args, ref ScriptDatum result) =>
                     {
@@ -343,6 +351,167 @@ namespace AuroraScript.Runtime.Interop
                             Array.Clear(invokeArgs, 0, parameters.Length);
                         }
                     });
+                }
+
+                private static InvokeDelegate TryCompileDynamicInvoker(MethodInfo method, ParameterInfo[] parameters)
+                {
+                    if (!CanUseDynamicInvoker(method, parameters))
+                    {
+                        return null;
+                    }
+
+                    var dynamicMethod = new DynamicMethod(
+                        "AuroraClr_" + method.Name,
+                        typeof(bool),
+                        [typeof(object), typeof(Span<ScriptDatum>), typeof(ScriptDatum).MakeByRefType()],
+                        typeof(ClrMethodBinding).Module,
+                        skipVisibility: true);
+
+                    var il = dynamicMethod.GetILGenerator();
+                    var falseLabel = il.DefineLabel();
+                    var convertedLocals = new LocalBuilder[parameters.Length];
+
+                    il.Emit(OpCodes.Ldarga_S, 1);
+                    il.Emit(OpCodes.Call, typeof(Span<ScriptDatum>).GetProperty(nameof(Span<ScriptDatum>.Length))!.GetMethod!);
+                    EmitLoadInt(il, parameters.Length);
+                    il.Emit(OpCodes.Bne_Un, falseLabel);
+
+                    var convertAt = typeof(MethodInvoker.Compiler).GetMethod(nameof(TryConvertArgumentAt), BindingFlags.NonPublic | BindingFlags.Static)!;
+                    for (int i = 0; i < parameters.Length; i++)
+                    {
+                        convertedLocals[i] = il.DeclareLocal(typeof(object));
+                        il.Emit(OpCodes.Ldarg_1);
+                        EmitLoadInt(il, i);
+                        il.Emit(OpCodes.Ldtoken, parameters[i].ParameterType);
+                        il.Emit(OpCodes.Call, typeof(Type).GetMethod(nameof(Type.GetTypeFromHandle))!);
+                        il.Emit(OpCodes.Ldloca_S, convertedLocals[i]);
+                        il.Emit(OpCodes.Call, convertAt);
+                        il.Emit(OpCodes.Brfalse, falseLabel);
+                    }
+
+                    if (!method.IsStatic)
+                    {
+                        il.Emit(OpCodes.Ldarg_0);
+                        il.Emit(OpCodes.Castclass, method.DeclaringType!);
+                    }
+
+                    for (int i = 0; i < parameters.Length; i++)
+                    {
+                        var parameterType = parameters[i].ParameterType;
+                        il.Emit(OpCodes.Ldloc, convertedLocals[i]);
+                        if (parameterType.IsValueType)
+                        {
+                            il.Emit(OpCodes.Unbox_Any, parameterType);
+                        }
+                        else
+                        {
+                            il.Emit(OpCodes.Castclass, parameterType);
+                        }
+                    }
+
+                    il.Emit(method.IsStatic || !method.IsVirtual || method.IsFinal ? OpCodes.Call : OpCodes.Callvirt, method);
+
+                    if (method.ReturnType == typeof(void))
+                    {
+                        il.Emit(OpCodes.Ldc_I4_1);
+                        il.Emit(OpCodes.Ret);
+                    }
+                    else
+                    {
+                        var returnLocal = il.DeclareLocal(typeof(object));
+                        if (method.ReturnType.IsValueType)
+                        {
+                            il.Emit(OpCodes.Box, method.ReturnType);
+                        }
+                        il.Emit(OpCodes.Stloc, returnLocal);
+                        il.Emit(OpCodes.Ldarg_2);
+                        il.Emit(OpCodes.Ldloc, returnLocal);
+                        il.Emit(OpCodes.Call, typeof(ClrMarshaller).GetMethod(nameof(ClrMarshaller.WriteToDatum), [typeof(ScriptDatum).MakeByRefType(), typeof(object)])!);
+                        il.Emit(OpCodes.Ldc_I4_1);
+                        il.Emit(OpCodes.Ret);
+                    }
+
+                    il.MarkLabel(falseLabel);
+                    il.Emit(OpCodes.Ldc_I4_0);
+                    il.Emit(OpCodes.Ret);
+
+                    return (InvokeDelegate)dynamicMethod.CreateDelegate(typeof(InvokeDelegate));
+                }
+
+                private static bool CanUseDynamicInvoker(MethodInfo method, ParameterInfo[] parameters)
+                {
+                    if (method.ContainsGenericParameters)
+                    {
+                        return false;
+                    }
+
+                    if (!method.IsStatic && (method.DeclaringType == null || method.DeclaringType.IsValueType))
+                    {
+                        return false;
+                    }
+
+                    for (int i = 0; i < parameters.Length; i++)
+                    {
+                        if (parameters[i].ParameterType.IsByRef ||
+                            parameters[i].ParameterType.IsByRefLike ||
+                            parameters[i].HasDefaultValue ||
+                            parameters[i].GetCustomAttribute<ParamArrayAttribute>() != null)
+                        {
+                            return false;
+                        }
+                    }
+
+                    return true;
+                }
+
+                private static bool TryConvertArgumentAt(Span<ScriptDatum> args, int index, Type targetType, out object result)
+                {
+                    return ClrMarshaller.TryConvertArgument(in args[index], targetType, out result);
+                }
+
+                private static void EmitLoadInt(ILGenerator il, int value)
+                {
+                    switch (value)
+                    {
+                        case -1:
+                            il.Emit(OpCodes.Ldc_I4_M1);
+                            return;
+                        case 0:
+                            il.Emit(OpCodes.Ldc_I4_0);
+                            return;
+                        case 1:
+                            il.Emit(OpCodes.Ldc_I4_1);
+                            return;
+                        case 2:
+                            il.Emit(OpCodes.Ldc_I4_2);
+                            return;
+                        case 3:
+                            il.Emit(OpCodes.Ldc_I4_3);
+                            return;
+                        case 4:
+                            il.Emit(OpCodes.Ldc_I4_4);
+                            return;
+                        case 5:
+                            il.Emit(OpCodes.Ldc_I4_5);
+                            return;
+                        case 6:
+                            il.Emit(OpCodes.Ldc_I4_6);
+                            return;
+                        case 7:
+                            il.Emit(OpCodes.Ldc_I4_7);
+                            return;
+                        case 8:
+                            il.Emit(OpCodes.Ldc_I4_8);
+                            return;
+                    }
+
+                    if (value >= sbyte.MinValue && value <= sbyte.MaxValue)
+                    {
+                        il.Emit(OpCodes.Ldc_I4_S, (sbyte)value);
+                        return;
+                    }
+
+                    il.Emit(OpCodes.Ldc_I4, value);
                 }
 
                 private static MethodCallDelegate CompileCallDelegate(MethodInfo method, ParameterInfo[] parameters)

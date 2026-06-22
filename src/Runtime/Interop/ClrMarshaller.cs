@@ -543,13 +543,14 @@ namespace AuroraScript.Runtime.Interop
         private static bool TryConvertToClrArray(ScriptArray scriptArray, Type elementType, out object result)
         {
             var length = scriptArray.Length;
+            var values = scriptArray.Values();
 
             if (elementType == typeof(string))
             {
                 var strings = new string[length];
                 for (int i = 0; i < length; i++)
                 {
-                    var datum = scriptArray.GetElement(i);
+                    ref readonly var datum = ref values[i];
                     if (datum.Kind == ValueKind.String)
                     {
                         strings[i] = datum.String.Value;
@@ -570,11 +571,106 @@ namespace AuroraScript.Runtime.Interop
                 return true;
             }
 
+            if (elementType == typeof(int))
+            {
+                var numbers = new int[length];
+                for (int i = 0; i < length; i++)
+                {
+                    ref readonly var datum = ref values[i];
+                    if (datum.Kind == ValueKind.Number)
+                    {
+                        numbers[i] = (int)datum.Number;
+                        continue;
+                    }
+
+                    if (!TryConvertArgument(in datum, elementType, out var converted))
+                    {
+                        result = null;
+                        return false;
+                    }
+
+                    numbers[i] = (int)converted;
+                }
+
+                result = numbers;
+                return true;
+            }
+
+            if (elementType == typeof(double))
+            {
+                var numbers = new double[length];
+                for (int i = 0; i < length; i++)
+                {
+                    ref readonly var datum = ref values[i];
+                    if (datum.Kind == ValueKind.Number)
+                    {
+                        numbers[i] = datum.Number;
+                        continue;
+                    }
+
+                    if (!TryConvertArgument(in datum, elementType, out var converted))
+                    {
+                        result = null;
+                        return false;
+                    }
+
+                    numbers[i] = (double)converted;
+                }
+
+                result = numbers;
+                return true;
+            }
+
+            if (elementType == typeof(bool))
+            {
+                var booleans = new bool[length];
+                for (int i = 0; i < length; i++)
+                {
+                    ref readonly var datum = ref values[i];
+                    if (datum.Kind == ValueKind.Boolean)
+                    {
+                        booleans[i] = datum.Boolean;
+                        continue;
+                    }
+
+                    if (!TryConvertArgument(in datum, elementType, out var converted))
+                    {
+                        result = null;
+                        return false;
+                    }
+
+                    booleans[i] = (bool)converted;
+                }
+
+                result = booleans;
+                return true;
+            }
+
+            if (elementType == typeof(ScriptDatum))
+            {
+                var datums = new ScriptDatum[length];
+                values.CopyTo(datums);
+                result = datums;
+                return true;
+            }
+
+            if (elementType == typeof(object))
+            {
+                var objects = new object[length];
+                for (int i = 0; i < length; i++)
+                {
+                    objects[i] = ScriptDatum.ToObject(values[i]);
+                }
+
+                result = objects;
+                return true;
+            }
+
             var arrayInstance = Array.CreateInstance(elementType, length);
 
             for (int i = 0; i < length; i++)
             {
-                var datum = scriptArray.GetElement(i);
+                ref readonly var datum = ref values[i];
                 if (!TryConvertArgument(in datum, elementType, out var converted))
                 {
                     if (!TryFallbackArrayConversion(datum, elementType, out converted))

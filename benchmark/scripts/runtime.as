@@ -77,7 +77,7 @@ export func arrayLiteralIndex(iterations = 1000) {
 }
 
 export func hashMapSetGet(iterations = 1000) {
-    var map = new HashMap();
+    var map = new HashMap(iterations);
     for (var i = 0; i < iterations; i++) {
         map.set("k" + i, i);
     }

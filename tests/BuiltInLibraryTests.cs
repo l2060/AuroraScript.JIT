@@ -1,4 +1,6 @@
 using AuroraScript.Tests.Infrastructure;
+using System.IO;
+using System.Text;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -108,6 +110,76 @@ public sealed class BuiltInLibraryTests
 
         ScriptAssert.Equal(new object?[] { 2, true, "Aurora", 42, false, 1, 1 }, TestWorkspace.Execute(domain, "run"));
     }
+
+    [Fact]
+    public async Task HashMapSupportsCapacityAndLazyGetOrInsert()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func run() {
+                var calls = 0;
+                var map = new HashMap(16);
+                map.set("exists", 1);
+                var hit = map.getOrInsert("exists", () => {
+                    calls = calls + 1;
+                    return 2;
+                });
+                var inserted = map.getOrInsert("missing", 3);
+                return [hit, inserted, map.get("missing"), calls, map.size];
+            }
+            """);
+
+        ScriptAssert.Equal(new object?[] { 1, 3, 3, 0, 2 }, TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
+    public async Task HashMapStringKeysWorkWithoutStringPooling()
+    {
+        using var workspace = new TestWorkspace();
+        var engine = new AuroraEngine(EngineOptions.Default
+            .WithBaseDirectory(workspace.Root)
+            .WithCompilationMode(CompilationMode.Dynamic)
+            .WithOptimizeOption(OptimizeOptions.Release)
+            .WithEnableHotReload(false)
+            .WithConsoleStdOut(TextWriter.Null)
+            .WithConsoleErrorOut(TextWriter.Null)
+            .WithStringPooling(StringPoolingStrategy.None));
+        var sourcePath = workspace.WriteSource(
+            "main.as",
+            """
+            @module(TEST);
+            export func run() {
+                var map = new HashMap();
+                map.set("k" + 1, 42);
+                return map.get("k1");
+            }
+            """);
+        await engine.BuildAsync(engine.FileSource(sourcePath, Encoding.UTF8));
+        var domain = engine.CreateDomain();
+
+        Assert.Equal(42d, TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
+    public async Task HashMapKeepsStringAndNumberKeysSeparate()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func run() {
+                var map = new HashMap();
+                map.set(1, "number");
+                map.set("1", "string");
+                return [map.get(1), map.get("1"), map.size];
+            }
+            """);
+
+        ScriptAssert.Equal(new object?[] { "number", "string", 2 }, TestWorkspace.Execute(domain, "run"));
+    }
+
 
     [Fact]
     public async Task RegexLiteralAndConstructorSupportFlagsAndMatching()

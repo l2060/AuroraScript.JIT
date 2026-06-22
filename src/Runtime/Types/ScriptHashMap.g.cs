@@ -38,7 +38,7 @@ namespace AuroraScript.Runtime.Types
             {
                 result = hashMap.GetOrInsert(ctx, args[0], callback);
             }
-            else if (args.TryGetRef(2, ref addValue))
+            else if (args.TryGetRef(1, ref addValue))
             {
                 result = hashMap.GetOrInsert(args[0], addValue);
             }

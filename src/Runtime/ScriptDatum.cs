@@ -68,7 +68,7 @@ namespace AuroraScript.Runtime
                 ValueKind.Null => ScriptObject.Null.GetHashCode(),
                 ValueKind.Boolean => Boolean.GetHashCode(),
                 ValueKind.Number => Number.GetHashCode(),
-                ValueKind.String => String.GetHashCode(),
+                ValueKind.String => String.Value.GetHashCode(StringComparison.Ordinal),
                 _ => Object.GetHashCode(),
             };
         }

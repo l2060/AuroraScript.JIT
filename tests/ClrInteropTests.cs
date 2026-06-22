@@ -75,6 +75,61 @@ public sealed class ClrInteropTests
     }
 
     [Fact]
+    public async Task StaticClrStringArrayArgumentIsConverted()
+    {
+        using var workspace = new TestWorkspace();
+        var engine = workspace.CreateEngine();
+        engine.RegisterType<HostOverloads>();
+        await engine.BuildAsync(engine.MemorySource(
+            "main.as",
+            """
+            @module(TEST);
+            export func run() {
+                return HostOverloads.JoinArray(["[", "-", "]"]);
+            }
+            """));
+
+        Assert.Equal("[-]", TestWorkspace.Execute(engine.CreateDomain(), "run"));
+    }
+
+    [Fact]
+    public async Task StaticClrMixedArgumentsAreConverted()
+    {
+        using var workspace = new TestWorkspace();
+        var engine = workspace.CreateEngine();
+        engine.RegisterType<HostOverloads>();
+        await engine.BuildAsync(engine.MemorySource(
+            "main.as",
+            """
+            @module(TEST);
+            export func run() {
+                return HostOverloads.Mixed(2, 1.5, true, "x", [1, 2, 3]);
+            }
+            """));
+
+        Assert.Equal("x:10.5", TestWorkspace.Execute(engine.CreateDomain(), "run"));
+    }
+
+    [Fact]
+    public async Task InstanceClrMixedArgumentsAreConverted()
+    {
+        using var workspace = new TestWorkspace();
+        var engine = workspace.CreateEngine();
+        engine.RegisterType<HostOverloads>();
+        await engine.BuildAsync(engine.MemorySource(
+            "main.as",
+            """
+            @module(TEST);
+            export func run() {
+                var host = new HostOverloads();
+                return host.InstanceMixed(2, false, "x");
+            }
+            """));
+
+        Assert.Equal("x:2:False", TestWorkspace.Execute(engine.CreateDomain(), "run"));
+    }
+
+    [Fact]
     public async Task TypeAccessRestrictionsAreEnforced()
     {
         using var workspace = new TestWorkspace();
@@ -122,5 +177,9 @@ public sealed class ClrInteropTests
         public static string Select(string value) => "string:" + value;
         public static int Optional(int value, int offset = 5) => value + offset;
         public static int Sum(params int[] values) => System.Linq.Enumerable.Sum(values);
+        public static string JoinArray(string[] values) => string.Concat(values);
+        public static string Mixed(int a, double b, bool c, string text, int[] values)
+            => $"{text}:{a + b + (c ? 1 : 0) + System.Linq.Enumerable.Sum(values)}";
+        public string InstanceMixed(int value, bool flag, string text) => $"{text}:{value}:{flag}";
     }
 }
