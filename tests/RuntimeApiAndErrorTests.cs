@@ -98,6 +98,25 @@ public sealed class RuntimeApiAndErrorTests
     }
 
     [Fact]
+    public async Task UserStateFallsBackToClrMethods()
+    {
+        using var workspace = new TestWorkspace();
+        var engine = workspace.CreateEngine();
+        await engine.BuildAsync(engine.MemorySource(
+            "main.as",
+            """
+            @module(TEST);
+            export func run() {
+                return [$state.Add(20, 22), $state.Title];
+            }
+            """));
+
+        var domain = engine.CreateDomain(userState: new MethodState());
+
+        ScriptAssert.Equal(new object?[] { 42, "state" }, domain.Execute("TEST", "run"));
+    }
+
+    [Fact]
     public async Task DisposedDomainNoLongerExposesModules()
     {
         using var workspace = new TestWorkspace();
@@ -111,5 +130,11 @@ public sealed class RuntimeApiAndErrorTests
     public sealed class HostState
     {
         public int Value { get; set; }
+    }
+
+    private sealed class MethodState : ScriptObject
+    {
+        public string Title => "state";
+        public int Add(int left, int right) => left + right;
     }
 }

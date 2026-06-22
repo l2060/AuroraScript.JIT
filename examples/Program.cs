@@ -4,6 +4,7 @@ using AuroraScript.Runtime;
 using AuroraScript.Runtime.Types;
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -16,7 +17,7 @@ namespace Examples
     public class Program
     {
         private static readonly EngineOptions engineOptions = EngineOptions.Default
-            .WithBaseDirectory("tests")
+            .WithBaseDirectory(Path.Combine(AppContext.BaseDirectory, "tests"))
             .WithConsoleStdOut(Console.Out)
             .WithConsoleErrorOut(Console.Error)
             .WithDateTimeFormat("yyyy-MM-dd HH:mm:ss")

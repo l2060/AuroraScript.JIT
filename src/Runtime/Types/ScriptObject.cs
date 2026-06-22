@@ -36,6 +36,7 @@ namespace AuroraScript.Runtime.Types
         private HiddenClass hiddenClass = HiddenClass.Root;
 
         private ObjectFlags flags = ObjectFlags.None;
+        private ClrInstanceObject clrFallback;
         /// <summary>
         /// Gets a value indicating whether the object is frozen (read-only).
         /// </summary>
@@ -390,7 +391,39 @@ namespace AuroraScript.Runtime.Types
                 }
                 return value;
             }
+            if (TryGetClrFallback(out var clrInstance))
+            {
+                var value = clrInstance.GetPropertyDatum(ctx, key);
+                if (value.Kind != ValueKind.Null || value.Object != null)
+                {
+                    return value;
+                }
+            }
             return ScriptDatum.Null;
+        }
+
+        private bool TryGetClrFallback(out ClrInstanceObject clrInstance)
+        {
+            clrInstance = clrFallback;
+            if (clrInstance != null)
+            {
+                return true;
+            }
+
+            var type = GetType();
+            if (type == typeof(ScriptObject) || type.Assembly == typeof(ScriptObject).Assembly)
+            {
+                return false;
+            }
+
+            if (!ClrTypeResolver.ResolveType(type, out var descriptor))
+            {
+                return false;
+            }
+
+            clrInstance = new ClrInstanceObject(descriptor, this);
+            clrFallback = clrInstance;
+            return true;
         }
 
         private bool InternalDeletePropertyValue(string key)
