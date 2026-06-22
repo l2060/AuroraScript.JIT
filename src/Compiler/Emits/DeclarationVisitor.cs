@@ -58,6 +58,41 @@ namespace AuroraScript.Compiler.Emits
             if (node.Name != null) _scope.Declare(node.Name, GetDeclType());
         }
 
+        protected override void VisitImportDeclaration(ImportDeclaration node)
+        {
+            if (!node.Include || node.Module == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < node.Module.Length; i++)
+            {
+                var child = node.Module[i];
+                if (child is VariableDeclaration variable && variable.Access == MemberAccess.Export)
+                {
+                    VisitVarDeclaration(variable);
+                }
+                else if (child is EnumDeclaration enumDeclaration && enumDeclaration.Access == MemberAccess.Export)
+                {
+                    VisitEnumDeclaration(enumDeclaration);
+                }
+            }
+
+            for (int i = 0; i < node.Module.Functions.Count; i++)
+            {
+                var function = node.Module.Functions[i];
+                if (function.Access == MemberAccess.Export)
+                {
+                    VisitFunction(function);
+                }
+            }
+        }
+
+        protected override void VisitEnumDeclaration(EnumDeclaration node)
+        {
+            if (node.Identifier != null) _scope.Declare(node.Identifier.Value, GetDeclType(), node.Access);
+        }
+
         protected override void VisitLambdaExpression(LambdaExpression node) { }
     }
 }

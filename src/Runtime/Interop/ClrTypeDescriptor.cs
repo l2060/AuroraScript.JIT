@@ -15,6 +15,9 @@ namespace AuroraScript.Runtime.Interop
         private readonly ConcurrentDictionary<string, ClrMethodBinding> _methodCache = new(StringComparer.Ordinal);
         private readonly ConcurrentDictionary<string, ClrGetterBinding> _getterCache = new(StringComparer.Ordinal);
         private readonly ConcurrentDictionary<string, ClrSetterBinding> _setterCache = new(StringComparer.Ordinal);
+        private readonly ConcurrentDictionary<string, byte> _missingGetterCache = new(StringComparer.Ordinal);
+        private readonly ConcurrentDictionary<string, byte> _missingSetterCache = new(StringComparer.Ordinal);
+        private readonly ConcurrentDictionary<string, byte> _missingMethodCache = new(StringComparer.Ordinal);
         private readonly BindingFlags _bindingFlags = BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static;
         public readonly Type Type;
 
@@ -33,7 +36,24 @@ namespace AuroraScript.Runtime.Interop
         /// <returns>A <see cref="ClrMethodBinding"/> representing the method(s), or null if not found.</returns>
         public ClrMethodBinding GetMethods(string name, Boolean isStatic)
         {
-            return _methodCache.GetOrAdd(name, e => ResolveMethods(name, isStatic));
+            if (_methodCache.TryGetValue(name, out var cached))
+            {
+                return cached;
+            }
+
+            if (_missingMethodCache.ContainsKey(name))
+            {
+                return null;
+            }
+
+            var resolved = ResolveMethods(name, isStatic);
+            if (resolved == null)
+            {
+                _missingMethodCache.TryAdd(name, 0);
+                return null;
+            }
+
+            return _methodCache.GetOrAdd(name, resolved);
         }
 
         /// <summary>
@@ -43,7 +63,24 @@ namespace AuroraScript.Runtime.Interop
         /// <returns>A <see cref="ClrGetterBinding"/> delegate, or null if not found.</returns>
         public ClrGetterBinding GetGetter(string name)
         {
-            return _getterCache.GetOrAdd(name, CompileGetter);
+            if (_getterCache.TryGetValue(name, out var cached))
+            {
+                return cached;
+            }
+
+            if (_missingGetterCache.ContainsKey(name))
+            {
+                return null;
+            }
+
+            var resolved = CompileGetter(name);
+            if (resolved == null)
+            {
+                _missingGetterCache.TryAdd(name, 0);
+                return null;
+            }
+
+            return _getterCache.GetOrAdd(name, resolved);
         }
 
         private ClrGetterBinding CompileGetter(string name)
@@ -90,7 +127,24 @@ namespace AuroraScript.Runtime.Interop
         /// <returns>A <see cref="ClrSetterBinding"/> instance, or null if not found or read-only.</returns>
         public ClrSetterBinding GetSetter(string name)
         {
-            return _setterCache.GetOrAdd(name, CompileSetter);
+            if (_setterCache.TryGetValue(name, out var cached))
+            {
+                return cached;
+            }
+
+            if (_missingSetterCache.ContainsKey(name))
+            {
+                return null;
+            }
+
+            var resolved = CompileSetter(name);
+            if (resolved == null)
+            {
+                _missingSetterCache.TryAdd(name, 0);
+                return null;
+            }
+
+            return _setterCache.GetOrAdd(name, resolved);
         }
 
         private ClrSetterBinding CompileSetter(string name)

@@ -529,6 +529,26 @@ namespace AuroraScript.Runtime
             SetElement(ScriptDatum.ToObject(obj), index, value);
         }
 
+        /// <summary>
+        /// Applies += to an object element while evaluating the receiver and index once.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum CompoundAddElement(ScriptObject obj, ScriptDatum index, ScriptDatum value)
+        {
+            var result = Add(GetElement(obj, index), value);
+            SetElement(obj, index, result);
+            return result;
+        }
+
+        /// <summary>
+        /// Applies += to an element on a datum receiver while evaluating the receiver and index once.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum CompoundAddElement(ScriptDatum obj, ScriptDatum index, ScriptDatum value)
+        {
+            return CompoundAddElement(ScriptDatum.ToObject(obj), index, value);
+        }
+
         /// <summary>Creates a plain three-property object literal using a cached hidden class.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptObject CreateObject3(

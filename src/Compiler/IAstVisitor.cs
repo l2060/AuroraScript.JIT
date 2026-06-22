@@ -321,11 +321,15 @@ namespace AuroraScript.Compiler
 
         protected virtual void VisitImportDeclaration(ImportDeclaration node)
         {
-            if (node.Include)
+            if (node.Include && node.Module != null)
             {
-                for (int i = 0; i < node.Length; i++)
+                for (int i = 0; i < node.Module.Length; i++)
                 {
-                    node[i].Accept(this);
+                    node.Module[i].Accept(this);
+                }
+                for (int i = 0; i < node.Module.Functions.Count; i++)
+                {
+                    node.Module.Functions[i].Accept(this);
                 }
             }
         }

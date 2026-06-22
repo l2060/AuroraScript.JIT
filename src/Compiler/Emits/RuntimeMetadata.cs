@@ -34,6 +34,7 @@ namespace AuroraScript.Compiler.Emits
         // ScriptObject
         public static readonly ConstructorInfo ScriptObject_Ctor = typeof(ScriptObject).GetConstructor([]);
         public static readonly MethodInfo ScriptObject_CopyPropertysFrom = typeof(ScriptObject).GetMethod(nameof(ScriptObject.CopyPropertysFrom), [typeof(ScriptObject), typeof(bool)]);
+        public static readonly MethodInfo ScriptObject_CopyEnumerablePropertysFrom = typeof(ScriptObject).GetMethod(nameof(ScriptObject.CopyEnumerablePropertysFrom), [typeof(ScriptObject), typeof(bool)]);
         public static readonly MethodInfo ScriptObject_Define = typeof(ScriptObject).GetMethod(nameof(ScriptObject.Define), [typeof(string), typeof(ScriptObject), typeof(bool), typeof(bool)]);
         public static readonly MethodInfo ScriptObject_GetPropertyValue = typeof(ScriptObject).GetMethod(nameof(ScriptObject.GetPropertyValue), BindingFlags.NonPublic | BindingFlags.Instance, [typeof(ScriptContext), typeof(string)]);
         public static readonly MethodInfo ScriptObject_GetPropertyDatum = typeof(ScriptObject).GetMethod(nameof(ScriptObject.GetPropertyDatum), BindingFlags.NonPublic | BindingFlags.Instance, [typeof(ScriptContext), typeof(string)]);
@@ -121,6 +122,8 @@ namespace AuroraScript.Compiler.Emits
         public static readonly MethodInfo CILHelper_GetElementDatum = typeof(CILHelper).GetMethod(nameof(CILHelper.GetElement), [typeof(ScriptDatum), typeof(ScriptDatum)]);
         public static readonly MethodInfo CILHelper_SetElement = typeof(CILHelper).GetMethod(nameof(CILHelper.SetElement), [typeof(ScriptObject), typeof(ScriptDatum), typeof(ScriptDatum)]);
         public static readonly MethodInfo CILHelper_SetElementDatum = typeof(CILHelper).GetMethod(nameof(CILHelper.SetElement), [typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum)]);
+        public static readonly MethodInfo CILHelper_CompoundAddElement = typeof(CILHelper).GetMethod(nameof(CILHelper.CompoundAddElement), [typeof(ScriptObject), typeof(ScriptDatum), typeof(ScriptDatum)]);
+        public static readonly MethodInfo CILHelper_CompoundAddElementDatum = typeof(CILHelper).GetMethod(nameof(CILHelper.CompoundAddElement), [typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum)]);
         public static readonly MethodInfo CILHelper_GetLength = typeof(CILHelper).GetMethod(nameof(CILHelper.GetLength), [typeof(ScriptObject), typeof(ScriptContext)]);
         public static readonly MethodInfo CILHelper_GetLengthDatum = typeof(CILHelper).GetMethod(nameof(CILHelper.GetLength), [typeof(ScriptDatum), typeof(ScriptContext)]);
         public static readonly MethodInfo CILHelper_GetProperty = typeof(CILHelper).GetMethod(nameof(CILHelper.GetProperty), [typeof(ScriptDatum), typeof(ScriptContext), typeof(string)]);

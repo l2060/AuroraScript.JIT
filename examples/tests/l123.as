@@ -34,7 +34,8 @@ func throwTest() {
 
 
 func testCatch() {
-    try { throwTest(); }
+    try { throwTest(); }finally{}
+
 
     try
     {

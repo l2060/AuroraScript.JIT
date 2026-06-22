@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace AuroraScript.Runtime.Types.TypeConstruct
@@ -63,7 +64,7 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
             ScriptDatum var2 = default;
             // NOTE: The index -10 seems unusual, likely a typo or internal convention. 
             // Standardizing or noting it as is for strict equality logic.
-            if (args.TryGetRef(-10, ref var1) && args.TryGetRef(1, ref var2))
+            if (args.TryGetRef(0, ref var1) && args.TryGetRef(1, ref var2))
             {
                 if (var1.Kind != var2.Kind)
                 {
@@ -97,15 +98,173 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
         /// <summary> Native implementation for value equality (==) comparison. (TODO) </summary>
         internal static void VALUE_EQUAL(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
-            // TODO: Implementation pending
+            ScriptDatum var1 = default;
+            ScriptDatum var2 = default;
+            if (args.TryGetRef(0, ref var1) && args.TryGetRef(1, ref var2))
+            {
+                ScriptDatum.WriteAsBoolean(ref result, ShallowEqualDatums(var1, var2));
+                return;
+            }
+
             ScriptDatum.WriteAsBoolean(ref result, false);
+        }
+
+        private static bool ShallowEqualDatums(ScriptDatum left, ScriptDatum right)
+        {
+            if (left.Kind != right.Kind)
+            {
+                return CILHelper.Equal(left, right).Boolean;
+            }
+
+            switch (left.Kind)
+            {
+                case ValueKind.Null:
+                    return true;
+                case ValueKind.Boolean:
+                    return left.Boolean == right.Boolean;
+                case ValueKind.Number:
+                    return left.Number == right.Number;
+                case ValueKind.String:
+                    return left.String.Value == right.String.Value;
+                default:
+                    return ShallowEqualObjects(left.Object, right.Object);
+            }
+        }
+
+        private static bool ShallowEqualObjects(ScriptObject left, ScriptObject right)
+        {
+            if (ReferenceEquals(left, right))
+            {
+                return true;
+            }
+
+            if (left == null || right == null || left.GetType() != right.GetType())
+            {
+                return false;
+            }
+
+            if (left is ScriptArray leftArray && right is ScriptArray rightArray && leftArray.Length != rightArray.Length)
+            {
+                return false;
+            }
+
+            var leftKeys = left.EnumerationKeys();
+            var rightKeys = right.EnumerationKeys();
+            if (leftKeys.Count != rightKeys.Count)
+            {
+                return false;
+            }
+
+            leftKeys.Sort(StringComparer.Ordinal);
+            rightKeys.Sort(StringComparer.Ordinal);
+            for (int i = 0; i < leftKeys.Count; i++)
+            {
+                if (!StringComparer.Ordinal.Equals(leftKeys[i], rightKeys[i]))
+                {
+                    return false;
+                }
+
+                if (!CILHelper.Equal(left.GetPropertyDatum(null, leftKeys[i]), right.GetPropertyDatum(null, rightKeys[i])).Boolean)
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         /// <summary> Native implementation for deep equality comparison. (TODO) </summary>
         internal static void DEEP_EQUAL(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
-            // TODO: Implementation pending
+            ScriptDatum var1 = default;
+            ScriptDatum var2 = default;
+            if (args.TryGetRef(0, ref var1) && args.TryGetRef(1, ref var2))
+            {
+                ScriptDatum.WriteAsBoolean(ref result, DeepEqualDatums(var1, var2, new HashSet<(ScriptObject, ScriptObject)>()));
+                return;
+            }
+
             ScriptDatum.WriteAsBoolean(ref result, false);
+        }
+
+        private static bool DeepEqualDatums(ScriptDatum left, ScriptDatum right, HashSet<(ScriptObject, ScriptObject)> seen)
+        {
+            if (left.Kind != right.Kind)
+            {
+                return CILHelper.Equal(left, right).Boolean;
+            }
+
+            switch (left.Kind)
+            {
+                case ValueKind.Null:
+                    return true;
+                case ValueKind.Boolean:
+                    return left.Boolean == right.Boolean;
+                case ValueKind.Number:
+                    return left.Number == right.Number;
+                case ValueKind.String:
+                    return left.String.Value == right.String.Value;
+                default:
+                    return DeepEqualObjects(left.Object, right.Object, seen);
+            }
+        }
+
+        private static bool DeepEqualObjects(ScriptObject left, ScriptObject right, HashSet<(ScriptObject, ScriptObject)> seen)
+        {
+            if (ReferenceEquals(left, right))
+            {
+                return true;
+            }
+
+            if (left == null || right == null || left.GetType() != right.GetType())
+            {
+                return false;
+            }
+
+            if (!seen.Add((left, right)))
+            {
+                return true;
+            }
+
+            if (left is ScriptArray leftArray && right is ScriptArray rightArray)
+            {
+                if (leftArray.Length != rightArray.Length)
+                {
+                    return false;
+                }
+
+                for (int i = 0; i < leftArray.Length; i++)
+                {
+                    if (!DeepEqualDatums(leftArray.GetElement(i), rightArray.GetElement(i), seen))
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            var leftKeys = left.EnumerationKeys();
+            var rightKeys = right.EnumerationKeys();
+            if (leftKeys.Count != rightKeys.Count)
+            {
+                return false;
+            }
+
+            leftKeys.Sort(StringComparer.Ordinal);
+            rightKeys.Sort(StringComparer.Ordinal);
+            for (int i = 0; i < leftKeys.Count; i++)
+            {
+                if (!StringComparer.Ordinal.Equals(leftKeys[i], rightKeys[i]))
+                {
+                    return false;
+                }
+
+                if (!DeepEqualDatums(left.GetPropertyDatum(null, leftKeys[i]), right.GetPropertyDatum(null, rightKeys[i]), seen))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         /// <summary> Native implementation for Object.assign(). Copies properties from source objects to a target object. </summary>

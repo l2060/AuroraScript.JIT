@@ -21,9 +21,12 @@ namespace OptimizationBenchmark
     {
         private AuroraEngine engine;
         private ScriptDomain domain;
+        private CompiledBlock compiledBlock;
 
         [Params(1000, 10000)]
         public int Iterations { get; set; }
+
+        public bool EnableHotReload { get; set; } = true;
 
         [GlobalSetup]
         public async Task Setup()
@@ -33,12 +36,27 @@ namespace OptimizationBenchmark
                 .WithBaseDirectory(baseDirectory)
                 .WithConsoleStdOut(TextWriter.Null)
                 .WithConsoleErrorOut(TextWriter.Null)
-                .WithCompilationMode(CompilationMode.Dynamic)
+                .WithCompilationMode(CompilationMode.Persistence)
+                .WithAssemblyOut("optbench.dll")
+                .WithEnableHotReload(EnableHotReload)
                 .WithOptimizeOption(OptimizeOptions.Release);
 
             engine = new AuroraEngine(options);
             await engine.BuildAsync(engine.SearchAllFileSource(Encoding.UTF8));
             domain = engine.CreateDomain(_ => { });
+            compiledBlock = engine.CompileBlock("""
+function clamp(v, min, max) {
+    if (v < min) return min;
+    if (v > max) return max;
+    return v;
+}
+
+var total = 0;
+for (var i = 0; i < iterations; i++) {
+    total = total + clamp(i % 150, 0, 100);
+}
+return total;
+""", new CompileBlockOptions { Parameters = ["iterations"] });
         }
 
         [BenchmarkCategory("domain")]
@@ -102,6 +120,41 @@ namespace OptimizationBenchmark
         public ScriptDatum CallSevenArgs()
         {
             return domain.Execute("OPT_BENCH", "callSevenArgs", Iterations);
+        }
+
+        [BenchmarkCategory("module-call")]
+        [Benchmark]
+        public ScriptDatum ModuleCallNoArgs()
+        {
+            return domain.Execute("OPT_BENCH", "moduleCallNoArgs", Iterations);
+        }
+
+        [BenchmarkCategory("module-call")]
+        [Benchmark]
+        public ScriptDatum ModuleCallOneArg()
+        {
+            return domain.Execute("OPT_BENCH", "moduleCallOneArg", Iterations);
+        }
+
+        [BenchmarkCategory("module-call")]
+        [Benchmark]
+        public ScriptDatum ModuleCallTwoArgs()
+        {
+            return domain.Execute("OPT_BENCH", "moduleCallTwoArgs", Iterations);
+        }
+
+        [BenchmarkCategory("module-call")]
+        [Benchmark]
+        public ScriptDatum ModuleCallThreeArgs()
+        {
+            return domain.Execute("OPT_BENCH", "moduleCallThreeArgs", Iterations);
+        }
+
+        [BenchmarkCategory("compile-block")]
+        [Benchmark]
+        public ScriptDatum CompileBlockClamp()
+        {
+            return compiledBlock.Invoke(domain, ScriptDatum.FromNumber(Iterations));
         }
 
         [BenchmarkCategory("call")]

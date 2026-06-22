@@ -46,16 +46,23 @@ namespace OptimizationBenchmark
         private static async Task Compare()
         {
             var iterationArgs = new[] { 1000, 10000 };
-            foreach (var iterations in iterationArgs)
+            foreach (var enableHotReload in new[] { true, false })
             {
-                var benchmarks = new OptimizationBenchmarks { Iterations = iterations };
-                await benchmarks.Setup();
-                Console.WriteLine($"Iterations={iterations}");
-                Console.WriteLine("Name,ElapsedMs,AllocatedBytes,Result");
-
-                foreach (var method in BenchmarkMethods())
+                foreach (var iterations in iterationArgs)
                 {
-                    Measure(method, benchmarks);
+                    var benchmarks = new OptimizationBenchmarks
+                    {
+                        EnableHotReload = enableHotReload,
+                        Iterations = iterations
+                    };
+                    await benchmarks.Setup();
+                    Console.WriteLine($"EnableHotReload={enableHotReload};Iterations={iterations}");
+                    Console.WriteLine("Name,ElapsedMs,AllocatedBytes,Result");
+
+                    foreach (var method in BenchmarkMethods())
+                    {
+                        Measure(method, benchmarks);
+                    }
                 }
             }
         }

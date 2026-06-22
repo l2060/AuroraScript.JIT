@@ -18,7 +18,7 @@ namespace AuroraScript.Runtime.Extensions
 
             Define("abs", new BondingFunction(ABS), writeable: false, enumerable: false);
             Define("max", new BondingFunction(MAX), writeable: false, enumerable: false);
-            Define("min", new BondingFunction(MAX), writeable: false, enumerable: false);
+            Define("min", new BondingFunction(MIN), writeable: false, enumerable: false);
 
             Define("random", new BondingFunction(RANDOM), writeable: false, enumerable: false);
             Define("log", new BondingFunction(LOG), writeable: false, enumerable: false);

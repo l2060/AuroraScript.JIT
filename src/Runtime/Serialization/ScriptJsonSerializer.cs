@@ -17,6 +17,14 @@ namespace AuroraScript.Runtime.Serialization
     /// </summary>
     public class ScriptJsonSerializer
     {
+        [ThreadStatic]
+        private static ArrayBufferWriter<byte> s_bufferWriter;
+
+        [ThreadStatic]
+        private static HashSet<ScriptObject> s_visited;
+
+        private const int MaxRetainedBufferSize = 1024 * 1024;
+
         /// <summary>
         /// Contextual information maintained during a serialization or deserialization operation.
         /// </summary>
@@ -50,17 +58,62 @@ namespace AuroraScript.Runtime.Serialization
         /// <returns>A JSON-formatted string.</returns>
         public String Serialize(ScriptDatum datum, EngineOptions options = null, Boolean indented = false)
         {
-            var bufferWriter = new ArrayBufferWriter<byte>();
+            var bufferWriter = RentBufferWriter();
             using var jsonWriter = new Utf8JsonWriter(bufferWriter, new JsonWriterOptions
             {
                 Indented = indented,
                 Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
             });
-            var visited = new HashSet<ScriptObject>(ScriptJsonSerializer.ReferenceComparer.Instance);
+            var visited = RentVisitedSet();
             var context = new ScriptSerializationContext(options, visited);
-            WriteDatum(jsonWriter, in datum, context);
-            jsonWriter.Flush();
-            return Encoding.UTF8.GetString(bufferWriter.WrittenSpan);
+            try
+            {
+                WriteDatum(jsonWriter, in datum, context);
+                jsonWriter.Flush();
+                return Encoding.UTF8.GetString(bufferWriter.WrittenSpan);
+            }
+            finally
+            {
+                visited.Clear();
+                if (bufferWriter.Capacity <= MaxRetainedBufferSize)
+                {
+                    bufferWriter.Clear();
+                }
+                else
+                {
+                    s_bufferWriter = null;
+                }
+            }
+        }
+
+        private static ArrayBufferWriter<byte> RentBufferWriter()
+        {
+            var writer = s_bufferWriter;
+            if (writer == null)
+            {
+                writer = new ArrayBufferWriter<byte>();
+                s_bufferWriter = writer;
+            }
+            else
+            {
+                writer.Clear();
+            }
+            return writer;
+        }
+
+        private static HashSet<ScriptObject> RentVisitedSet()
+        {
+            var visited = s_visited;
+            if (visited == null)
+            {
+                visited = new HashSet<ScriptObject>(ScriptJsonSerializer.ReferenceComparer.Instance);
+                s_visited = visited;
+            }
+            else
+            {
+                visited.Clear();
+            }
+            return visited;
         }
 
         /// <summary>
@@ -74,6 +127,37 @@ namespace AuroraScript.Runtime.Serialization
             using var document = JsonDocument.Parse(jsonText);
             var context = new ScriptSerializationContext(options);
             return ReadElement(document.RootElement, context);
+        }
+
+        /// <summary>
+        /// Reads a JSON element directly into a datum, avoiding transient boxed script objects for primitives.
+        /// </summary>
+        protected virtual ScriptDatum ReadDatum(JsonElement element, in ScriptSerializationContext context)
+        {
+            switch (element.ValueKind)
+            {
+                case JsonValueKind.Object:
+                case JsonValueKind.Array:
+                    return ScriptDatum.FromObject(ReadElement(element, context));
+                case JsonValueKind.String:
+                    return ScriptDatum.FromString(element.GetString());
+                case JsonValueKind.Number:
+                    if (element.TryGetInt64(out var longValue))
+                    {
+                        return ScriptDatum.FromNumber(longValue);
+                    }
+                    if (element.TryGetDouble(out var doubleValue))
+                    {
+                        return ScriptDatum.FromNumber(doubleValue);
+                    }
+                    return ScriptDatum.Null;
+                case JsonValueKind.True:
+                    return ScriptDatum.True;
+                case JsonValueKind.False:
+                    return ScriptDatum.False;
+                default:
+                    return ScriptDatum.Null;
+            }
         }
 
 
@@ -105,7 +189,7 @@ namespace AuroraScript.Runtime.Serialization
             var obj = new ScriptObject();
             foreach (var property in element.EnumerateObject())
             {
-                obj.Define(property.Name, ReadElement(property.Value, context));
+                obj.InternalDefine(property.Name, ReadDatum(property.Value, context));
             }
             return obj;
         }
@@ -119,7 +203,7 @@ namespace AuroraScript.Runtime.Serialization
             var index = 0;
             foreach (var item in element.EnumerateArray())
             {
-                array.SetElement(index++, ScriptDatum.FromObject(ReadElement(item, context)));
+                array.SetElement(index++, ReadDatum(item, context));
             }
             return array;
         }
@@ -162,10 +246,10 @@ namespace AuroraScript.Runtime.Serialization
                     WriteNull(writer, context);
                     return;
                 case ValueKind.Boolean:
-                    WriteBoolean(writer, BooleanValue.Of(datum.Boolean), context);
+                    WriteBooleanValue(writer, datum.Boolean, context);
                     return;
                 case ValueKind.Number:
-                    WriteNumber(writer, NumberValue.Of(datum.Number), context);
+                    WriteNumberValue(writer, datum.Number, context);
                     return;
                 case ValueKind.String:
                 case ValueKind.Date:
@@ -274,9 +358,8 @@ namespace AuroraScript.Runtime.Serialization
             for (int i = 0; i < keys.Count; i++)
             {
                 var propertyName = keys[i];
-                var propertyValue = value.GetPropertyValue(propertyName);
                 writer.WritePropertyName(propertyName);
-                var propDatum = ScriptDatum.FromObject(propertyValue);
+                var propDatum = value.GetPropertyDatum(null, propertyName);
                 WriteDatum(writer, in propDatum, context);
             }
         }
@@ -317,7 +400,12 @@ namespace AuroraScript.Runtime.Serialization
         /// <summary> Writes a numeric value to the JSON stream. Handles NaN and Infinity by writing null. </summary>
         protected virtual void WriteNumber(Utf8JsonWriter writer, NumberValue numberValue, in ScriptSerializationContext context)
         {
-            var doubleValue = numberValue.DoubleValue;
+            WriteNumberValue(writer, numberValue.DoubleValue, context);
+        }
+
+        /// <summary> Writes a raw numeric value to the JSON stream. Handles NaN and Infinity by writing null. </summary>
+        protected virtual void WriteNumberValue(Utf8JsonWriter writer, double doubleValue, in ScriptSerializationContext context)
+        {
             if (double.IsNaN(doubleValue) || double.IsInfinity(doubleValue))
             {
                 writer.WriteNullValue();
@@ -331,7 +419,13 @@ namespace AuroraScript.Runtime.Serialization
         /// <summary> Writes a boolean value to the JSON stream. </summary>
         protected virtual void WriteBoolean(Utf8JsonWriter writer, BooleanValue boolValue, in ScriptSerializationContext context)
         {
-            writer.WriteBooleanValue(boolValue.Value);
+            WriteBooleanValue(writer, boolValue.Value, context);
+        }
+
+        /// <summary> Writes a raw boolean value to the JSON stream. </summary>
+        protected virtual void WriteBooleanValue(Utf8JsonWriter writer, bool value, in ScriptSerializationContext context)
+        {
+            writer.WriteBooleanValue(value);
         }
 
         /// <summary> Writes a string value to the JSON stream. </summary>

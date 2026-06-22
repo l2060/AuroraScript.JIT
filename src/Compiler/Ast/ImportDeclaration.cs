@@ -36,6 +36,8 @@ namespace AuroraScript.Compiler.Ast
         /// </summary>
         public String FullPath { get; set; }
 
+        public ModuleDeclaration Module { get; set; }
+
 
 
         public Boolean Include { get; set; }

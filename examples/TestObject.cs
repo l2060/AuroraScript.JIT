@@ -15,5 +15,10 @@ namespace Examples
         {
             return $"Static Eat: [{String.Join(",", strings)}]";
         }
+
+        public static String Cat(String left, String middle, String right)
+        {
+            return String.Concat("Static Eat: [", left, ",", middle, ",", right, "]");
+        }
     }
 }

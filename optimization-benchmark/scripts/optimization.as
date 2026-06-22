@@ -4,6 +4,54 @@ export func empty() {
     return null;
 }
 
+func moduleNoop() {
+    return 1;
+}
+
+func moduleInc(value) {
+    return value + 1;
+}
+
+func moduleAdd(a, b) {
+    return a + b;
+}
+
+func moduleAdd3(a, b, c) {
+    return a + b + c;
+}
+
+export func moduleCallNoArgs(iterations = 10000) {
+    var sum = 0;
+    for (var i = 0; i < iterations; i++) {
+        sum = sum + moduleNoop();
+    }
+    return sum;
+}
+
+export func moduleCallOneArg(iterations = 10000) {
+    var sum = 0;
+    for (var i = 0; i < iterations; i++) {
+        sum = sum + moduleInc(i);
+    }
+    return sum;
+}
+
+export func moduleCallTwoArgs(iterations = 10000) {
+    var sum = 0;
+    for (var i = 0; i < iterations; i++) {
+        sum = sum + moduleAdd(i, 1);
+    }
+    return sum;
+}
+
+export func moduleCallThreeArgs(iterations = 10000) {
+    var sum = 0;
+    for (var i = 0; i < iterations; i++) {
+        sum = sum + moduleAdd3(i, 1, 2);
+    }
+    return sum;
+}
+
 export func callNoArgs(iterations = 10000) {
     function noop() {
         return 1;

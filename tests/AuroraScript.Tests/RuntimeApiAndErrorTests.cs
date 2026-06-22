@@ -81,16 +81,20 @@ public sealed class RuntimeApiAndErrorTests
     {
         using var workspace = new TestWorkspace();
         var engine = workspace.CreateEngine();
-        engine.RegisterType<HostState>();
         await engine.BuildAsync(engine.MemorySource(
             "main.as",
             "@module(TEST); export func read() { return $state.Value; }"));
 
-        var first = engine.CreateDomain(userState: new HostState { Value = 10 });
-        var second = engine.CreateDomain(userState: new HostState { Value = 20 });
+        var firstState = new ScriptObject();
+        firstState.Define("Value", NumberValue.Of(10));
+        var secondState = new ScriptObject();
+        secondState.Define("Value", NumberValue.Of(20));
 
-        ScriptAssert.Equal(10, TestWorkspace.Execute(first, "read"));
-        ScriptAssert.Equal(20, TestWorkspace.Execute(second, "read"));
+        var first = engine.CreateDomain(userState: firstState);
+        var second = engine.CreateDomain(userState: secondState);
+
+        ScriptAssert.Equal(10, first.Execute("TEST", "read"));
+        ScriptAssert.Equal(20, second.Execute("TEST", "read"));
     }
 
     [Fact]

@@ -1,6 +1,7 @@
 ﻿using AuroraScript.Runtime.Types;
 using System;
 using System.Collections.Generic;
+using System.Linq.Expressions;
 using System.Reflection;
 
 namespace AuroraScript.Runtime.Interop
@@ -42,6 +43,16 @@ namespace AuroraScript.Runtime.Interop
         internal readonly MethodInvoker[] _compiledInvokers;
         internal readonly ClrInstanceObject _instance;
         internal readonly bool _isStatic;
+        [ThreadStatic]
+        private static object[] _threadInvokeArgs1;
+        [ThreadStatic]
+        private static object[] _threadInvokeArgs2;
+        [ThreadStatic]
+        private static object[] _threadInvokeArgs3;
+        [ThreadStatic]
+        private static object[] _threadInvokeArgs4;
+        [ThreadStatic]
+        private static Dictionary<int, object[]> _threadInvokeArgsMany;
 
 
         private ClrMethodBinding(ClrTypeDescriptor descriptor, MethodInvoker[] compiledInvokers, ClrInstanceObject instance, bool isStatic)
@@ -250,22 +261,21 @@ namespace AuroraScript.Runtime.Interop
         }
 
         private delegate bool InvokeDelegate(object target, Span<ScriptDatum> args, ref ScriptDatum result);
+        private delegate object MethodCallDelegate(object target, object[] args);
 
         /// <summary>
         /// Represents an optimized invoker for a specific .NET method.
         /// </summary>
-        internal readonly struct MethodInvoker
-        {
-            private readonly InvokeDelegate _invoke;
-            private readonly int _expectedArgumentCount;
+            internal readonly struct MethodInvoker
+            {
+                private readonly InvokeDelegate _invoke;
 
             /// <summary> Gets a value indicating whether the method is static. </summary>
             public bool IsStatic { get; }
 
-            private MethodInvoker(bool isStatic, int expectedArgumentCount, InvokeDelegate invoke)
+            private MethodInvoker(bool isStatic, InvokeDelegate invoke)
             {
                 IsStatic = isStatic;
-                _expectedArgumentCount = expectedArgumentCount;
                 _invoke = invoke;
             }
 
@@ -280,13 +290,7 @@ namespace AuroraScript.Runtime.Interop
             {
                 if (!IsStatic && target == null) return false;
 
-                var effectiveArgs = args;
-                if (_expectedArgumentCount >= 0 && effectiveArgs.Length != _expectedArgumentCount)
-                {
-                    return false;
-                }
-
-                return _invoke(target, effectiveArgs, ref result);
+                return _invoke(target, args, ref result);
             }
 
             /// <summary>
@@ -315,123 +319,91 @@ namespace AuroraScript.Runtime.Interop
                 private static MethodInvoker CompileMethod(MethodInfo method)
                 {
                     var parameters = method.GetParameters();
-                    var expectedArgs = parameters.Length;
-                    InvokeDelegate invokeDelegate;
-
-                    if (expectedArgs == 0)
+                    var call = CompileCallDelegate(method, parameters);
+                    return new MethodInvoker(method.IsStatic, (object target, Span<ScriptDatum> args, ref ScriptDatum result) =>
                     {
-                        invokeDelegate = CompileNoArgs(method);
-                    }
-                    else if (expectedArgs == 1)
-                    {
-                        invokeDelegate = CompileSingleArg(method, parameters[0]);
-                    }
-                    else
-                    {
-                        var invoker = new ReflectionInvoker(method);
-                        invokeDelegate = invoker.Invoke;
-                    }
-
-                    return new MethodInvoker(method.IsStatic, expectedArgs, invokeDelegate);
-                }
-
-                /// <summary>
-                /// Compiles an invoker for a method with no parameters.
-                /// </summary>
-                private static InvokeDelegate CompileNoArgs(MethodInfo method)
-                {
-                    if (method.ReturnType == typeof(void))
-                    {
-                        return (object target, Span<ScriptDatum> arguments, ref ScriptDatum result) =>
-                        {
-                            method.Invoke(target, Array.Empty<object>());
-                            return true;
-                        };
-                    }
-
-                    return (object target, Span<ScriptDatum> arguments, ref ScriptDatum result) =>
-                    {
-                        var invocationResult = method.Invoke(target, Array.Empty<object>());
-                        ClrMarshaller.WriteToDatum(ref result, invocationResult);
-                        return true;
-                    };
-                }
-
-                /// <summary>
-                /// Compiles an invoker for a method with exactly one parameter.
-                /// </summary>
-                private static InvokeDelegate CompileSingleArg(MethodInfo method, ParameterInfo parameter)
-                {
-                    var parameterType = parameter.ParameterType;
-                    if (method.ReturnType == typeof(void))
-                    {
-                        return (object target, Span<ScriptDatum> args, ref ScriptDatum result) =>
-                        {
-                            if (!ClrMarshaller.TryConvertArgument(in args[0], parameterType, out var converted))
-                            {
-                                return false;
-                            }
-
-                            method.Invoke(target, new[] { converted });
-                            return true;
-                        };
-                    }
-
-                    return (object target, Span<ScriptDatum> args, ref ScriptDatum result) =>
-                    {
-                        if (!ClrMarshaller.TryConvertArgument(in args[0], parameterType, out var converted))
+                        var invokeArgs = GetInvokeArgs(parameters.Length);
+                        if (!ClrMarshaller.TryBuildArguments(parameters, args, invokeArgs))
                         {
                             return false;
                         }
 
-                        var invocationResult = method.Invoke(target, new[] { converted });
-                        ClrMarshaller.WriteToDatum(ref result, invocationResult);
-                        return true;
-                    };
-                }
-
-                /// <summary>
-                /// A fallback invoker that uses standard .NET reflection to call methods with multiple parameters.
-                /// </summary>
-                private sealed class ReflectionInvoker
-                {
-                    private readonly MethodInfo _method;
-                    private readonly ParameterInfo[] _parameters;
-
-                    /// <summary>
-                    /// Initializes a new instance of the <see cref="ReflectionInvoker"/> class.
-                    /// </summary>
-                    public ReflectionInvoker(MethodInfo method)
-                    {
-                        _method = method;
-                        _parameters = method.GetParameters();
-                    }
-
-                    /// <summary>
-                    /// Invokes the method using reflection.
-                    /// </summary>
-                    public bool Invoke(object target, Span<ScriptDatum> args, ref ScriptDatum result)
-                    {
-                        var invokeArgs = new object[_parameters.Length];
-                        for (int i = 0; i < _parameters.Length; i++)
+                        try
                         {
-                            if (!ClrMarshaller.TryConvertArgument(in args[i], _parameters[i].ParameterType, out var converted))
+                            var invocationResult = call(target, invokeArgs);
+                            if (method.ReturnType == typeof(void))
                             {
-                                return false;
+                                return true;
                             }
-                            invokeArgs[i] = converted;
-                        }
-
-                        var invocationResult = _method.Invoke(target, invokeArgs);
-                        if (_method.ReturnType == typeof(void))
-                        {
+                            ClrMarshaller.WriteToDatum(ref result, invocationResult);
                             return true;
                         }
-                        ClrMarshaller.WriteToDatum(ref result, invocationResult);
-                        return true;
+                        finally
+                        {
+                            Array.Clear(invokeArgs, 0, parameters.Length);
+                        }
+                    });
+                }
+
+                private static MethodCallDelegate CompileCallDelegate(MethodInfo method, ParameterInfo[] parameters)
+                {
+                    for (int i = 0; i < parameters.Length; i++)
+                    {
+                        if (parameters[i].ParameterType.IsByRef)
+                        {
+                            return method.Invoke;
+                        }
                     }
+
+                    var targetParameter = Expression.Parameter(typeof(object), "target");
+                    var argsParameter = Expression.Parameter(typeof(object[]), "args");
+                    var callArgs = new Expression[parameters.Length];
+                    for (int i = 0; i < parameters.Length; i++)
+                    {
+                        var arg = Expression.ArrayIndex(argsParameter, Expression.Constant(i));
+                        callArgs[i] = Expression.Convert(arg, parameters[i].ParameterType);
+                    }
+
+                    Expression instance = null;
+                    if (!method.IsStatic)
+                    {
+                        instance = Expression.Convert(targetParameter, method.DeclaringType);
+                    }
+
+                    var call = Expression.Call(instance, method, callArgs);
+                    Expression body = method.ReturnType == typeof(void)
+                        ? Expression.Block(call, Expression.Constant(null, typeof(object)))
+                        : Expression.Convert(call, typeof(object));
+
+                    return Expression.Lambda<MethodCallDelegate>(body, targetParameter, argsParameter).Compile();
                 }
             }
+        }
+
+        private static object[] GetInvokeArgs(int length)
+        {
+            switch (length)
+            {
+                case 0:
+                    return Array.Empty<object>();
+                case 1:
+                    return _threadInvokeArgs1 ??= new object[1];
+                case 2:
+                    return _threadInvokeArgs2 ??= new object[2];
+                case 3:
+                    return _threadInvokeArgs3 ??= new object[3];
+                case 4:
+                    return _threadInvokeArgs4 ??= new object[4];
+            }
+
+            var cache = _threadInvokeArgsMany ??= new Dictionary<int, object[]>(2);
+            if (!cache.TryGetValue(length, out var args))
+            {
+                args = new object[length];
+                cache[length] = args;
+            }
+
+            return args;
         }
 
     }

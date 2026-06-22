@@ -249,6 +249,7 @@ namespace AuroraScript.Compiler
                     {
                         throw new AuroraException($"Imported module was not compiled: {import.FullPath}");
                     }
+                    import.Module = dependency;
                     import.ModuleName = dependency.ModuleName;
                 }
             }

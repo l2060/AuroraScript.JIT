@@ -57,6 +57,10 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
             {
                 ScriptDatum.WriteAsNumber(ref result, number);
             }
+            else if (args.TryGetString(0, out var text) && double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out number))
+            {
+                ScriptDatum.WriteAsNumber(ref result, number);
+            }
             else
             {
                 ScriptDatum.WriteAsNumber(ref result, double.NaN);
@@ -69,6 +73,10 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
             if (args.TryGetInteger(0, out var number))
             {
                 ScriptDatum.WriteAsNumber(ref result, number);
+            }
+            else if (args.TryGetString(0, out var text) && double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var parsed))
+            {
+                ScriptDatum.WriteAsNumber(ref result, Math.Truncate(parsed));
             }
             else
             {

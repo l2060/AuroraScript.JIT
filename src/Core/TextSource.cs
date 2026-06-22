@@ -28,9 +28,9 @@ namespace AuroraScript.Core
         /// <param name="text">The raw script content.</param>
         public TextSource(string basePath, string absPath, string text)
         {
-            BaseDirectory = basePath;
-            FullPath = absPath;
-            SourcePath = Path.GetRelativePath(basePath, absPath);
+            BaseDirectory = Path.GetFullPath(basePath);
+            FullPath = Path.GetFullPath(absPath);
+            SourcePath = Path.GetRelativePath(BaseDirectory, FullPath);
             Code = text;
         }
 

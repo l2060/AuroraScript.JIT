@@ -83,6 +83,7 @@ public sealed class CompileBlockTests
     [InlineData("import value from 'value';")]
     [InlineData("include 'value';")]
     [InlineData("export func run() { }")]
+    [InlineData("export var value = 1;")]
     [InlineData("declare func HOST();")]
     public void RejectsModuleOnlyStatements(string source)
     {
@@ -104,5 +105,18 @@ public sealed class CompileBlockTests
             new CompileBlockOptions { SourceName = "virtual/release-regression.as" }));
 
         Assert.Contains("release-regression.as", error.FileName, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("break;")]
+    [InlineData("continue;")]
+    [InlineData("return 1 2;")]
+    public void RejectsInvalidTopLevelBlockSyntax(string source)
+    {
+        using var workspace = new TestWorkspace();
+        var engine = workspace.CreateEngine();
+
+        Assert.IsAssignableFrom<AuroraException>(
+            Record.Exception(() => engine.CompileBlock(source)));
     }
 }

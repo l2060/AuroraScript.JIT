@@ -32,14 +32,14 @@ namespace AuroraScript.Core
         /// <param name="encoding">The encoding used for reading the file content.</param>
         public FileSource(string basePath, string path, Encoding encoding)
         {
-            BaseDirectory = basePath;
+            BaseDirectory = Path.GetFullPath(basePath);
             if (!Path.IsPathRooted(path))
             {
-                path = Path.Combine(basePath, path);
+                path = Path.Combine(BaseDirectory, path);
             }
 
-            FullPath = path;
-            SourcePath = Path.GetRelativePath(basePath, path);
+            FullPath = Path.GetFullPath(path);
+            SourcePath = Path.GetRelativePath(BaseDirectory, FullPath);
             Encoding = encoding;
         }
 

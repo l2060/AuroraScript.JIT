@@ -245,6 +245,10 @@ namespace AuroraScript.Compiler.Analyzer
                 case '\\': escaped = '\\'; return true;
                 case '\'': escaped = '\''; return true;
                 case '"': escaped = '"'; return true;
+                case '`': escaped = '`'; return true;
+                case '$': escaped = '$'; return true;
+                case '{': escaped = '{'; return true;
+                case '}': escaped = '}'; return true;
                 default: escaped = '\0'; return false;
             }
         }
@@ -594,9 +598,14 @@ namespace AuroraScript.Compiler.Analyzer
                 return ScanString(span, out result);
             }
 
-            if (c == '0' && span.Length > 2 && (span[1] == 'x' || span[1] == 'X') && ScanHexNumber(span, out result))
+            if (c == '0' && span.Length > 1 && (span[1] == 'x' || span[1] == 'X'))
             {
-                return true;
+                if (ScanHexNumber(span, out result))
+                {
+                    return true;
+                }
+
+                throw new AuroraLexicalException(this.FullPath, this.LineNumber, this.ColumnNumber, "Malformed hexadecimal numeric literal.");
             }
 
             if (IsDigit(c))
@@ -869,6 +878,7 @@ namespace AuroraScript.Compiler.Analyzer
             int currentLineCount = 0;
             StringBuilder sb = null;
             int segmentStart = 1;
+            int interpolationDepth = 0;
 
             for (int i = 1; i < span.Length; i++)
             {
@@ -898,6 +908,28 @@ namespace AuroraScript.Compiler.Analyzer
                 else
                 {
                     currentColumn++;
+                    if (keychar == '`')
+                    {
+                        if (viewChar == '$' && i + 1 < span.Length && span[i + 1] == '{')
+                        {
+                            interpolationDepth++;
+                            currentColumn++;
+                            i++;
+                            continue;
+                        }
+                        if (interpolationDepth > 0)
+                        {
+                            if (viewChar == '{')
+                            {
+                                interpolationDepth++;
+                            }
+                            else if (viewChar == '}')
+                            {
+                                interpolationDepth--;
+                            }
+                            continue;
+                        }
+                    }
                     if (viewChar == keychar)
                     {
                         string value;

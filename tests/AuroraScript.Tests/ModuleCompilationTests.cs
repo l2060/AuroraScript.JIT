@@ -35,6 +35,48 @@ public sealed class ModuleCompilationTests
     }
 
     [Fact]
+    public async Task IncludeOnlyExposesExportedDeclarations()
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource("shared.as", "const HIDDEN = 40; export const INCLUDED = 2;");
+        var main = workspace.WriteSource(
+            "main.as",
+            """
+            @module(TEST);
+            include './shared';
+            export func visible() { return INCLUDED; }
+            export func hidden() { return HIDDEN; }
+            """);
+        var engine = workspace.CreateEngine();
+
+        await engine.BuildAsync(engine.FileSource(main, Encoding.UTF8));
+        var domain = engine.CreateDomain();
+
+        ScriptAssert.Equal(2, TestWorkspace.Execute(domain, "visible"));
+        ScriptAssert.Equal(null, TestWorkspace.Execute(domain, "hidden"));
+    }
+
+    [Fact]
+    public async Task IncludeConflictKeepsCurrentModuleDeclaration()
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource("shared.as", "export const VALUE = 1;");
+        var main = workspace.WriteSource(
+            "main.as",
+            """
+            @module(TEST);
+            include './shared';
+            export const VALUE = 2;
+            export func run() { return VALUE; }
+            """);
+        var engine = workspace.CreateEngine();
+
+        await engine.BuildAsync(engine.FileSource(main, Encoding.UTF8));
+
+        ScriptAssert.Equal(2, TestWorkspace.Execute(engine.CreateDomain(), "run"));
+    }
+
+    [Fact]
     public async Task DeduplicatesDiamondDependenciesAndDuplicateRoots()
     {
         using var workspace = new TestWorkspace();

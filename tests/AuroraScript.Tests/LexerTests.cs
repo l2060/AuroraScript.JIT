@@ -143,6 +143,24 @@ public sealed class LexerTests
     }
 
     [Fact]
+    public void DotLeadingNumberTokenizesAsDotThenNumber()
+    {
+        using var lexer = CreateLexer(".5");
+
+        Assert.Equal(Symbols.PT_DOT, lexer.Next().Symbol);
+        Assert.Equal(5d, Assert.IsType<NumberToken>(lexer.Next()).NumberValue);
+    }
+
+    [Fact]
+    public void HexLiteralStopsBeforeUnderscoreSeparator()
+    {
+        using var lexer = CreateLexer("0x1_2");
+
+        Assert.Equal(1d, Assert.IsType<NumberToken>(lexer.Next()).NumberValue);
+        Assert.Equal("_2", Assert.IsType<IdentifierToken>(lexer.Next()).Value);
+    }
+
+    [Fact]
     public void RegexLiteralPreservesEscapedCharacterClassesAndFlags()
     {
         using var lexer = CreateLexer("/(?<word>[a-z]+)\\s+\\/path/gim");
@@ -150,6 +168,29 @@ public sealed class LexerTests
         var regex = Assert.IsType<RegexToken>(lexer.Next());
         Assert.Equal("(?<word>[a-z]+)\\s+\\/path", regex.Pattern);
         Assert.Equal("gim", regex.Flags);
+    }
+
+    [Fact]
+    public void TemplateLiteralTracksMultilineRange()
+    {
+        using var lexer = CreateLexer("`first\n${1 + 2}\nlast`");
+
+        var template = Assert.IsType<StringTemplateToken>(lexer.Next());
+
+        Assert.Equal(1, template.Range.StartLine);
+        Assert.Equal(3, template.Range.EndLine);
+        Assert.True(template.Range.EndColumn > 1);
+    }
+
+    [Fact]
+    public void InvalidRegexFlagIsNotConsumedAsRegexFlag()
+    {
+        using var lexer = CreateLexer("/a/z");
+
+        var regex = Assert.IsType<RegexToken>(lexer.Next());
+        Assert.Equal("a", regex.Pattern);
+        Assert.Equal(string.Empty, regex.Flags);
+        Assert.Equal("z", Assert.IsType<IdentifierToken>(lexer.Next()).Value);
     }
 
     [Fact]
@@ -186,6 +227,7 @@ public sealed class LexerTests
     [InlineData("§")]
     [InlineData("1__2")]
     [InlineData("\"bad\\q\"")]
+    [InlineData("`bad\\q`")]
     [InlineData("/* nested /* unterminated")]
     public void InvalidLexemesReportLexicalError(string source)
     {

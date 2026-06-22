@@ -797,10 +797,10 @@ export func testHotPatch() {
         for (var o = 0; o < 10000; o++) {
             fo.Name = "MK";
             fo.Say(123, "Hello");
-            var str2 = TestObject.Cat(["[", "-", "]"]);
+            // var str2 = TestObject.Cat("[", "-", "]");
         }
         console.log(fo.Name);
-        var str = TestObject.Cat(["[", "-", "]"]);
+        var str = TestObject.Cat("[", "-", "]");
         console.log("Eat", str);
         return true;
     }

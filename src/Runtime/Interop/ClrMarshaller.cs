@@ -140,15 +140,13 @@ namespace AuroraScript.Runtime.Interop
                     }
                     if (IsNumericType(targetType))
                     {
-                        result = Convert.ChangeType(datum.Boolean ? 1 : 0, Nullable.GetUnderlyingType(targetType) ?? targetType, CultureInfo.InvariantCulture);
-                        return true;
+                        return TryConvertNumber(datum.Boolean ? 1d : 0d, targetType, out result);
                     }
                     break;
                 case ValueKind.Number:
                     if (IsNumericType(targetType))
                     {
-                        result = Convert.ChangeType(datum.Number, Nullable.GetUnderlyingType(targetType) ?? targetType, CultureInfo.InvariantCulture);
-                        return true;
+                        return TryConvertNumber(datum.Number, targetType, out result);
                     }
                     if (targetType == typeof(bool) || targetType == typeof(bool?))
                     {
@@ -401,6 +399,50 @@ namespace AuroraScript.Runtime.Interop
             }
         }
 
+        private static bool TryConvertNumber(double value, Type targetType, out object result)
+        {
+            var type = Nullable.GetUnderlyingType(targetType) ?? targetType;
+            switch (Type.GetTypeCode(type))
+            {
+                case TypeCode.Double:
+                    result = value;
+                    return true;
+                case TypeCode.Single:
+                    result = (float)value;
+                    return true;
+                case TypeCode.Int32:
+                    result = (int)value;
+                    return true;
+                case TypeCode.Int64:
+                    result = (long)value;
+                    return true;
+                case TypeCode.Int16:
+                    result = (short)value;
+                    return true;
+                case TypeCode.Byte:
+                    result = (byte)value;
+                    return true;
+                case TypeCode.SByte:
+                    result = (sbyte)value;
+                    return true;
+                case TypeCode.UInt16:
+                    result = (ushort)value;
+                    return true;
+                case TypeCode.UInt32:
+                    result = (uint)value;
+                    return true;
+                case TypeCode.UInt64:
+                    result = (ulong)value;
+                    return true;
+                case TypeCode.Decimal:
+                    result = (decimal)value;
+                    return true;
+                default:
+                    result = null;
+                    return false;
+            }
+        }
+
         /// <summary>
         /// Attempts to convert a <see cref="ScriptArray"/> to a .NET collection type (Array, List, etc.).
         /// </summary>
@@ -501,6 +543,33 @@ namespace AuroraScript.Runtime.Interop
         private static bool TryConvertToClrArray(ScriptArray scriptArray, Type elementType, out object result)
         {
             var length = scriptArray.Length;
+
+            if (elementType == typeof(string))
+            {
+                var strings = new string[length];
+                for (int i = 0; i < length; i++)
+                {
+                    var datum = scriptArray.GetElement(i);
+                    if (datum.Kind == ValueKind.String)
+                    {
+                        strings[i] = datum.String.Value;
+                        continue;
+                    }
+                    if (!TryConvertArgument(in datum, elementType, out var converted))
+                    {
+                        if (!TryFallbackArrayConversion(datum, elementType, out converted))
+                        {
+                            result = null;
+                            return false;
+                        }
+                    }
+                    strings[i] = (string)converted;
+                }
+
+                result = strings;
+                return true;
+            }
+
             var arrayInstance = Array.CreateInstance(elementType, length);
 
             for (int i = 0; i < length; i++)
@@ -706,8 +775,27 @@ namespace AuroraScript.Runtime.Interop
         /// </summary>
         internal static bool TryBuildArguments(MethodBase method, Span<ScriptDatum> args, out object[] invokeArgs)
         {
-            var parameters = method.GetParameters();
-            if (parameters.Length != args.Length)
+            return TryBuildArguments(method.GetParameters(), args, out invokeArgs);
+        }
+
+        internal static bool TryBuildArguments(ParameterInfo[] parameters, Span<ScriptDatum> args, out object[] invokeArgs)
+        {
+            var hasParamArray = parameters.Length > 0 && IsParamArray(parameters[^1]);
+            var requiredCount = 0;
+            for (int i = 0; i < parameters.Length; i++)
+            {
+                if (IsParamArray(parameters[i]))
+                {
+                    break;
+                }
+
+                if (!parameters[i].HasDefaultValue)
+                {
+                    requiredCount++;
+                }
+            }
+
+            if (args.Length < requiredCount || (!hasParamArray && args.Length > parameters.Length))
             {
                 invokeArgs = null;
                 return false;
@@ -716,9 +804,77 @@ namespace AuroraScript.Runtime.Interop
             invokeArgs = new object[parameters.Length];
             for (int i = 0; i < parameters.Length; i++)
             {
+                if (IsParamArray(parameters[i]))
+                {
+                    invokeArgs[i] = ConvertParamArray(parameters[i], args, i);
+                    return true;
+                }
+
+                if (i >= args.Length)
+                {
+                    if (parameters[i].HasDefaultValue)
+                    {
+                        invokeArgs[i] = parameters[i].DefaultValue;
+                        continue;
+                    }
+
+                    invokeArgs = null;
+                    return false;
+                }
+
                 if (!ClrMarshaller.TryConvertArgument(in args[i], parameters[i].ParameterType, out var converted))
                 {
                     invokeArgs = null;
+                    return false;
+                }
+                invokeArgs[i] = converted;
+            }
+            return true;
+        }
+
+        internal static bool TryBuildArguments(ParameterInfo[] parameters, Span<ScriptDatum> args, object[] invokeArgs)
+        {
+            var hasParamArray = parameters.Length > 0 && IsParamArray(parameters[^1]);
+            var requiredCount = 0;
+            for (int i = 0; i < parameters.Length; i++)
+            {
+                if (IsParamArray(parameters[i]))
+                {
+                    break;
+                }
+
+                if (!parameters[i].HasDefaultValue)
+                {
+                    requiredCount++;
+                }
+            }
+
+            if (args.Length < requiredCount || (!hasParamArray && args.Length > parameters.Length))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < parameters.Length; i++)
+            {
+                if (IsParamArray(parameters[i]))
+                {
+                    invokeArgs[i] = ConvertParamArray(parameters[i], args, i);
+                    return true;
+                }
+
+                if (i >= args.Length)
+                {
+                    if (parameters[i].HasDefaultValue)
+                    {
+                        invokeArgs[i] = parameters[i].DefaultValue;
+                        continue;
+                    }
+
+                    return false;
+                }
+
+                if (!ClrMarshaller.TryConvertArgument(in args[i], parameters[i].ParameterType, out var converted))
+                {
                     return false;
                 }
                 invokeArgs[i] = converted;

@@ -24,6 +24,9 @@ public sealed class ParserSyntaxTests
     [InlineData("var expression = (a, b) => a + b; var block = () => { return 1; };")]
     [InlineData("func mutate(obj) { delete obj.value; debugger; yield; }")]
     [InlineData("func values() { return `value=${1 + 2}`; }")]
+    [InlineData("func values() { return `outer=${`inner=${1 + 2}`}`; }")]
+    [InlineData("func values() { return `literal=\\${value}`; }")]
+    [InlineData("func values() { return `object=${{ value: 1 }.value}`; }")]
     [InlineData("func regex() { return /a[\\/]b+/gi; }")]
     public void ParsesSupportedGrammarBranches(string body)
     {
@@ -73,6 +76,33 @@ public sealed class ParserSyntaxTests
     [InlineData("var value = { key: };")]
     [InlineData("var value = [...];")]
     [InlineData("func duplicate(value, value) { }")]
+    [InlineData("func value() { return `empty=${}`; }")]
+    [InlineData("func value() { return `extra=${1 2}`; }")]
+    [InlineData("1 = value;")]
+    [InlineData("(a + b) = 1;")]
+    [InlineData("func f() { } f() = 1;")]
+    [InlineData("a + b += 1;")]
+    [InlineData("++1;")]
+    [InlineData("target(1,,2);")]
+    [InlineData("func f(a = ) { }")]
+    [InlineData("func f(...rest, next) { }")]
+    [InlineData("func f(...rest = 1) { }")]
+    [InlineData("var value = {,};")]
+    [InlineData("var value = { a: 1,, b: 2 };")]
+    [InlineData("var value = { ... };")]
+    [InlineData("if (true)")]
+    [InlineData("else { var value = 1; }")]
+    [InlineData("while (true)")]
+    [InlineData("try { } catch")]
+    [InlineData("try { } finally")]
+    [InlineData("try { } catch () { }")]
+    [InlineData("try { } catch (123) { }")]
+    [InlineData("for (var i = 0 i < 3; i++) { }")]
+    [InlineData("for (var item in) { }")]
+    [InlineData("for (var item in [1, 2])")]
+    [InlineData("enum E { A,,B }")]
+    [InlineData("enum E { A = 1.5 }")]
+    [InlineData("enum E { A = 2147483648 }")]
     public void RejectsInvalidSyntax(string body)
     {
         var exception = Record.Exception(() => Parse("@module(TEST);\n" + body));
@@ -94,6 +124,34 @@ public sealed class ParserSyntaxTests
     }
 
     [Fact]
+    public void RejectsIncludeAfterExecutableStatement()
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource("dependency.as", "@module(DEPENDENCY);");
+        var exception = Record.Exception(() => Parse(
+            "@module(TEST); var value = 1; include 'dependency';",
+            workspace.Root));
+
+        var parse = Assert.IsType<AuroraParseException>(exception);
+        Assert.Contains("top of the module", parse.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("@module(TEST); import from 'dependency';")]
+    [InlineData("@module(TEST); import dependency 'dependency';")]
+    [InlineData("@module(TEST); include dependency;")]
+    public void RejectsMalformedImportOrInclude(string source)
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource("dependency.as", "@module(DEPENDENCY);");
+
+        var exception = Record.Exception(() => Parse(source, workspace.Root));
+
+        Assert.NotNull(exception);
+        Assert.IsAssignableFrom<AuroraException>(exception);
+    }
+
+    [Fact]
     public void RejectsMissingImportFile()
     {
         using var workspace = new TestWorkspace();
@@ -109,11 +167,21 @@ public sealed class ParserSyntaxTests
     [InlineData("@module(TEST)")]
     [InlineData("@module(TEST, EXTRA);")]
     [InlineData("@;")]
+    [InlineData("@module('TEST');")]
     public void RejectsMalformedModuleMetadata(string source)
     {
         var error = Record.Exception(() => Parse(source));
         Assert.NotNull(error);
         Assert.IsAssignableFrom<AuroraException>(error);
+    }
+
+    [Fact]
+    public void ParsesNonModuleMetadata()
+    {
+        var module = Parse("@author(TEST);\n@module(TEST);");
+
+        Assert.Equal("TEST", module.MetaInfos["author"]);
+        Assert.Equal("TEST", module.ModuleName);
     }
 
     [Fact]

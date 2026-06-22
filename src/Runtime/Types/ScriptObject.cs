@@ -291,6 +291,16 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary>
+        /// Copies enumerable own properties from another object to this one.
+        /// </summary>
+        /// <param name="scriptObject">The source object.</param>
+        /// <param name="force">If true, overrides read-only properties.</param>
+        public void CopyEnumerablePropertysFrom(ScriptObject scriptObject, bool force = false)
+        {
+            scriptObject.CopyProperties(this, force, enumerableOnly: true);
+        }
+
+        /// <summary>
         /// Defines an object property with specific attributes.
         /// Typically called from host (C#) code.
         /// </summary>
@@ -512,13 +522,18 @@ namespace AuroraScript.Runtime.Types
         /// </summary>
         /// <param name="target">The destination object to copy properties to.</param>
         /// <param name="force">If true, overrides target properties even if they are marked as non-writable.</param>
-        public void CopyProperties(ScriptObject target, bool force = false)
+        /// <param name="enumerableOnly">If true, copies only enumerable properties.</param>
+        public void CopyProperties(ScriptObject target, bool force = false, bool enumerableOnly = false)
         {
             if (Immutable) return;
             foreach (var item in hiddenClass.Properties)
             {
                 var key = item.Name;
                 var meta = item.Meta;
+                if (enumerableOnly && !meta.Enumerable)
+                {
+                    continue;
+                }
                 var property = propertyValues[meta.Slot];
                 if (target.hiddenClass.TryGet(key, out var targetMeta))
                 {

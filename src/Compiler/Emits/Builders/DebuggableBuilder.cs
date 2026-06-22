@@ -24,7 +24,7 @@ namespace AuroraScript.Compiler.Emits.Builders
         public override (MethodInfo Method, ILGenerator IL) DefineModuleInitMethod(ModuleDeclaration module)
         {
             var typeBuilder = _moduleBuilder.DefineType(ConfuseTypeName(module.ModuleName, ConfuseTarget.Class), TypeAttributes.Public | TypeAttributes.Class);
-            var methodBuilder = typeBuilder.DefineMethod(ConfuseTypeName("Initialize", ConfuseTarget.Method), MethodAttributes.Public | MethodAttributes.Static, typeof(void), [typeof(ScriptContext), typeof(ScriptDatum[])]);
+            var methodBuilder = typeBuilder.DefineMethod(ConfuseTypeName("Initialize", ConfuseTarget.Method), MethodAttributes.Public | MethodAttributes.Static, typeof(void), [typeof(ScriptContext), typeof(Span<ScriptDatum>)]);
             RegisterType(module.ModuleName, typeBuilder);
             return (methodBuilder, methodBuilder.GetILGenerator());
         }

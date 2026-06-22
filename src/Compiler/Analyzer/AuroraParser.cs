@@ -20,6 +20,7 @@ namespace AuroraScript.Compiler.Analyzer
         private int count;
         public ScopeType Current => scopeStack[count - 1];
         public int Count => count;
+        public ScopeType this[int index] => scopeStack[index];
 
         public ScopeStack Scope(ScopeType type)
         {
@@ -379,6 +380,10 @@ namespace AuroraScript.Compiler.Analyzer
             if (token.Symbol == Symbols.OP_SPREAD)
             {
                 var value = ParseExpression(0); // Lowest precedence
+                if (value == null)
+                {
+                    throw new AuroraParseException(this.Lexer.FullPath, token, "Spread requires an expression.");
+                }
                 var spread = new SpreadExpression(value);
                 return SetRange(spread, token.Range, (value != null ? value.Range : token.Range));
             }
@@ -391,18 +396,15 @@ namespace AuroraScript.Compiler.Analyzer
                 // Special case for 'new'
                 if (op == Operator.New)
                 {
-                    var right = ParseExpression(op.Precedence);
-                    if (right is not FunctionCallExpression funcCall)
-                    {
-                        throw new AuroraParseException(this.Lexer.FullPath, token, $"Uncaught TypeError: {right} is not a constructor");
-                    }
-                    var binary = new NewExpression(op, funcCall);
-                    if (right != null) binary.Range = MergeRanges(token.Range, right.Range);
-                    return binary;
+                    return ParseNewExpression(op, token.Range, token);
                 }
 
                 // Normal Unary
                 var rightUnary = ParseExpression(op.Precedence);
+                if (op == Operator.PreIncrement || op == Operator.PreDecrement)
+                {
+                    EnsureMutationTarget(rightUnary, op);
+                }
                 var expression = new UnaryExpression(op, UnaryType.Prefix, rightUnary);
                 // SetDebug(expression, token); // Redundant if already handled
                 if (rightUnary != null) expression.Range = MergeRanges(token.Range, rightUnary.Range);
@@ -474,6 +476,11 @@ namespace AuroraScript.Compiler.Analyzer
             if (symbol == Symbols.OP_SPREAD)
             {
                 var value = ParseExpression(0); // Lowest precedence
+                if (value == null)
+                {
+                    var token = new OperatorToken { Symbol = symbol, Value = symbol?.Name, Range = range };
+                    throw new AuroraParseException(this.Lexer.FullPath, token, "Spread requires an expression.");
+                }
                 var spread = new SpreadExpression(value);
                 return SetRange(spread, range, (value != null ? value.Range : range));
             }
@@ -485,18 +492,15 @@ namespace AuroraScript.Compiler.Analyzer
 
                 if (op == Operator.New)
                 {
-                    var right = ParseExpression(op.Precedence);
-                    if (right is not FunctionCallExpression funcCall)
-                    {
-                        var token = new OperatorToken { Symbol = symbol, Value = symbol?.Name, Range = range };
-                        throw new AuroraParseException(this.Lexer.FullPath, token, $"Uncaught TypeError: {right} is not a constructor");
-                    }
-                    var binary = new NewExpression(op, funcCall);
-                    if (right != null) binary.Range = MergeRanges(range, right.Range);
-                    return binary;
+                    var token = new OperatorToken { Symbol = symbol, Value = symbol?.Name, Range = range };
+                    return ParseNewExpression(op, range, token);
                 }
 
                 var rightUnary = ParseExpression(op.Precedence);
+                if (op == Operator.PreIncrement || op == Operator.PreDecrement)
+                {
+                    EnsureMutationTarget(rightUnary, op);
+                }
                 var expression = new UnaryExpression(op, UnaryType.Prefix, rightUnary);
                 if (rightUnary != null) expression.Range = MergeRanges(range, rightUnary.Range);
                 return expression;
@@ -600,6 +604,7 @@ namespace AuroraScript.Compiler.Analyzer
                 SetRange(binary, left.Range, right.Range);
 
                 if (binary is AssignmentExpression assignExp) return OptimizeAssignment(assignExp);
+                if (binary is CompoundExpression compoundExp) return OptimizeCompoundAssignment(compoundExp);
 
                 return binary;
             }
@@ -607,6 +612,7 @@ namespace AuroraScript.Compiler.Analyzer
             // Postfix (++, --)
             if (op != null && op.Placement == OperatorPlacement.Postfix)
             {
+                EnsureMutationTarget(left, op);
                 var unary = new UnaryExpression(op, UnaryType.Post, left);
                 // SetDebug(unary, opToken); // Redundant
                 unary.Range = MergeRanges(left.Range, opRange);
@@ -727,6 +733,14 @@ namespace AuroraScript.Compiler.Analyzer
                         var subLexer = new AuroraLexer(this.Lexer.BaseDirectory, new TextSource(this.Lexer.BaseDirectory, this.Lexer.FullPath, exprText));
                         var subParser = new AuroraParser(subLexer, _options);
                         expr = subParser.ParseExpression(0);
+                        if (expr == null)
+                        {
+                            throw new AuroraParseException(this.Lexer.FullPath, token, "Template string interpolation requires an expression.");
+                        }
+                        if (!subLexer.IsAtEnd)
+                        {
+                            throw new AuroraParseException(this.Lexer.FullPath, subLexer.LookAtHead(), "Template string interpolation contains unexpected tokens.");
+                        }
                     }
 
                     if (expr != null)
@@ -792,6 +806,18 @@ namespace AuroraScript.Compiler.Analyzer
                    IsPrefixOperator(symbol);
         }
 
+        private bool IsInsideLoop()
+        {
+            for (int i = scopeStack.Count - 1; i >= 0; i--)
+            {
+                if (scopeStack[i] == ScopeType.FOR || scopeStack[i] == ScopeType.FUNCTION)
+                {
+                    return scopeStack[i] == ScopeType.FOR;
+                }
+            }
+            return false;
+        }
+
         private bool TryParseTemplateIdentifier(ReadOnlySpan<char> expressionSource, SourceSpan range, out Expression expression)
         {
             expression = null;
@@ -836,6 +862,10 @@ namespace AuroraScript.Compiler.Analyzer
             var metaName = this.Lexer.NextOfKind<IdentifierToken>();
             this.Lexer.Expect(Symbols.PT_LEFTPARENTHESIS);
             var token = this.Lexer.TestNextOfKind<IdentifierToken>();
+            if (token == null)
+            {
+                throw new AuroraParseException(this.Lexer.FullPath, metaName, "Metadata requires a value.");
+            }
             this.Lexer.Expect(Symbols.PT_RIGHTPARENTHESIS);
             this.Lexer.Expect(Symbols.PT_SEMICOLON);
             var statement = SetDebug(new ModuleMetaStatement(metaName, token), metaName);
@@ -1137,7 +1167,13 @@ namespace AuroraScript.Compiler.Analyzer
                 {
                     var token = this.Lexer.NextOfKind<ValueToken>();
                     if (token is not NumberToken numberToken) throw new AuroraParseException(this.Lexer.FullPath, token, "Enumeration types only apply to integers");
-                    elementValue = checked((int)numberToken.NumberValue);
+                    if (numberToken.NumberValue % 1 != 0 ||
+                        numberToken.NumberValue < int.MinValue ||
+                        numberToken.NumberValue > int.MaxValue)
+                    {
+                        throw new AuroraParseException(this.Lexer.FullPath, token, "Enumeration values must be 32-bit integers.");
+                    }
+                    elementValue = (int)numberToken.NumberValue;
                 }
                 var enumElement = new EnumElement() { Name = elementName, Value = elementValue };
                 result.Add(enumElement);
@@ -1187,6 +1223,10 @@ namespace AuroraScript.Compiler.Analyzer
                         var varName = this.Lexer.NextOfKind<IdentifierToken>();
                         this.Lexer.Expect(Symbols.OP_IN);
                         var right = ParseExpression(0);
+                        if (right == null)
+                        {
+                            throw new AuroraParseException(this.Lexer.FullPath, this.Lexer.LookAtHead(), "for-in expression requires a collection.");
+                        }
                         this.Lexer.Expect(Symbols.PT_RIGHTPARENTHESIS);
 
                         var variable = new VariableDeclaration(MemberAccess.Internal, false, varName, null);
@@ -1196,6 +1236,10 @@ namespace AuroraScript.Compiler.Analyzer
 
 
                         body = ParseStatement();
+                        if (body == null)
+                        {
+                            throw new AuroraParseException(this.Lexer.FullPath, forRange, "for body statement should not be empty");
+                        }
                         var forStmt = new ForInStatement(SetRange(variable, start, varName.Range), inExp, body);
                         return SetRange(forStmt, forRange, (body?.Range ?? right.Range));
                     }
@@ -1206,12 +1250,20 @@ namespace AuroraScript.Compiler.Analyzer
                         var initializer = ParseStatement(); // Parses `var x = 0;`
 
                         var condition = ParseExpression(0);
+                        if (condition == null)
+                        {
+                            throw new AuroraParseException(this.Lexer.FullPath, this.Lexer.LookAtHead(), "for condition requires an expression.");
+                        }
                         this.Lexer.Expect(Symbols.PT_SEMICOLON);
 
                         var increment = ParseExpression(0);
                         this.Lexer.Expect(Symbols.PT_RIGHTPARENTHESIS);
 
                         body = ParseStatement();
+                        if (body == null)
+                        {
+                            throw new AuroraParseException(this.Lexer.FullPath, forRange, "for body statement should not be empty");
+                        }
                         var forStmt = new ForStatement(condition, initializer, increment, body);
                         return SetRange(forStmt, forRange, (body?.Range ?? increment.Range));
                     }
@@ -1225,6 +1277,10 @@ namespace AuroraScript.Compiler.Analyzer
                     // Case: `for (x in y)`
                     this.Lexer.Expect(Symbols.PT_RIGHTPARENTHESIS);
                     body = ParseStatement();
+                    if (body == null)
+                    {
+                        throw new AuroraParseException(this.Lexer.FullPath, startRange, "for body statement should not be empty");
+                    }
                     var forStmt = new ForInStatement(null, inExpr, body);
                     return SetRange(forStmt, startRange, (body?.Range ?? inExpr.Range));
                 }
@@ -1232,11 +1288,19 @@ namespace AuroraScript.Compiler.Analyzer
                 // Case: `for (x = 0; ...)`
                 this.Lexer.Expect(Symbols.PT_SEMICOLON);
                 var condExpr = ParseExpression(0);
+                if (condExpr == null)
+                {
+                    throw new AuroraParseException(this.Lexer.FullPath, this.Lexer.LookAtHead(), "for condition requires an expression.");
+                }
                 this.Lexer.Expect(Symbols.PT_SEMICOLON);
                 var incExpr = ParseExpression(0);
                 this.Lexer.Expect(Symbols.PT_RIGHTPARENTHESIS);
 
                 body = ParseStatement();
+                if (body == null)
+                {
+                    throw new AuroraParseException(this.Lexer.FullPath, startRange, "for body statement should not be empty");
+                }
                 var forStmtLoop = new ForStatement(condExpr, exp, incExpr, body);
                 return SetRange(forStmtLoop, startRange, (body?.Range ?? incExpr.Range));
             }
@@ -1244,13 +1308,20 @@ namespace AuroraScript.Compiler.Analyzer
 
         private Statement ParseWhileBlock()
         {
-            var range = this.Lexer.NextRangeOfKind(Symbols.KW_WHILE);
-            this.Lexer.Expect(Symbols.PT_LEFTPARENTHESIS);
-            var condition = this.ParseExpression(0);
-            this.Lexer.Expect(Symbols.PT_RIGHTPARENTHESIS);
-            var body = this.ParseStatement();
-            if (body == null) throw new AuroraParseException(this.Lexer.FullPath, range, "while body statement should not be empty");
-            return SetRange(new WhileStatement(condition, body), range, body.Range);
+            using (scopeStack.Scope(ScopeType.FOR))
+            {
+                var range = this.Lexer.NextRangeOfKind(Symbols.KW_WHILE);
+                this.Lexer.Expect(Symbols.PT_LEFTPARENTHESIS);
+                var condition = this.ParseExpression(0);
+                if (condition == null)
+                {
+                    throw new AuroraParseException(this.Lexer.FullPath, range, "while condition requires an expression.");
+                }
+                this.Lexer.Expect(Symbols.PT_RIGHTPARENTHESIS);
+                var body = this.ParseStatement();
+                if (body == null) throw new AuroraParseException(this.Lexer.FullPath, range, "while body statement should not be empty");
+                return SetRange(new WhileStatement(condition, body), range, body.Range);
+            }
         }
 
 
@@ -1260,6 +1331,10 @@ namespace AuroraScript.Compiler.Analyzer
             var range = this.Lexer.NextRangeOfKind(Symbols.KW_IF);
             this.Lexer.Expect(Symbols.PT_LEFTPARENTHESIS);
             var condition = this.ParseExpression(0);
+            if (condition == null)
+            {
+                throw new AuroraParseException(this.Lexer.FullPath, range, "if condition requires an expression.");
+            }
             this.Lexer.Expect(Symbols.PT_RIGHTPARENTHESIS);
 
             var body = this.ParseStatement();
@@ -1309,7 +1384,7 @@ namespace AuroraScript.Compiler.Analyzer
                 if (this.Lexer.TestSymbol(Symbols.PT_LEFTPARENTHESIS))
                 {
                     this.Lexer.Expect(Symbols.PT_LEFTPARENTHESIS);
-                    var catchToken = this.Lexer.Next();
+                    var catchToken = this.Lexer.NextOfKind<IdentifierToken>();
                     catchVar = catchToken.Value;
                     this.Lexer.Expect(Symbols.PT_RIGHTPARENTHESIS);
                 }
@@ -1322,6 +1397,11 @@ namespace AuroraScript.Compiler.Analyzer
                 finallyBody = this.ParseBlock();
             }
 
+            if (catchBody == null && finallyBody == null)
+            {
+                throw new AuroraParseException(this.Lexer.FullPath, range, "try statement requires catch or finally.");
+            }
+
             return SetRange(new TryStatement(body, catchVar, catchBody, finallyBody), range, (finallyBody ?? catchBody ?? body).Range);
         }
 
@@ -1330,6 +1410,10 @@ namespace AuroraScript.Compiler.Analyzer
             var range = this.Lexer.NextRangeOfKind(Symbols.KW_THROW);
 
             var exp = this.ParseExpression(0);
+            if (exp == null)
+            {
+                throw new AuroraParseException(this.Lexer.FullPath, range, "throw requires an expression.");
+            }
             var semi = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
 
             return SetRange(new ThrowStatement(exp), range, semi);
@@ -1338,6 +1422,10 @@ namespace AuroraScript.Compiler.Analyzer
         private Statement ParseContinueStatement()
         {
             var range = this.Lexer.NextRangeOfKind(Symbols.KW_CONTINUE);
+            if (!IsInsideLoop())
+            {
+                throw new AuroraParseException(this.Lexer.FullPath, range, "continue statement must be inside a loop.");
+            }
             var semi = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
             return SetRange(new ContinueStatement(), range, semi);
         }
@@ -1352,6 +1440,10 @@ namespace AuroraScript.Compiler.Analyzer
         private Statement ParseBreakStatement()
         {
             var range = this.Lexer.NextRangeOfKind(Symbols.KW_BREAK);
+            if (!IsInsideLoop())
+            {
+                throw new AuroraParseException(this.Lexer.FullPath, range, "break statement must be inside a loop.");
+            }
             var semi = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
             return SetRange(new BreakStatement(), range, semi);
         }
@@ -1385,6 +1477,10 @@ namespace AuroraScript.Compiler.Analyzer
         {
             var range = this.Lexer.NextRangeOfKind(Symbols.KW_DELETE);
             var exp = this.ParseExpression(0);
+            if (exp == null)
+            {
+                throw new AuroraParseException(this.Lexer.FullPath, range, "delete requires an expression.");
+            }
             var semi = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
             return SetRange(new DeleteStatement(exp), range, semi);
         }
@@ -1405,6 +1501,10 @@ namespace AuroraScript.Compiler.Analyzer
                 if (this.Lexer.TestNext(Symbols.OP_SPREAD))
                 {
                     var value = ParseExpression(0);
+                    if (value == null)
+                    {
+                        throw new AuroraParseException(this.Lexer.FullPath, this.Lexer.LookAtHead(), "Spread requires an expression.");
+                    }
                     var spread = new SpreadExpression(value);
                     constructExpression.AddNode(spread);
                     this.Lexer.TestNext(Symbols.PT_COMMA);
@@ -1422,6 +1522,10 @@ namespace AuroraScript.Compiler.Analyzer
                 if (this.Lexer.TestNext(Symbols.PT_COLON))
                 {
                     var value = ParseExpression(0);
+                    if (value == null)
+                    {
+                        throw new AuroraParseException(this.Lexer.FullPath, varName, "Object property value requires an expression.");
+                    }
                     var newExp = new MapKeyValueExpression(varName, value);
                     SetRange(newExp, varName.Range, value.Range);
                     constructExpression.AddNode(newExp);
@@ -1454,17 +1558,36 @@ namespace AuroraScript.Compiler.Analyzer
             }
 
             var arguments = new List<ParameterDeclaration>(4);
+            var argumentNames = new HashSet<string>(StringComparer.Ordinal);
+            var seenSpread = false;
             while (true)
             {
                 // Check for spread operator
                 bool isSpread = this.Lexer.TestNext(Symbols.OP_SPREAD);
+                if (seenSpread)
+                {
+                    throw new AuroraParseException(this.Lexer.FullPath, this.Lexer.LookAtHead(), "Rest parameter must be the last parameter.");
+                }
+                seenSpread = isSpread;
 
                 var varname = this.Lexer.NextOfKind<IdentifierToken>();
+                if (!argumentNames.Add(varname.Value))
+                {
+                    throw new AuroraParseException(this.Lexer.FullPath, varname, $"Duplicate parameter name '{varname.Value}'.");
+                }
                 Expression defaultValue = null;
 
                 if (this.Lexer.TestNext(Symbols.OP_ASSIGNMENT))
                 {
+                    if (isSpread)
+                    {
+                        throw new AuroraParseException(this.Lexer.FullPath, varname, "Rest parameter cannot have a default value.");
+                    }
                     defaultValue = ParseExpression(0);
+                    if (defaultValue == null)
+                    {
+                        throw new AuroraParseException(this.Lexer.FullPath, varname, "Parameter default value requires an expression.");
+                    }
                 }
 
                 var param = new ParameterDeclaration((Byte)arguments.Count, varname, defaultValue);
@@ -1543,6 +1666,7 @@ namespace AuroraScript.Compiler.Analyzer
 
         private Expression OptimizeAssignment(AssignmentExpression assignment)
         {
+            EnsureAssignableTarget(assignment.Left, assignment.Operator);
             if (assignment.Left is GetPropertyExpression getter)
             {
                 var setter = new SetPropertyExpression(getter.Object, getter.Property, assignment.Right);
@@ -1556,6 +1680,77 @@ namespace AuroraScript.Compiler.Analyzer
                 return setter;
             }
             return assignment;
+        }
+
+        private Expression ParseNewExpression(Operator op, SourceSpan newRange, Token token)
+        {
+            var target = ParseExpression(Operator.FunctionCall.Precedence);
+            if (target == null || !Lexer.TestSymbol(Symbols.PT_LEFTPARENTHESIS))
+            {
+                throw new AuroraParseException(this.Lexer.FullPath, token, $"Uncaught TypeError: {target} is not a constructor");
+            }
+
+            Lexer.NextRangeOfKind(Symbols.PT_LEFTPARENTHESIS);
+            var callExp = new FunctionCallExpression(Operator.FunctionCall, target);
+            if (!this.Lexer.TestSymbol(Symbols.PT_RIGHTPARENTHESIS))
+            {
+                while (true)
+                {
+                    var arg = ParseExpression(0);
+                    if (arg == null)
+                    {
+                        throw new AuroraParseException(Lexer.FullPath, Lexer.LookAtHead(), "Function argument requires an expression.");
+                    }
+                    callExp.AddArgument(arg);
+
+                    if (this.Lexer.TestSymbol(Symbols.PT_RIGHTPARENTHESIS)) break;
+                    this.Lexer.Expect(Symbols.PT_COMMA);
+                }
+            }
+            var rightParen = this.Lexer.NextRangeOfKind(Symbols.PT_RIGHTPARENTHESIS);
+            SetRange(callExp, target.Range, rightParen);
+            var newExp = new NewExpression(op, callExp);
+            return SetRange(newExp, newRange, rightParen);
+        }
+
+        private Expression OptimizeCompoundAssignment(CompoundExpression assignment)
+        {
+            EnsureAssignableTarget(assignment.Left, assignment.Operator);
+            var op = assignment.Operator.SimplerOperator;
+            if (op == null)
+            {
+                return assignment;
+            }
+
+            var value = new BinaryExpression(op, assignment.Left, assignment.Right);
+            value.Range = MergeRanges(assignment.Left.Range, assignment.Right.Range);
+            if (assignment.Left is GetPropertyExpression getter)
+            {
+                var setter = new SetPropertyExpression(getter.Object, getter.Property, value);
+                setter.Range = MergeRanges(assignment.Range, getter.Range);
+                return setter;
+            }
+            return assignment;
+        }
+
+        private void EnsureAssignableTarget(Expression target, Operator op)
+        {
+            if (target is NameExpression || target is GetPropertyExpression || target is GetElementExpression)
+            {
+                return;
+            }
+
+            throw new AuroraParseException(this.Lexer.FullPath, target?.Range ?? this.Lexer.PeekRange(), $"Operator '{op?.Symbol?.Name}' requires an assignable target.");
+        }
+
+        private void EnsureMutationTarget(Expression target, Operator op)
+        {
+            if (target is NameExpression || target is GetPropertyExpression || target is GetElementExpression)
+            {
+                return;
+            }
+
+            throw new AuroraParseException(this.Lexer.FullPath, target?.Range ?? this.Lexer.PeekRange(), $"Operator '{op?.Symbol?.Name}' requires an assignable target.");
         }
 
         private T SetDebug<T>(T node, Token token) where T : AstNode

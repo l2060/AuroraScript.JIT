@@ -131,7 +131,7 @@ namespace AuroraScript.Runtime.Interop
                 var targetType = setter.Type;
                 if (targetType != null)
                 {
-                    if (!ClrMarshaller.TryConvertArgument(ScriptDatum.ToObject(value), targetType, out var converted))
+                    if (!ClrMarshaller.TryConvertArgument(in value, targetType, out var converted))
                     {
                         throw new InvalidOperationException($"Cannot convert script value to '{targetType.FullName}'.");
                     }

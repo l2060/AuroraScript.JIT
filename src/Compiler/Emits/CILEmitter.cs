@@ -523,9 +523,23 @@ namespace AuroraScript.Compiler.Emits
             {
                 _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_ToBoolean);
             }
-            else
+            else if (topType == typeof(double))
+            {
+                _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromNumber);
+                _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_ToBoolean);
+            }
+            else if (topType == typeof(string))
+            {
+                _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromString);
+                _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_ToBoolean);
+            }
+            else if (typeof(ScriptObject).IsAssignableFrom(topType))
             {
                 _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_ToBoolean2);
+            }
+            else
+            {
+                throw new AuroraEmitException((AstNode)null, $"Cannot convert {topType} to boolean.");
             }
         }
 
@@ -620,7 +634,23 @@ namespace AuroraScript.Compiler.Emits
 
         protected override void VisitImportDeclaration(ImportDeclaration node)
         {
-            if (node.Include) return;
+            if (node.Include)
+            {
+                if (node.ModuleName == null)
+                {
+                    throw new AuroraEmitException(node, $"Included module was not linked: {node.FullPath}");
+                }
+
+                _il.Emit(OpCodes.Ldarg_0);
+                _il.Emit(OpCodes.Ldfld, RuntimeMetadata.CILContext_Module);
+                _il.Emit(OpCodes.Ldarg_0);
+                _il.Emit(OpCodes.Ldfld, RuntimeMetadata.CILContext_Global);
+                builder.LoadStringConstant(_il, node.ModuleName);
+                _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptGlobal_GetModule);
+                _il.Emit(OpCodes.Ldc_I4_0);
+                _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptObject_CopyEnumerablePropertysFrom);
+                return;
+            }
             var targetModuleName = node.ModuleName;
             var localAlias = node.Name.Value;
             // 1. Declare in scope
@@ -1363,6 +1393,25 @@ namespace AuroraScript.Compiler.Emits
 
         private void EmitAssignment(Expression left, Expression right, Operator op, bool resultNeeded)
         {
+            if (left is GetElementExpression elementExp && op == Operator.Add)
+            {
+                var receiverType = EmitObjectLike(elementExp.Object);
+                elementExp.Index.Accept(this);
+                EnsureTop(typeof(ScriptDatum));
+                PopType();
+                right.Accept(this);
+                EnsureTop(typeof(ScriptDatum));
+                PopType();
+                _il.Emit(OpCodes.Call, receiverType == typeof(ScriptDatum) ? RuntimeMetadata.CILHelper_CompoundAddElementDatum : RuntimeMetadata.CILHelper_CompoundAddElement);
+                PushType(typeof(ScriptDatum));
+                if (!resultNeeded)
+                {
+                    _il.Emit(OpCodes.Pop);
+                    PopType();
+                }
+                return;
+            }
+
             // 属性数组访问已统一优化为set语句
             if (left is NameExpression nameExp)
             {
@@ -1388,19 +1437,46 @@ namespace AuroraScript.Compiler.Emits
                     _il.Emit(OpCodes.Call, opMethod);
                     PushType(typeof(ScriptDatum));
 
+                    var temp = _il.DeclareLocal(typeof(ScriptDatum));
+                    WriteLocalSymbol(temp, nameExp);
+                    _il.Emit(OpCodes.Stloc, temp);
+
                     if (resultNeeded)
                     {
-                        _il.Emit(OpCodes.Dup);
+                        _il.Emit(OpCodes.Ldloc, temp);
                         PushType(typeof(ScriptDatum));
                     }
-                    EmitStoreName(nameExp, val, null);
+                    EmitStoreName(nameExp, val, () =>
+                    {
+                        _il.Emit(OpCodes.Ldloc, temp);
+                        PushType(typeof(ScriptDatum));
+                    });
                 }
                 else
                 {
-                    EmitStoreName(nameExp, val, () =>
+                    if (resultNeeded)
                     {
+                        var temp = _il.DeclareLocal(typeof(ScriptDatum));
+                        WriteLocalSymbol(temp, nameExp);
                         right.Accept(this);
-                    });
+                        EnsureTop(typeof(ScriptDatum));
+                        PopType();
+                        _il.Emit(OpCodes.Stloc, temp);
+                        _il.Emit(OpCodes.Ldloc, temp);
+                        PushType(typeof(ScriptDatum));
+                        EmitStoreName(nameExp, val, () =>
+                        {
+                            _il.Emit(OpCodes.Ldloc, temp);
+                            PushType(typeof(ScriptDatum));
+                        });
+                    }
+                    else
+                    {
+                        EmitStoreName(nameExp, val, () =>
+                        {
+                            right.Accept(this);
+                        });
+                    }
                 }
             }
         }
@@ -1918,13 +1994,15 @@ namespace AuroraScript.Compiler.Emits
                 // Actually, if we just keep _upvalueMap and _localScopeCaptureIndex as they are,
                 // children will correctly use the existing handles.
             }
-            // 3. Visit statements
-            if (node is ModuleDeclaration module)
+            // 4. Hoisting: Visit functions first
+            if (node is ModuleDeclaration importModule)
             {
-                foreach (var import in module.Imports) import.Accept(this);
+                foreach (var import in importModule.Imports)
+                {
+                    if (!import.Include) import.Accept(this);
+                }
             }
 
-            // 4. Hoisting: Visit functions first
             for (int i = 0; i < node.Functions.Count; i++)
             {
                 var func = node.Functions[i];
@@ -1935,6 +2013,14 @@ namespace AuroraScript.Compiler.Emits
             for (int i = 0; i < node.Length; i++)
             {
                 node[i].Accept(this);
+            }
+
+            if (node is ModuleDeclaration includeModule)
+            {
+                foreach (var import in includeModule.Imports)
+                {
+                    if (import.Include) import.Accept(this);
+                }
             }
 
             // Mark sequence point for the closing brace '}'
@@ -1956,6 +2042,37 @@ namespace AuroraScript.Compiler.Emits
                 _localScopeCaptureIndex.Clear();
                 foreach (var kv in oldLocalScopeCaptureIndex) _localScopeCaptureIndex.Add(kv.Key, kv.Value);
                 _scopeUpvaluesArray = oldScopeUpvaluesArray;
+            }
+        }
+
+        protected override void VisitEnumDeclaration(EnumDeclaration node)
+        {
+            _scope.Declare(node.Identifier.Value, _scope.ScopeType == Core.ScopeType.Module ? Core.DeclareType.Property : Core.DeclareType.Variable, node.Access);
+            var enumLocal = _il.DeclareLocal(typeof(ScriptObject));
+            WriteLocalSymbol(enumLocal, node.Identifier.Value);
+            _il.Emit(OpCodes.Newobj, RuntimeMetadata.ScriptObject_Ctor);
+            _il.Emit(OpCodes.Stloc, enumLocal);
+
+            foreach (var element in node.Elements)
+            {
+                _il.Emit(OpCodes.Ldloc, enumLocal);
+                builder.LoadStringConstant(_il, element.Name.Value);
+                _il.Emit(OpCodes.Ldc_R8, (double)element.Value);
+                _il.Emit(OpCodes.Call, RuntimeMetadata.NumberValue_Of);
+                _il.Emit(OpCodes.Ldc_I4_0);
+                _il.Emit(OpCodes.Ldc_I4_1);
+                _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptObject_Define);
+            }
+
+            if (_scope.ScopeType == ScopeType.Module)
+            {
+                _il.Emit(OpCodes.Ldarg_0);
+                _il.Emit(OpCodes.Ldfld, RuntimeMetadata.CILContext_Module);
+                builder.LoadStringConstant(_il, node.Identifier.Value);
+                _il.Emit(OpCodes.Ldloc, enumLocal);
+                _il.Emit(OpCodes.Ldc_I4_0);
+                _il.Emit(OpCodes.Ldc_I4_1);
+                _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptObject_Define);
             }
         }
 
