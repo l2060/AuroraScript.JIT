@@ -1,47 +1,41 @@
 using AuroraScript.Runtime.Types;
 using AuroraScript.Runtime;
-using System.Runtime.CompilerServices;
-using System.Threading;
 
 namespace AuroraScript.Runtime.Pool
 {
     internal sealed class ScriptContextPool
     {
+        private readonly object _syncRoot = new();
         private ScriptContext _head;
 
         public ScriptContext Rent(ScriptDomain domain, ScriptObject userState, ScriptModule module, ClosureFunction closure)
         {
-            while (true)
+            ScriptContext ctx;
+            lock (_syncRoot)
             {
-                var head = _head;
-                if (head == null)
+                ctx = _head;
+                if (ctx != null)
                 {
-                    return new ScriptContext(domain, userState, module, closure);
+                    _head = ctx.PoolNext;
+                    ctx.PoolNext = null;
                 }
-
-                var next = head.PoolNext;
-                if (Interlocked.CompareExchange(ref _head, next, head) != head)
-                {
-                    continue;
-                }
-
-                head.PoolNext = null;
-                var ctx = head;
-                ctx.Reset(domain, userState, module, closure);
-                return ctx;
             }
+
+            if (ctx == null)
+            {
+                return new ScriptContext(domain, userState, module, closure);
+            }
+
+            ctx.Reset(domain, userState, module, closure);
+            return ctx;
         }
 
         public void Return(ScriptContext ctx)
         {
-            while (true)
+            lock (_syncRoot)
             {
-                var head = _head;
-                ctx.PoolNext = head;
-                if (Interlocked.CompareExchange(ref _head, ctx, head) == head)
-                {
-                    return;
-                }
+                ctx.PoolNext = _head;
+                _head = ctx;
             }
         }
     }

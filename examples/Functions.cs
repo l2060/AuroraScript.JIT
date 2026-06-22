@@ -33,11 +33,14 @@ namespace Examples
             //Console.WriteLine($"OPEN INPUT {String.Join(" ", args)}");
             if (args.TryGetFunction(3, out var callback))
             {
+                // ScriptContext belongs to the current synchronous call and is pooled as
+                // soon as this method returns. Only retain the stable user state.
+                var userState = ctx.UserState;
                 Task.Run(async () =>
                 {
                     // 模拟回调调用
                     await Task.Delay(1000);
-                    callback.InvokeClr(ctx, 123);
+                    callback.InvokeClrDetached(userState, 123);
                 });
             }
         }

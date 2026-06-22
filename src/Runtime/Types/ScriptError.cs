@@ -35,6 +35,7 @@ namespace AuroraScript.Runtime.Types
         {
             Message = errMsg;
             StackTrace = stackTrace;
+            InternalDefine("message", ScriptDatum.FromString(errMsg), writeable: false, enumerable: true);
         }
 
         /// <summary>
@@ -46,6 +47,12 @@ namespace AuroraScript.Runtime.Types
         /// The stack trace at the point where the error was created.
         /// </summary>
         public AuroraStackTrace[] StackTrace { get; }
+
+        /// <summary>Returns the script error name and message.</summary>
+        public override string ToString()
+        {
+            return $"Error: {Message}";
+        }
 
     }
 }

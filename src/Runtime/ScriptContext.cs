@@ -156,6 +156,16 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void LinkNext(ScriptContext next)
         {
+            if (ReferenceEquals(this, next))
+            {
+                // This can only happen when a context that has already been returned to
+                // the pool is reused by its former owner (typically from a deferred CLR
+                // callback). Restore the pool entry and fail before creating a self-cycle.
+                Domain.ContextPool.Return(next);
+                throw new InvalidOperationException(
+                    "The ScriptContext is no longer active. Use ClosureFunction.InvokeClrDetached for deferred or asynchronous callbacks.");
+            }
+
             this.Next = next;
             next.Previous = this;
         }
@@ -191,11 +201,24 @@ namespace AuroraScript.Runtime
 
         internal void ReleaseLinked()
         {
-            while (Next != null)
+            var current = this;
+            while (current != null)
             {
-                Next.ReleaseLinked();
+                var next = current.Next;
+                current.Next = null;
+
+                if (ReferenceEquals(current, next))
+                {
+                    next = null;
+                }
+                else if (next != null)
+                {
+                    next.Previous = null;
+                }
+
+                current.Release();
+                current = next;
             }
-            Release();
         }
 
 

@@ -1215,12 +1215,9 @@ namespace AuroraScript.Runtime
         {
             if (val is ScriptArray source)
             {
-                if (source.Length > 0)
+                for (var i = 0; i < source.Length; i++)
                 {
-                    foreach (var item in source._items)
-                    {
-                        array.Push(item);
-                    }
+                    array.Push(source._items[i]);
                 }
             }
             else
@@ -1238,9 +1235,9 @@ namespace AuroraScript.Runtime
         {
             if (val is ScriptArray source)
             {
-                if (source.Length > 0)
+                for (var i = 0; i < source.Length; i++)
                 {
-                    list.AddRange(source._items);
+                    list.Add(source._items[i]);
                 }
             }
             else

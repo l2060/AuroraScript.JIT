@@ -20,6 +20,7 @@ using System.Threading.Tasks;
 
 [assembly: InternalsVisibleTo("AuroraScript.Generated")]
 [assembly: InternalsVisibleTo("CompilerBenchmark")]
+[assembly: InternalsVisibleTo("AuroraScript.Tests")]
 
 namespace AuroraScript
 {
@@ -379,7 +380,7 @@ namespace AuroraScript
         public ScriptDomain CreateDomain(Action<ScriptGlobal> globalConfiguration, object userState = null)
         {
             var domainGlobal = ScriptGlobal.With(this, Global);
-            globalConfiguration(domainGlobal);
+            globalConfiguration?.Invoke(domainGlobal);
             return CreateDomain(domainGlobal, userState);
         }
 

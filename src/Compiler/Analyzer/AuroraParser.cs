@@ -527,7 +527,11 @@ namespace AuroraScript.Compiler.Analyzer
                     while (true)
                     {
                         var arg = ParseExpression(0);
-                        if (arg != null) callExp.AddArgument(arg);
+                        if (arg == null)
+                        {
+                            throw new AuroraParseException(Lexer.FullPath, Lexer.LookAtHead(), "Function argument requires an expression.");
+                        }
+                        callExp.AddArgument(arg);
 
                         if (this.Lexer.TestSymbol(Symbols.PT_RIGHTPARENTHESIS)) break;
                         this.Lexer.Expect(Symbols.PT_COMMA);
@@ -541,6 +545,10 @@ namespace AuroraScript.Compiler.Analyzer
             if (opSymbol == Symbols.PT_LEFTBRACKET)
             {
                 var indexExp = ParseExpression(0);
+                if (indexExp == null)
+                {
+                    throw new AuroraParseException(Lexer.FullPath, Lexer.LookAtHead(), "Array index requires an expression.");
+                }
                 var getElem = new GetElementExpression(Operator.Index, left, indexExp);
                 var rightBracket = this.Lexer.NextRangeOfKind(Symbols.PT_RIGHTBRACKET);
                 return SetRange(getElem, left.Range, rightBracket);
@@ -563,29 +571,33 @@ namespace AuroraScript.Compiler.Analyzer
                 if (op == Operator.Assignment)
                 {
                     right = ParseExpression(op.Precedence - 1); // Right-associative
+                    EnsureRightOperand(opSymbol, right);
                     var assign = new AssignmentExpression(op, left, right);
                     binary = assign;
                 }
                 else if (isCompound)
                 {
                     right = ParseExpression(op.Precedence - 1);
+                    EnsureRightOperand(opSymbol, right);
                     var compound = new CompoundExpression(op, left, right);
                     binary = compound;
                 }
                 else if (op == Operator.In)
                 {
                     right = ParseExpression(op.Precedence);
+                    EnsureRightOperand(opSymbol, right);
                     var inExp = new IncludedExpression(op, left, right);
                     binary = inExp;
                 }
                 else
                 {
                     right = ParseExpression(op.Precedence);
+                    EnsureRightOperand(opSymbol, right);
                     var bin = new BinaryExpression(op, left, right);
                     binary = bin;
                 }
 
-                if (binary != null) SetRange(binary, left.Range, right?.Range ?? left.Range);
+                SetRange(binary, left.Range, right.Range);
 
                 if (binary is AssignmentExpression assignExp) return OptimizeAssignment(assignExp);
 
@@ -603,6 +615,14 @@ namespace AuroraScript.Compiler.Analyzer
 
             var opToken = new OperatorToken { Symbol = opSymbol, Value = opSymbol?.Name, Range = opRange };
             throw new AuroraParseException(this.Lexer.FullPath, opToken, "Unexpected operator " + opToken.Value);
+        }
+
+        private void EnsureRightOperand(Symbols opSymbol, Expression expression)
+        {
+            if (expression == null)
+            {
+                throw new AuroraParseException(Lexer.FullPath, Lexer.LookAtHead(), $"Operator '{opSymbol.Name}' requires a right operand.");
+            }
         }
 
         private Expression ParseStringTemplate(StringTemplateToken token)
@@ -1052,7 +1072,7 @@ namespace AuroraScript.Compiler.Analyzer
                 // Object destructuring: var { a, b } = expr;
                 var pattern = ParseObjectDestructuringPattern();
                 this.Lexer.Expect(Symbols.OP_ASSIGNMENT);
-                var init = this.ParseExpression(0);
+                var init = ParseRequiredExpression("Object destructuring initializer");
                 var semi = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
                 var varDecl = new VariableDeclaration(access, isConst, pattern, init);
                 return SetRange(varDecl, start, semi);
@@ -1062,7 +1082,7 @@ namespace AuroraScript.Compiler.Analyzer
                 // Array destructuring: var [ a, b, ..c ] = expr;
                 var pattern = ParseArrayDestructuringPattern();
                 this.Lexer.Expect(Symbols.OP_ASSIGNMENT);
-                var init = this.ParseExpression(0);
+                var init = ParseRequiredExpression("Array destructuring initializer");
                 var semi = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
                 var varDecl = new VariableDeclaration(access, isConst, pattern, init);
                 return SetRange(varDecl, start, semi);
@@ -1074,13 +1094,25 @@ namespace AuroraScript.Compiler.Analyzer
 
             if (this.Lexer.TestNext(Symbols.OP_ASSIGNMENT))
             {
-                initializer = this.ParseExpression(0);
+                initializer = ParseRequiredExpression("Variable initializer");
             }
 
             var semiRange = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
 
             var variable = new VariableDeclaration(access, isConst, varName, initializer);
             return SetRange(variable, start, semiRange);
+        }
+
+        private Expression ParseRequiredExpression(string context)
+        {
+            var expression = ParseExpression(0);
+            if (expression != null)
+            {
+                return expression;
+            }
+
+            var token = Lexer.LookAtHead();
+            throw new AuroraParseException(Lexer.FullPath, token, $"{context} requires an expression.");
         }
 
         private Statement ParseEnumDeclaration(MemberAccess access)

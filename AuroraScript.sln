@@ -22,6 +22,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OptimizationBenchmark", "op
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CompilerBenchmark", "compiler-benchmark\CompilerBenchmark.csproj", "{8B16E0A4-0B3C-4D93-8841-42E806B1A189}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AuroraScript.Tests", "tests\AuroraScript.Tests\AuroraScript.Tests.csproj", "{E91B7838-4D35-4D55-A28C-22A70DD37182}"
+EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
 EndProject
 Global
@@ -94,6 +96,18 @@ Global
 		{8B16E0A4-0B3C-4D93-8841-42E806B1A189}.Release|x64.Build.0 = Release|Any CPU
 		{8B16E0A4-0B3C-4D93-8841-42E806B1A189}.Release|x86.ActiveCfg = Release|Any CPU
 		{8B16E0A4-0B3C-4D93-8841-42E806B1A189}.Release|x86.Build.0 = Release|Any CPU
+		{E91B7838-4D35-4D55-A28C-22A70DD37182}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E91B7838-4D35-4D55-A28C-22A70DD37182}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E91B7838-4D35-4D55-A28C-22A70DD37182}.Debug|x64.ActiveCfg = Debug|x64
+		{E91B7838-4D35-4D55-A28C-22A70DD37182}.Debug|x64.Build.0 = Debug|x64
+		{E91B7838-4D35-4D55-A28C-22A70DD37182}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{E91B7838-4D35-4D55-A28C-22A70DD37182}.Debug|x86.Build.0 = Debug|Any CPU
+		{E91B7838-4D35-4D55-A28C-22A70DD37182}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E91B7838-4D35-4D55-A28C-22A70DD37182}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E91B7838-4D35-4D55-A28C-22A70DD37182}.Release|x64.ActiveCfg = Release|x64
+		{E91B7838-4D35-4D55-A28C-22A70DD37182}.Release|x64.Build.0 = Release|x64
+		{E91B7838-4D35-4D55-A28C-22A70DD37182}.Release|x86.ActiveCfg = Release|Any CPU
+		{E91B7838-4D35-4D55-A28C-22A70DD37182}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

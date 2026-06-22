@@ -262,7 +262,10 @@ namespace AuroraScript.Runtime.Types
             return ReturnAndRelease(context, result);
         }
 
-        /// <summary>Invokes the closure from CLR code and wraps script stack information on failure.</summary>
+        /// <summary>
+        /// Invokes the closure from CLR code using an active script context and wraps script
+        /// stack information on failure. The context must not cross a deferred or asynchronous boundary.
+        /// </summary>
         public ScriptDatum InvokeClr(ScriptContext ctx, params ScriptDatum[] args)
         {
             try
@@ -277,6 +280,32 @@ namespace AuroraScript.Runtime.Types
                     ctx.Next.ReleaseLinked();
                 }
                 throw new AuroraRuntimeException(ex, stackTrace);
+            }
+        }
+
+        /// <summary>
+        /// Invokes the closure from a new root context. Use this overload when the invocation
+        /// is deferred, asynchronous, or otherwise outlives the active script call stack.
+        /// </summary>
+        public ScriptDatum InvokeClrDetached(params ScriptDatum[] args)
+        {
+            return InvokeClrDetached(Domain.UserState, args);
+        }
+
+        /// <summary>
+        /// Invokes the closure from a new root context with the specified user state. Use this
+        /// overload when the invocation outlives the active script call stack.
+        /// </summary>
+        public ScriptDatum InvokeClrDetached(ScriptObject userState, params ScriptDatum[] args)
+        {
+            var ctx = Domain.ContextPool.Rent(Domain, userState, Module, null);
+            try
+            {
+                return InvokeClr(ctx, args);
+            }
+            finally
+            {
+                ctx.Release();
             }
         }
 

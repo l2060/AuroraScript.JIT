@@ -76,14 +76,14 @@ namespace Examples
 
 
 
-            //Console.WriteLine("OK");
-            //for (int i = 0; i < 10; i++)
-            //{
-            //    GC.Collect();
-            //    GC.WaitForPendingFinalizers();
-            //    GC.Collect();
-            //    Thread.Sleep(100);
-            //}
+            Console.WriteLine("OK");
+            for (int i = 0; i < 10; i++)
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+                Thread.Sleep(100);
+            }
             Console.ReadLine();
         }
 
