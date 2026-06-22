@@ -473,7 +473,7 @@ Tested capabilities:
 
 Test project: `tests/AuroraScript.Tests`
 
-Current `net10.0` test discovery finds **282** test cases. Breakdown by test class:
+Current `net10.0` test discovery finds **288** test cases. Breakdown by test class:
 
 | Test class | Cases | Focus |
 |---|---:|---|
@@ -486,9 +486,9 @@ Current `net10.0` test discovery finds **282** test cases. Breakdown by test cla
 | `CompileBlockTests` | 21 | CompileBlock parameters, invocation modes, invalid inputs, diagnostics |
 | `CompilationModeTests` | 5 | Dynamic/OnlyRun/Persistence behavior and hot-reload settings |
 | `RuntimeApiAndErrorTests` | 9 | Runtime APIs, error paths, `$state`, disposed domains |
-| `BuiltInLibraryTests` | 8 | Math, String, Array, JSON, HashMap, Regex, StringBuffer, Console |
+| `BuiltInLibraryTests` | 11 | Math, String, Array, JSON, HashMap, Regex, StringBuffer, Console |
 | `AdvancedRuntimeTypeTests` | 6 | Constructors, Object, freeze, Date, Proxy |
-| `ClrInteropTests` | 5 | CLR constructors/properties/fields/methods/overloads/access restrictions |
+| `ClrInteropTests` | 8 | CLR constructors/properties/fields/methods/overloads/access restrictions |
 | `SerializationTests` | 9 | JSON serialization/deserialization, circular references, malformed JSON |
 | `ScriptDatumTests` | 4 | Datum payloads, equality, CLR collection conversion, Span helpers |
 | `HotReloadTests` | 4 | Disabled hot reload, incremental patch, replacement patch, domain isolation |
@@ -512,7 +512,7 @@ Coverage summary:
 Run tests:
 
 ```bash
-dotnet test tests/AuroraScript.Tests/AuroraScript.Tests.csproj
+dotnet test tests/AuroraScript.Tests.csproj
 ```
 
 The test project targets `net8.0;net9.0;net10.0`. Running each target requires the matching .NET runtime on the machine.
@@ -545,7 +545,13 @@ Current key metrics include:
 - object, array, HashMap, string, JSON, Regex, and CLR interop paths
 - Lexer, Parser, Emitter, single/multi-module compile, and CompileBlock
 
-The latest summarized results come from the `RuntimeBenchmarks` and `CompilerPipelineBenchmarks` reports generated on 2026-06-22 under `benchmark/bin/Release/net10.0/BenchmarkDotNet.Artifacts/results/`. The older `ScriptBenchmark` report in the same directory is historical and is no longer used as the current benchmark reference.
+The latest summarized results come from the Release/net10.0 quick comparison run on 2026-06-22:
+
+```bash
+dotnet run --project benchmark/Benchmark.csproj -c Release -- --compare
+```
+
+The older `ScriptBenchmark` report is historical and is no longer used as the current benchmark reference. Run the benchmark command without `--compare` to regenerate full BenchmarkDotNet reports.
 
 Environment:
 
@@ -560,44 +566,46 @@ Runtime summary:
 
 | Metric | Scale | Mean | Allocated | Notes |
 |---|---:|---:|---:|---|
-| `EmptyCall` | 1 call | 152 ns | 0 B | Low host-to-script empty call overhead |
-| `CreateDomain` | 1 domain | 2.8 us | 5.32 KB | Lightweight domain creation |
-| `NumericLoop` | 10,000 | 78.0 us | 48 B | Numeric loops are effectively allocation-free |
-| `FunctionCallLoop` | 10,000 | 1.10 ms | 48 B | Local function calls are almost allocation-free |
-| `ModuleCallLoop` | 10,000 | 1.32 ms | 48 B | Module calls are roughly 20% slower than local calls |
-| `ClosureInvoke` | 10,000 | 660 us | 208 B | Stable low allocation |
-| `ObjectCreateSetGet` | 10,000 | 1.97 ms | 1.91 MB | Object creation/property writes allocate linearly |
-| `ArrayPushIndex` | 10,000 | 930 us | 768 KB | Gen2 appears; array growth path needs attention |
-| `HashMapSetGet` | 10,000 | 7.10 ms | 4.51 MB | High allocation and Gen2 activity |
-| `JsonStringify` | 10,000 | 7.11 ms | 7.55 MB | JSON serialization allocates heavily |
-| `JsonParse` | 10,000 | 10.76 ms | 8.54 MB | JSON parsing allocates heavily |
-| `RegexMatchAll` | 10,000 | 30.67 ms | 32.58 MB | One of the heaviest regular runtime paths |
-| `StringBufferAppend` | 10,000 | 1.33 ms | 408 KB | Much better than direct string concatenation |
-| `StringConcat` | 10,000 | 55.71 ms | 457.79 MB | Very expensive; use `StringBuffer` for this pattern |
-| `ClrPropertyGetSet` | 10,000 | 592 us | 234 KB | CLR property access is relatively healthy |
-| `ClrArrayArgument` | 10,000 | 6.89 ms | 4.04 MB | Script-array to CLR-array conversion still allocates heavily |
-| `ClrInstanceMethod` | 10,000 | 8.31 ms | 2.90 MB | Instance method interop still has optimization headroom |
-| `ClrStaticMethod` | 10,000 | 11.59 ms | 4.04 MB | Static method binding/argument conversion is a clear hotspot |
+| `EmptyCall` | 1 call | 0.001 ms | 279 B | Low host-to-script empty call overhead |
+| `CreateDomain` | 1 domain | 0.017 ms | 5.55 KB | Lightweight domain creation |
+| `NumericLoop` | 1,000 | 0.009 ms | 411 B | Numeric loops are close to allocation-free |
+| `FunctionCallLoop` | 1,000 | 0.302 ms | 327 B | Local function calls allocate very little |
+| `ModuleCallLoop` | 1,000 | 0.364 ms | 327 B | Module calls are slightly slower than local calls |
+| `ClosureInvoke` | 1,000 | 0.067 ms | 487 B | Stable low allocation |
+| `ObjectCreateSetGet` | 1,000 | 0.611 ms | 195.72 KB | Object creation/property writes allocate linearly |
+| `ArrayPushIndex` | 1,000 | 0.288 ms | 48.49 KB | Low allocation for push/index access |
+| `ArrayLiteralIndex` | 1,000 | 0.119 ms | 172.15 KB | Array literals allocate array objects per iteration |
+| `HashMapSetGet` | 1,000 | 0.781 ms | 199.77 KB | Capacity is pre-sized; remaining cost is mainly dynamic string keys |
+| `JsonStringify` | 1,000 | 1.821 ms | 774.43 KB | JSON serialization still allocates heavily |
+| `JsonParse` | 1,000 | 7.606 ms | 875.43 KB | JSON parsing remains a heavy path |
+| `JsonRoundTrip` | 1,000 | 9.930 ms | 1.61 MB | Combined parse + stringify cost is high |
+| `RegexMatchAll` | 1,000 | 5.697 ms | 3.34 MB | One of the heaviest regular runtime paths |
+| `StringBufferAppend` | 1,000 | 0.369 ms | 39.35 KB | Much better than direct string concatenation |
+| `StringConcat` | 1,000 | 0.512 ms | 3.73 MB | Direct string concatenation allocates heavily |
+| `ClrPropertyGetSet` | 1,000 | 0.100 ms | 23.87 KB | CLR property access is lightweight |
+| `ClrArrayArgument` | 1,000 | 0.884 ms | 250.39 KB | Remaining allocation mostly comes from script array literals and required CLR arrays |
+| `ClrInstanceMethod` | 1,000 | 0.177 ms | 23.88 KB | DynamicMethod invoker greatly reduces instance method overhead |
+| `ClrStaticMethod` | 1,000 | 0.560 ms | 31.61 KB | Static method call wrapping is reduced; remaining cost is mostly string result wrapping |
 
 Compiler pipeline summary:
 
 | Metric | Mean | Allocated | Notes |
 |---|---:|---:|---|
-| `CompileBlock` | 28.8 us | 17.85 KB | Low compile cost for small script blocks |
-| `FullCompile_MultiModule` | 358 us | 64.5 KB | Current multi-module sample is small and healthy |
-| `FullCompile_SingleModule` | 7.25 ms | 2.78 MB | Main cost for large-module full compilation |
-| `EmitOnly_ParsedLargeModule` | 4.31 ms | 1.24 MB | Emitter is a major large-module hotspot |
-| `LexerOnly_Large` | 579 us | 21.26 KB | Large-source lexing allocates little |
-| `ParseOnly_Large` | 845 us | 1.53 MB | AST construction is the main parser allocation cost |
-| `ParseOnly_TemplateInterpolation` | 166 us | 412.59 KB | Template interpolation parsing allocates relatively heavily |
+| `CompileBlock` | 0.047 ms | 18.35 KB | Low compile cost for small script blocks |
+| `FullCompile_MultiModule` | 0.281 ms | 65.63 KB | Current multi-module sample is small and healthy |
+| `FullCompile_SingleModule` | 10.413 ms | 2.81 MB | Main cost for large-module full compilation |
+| `EmitOnly_ParsedLargeModule` | 4.598 ms | 1.26 MB | Emitter is a major large-module hotspot |
+| `LexerOnly_Large` | 2.640 ms | 21.49 KB | Large-source lexing allocates little |
+| `ParseOnly_Large` | 5.421 ms | 1.53 MB | AST construction is the main parser allocation cost |
+| `ParseOnly_TemplateInterpolation` | 0.949 ms | 413.08 KB | Template interpolation parsing allocates relatively heavily |
 
 Observed hotspots:
 
-- `StringConcat` allocates about `457.79 MB` for 10,000 iterations. This is expected for repeated immutable-string concatenation, but it is far too expensive for hot paths; use `StringBuffer`.
-- `RegexMatchAll` allocates about `32.58 MB` per 10,000 iterations. Match result arrays and capture/group objects are good future optimization targets.
-- CLR interop paths `ClrStaticMethod` and `ClrArrayArgument` allocate about `4.04 MB/10,000`; static binding and script-array to CLR-array conversion remain hotspots.
-- `HashMapSetGet` triggers Gen2 at 10,000 iterations, likely due to string key creation and dictionary growth.
-- `ArrayPushIndex` also shows Gen2 at 10,000 iterations; array growth strategy and benchmark capacity setup should be reviewed.
+- `StringConcat` allocates about `3.73 MB` for 1,000 iterations. This is expected for repeated immutable-string concatenation, but it is far too expensive for hot paths; use `StringBuffer`.
+- `RegexMatchAll` allocates about `3.34 MB` per 1,000 iterations. Match result arrays and capture/group objects are good future optimization targets.
+- JSON round-trip allocates about `1.61 MB` per 1,000 iterations. Parsing and serialization remain runtime allocation hotspots.
+- `HashMapSetGet` no longer measures dictionary growth as the dominant variable; the remaining cost mainly comes from dynamic string key creation in `"k" + i`.
+- CLR interop now uses DynamicMethod invokers and array conversion fast paths to reduce call-wrapper overhead. `ClrArrayArgument` still allocates because script array literals and CLR array creation are required by the benchmark scenario.
 - `ParseOnly_TemplateInterpolation` allocates heavily relative to source size and is worth a focused parser optimization pass.
 
 ## Examples
