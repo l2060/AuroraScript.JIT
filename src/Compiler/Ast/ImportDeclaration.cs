@@ -43,10 +43,7 @@ namespace AuroraScript.Compiler.Ast
 
         public override IEnumerable<AstNode> ChildNodes
         {
-            get
-            {
-                foreach (AstNode node in _children) yield return node;
-            }
+            get { return base.ChildNodes; }
         }
 
         public override void Accept(IAstVisitor visitor)

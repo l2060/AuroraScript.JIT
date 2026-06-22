@@ -30,13 +30,20 @@ namespace AuroraScript
             Token = token;
         }
 
+        internal AuroraParseException(string fileName, SourceSpan range, string message) : base(message)
+        {
+            ColumnNumber = range.StartColumn;
+            FileName = fileName;
+            LineNumber = range.StartLine;
+        }
+
         /// <summary>
         /// Returns a formatted string that represents the parse exception, including the token value.
         /// </summary>
         /// <returns>A string representation of the exception.</returns>
         public override string ToString()
         {
-            return $"{Message} Token: {Token.Value} Location: {FileName} line:{LineNumber}, column:{ColumnNumber}";
+            return $"{Message} Token: {Token?.Value ?? "<not materialized>"} Location: {FileName} line:{LineNumber}, column:{ColumnNumber}";
         }
     }
 }

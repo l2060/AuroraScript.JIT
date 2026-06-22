@@ -11,17 +11,19 @@ namespace AuroraScript.Compiler.Ast.Expressions
     {
         internal FunctionCallExpression(Operator @operator, Expression target) : base(@operator)
         {
-            this.Arguments = new List<Expression>();
             Target = target;
             Target.Parent = this;
         }
 
-        public List<Expression> Arguments;
+        private List<Expression> _arguments;
+
+        public IReadOnlyList<Expression> Arguments => _arguments ?? (IReadOnlyList<Expression>)Array.Empty<Expression>();
 
 
         public void AddArgument(Expression expression)
         {
-            this.Arguments.Add(expression);
+            this._arguments ??= new List<Expression>();
+            this._arguments.Add(expression);
             expression.Parent = this;
         }
 

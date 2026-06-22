@@ -8,7 +8,9 @@ namespace AuroraScript.Compiler.Ast.Statements
     {
         public Boolean IsFunction { get; set; }
 
-        public readonly List<FunctionDeclaration> Functions = new List<FunctionDeclaration>();
+        private List<FunctionDeclaration> _functions;
+
+        public IReadOnlyList<FunctionDeclaration> Functions => _functions ?? (IReadOnlyList<FunctionDeclaration>)Array.Empty<FunctionDeclaration>();
 
         internal BlockStatement()
         {
@@ -17,6 +19,12 @@ namespace AuroraScript.Compiler.Ast.Statements
         public override void Accept(IAstVisitor visitor)
         {
             visitor.AcceptBlock(this);
+        }
+
+        public void AddFunction(FunctionDeclaration function)
+        {
+            _functions ??= new List<FunctionDeclaration>();
+            _functions.Add(function);
         }
     }
 }

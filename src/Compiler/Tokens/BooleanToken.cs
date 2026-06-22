@@ -10,6 +10,12 @@ namespace AuroraScript.Tokens
             this.BoolValue = Boolean.Parse(value);
         }
 
+        internal BooleanToken(Boolean value)
+        {
+            this.Type = ValueType.Boolean;
+            this.BoolValue = value;
+        }
+
 
 
         public Boolean BoolValue { get; private set; }

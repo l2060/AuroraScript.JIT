@@ -16,6 +16,54 @@ namespace AuroraScript.Compiler.Emits
 {
     internal class CILEmitter(AbstractCILBuilder builder, EngineOptions Options) : IAstVisitor
     {
+        private sealed class ArgumentsUsageVisitor : IAstVisitor
+        {
+            private bool _found;
+
+            public bool Scan(AstNode node)
+            {
+                _found = false;
+                node?.Accept(this);
+                return _found;
+            }
+
+            protected override void VisitName(NameExpression node)
+            {
+                if (node.Identifier.Value == "$args") _found = true;
+            }
+
+            protected override void VisitFunction(FunctionDeclaration node) { }
+            protected override void VisitLambdaExpression(LambdaExpression node) { }
+        }
+
+        private sealed class NestedClosureDetector : IAstVisitor
+        {
+            private bool _found;
+
+            public bool Scan(AstNode node)
+            {
+                _found = false;
+                node?.Accept(this);
+                return _found;
+            }
+
+            protected override void VisitFunction(FunctionDeclaration node) => _found = true;
+            protected override void VisitLambdaExpression(LambdaExpression node) => _found = true;
+        }
+
+        private static readonly Type[][] s_fastParameterTypes =
+        [
+            [typeof(ScriptContext)],
+            [typeof(ScriptContext), typeof(ScriptDatum)],
+            [typeof(ScriptContext), typeof(ScriptDatum), typeof(ScriptDatum)],
+            [typeof(ScriptContext), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum)],
+            [typeof(ScriptContext), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum)],
+            [typeof(ScriptContext), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum)],
+            [typeof(ScriptContext), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum)],
+            [typeof(ScriptContext), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum)]
+        ];
+        private static readonly Type[] s_spanParameterTypes = [typeof(ScriptContext), typeof(Span<ScriptDatum>)];
+
         private record ModuleState(String Name, int Hash, MethodInfo Init, ILGenerator IL, Dictionary<FunctionDeclaration, MethodInfo> Methods, Dictionary<FunctionDeclaration, FieldInfo> DirectClosures)
         {
 
@@ -45,14 +93,50 @@ namespace AuroraScript.Compiler.Emits
         private readonly Dictionary<DeclareObject, LocalBuilder> _locals = new();
         private readonly Dictionary<DeclareObject, int> _upvalueMap = new();
         private readonly Dictionary<DeclareObject, LocalCaptureInfo> _localScopeCaptureIndex = new();
+        private readonly Dictionary<FunctionDeclaration, int> _fastArityCache = new();
         private LocalBuilder _scopeUpvaluesArray;
-        private IEnumerable<string> _nextBlockParameters;
+        private IReadOnlyList<string> _nextBlockParameters;
         private readonly CILStackManager _stackManager = new();
         private readonly Stack<Label> _breakLabels = new();
         private readonly Stack<Label> _continueLabels = new();
         private readonly Dictionary<object, LocalBuilder> _constantPool = new();
+        private readonly ArgumentsUsageVisitor _argumentsUsageVisitor = new();
+        private readonly NestedClosureDetector _nestedClosureDetector = new();
+        private readonly ClosureAnalyzer _closureAnalyzer = new();
+        private readonly ClosureAnalyzer _directClosureAnalyzer = new();
+        private readonly ConstantHoister _constantHoister = new();
+        private readonly DeclarationVisitor _declarationVisitor = new(null);
         private int ilOffset = -1;
         private long lastLocation = long.MinValue;
+
+        private static bool HasSpreadArgument(IReadOnlyList<Expression> arguments)
+        {
+            for (int i = 0; i < arguments.Count; i++)
+            {
+                if (arguments[i] is SpreadExpression) return true;
+            }
+            return false;
+        }
+
+        private static bool EndsWithReturn(AstNode node)
+        {
+            if (node == null) return false;
+            if (node is ReturnStatement) return true;
+            return node.Length > 0 && node[node.Length - 1] is ReturnStatement;
+        }
+
+        private static IReadOnlyList<string> GetParameterNames(IReadOnlyList<ParameterDeclaration> parameters)
+        {
+            if (parameters == null || parameters.Count == 0) return Array.Empty<string>();
+
+            var names = new string[parameters.Count];
+            for (int i = 0; i < parameters.Count; i++)
+            {
+                names[i] = parameters[i].Name.Value;
+            }
+            return names;
+        }
+
         private void EmitNodeLocation(AstNode node)
         {
             UnionNumber union = new UnionNumber(_currentModule.Hash, node.LineNumber);
@@ -101,8 +185,7 @@ namespace AuroraScript.Compiler.Emits
             _scopeUpvaluesArray = null;
             _scope = new CodeScope(null, ScopeType.Global).Enter(ScopeType.Function);
 
-            var hoister = new ConstantHoister();
-            InitializeConstantPool(hoister.GetLiteralStats(block));
+            InitializeConstantPool(_constantHoister.GetLiteralStats(block));
 
             var parameterNames = parameters ?? Array.Empty<string>();
             _nextBlockParameters = parameterNames;
@@ -125,7 +208,7 @@ namespace AuroraScript.Compiler.Emits
 
             block.Accept(this);
 
-            if (block.ChildNodes.LastOrDefault() is not ReturnStatement)
+            if (!EndsWithReturn(block))
             {
                 builder.LoadNull(_il);
                 _il.Emit(OpCodes.Ret);
@@ -190,8 +273,7 @@ namespace AuroraScript.Compiler.Emits
                 _currentModule = state;
                 _il = state.IL;
                 _constantPool.Clear();
-                var depHoister = new ConstantHoister();
-                var depStats = depHoister.GetLiteralStats(module);
+                var depStats = _constantHoister.GetLiteralStats(module);
                 InitializeConstantPool(depStats);
 
                 _scope = _scope.Enter(ScopeType.Module);
@@ -233,8 +315,7 @@ namespace AuroraScript.Compiler.Emits
             ilOffset = -1;
             lastLocation = long.MinValue;
             _constantPool.Clear();
-            var hoister = new ConstantHoister();
-            var stats = hoister.GetLiteralStats(mainModule);
+            var stats = _constantHoister.GetLiteralStats(mainModule);
             InitializeConstantPool(stats);
 
             _scope = _scope.Enter(ScopeType.Module);
@@ -245,8 +326,7 @@ namespace AuroraScript.Compiler.Emits
             VisitBlock(mainModule);
             _scope = _scope.Leave();
 
-            var lastnode = mainModule.ChildNodes.LastOrDefault();
-            if (lastnode is not ReturnStatement)
+            if (!EndsWithReturn(mainModule))
             {
                 // Mark sequence point for the implicit return at the end of the module
                 var endRange = mainModule.Range;
@@ -460,8 +540,7 @@ namespace AuroraScript.Compiler.Emits
             lastLocation = long.MinValue;
             _constantPool.Clear();
             InitializeModuleCallOptimization(node);
-            var hoister = new ConstantHoister();
-            var stats = hoister.GetLiteralStats(node);
+            var stats = _constantHoister.GetLiteralStats(node);
             InitializeConstantPool(stats);
 
             VisitBlock(node);
@@ -509,60 +588,34 @@ namespace AuroraScript.Compiler.Emits
             }
         }
 
-        private static int GetFastFunctionArity(FunctionDeclaration function)
+        private int GetFastFunctionArity(FunctionDeclaration function)
+        {
+            if (_fastArityCache.TryGetValue(function, out var arity)) return arity;
+            arity = ComputeFastFunctionArity(function);
+            _fastArityCache.Add(function, arity);
+            return arity;
+        }
+
+        private int ComputeFastFunctionArity(FunctionDeclaration function)
         {
             if (UsesArgumentsObject(function.Body)) return -1;
 
             var parameters = function.Parameters;
             if (parameters == null || parameters.Count == 0) return 0;
-            if (parameters.Count is >= 1 and <= 7 && parameters.All(static parameter => parameter.Initializer == null)) return parameters.Count;
+            if (parameters.Count is >= 1 and <= 7)
+            {
+                for (int i = 0; i < parameters.Count; i++)
+                {
+                    if (parameters[i].Initializer != null) return -1;
+                }
+                return parameters.Count;
+            }
             return -1;
         }
 
-        private static bool UsesArgumentsObject(AstNode node)
+        private bool UsesArgumentsObject(AstNode node)
         {
-            if (node == null) return false;
-            if (node is NameExpression nameNode && nameNode.Identifier.Value == "$args") return true;
-
-            foreach (var child in EnumerateScanChildren(node))
-            {
-                if (child is FunctionDeclaration) continue;
-                if (UsesArgumentsObject(child)) return true;
-            }
-
-            return false;
-        }
-
-        private static IEnumerable<AstNode> EnumerateScanChildren(AstNode node)
-        {
-            switch (node)
-            {
-                case FunctionCallExpression call:
-                    if (call.Target != null) yield return call.Target;
-                    foreach (var argument in call.Arguments) yield return argument;
-                    yield break;
-                case GetPropertyExpression getProperty:
-                    if (getProperty.Object != null) yield return getProperty.Object;
-                    if (getProperty.Property != null) yield return getProperty.Property;
-                    yield break;
-                case GetElementExpression getElement:
-                    if (getElement.Object != null) yield return getElement.Object;
-                    if (getElement.Index != null) yield return getElement.Index;
-                    yield break;
-                case BinaryExpression binary:
-                    if (binary.Left != null) yield return binary.Left;
-                    if (binary.Right != null) yield return binary.Right;
-                    yield break;
-                case AssignmentExpression assignment:
-                    if (assignment.Left != null) yield return assignment.Left;
-                    if (assignment.Right != null) yield return assignment.Right;
-                    yield break;
-            }
-
-            foreach (var child in node.ChildNodes)
-            {
-                yield return child;
-            }
+            return _argumentsUsageVisitor.Scan(node);
         }
 
         protected override void VisitImportDeclaration(ImportDeclaration node)
@@ -607,7 +660,7 @@ namespace AuroraScript.Compiler.Emits
                 node.Pattern.Accept(this);
                 return;
             }
-            _scope.Declare(node.Name.Value, _scope.ScopeType == Core.ScopeType.Module ? Core.DeclareType.Property : Core.DeclareType.Variable, node.Access, node);
+            _scope.Declare(node.Name, _scope.ScopeType == Core.ScopeType.Module ? Core.DeclareType.Property : Core.DeclareType.Variable, node.Access, node);
             // If we are at the module level (root scope), register as module property
             if (_scope.ScopeType == ScopeType.Module) // Assuming global scope in emitter means module root
             {
@@ -638,7 +691,7 @@ namespace AuroraScript.Compiler.Emits
             else
             {
                 // Local variable handling
-                var declare = _scope.Declare(node.Name.Value, Core.DeclareType.Variable, node.Access, node);
+                var declare = _scope.Declare(node.Name, Core.DeclareType.Variable, node.Access, node);
                 if (_localScopeCaptureIndex.TryGetValue(declare, out var locCapture))
                 {
                     if (node.Initializer != null)
@@ -837,7 +890,7 @@ namespace AuroraScript.Compiler.Emits
                 return;
             }
 
-            _scope.Resolve(node.Identifier.Value, out var val);
+            _scope.Resolve(node.Identifier, out var val);
             if (val.Type == DeclareType.Variable)
             {
                 if (_localScopeCaptureIndex.TryGetValue(val, out var locCapture))
@@ -967,19 +1020,27 @@ namespace AuroraScript.Compiler.Emits
 
         protected override void VisitArrayExpression(ArrayLiteralExpression node)
         {
-            var hasSpread = node.ChildNodes.Any(x => x is SpreadExpression);
+            var count = node.Length;
+            var hasSpread = false;
+            for (int i = 0; i < count; i++)
+            {
+                if (node[i] is SpreadExpression)
+                {
+                    hasSpread = true;
+                    break;
+                }
+            }
+
             if (!hasSpread)
             {
-                var count = node.ChildNodes.Count();
-
                 // 1. Create ScriptArray with the final length and fill it in place.
                 _il.Emit(OpCodes.Ldc_I4, count);
                 _il.Emit(OpCodes.Newobj, RuntimeMetadata.ScriptArray_CtorCapacity);
 
                 // 2. Set elements
-                int index = 0;
-                foreach (var item in node.ChildNodes)
+                for (int index = 0; index < count; index++)
                 {
+                    var item = node[index];
                     _il.Emit(OpCodes.Dup); // Duplicate ScriptArray
                     _il.Emit(OpCodes.Ldc_I4, index);
                     if (item != null)
@@ -994,7 +1055,6 @@ namespace AuroraScript.Compiler.Emits
                         builder.LoadNull(_il);
                     }
                     _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptArray_SetElementValue);
-                    index++;
                 }
             }
             else
@@ -1002,8 +1062,9 @@ namespace AuroraScript.Compiler.Emits
                 // Logic for arrays with spreads
                 _il.Emit(OpCodes.Ldc_I4, 0); // Initial 
                 _il.Emit(OpCodes.Newobj, RuntimeMetadata.ScriptArray_CtorCapacity);
-                foreach (var item in node.ChildNodes)
+                for (int i = 0; i < count; i++)
                 {
+                    var item = node[i];
                     if (item is SpreadExpression spread)
                     {
                         _il.Emit(OpCodes.Dup); // Duplicate ScriptArray
@@ -1044,35 +1105,21 @@ namespace AuroraScript.Compiler.Emits
 
         protected override void VisitMapExpression(MapExpression node)
         {
-            var literalProperties = node.ChildNodes.OfType<MapKeyValueExpression>().ToArray();
-            var literalPropertyCount = literalProperties.Length;
-            if (literalPropertyCount == 3 &&
-                literalPropertyCount == node.ChildNodes.Count() &&
-                literalProperties.All(static property => property.Key != null && property.Value != null) &&
-                literalProperties.Select(static property => property.Key.Value).Distinct(StringComparer.Ordinal).Count() == literalPropertyCount)
+            if (TryGetFastObject3(node, out var property0, out var property1, out var property2))
             {
-                for (var i = 0; i < literalProperties.Length; i++)
-                {
-                    var property = literalProperties[i];
-                    builder.LoadStringConstant(_il, property.Key.Value);
-                    property.Value.Accept(this);
-                    EnsureTop(typeof(ScriptDatum));
-                    PopType();
-                }
-                var createObject = literalPropertyCount switch
-                {
-                    3 => RuntimeMetadata.CILHelper_CreateObject3,
-                    _ => throw new InvalidOperationException()
-                };
-                _il.Emit(OpCodes.Call, createObject);
+                EmitFastObjectProperty(property0);
+                EmitFastObjectProperty(property1);
+                EmitFastObjectProperty(property2);
+                _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_CreateObject3);
                 PushType(typeof(ScriptObject));
                 return;
             }
 
             // 1. Create a new ScriptObject
             _il.Emit(OpCodes.Newobj, RuntimeMetadata.ScriptObject_Ctor);
-            foreach (var entry in node.ChildNodes)
+            for (int i = 0; i < node.Length; i++)
             {
+                var entry = node[i];
                 if (entry is MapKeyValueExpression property)
                 {
                     _il.Emit(OpCodes.Dup); // Duplicate ScriptObject for SetPropertyValue
@@ -1105,6 +1152,50 @@ namespace AuroraScript.Compiler.Emits
                 }
             }
             PushType(typeof(ScriptObject));
+        }
+
+        private static bool TryGetFastObject3(MapExpression node, out MapKeyValueExpression property0, out MapKeyValueExpression property1, out MapKeyValueExpression property2)
+        {
+            property0 = null;
+            property1 = null;
+            property2 = null;
+
+            if (node.Length != 3 ||
+                node[0] is not MapKeyValueExpression p0 ||
+                node[1] is not MapKeyValueExpression p1 ||
+                node[2] is not MapKeyValueExpression p2 ||
+                p0.Key == null ||
+                p1.Key == null ||
+                p2.Key == null ||
+                p0.Value == null ||
+                p1.Value == null ||
+                p2.Value == null)
+            {
+                return false;
+            }
+
+            var key0 = p0.Key.Value;
+            var key1 = p1.Key.Value;
+            var key2 = p2.Key.Value;
+            if (StringComparer.Ordinal.Equals(key0, key1) ||
+                StringComparer.Ordinal.Equals(key0, key2) ||
+                StringComparer.Ordinal.Equals(key1, key2))
+            {
+                return false;
+            }
+
+            property0 = p0;
+            property1 = p1;
+            property2 = p2;
+            return true;
+        }
+
+        private void EmitFastObjectProperty(MapKeyValueExpression property)
+        {
+            builder.LoadStringConstant(_il, property.Key.Value);
+            property.Value.Accept(this);
+            EnsureTop(typeof(ScriptDatum));
+            PopType();
         }
 
         protected override void VisitSetElementExpression(SetElementExpression node)
@@ -1275,7 +1366,7 @@ namespace AuroraScript.Compiler.Emits
             // 属性数组访问已统一优化为set语句
             if (left is NameExpression nameExp)
             {
-                _scope.Resolve(nameExp.Identifier.Value, out var val);
+                _scope.Resolve(nameExp.Identifier, out var val);
 
                 if (op != null)
                 {
@@ -1320,7 +1411,7 @@ namespace AuroraScript.Compiler.Emits
             var isIncrement = node.Operator == Operator.PreIncrement || node.Operator == Operator.PostIncrement;
             if (node.Expression is NameExpression nameExp)
             {
-                _scope.Resolve(nameExp.Identifier.Value, out var val);
+                _scope.Resolve(nameExp.Identifier, out var val);
                 MethodInfo opMethod;
                 if (isIncrement) opMethod = isPost ? RuntimeMetadata.CILHelper_IncrementPostfix : RuntimeMetadata.CILHelper_IncrementPrefix;
                 else opMethod = isPost ? RuntimeMetadata.CILHelper_DecrementPostfix : RuntimeMetadata.CILHelper_DecrementPrefix;
@@ -1668,7 +1759,7 @@ namespace AuroraScript.Compiler.Emits
 
             // 
             var itemVar = node.Iterator.Left;
-            _scope.Resolve(itemVar.Identifier.Value, out var resolved);
+            _scope.Resolve(itemVar.Identifier, out var resolved);
             var itemLocal = EnsureLocal(itemVar, resolved);
 
             _il.Emit(OpCodes.Ldloc, localIterator);
@@ -1692,38 +1783,48 @@ namespace AuroraScript.Compiler.Emits
 
         protected override void VisitBlock(BlockStatement node)
         {
-            var oldUpvalueMap = new Dictionary<DeclareObject, int>(_upvalueMap);
-            var oldLocalScopeCaptureIndex = new Dictionary<DeclareObject, LocalCaptureInfo>(_localScopeCaptureIndex);
+            var needsClosureAnalysis = node is not ModuleDeclaration && _nestedClosureDetector.Scan(node);
+            Dictionary<DeclareObject, int> oldUpvalueMap = null;
+            Dictionary<DeclareObject, LocalCaptureInfo> oldLocalScopeCaptureIndex = null;
             var oldScopeUpvaluesArray = _scopeUpvaluesArray;
+            if (needsClosureAnalysis)
+            {
+                oldUpvalueMap = new Dictionary<DeclareObject, int>(_upvalueMap);
+                oldLocalScopeCaptureIndex = new Dictionary<DeclareObject, LocalCaptureInfo>(_localScopeCaptureIndex);
+            }
 
 
             // 1. Pre-declare all locals in this block
-            var declVisitor = new DeclarationVisitor(_scope);
+            var declVisitor = _declarationVisitor;
+            declVisitor.Reset(_scope);
             if (node is ModuleDeclaration mod)
             {
-                foreach (var i in mod.Imports) i.Accept(declVisitor);
-                foreach (var f in mod.Functions) f.Accept(declVisitor);
-                foreach (var s in mod.ChildNodes) s.Accept(declVisitor);
+                for (int i = 0; i < mod.Imports.Count; i++) mod.Imports[i].Accept(declVisitor);
+                for (int i = 0; i < mod.Functions.Count; i++) mod.Functions[i].Accept(declVisitor);
+                for (int i = 0; i < mod.Length; i++) mod[i].Accept(declVisitor);
             }
             else
             {
-                foreach (var s in node.ChildNodes) s.Accept(declVisitor);
-                foreach (var f in node.Functions) f.Accept(declVisitor);
+                for (int i = 0; i < node.Length; i++) node[i].Accept(declVisitor);
+                for (int i = 0; i < node.Functions.Count; i++) node.Functions[i].Accept(declVisitor);
             }
 
 
             // 2. Identify captured variables in this block
-            var analyzer = new ClosureAnalyzer();
             var paramNames = _nextBlockParameters;
             _nextBlockParameters = null;
-
-            // We analyze to find escaped locals. For function bodies, we also pass parameter names to see if they escape.
-            analyzer.Analyze(node, _scope, paramNames);
+            ClosureAnalyzer analyzer = null;
+            if (needsClosureAnalysis)
+            {
+                analyzer = _closureAnalyzer;
+                analyzer.Analyze(node, _scope, paramNames);
+            }
 
             if (_isCompilingBlock)
             {
-                foreach (var func in node.Functions)
+                for (int i = 0; i < node.Functions.Count; i++)
                 {
+                    var func = node.Functions[i];
                     if (CanDirectLocalFunction(func, _scope))
                     {
                         _directLocalFunctions.Add(func);
@@ -1731,7 +1832,7 @@ namespace AuroraScript.Compiler.Emits
                 }
             }
 
-            if (analyzer.EscapedLocals.Count > 0) // and  || analyzer.Upvalues.Any()
+            if (analyzer != null && analyzer.EscapedLocals.Count > 0)
             {
                 // We have new local variables that escape from this block.
                 // We must create a new Master Upvalue Array that combines inherited upvalues and these new locals.
@@ -1810,7 +1911,7 @@ namespace AuroraScript.Compiler.Emits
                     }
                 }
             }
-            else if (analyzer.Upvalues.Count > 0)
+            else if (analyzer != null && analyzer.Upvalues.Count > 0)
             {
                 // Optimization: If no new locals escape, we can just use the parent's mapping.
                 // But we must ensure the indices match.
@@ -1824,15 +1925,16 @@ namespace AuroraScript.Compiler.Emits
             }
 
             // 4. Hoisting: Visit functions first
-            foreach (var func in node.Functions)
+            for (int i = 0; i < node.Functions.Count; i++)
             {
+                var func = node.Functions[i];
                 if (func.Flags == FunctionFlags.Declare) continue;
                 func.Accept(this);
             }
 
-            foreach (var statement in node.ChildNodes)
+            for (int i = 0; i < node.Length; i++)
             {
-                statement.Accept(this);
+                node[i].Accept(this);
             }
 
             // Mark sequence point for the closing brace '}'
@@ -1847,11 +1949,14 @@ namespace AuroraScript.Compiler.Emits
             }
 
             // Restore state
-            _upvalueMap.Clear();
-            foreach (var kv in oldUpvalueMap) _upvalueMap.Add(kv.Key, kv.Value);
-            _localScopeCaptureIndex.Clear();
-            foreach (var kv in oldLocalScopeCaptureIndex) _localScopeCaptureIndex.Add(kv.Key, kv.Value);
-            _scopeUpvaluesArray = oldScopeUpvaluesArray;
+            if (needsClosureAnalysis)
+            {
+                _upvalueMap.Clear();
+                foreach (var kv in oldUpvalueMap) _upvalueMap.Add(kv.Key, kv.Value);
+                _localScopeCaptureIndex.Clear();
+                foreach (var kv in oldLocalScopeCaptureIndex) _localScopeCaptureIndex.Add(kv.Key, kv.Value);
+                _scopeUpvaluesArray = oldScopeUpvaluesArray;
+            }
         }
 
         protected override void VisitFunction(FunctionDeclaration node)
@@ -1890,7 +1995,7 @@ namespace AuroraScript.Compiler.Emits
             // If it has a name and is nested OR at module level, store it
             if (node.Name != null && (_scope.ScopeType == Core.ScopeType.Function || _scope.ScopeType == Core.ScopeType.Module))
             {
-                _scope.Resolve(node.Name.Value, out var val);
+                _scope.Resolve(node.Name, out var val);
                 if (_scope.ScopeType == Core.ScopeType.Function)
                 {
                     if (val != null &&
@@ -1954,18 +2059,7 @@ namespace AuroraScript.Compiler.Emits
 
             var funcName = node.Name?.Value;
             var fastArity = GetFastFunctionArity(node);
-            var parameterTypes = fastArity switch
-            {
-                0 => new[] { typeof(ScriptContext) },
-                1 => new[] { typeof(ScriptContext), typeof(ScriptDatum) },
-                2 => new[] { typeof(ScriptContext), typeof(ScriptDatum), typeof(ScriptDatum) },
-                3 => new[] { typeof(ScriptContext), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum) },
-                4 => new[] { typeof(ScriptContext), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum) },
-                5 => new[] { typeof(ScriptContext), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum) },
-                6 => new[] { typeof(ScriptContext), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum) },
-                7 => new[] { typeof(ScriptContext), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum) },
-                _ => new[] { typeof(ScriptContext), typeof(Span<ScriptDatum>) }
-            };
+            var parameterTypes = fastArity >= 0 ? s_fastParameterTypes[fastArity] : s_spanParameterTypes;
 
             // Abstract ILGenerator retrieval
             (method, _il) = builder.DefineMethod(_currentModule.Name, funcName, typeof(ScriptDatum), parameterTypes);
@@ -1983,8 +2077,7 @@ namespace AuroraScript.Compiler.Emits
 
             if (node.Body != null)
             {
-                var hoister = new ConstantHoister();
-                var stats = hoister.GetLiteralStats(node.Body);
+                var stats = _constantHoister.GetLiteralStats(node.Body);
                 InitializeConstantPool(stats);
             }
 
@@ -1997,7 +2090,7 @@ namespace AuroraScript.Compiler.Emits
             _stackManager.Clear();
 
             // 1. Identify Upvalues needed from outer scope
-            var analyzer = new ClosureAnalyzer();
+            var analyzer = _closureAnalyzer;
             analyzer.Analyze(node, oldScope);
 
             foreach (var upvalueName in analyzer.Upvalues)
@@ -2017,22 +2110,24 @@ namespace AuroraScript.Compiler.Emits
             }
 
             // 2. Pre-declare parameters
-            foreach (var param in node.Parameters)
+            for (int i = 0; i < node.Parameters.Count; i++)
             {
-                _scope.Declare(param.Name.Value, Core.DeclareType.Variable, MemberAccess.Internal);
+                var param = node.Parameters[i];
+                _scope.Declare(param.Name, Core.DeclareType.Variable, MemberAccess.Internal);
             }
 
             // 3. Emit parameter initialization
-            _nextBlockParameters = node.Parameters?.Select(p => p.Name.Value).ToList();
+            _nextBlockParameters = GetParameterNames(node.Parameters);
 
             // Parameters
             int argIdx = 0;
-            if (node.Parameters != null)
+            if (node.Parameters.Count > 0)
             {
-                foreach (var param in node.Parameters)
+                for (int i = 0; i < node.Parameters.Count; i++)
                 {
+                    var param = node.Parameters[i];
                     if (param.Name == null) continue;
-                    _scope.Resolve(param.Name.Value, out var val);
+                    _scope.Resolve(param.Name, out var val);
                     var declare = val;
 
                     var local = _il.DeclareLocal(typeof(ScriptDatum));
@@ -2070,7 +2165,7 @@ namespace AuroraScript.Compiler.Emits
 
             node.Body?.Accept(this);
 
-            if (node.Body == null || node.Body.ChildNodes.LastOrDefault() is not ReturnStatement)
+            if (!EndsWithReturn(node.Body))
             {
                 // Mark sequence point for the implicit return at the end of the function
                 var endRange = (node.Body != null) ? node.Body.Range : node.Range;
@@ -2392,7 +2487,7 @@ namespace AuroraScript.Compiler.Emits
 
             if (node.Target is GetPropertyExpression { Property: NameExpression name } propertyCall)
             {
-                var hasSpread = node.Arguments.Any(x => x is SpreadExpression);
+                var hasSpread = HasSpreadArgument(node.Arguments);
                 propertyCall.Object.Accept(this);
                 EnsureTop(typeof(ScriptObject));
                 PopType();
@@ -2501,7 +2596,7 @@ namespace AuroraScript.Compiler.Emits
             EnsureTop(typeof(ScriptObject));
             PopType();
 
-            var callHasSpread = node.Arguments.Any(x => x is SpreadExpression);
+            var callHasSpread = HasSpreadArgument(node.Arguments);
             if (!callHasSpread && node.Arguments.Count == 0)
             {
                 _il.Emit(OpCodes.Ldarg_0);
@@ -2613,7 +2708,7 @@ namespace AuroraScript.Compiler.Emits
         {
             if (!_isCompilingBlock ||
                 node.Target is not NameExpression targetName ||
-                node.Arguments.Any(static x => x is SpreadExpression))
+                HasSpreadArgument(node.Arguments))
             {
                 return false;
             }
@@ -2665,7 +2760,7 @@ namespace AuroraScript.Compiler.Emits
         {
             if (!EnableDirectModuleCalls ||
                 node.Target is not NameExpression targetName ||
-                node.Arguments.Any(static x => x is SpreadExpression) ||
+                HasSpreadArgument(node.Arguments) ||
                 !_moduleFunctionNames.TryGetValue(_currentModule.Name, out var functionNames) ||
                 !_moduleAssignedNames.TryGetValue(_currentModule.Name, out var assignedNames) ||
                 !functionNames.TryGetValue(targetName.Identifier.Value, out var function) ||
@@ -2729,7 +2824,7 @@ namespace AuroraScript.Compiler.Emits
                 return false;
             }
 
-            var analyzer = new ClosureAnalyzer();
+            var analyzer = _directClosureAnalyzer;
             analyzer.Analyze(function, parentScope);
             return analyzer.Upvalues.Count == 0 && analyzer.EscapedLocals.Count == 0;
         }
@@ -2753,7 +2848,7 @@ namespace AuroraScript.Compiler.Emits
             EnsureTop(typeof(ScriptObject));
             PopType();
 
-            var hasSpread = node.Expression.Arguments.Any(x => x is SpreadExpression);
+            var hasSpread = HasSpreadArgument(node.Expression.Arguments);
             if (!hasSpread && node.Expression.Arguments.Count == 0)
             {
                 _il.Emit(OpCodes.Ldarg_0);
@@ -2803,7 +2898,7 @@ namespace AuroraScript.Compiler.Emits
 
         private void EmitArgumentArray(FunctionCallExpression node)
         {
-            var hasSpread = node.Arguments.Any(x => x is SpreadExpression);
+            var hasSpread = HasSpreadArgument(node.Arguments);
             if (!hasSpread)
             {
                 if (node.Arguments.Count == 0)
@@ -2948,7 +3043,7 @@ namespace AuroraScript.Compiler.Emits
 
                 PushType(typeof(ScriptObject)); // Result is PropertyValue
                 // Resolve where to store this property
-                _scope.Resolve(prop.Value, out var resolved);
+                _scope.Resolve(prop, out var resolved);
                 // Let's use a name expression placeholder for EmitStoreName
                 var nameExp = new NameExpression(prop);
                 // EmitStoreName will consume the [PropertyValue] from stack and tracker.
@@ -3038,7 +3133,7 @@ namespace AuroraScript.Compiler.Emits
         {
             if (target is NameExpression name)
             {
-                _scope.Resolve(name.Identifier.Value, out var resolved);
+                _scope.Resolve(name.Identifier, out var resolved);
                 EmitStoreName(name, resolved, null);
             }
             else if (target is ArrayDestructuringPattern || target is ObjectDestructuringPattern)

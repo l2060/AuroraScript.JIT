@@ -47,6 +47,14 @@ namespace AuroraScript
             _message = message;
         }
 
+        internal AuroraEmitException(SourceSpan range, string message)
+        {
+            FileName = range.FileName;
+            StartLine = range.StartLine;
+            StartColumn = range.StartColumn;
+            _message = message;
+        }
+
         /// <summary>
         /// Returns a formatted string that represents the exception, including location details.
         /// </summary>

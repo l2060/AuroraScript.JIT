@@ -6,7 +6,7 @@ using AuroraScript.Tokens;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace AuroraScript.Compiler.Analyzer
@@ -16,33 +16,80 @@ namespace AuroraScript.Compiler.Analyzer
 
     internal class ScopeStack : IDisposable
     {
-        private Stack<ScopeType> scopeStack = new Stack<ScopeType>();
-        private int MaxStack = 0;
-        public ScopeType Current => scopeStack.Peek();
-        public int Count => scopeStack.Count;
+        private ScopeType[] scopeStack = new ScopeType[16];
+        private int count;
+        public ScopeType Current => scopeStack[count - 1];
+        public int Count => count;
 
         public ScopeStack Scope(ScopeType type)
         {
-            scopeStack.Push(type);
-            if (scopeStack.Count > MaxStack)
+            if (count == scopeStack.Length)
             {
-                MaxStack = scopeStack.Count;
+                Array.Resize(ref scopeStack, scopeStack.Length * 2);
             }
+            scopeStack[count++] = type;
             return this;
         }
 
         public void Dispose()
         {
-            scopeStack.Pop();
+            count--;
         }
     }
 
     internal class AuroraParser
     {
+        private sealed class SourceFileVisitor : IAstVisitor
+        {
+            private string _fileName;
+
+            public void Apply(AstNode node, string fileName)
+            {
+                _fileName = fileName;
+                node?.Accept(this);
+            }
+
+            protected override void BeforeVisitNode(AstNode node)
+            {
+                var range = node.Range;
+                if (String.IsNullOrEmpty(range.FileName))
+                {
+                    range.FileName = _fileName;
+                    node.Range = range;
+                }
+            }
+
+            protected override void VisitArrayDestructuringPattern(ArrayDestructuringPattern node)
+            {
+                for (int i = 0; i < node.Elements.Count; i++) node.Elements[i]?.Accept(this);
+            }
+
+            protected override void VisitMapExpression(MapExpression node)
+            {
+                for (int i = 0; i < node.Length; i++) node[i]?.Accept(this);
+            }
+
+            protected override void VisitEnumDeclaration(EnumDeclaration node)
+            {
+                if (node.Elements == null) return;
+                for (int i = 0; i < node.Elements.Count; i++)
+                {
+                    var element = node.Elements[i];
+                    var range = element.Range;
+                    if (String.IsNullOrEmpty(range.FileName))
+                    {
+                        range.FileName = _fileName;
+                        element.Range = range;
+                    }
+                }
+            }
+        }
+
         public AuroraLexer Lexer { get; private set; }
         public ModuleDeclaration Root { get; private set; }
 
         private readonly ScopeStack scopeStack = new ScopeStack();
+        private readonly SourceFileVisitor _sourceFileVisitor = new SourceFileVisitor();
 
         private readonly EngineOptions _options;
 
@@ -100,12 +147,12 @@ namespace AuroraScript.Compiler.Analyzer
                     }
                     else if (node is FunctionDeclaration func)
                     {
-                        this.Root.Functions.Add(func);
+                        this.Root.AddFunction(func);
                         func.Parent = this.Root;
                     }
                     else if (node is ImportDeclaration importDeclaration)
                     {
-                        this.Root.Imports.Add(importDeclaration);
+                        this.Root.AddImport(importDeclaration);
                         importDeclaration.Parent = Root;
                     }
                     else
@@ -119,6 +166,7 @@ namespace AuroraScript.Compiler.Analyzer
             {
                 throw new AuroraParseException(Lexer.FullPath, Token.EOF, "An premature ending statement.");
             }
+            this.Lexer.Dispose();
             return this.Root;
         }
 
@@ -137,7 +185,7 @@ namespace AuroraScript.Compiler.Analyzer
                     node.IsIndependent = true;
                     if (node is FunctionDeclaration func)
                     {
-                        block.Functions.Add(func);
+                        block.AddFunction(func);
                         func.Parent = block;
                     }
                     else
@@ -146,59 +194,61 @@ namespace AuroraScript.Compiler.Analyzer
                     }
                 }
                 SetSourceRecursive(block);
+                this.Lexer.Dispose();
                 return block;
             }
         }
 
         private void RejectModuleOnlyBlockStatement()
         {
-            var token = this.Lexer.LookAtHead();
-            if (token == null || token == Token.EOF)
+            var symbol = this.Lexer.PeekSymbol();
+            if (symbol == null || symbol == Symbols.KW_EOF)
             {
                 return;
             }
 
-            if (token.Symbol == Symbols.PT_METAINFO ||
-                token.Symbol == Symbols.KW_IMPORT ||
-                token.Symbol == Symbols.KW_INCLUDE ||
-                token.Symbol == Symbols.KW_EXPORT ||
-                token.Symbol == Symbols.KW_DECLARE)
+            if (symbol == Symbols.PT_METAINFO ||
+                symbol == Symbols.KW_IMPORT ||
+                symbol == Symbols.KW_INCLUDE ||
+                symbol == Symbols.KW_EXPORT ||
+                symbol == Symbols.KW_DECLARE)
             {
+                var token = this.Lexer.LookAtHead();
                 throw new AuroraParseException(this.Lexer.FullPath, token, $"CompileBlock does not support module-level statement '{token.Value}'.");
             }
         }
 
         private Statement ParseStatement()
         {
-            var token = this.Lexer.LookAtHead();
-            if (token == null || token == Token.EOF) return null;
+            var symbol = this.Lexer.PeekSymbol();
+            if (this.Lexer.IsAtEnd) return null;
 
-            if (token.Symbol == Symbols.PT_SEMICOLON)
+            if (symbol == Symbols.PT_SEMICOLON)
             {
-                this.Lexer.Next();
+                this.Lexer.Expect(Symbols.PT_SEMICOLON);
                 return null;
             }
 
-            if (token.Symbol == Symbols.PT_METAINFO) { var res = ParseMetaInfo(); if (res != null) res.IsIndependent = true; return res; }
-            if (token.Symbol == Symbols.PT_LEFTBRACE) { var res = ParseBlock(); if (res != null) res.IsIndependent = true; return res; }
-            if (token.Symbol == Symbols.KW_IMPORT) { var res = ParseImport(); if (res != null) res.IsIndependent = true; return res; }
-            if (token.Symbol == Symbols.KW_INCLUDE) { var res = ParseInclude(); if (res != null) res.IsIndependent = true; return res; }
-            if (token.Symbol == Symbols.KW_EXPORT) { var res = ParseExportStatement(); if (res != null) res.IsIndependent = true; return res; }
-            if (token.Symbol == Symbols.KW_FUNCTION || token.Symbol == Symbols.KW_FUNC) { var res = ParseFunctionDeclaration(MemberAccess.Internal); if (res != null) res.IsIndependent = true; return res; }
-            if (token.Symbol == Symbols.KW_DECLARE) { var res = ParseDeclare(MemberAccess.Internal); if (res != null) res.IsIndependent = true; return res; }
-            if (token.Symbol == Symbols.KW_CONST || token.Symbol == Symbols.KW_VAR) { var res = ParseVariableDeclaration(MemberAccess.Internal); if (res != null) res.IsIndependent = true; return res; }
-            if (token.Symbol == Symbols.KW_ENUM) { var res = ParseEnumDeclaration(MemberAccess.Internal); if (res != null) res.IsIndependent = true; return res; }
-            if (token.Symbol == Symbols.KW_FOR) { var res = ParseForBlock(); if (res != null) res.IsIndependent = true; return res; }
-            if (token.Symbol == Symbols.KW_WHILE) { var res = ParseWhileBlock(); if (res != null) res.IsIndependent = true; return res; }
-            if (token.Symbol == Symbols.KW_IF) { var res = ParseIfBlock(); if (res != null) res.IsIndependent = true; return res; }
-            if (token.Symbol == Symbols.KW_CONTINUE) { var res = ParseContinueStatement(); if (res != null) res.IsIndependent = true; return res; }
-            if (token.Symbol == Symbols.KW_YIELD) { var res = ParseYieldStatement(); if (res != null) res.IsIndependent = true; return res; }
-            if (token.Symbol == Symbols.KW_BREAK) { var res = ParseBreakStatement(); if (res != null) res.IsIndependent = true; return res; }
-            if (token.Symbol == Symbols.KW_RETURN) { var res = ParseReturnStatement(); if (res != null) res.IsIndependent = true; return res; }
-            if (token.Symbol == Symbols.KW_THROW) { var res = ParseThrowStatement(); if (res != null) res.IsIndependent = true; return res; }
-            if (token.Symbol == Symbols.KW_TRY) { var res = ParseTryStatement(); if (res != null) res.IsIndependent = true; return res; }
-            if (token.Symbol == Symbols.KW_DELETE) { var res = ParseDeleteStatement(); if (res != null) res.IsIndependent = true; return res; }
-            if (token.Symbol == Symbols.KW_DEBUGGER) { var res = ParseDebuggerStatement(); if (res != null) res.IsIndependent = true; return res; }
+            if (symbol == Symbols.PT_METAINFO) { var res = ParseMetaInfo(); if (res != null) res.IsIndependent = true; return res; }
+            if (symbol == Symbols.PT_LEFTBRACE) { var res = ParseBlock(); if (res != null) res.IsIndependent = true; return res; }
+            if (symbol == Symbols.KW_IMPORT) { var res = ParseImport(); if (res != null) res.IsIndependent = true; return res; }
+            if (symbol == Symbols.KW_INCLUDE) { var res = ParseInclude(); if (res != null) res.IsIndependent = true; return res; }
+            if (symbol == Symbols.KW_EXPORT) { var res = ParseExportStatement(); if (res != null) res.IsIndependent = true; return res; }
+            if (symbol == Symbols.KW_FUNCTION || symbol == Symbols.KW_FUNC) { var res = ParseFunctionDeclaration(MemberAccess.Internal); if (res != null) res.IsIndependent = true; return res; }
+            if (symbol == Symbols.KW_DECLARE) { var res = ParseDeclare(MemberAccess.Internal); if (res != null) res.IsIndependent = true; return res; }
+            if (symbol == Symbols.KW_CONST || symbol == Symbols.KW_VAR) { var res = ParseVariableDeclaration(MemberAccess.Internal); if (res != null) res.IsIndependent = true; return res; }
+            if (symbol == Symbols.KW_ENUM) { var res = ParseEnumDeclaration(MemberAccess.Internal); if (res != null) res.IsIndependent = true; return res; }
+            if (symbol == Symbols.KW_FOR) { var res = ParseForBlock(); if (res != null) res.IsIndependent = true; return res; }
+            if (symbol == Symbols.KW_WHILE) { var res = ParseWhileBlock(); if (res != null) res.IsIndependent = true; return res; }
+            if (symbol == Symbols.KW_IF) { var res = ParseIfBlock(); if (res != null) res.IsIndependent = true; return res; }
+            if (symbol == Symbols.KW_CONTINUE) { var res = ParseContinueStatement(); if (res != null) res.IsIndependent = true; return res; }
+            if (symbol == Symbols.KW_YIELD) { var res = ParseYieldStatement(); if (res != null) res.IsIndependent = true; return res; }
+            if (symbol == Symbols.KW_BREAK) { var res = ParseBreakStatement(); if (res != null) res.IsIndependent = true; return res; }
+            if (symbol == Symbols.KW_RETURN) { var res = ParseReturnStatement(); if (res != null) res.IsIndependent = true; return res; }
+            if (symbol == Symbols.KW_THROW) { var res = ParseThrowStatement(); if (res != null) res.IsIndependent = true; return res; }
+            if (symbol == Symbols.KW_TRY) { var res = ParseTryStatement(); if (res != null) res.IsIndependent = true; return res; }
+            if (symbol == Symbols.KW_DELETE) { var res = ParseDeleteStatement(); if (res != null) res.IsIndependent = true; return res; }
+            if (symbol == Symbols.KW_DEBUGGER) { var res = ParseDebuggerStatement(); if (res != null) res.IsIndependent = true; return res; }
 
 
             // Expression Statement
@@ -208,14 +258,15 @@ namespace AuroraScript.Compiler.Analyzer
             {
                 // If we are here, we have a token that is not a statement start, and not start of expression.
                 // This is a syntax error.
+                var token = this.Lexer.LookAtHead();
                 throw new AuroraParseException(this.Lexer.FullPath, token, $"Unexpected token: {token.Value}");
             }
 
-            Token semi = this.Lexer.NextOfKind(Symbols.PT_SEMICOLON);
+            var semiRange = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
 
             var stmt = new ExpressionStatement(exp);
             stmt.IsIndependent = true;
-            SetRange(stmt, exp.Range, (semi != null ? semi.Range : exp.Range));
+            SetRange(stmt, exp.Range, semiRange);
             return stmt;
         }
 
@@ -225,22 +276,31 @@ namespace AuroraScript.Compiler.Analyzer
 
         private Expression ParseExpression(int precedence)
         {
-            var token = this.Lexer.LookAtHead();
-            if (token == null || token.Symbol == Symbols.PT_SEMICOLON || token.Symbol == Symbols.PT_RIGHTPARENTHESIS ||
-                token.Symbol == Symbols.PT_RIGHTBRACKET || token.Symbol == Symbols.PT_RIGHTBRACE || token.Symbol == Symbols.PT_COMMA)
+            var symbol = this.Lexer.PeekSymbol();
+            if (this.Lexer.IsAtEnd || symbol == Symbols.PT_SEMICOLON || symbol == Symbols.PT_RIGHTPARENTHESIS ||
+                symbol == Symbols.PT_RIGHTBRACKET || symbol == Symbols.PT_RIGHTBRACE || symbol == Symbols.PT_COMMA)
             {
                 return null;
             }
 
-            var startToken = this.Lexer.Next();
-            Expression expression = ParsePrefix(startToken);
+            Expression expression;
+            if (CanParsePrefixWithoutToken(symbol))
+            {
+                var prefixSymbol = this.Lexer.NextSymbol(out var prefixRange);
+                expression = ParsePrefix(prefixSymbol, prefixRange);
+            }
+            else
+            {
+                var startToken = this.Lexer.Next();
+                expression = ParsePrefix(startToken);
+            }
             if (expression == null) return null;
 
-            while (precedence < GetPrecedence(this.Lexer.LookAtHead()))
+            while (precedence < GetPrecedence(this.Lexer.PeekSymbol()))
             {
-                var nextToken = this.Lexer.Next();
-                var op = Operator.FromSymbols(nextToken.Symbol, true); // Infix/Postfix
-                expression = ParseInfix(expression, nextToken, op);
+                var opSymbol = this.Lexer.NextSymbol(out var opRange);
+                var op = Operator.FromSymbols(opSymbol, true); // Infix/Postfix
+                expression = ParseInfix(expression, opSymbol, opRange, op);
                 if (expression == null) break;
             }
 
@@ -264,9 +324,9 @@ namespace AuroraScript.Compiler.Analyzer
                 using (scopeStack.Scope(ScopeType.GROUP))
                 {
                     var group = new GroupExpression(Operator.Grouping);
-                    if (this.Lexer.LookAtHead().Symbol == Symbols.PT_RIGHTPARENTHESIS)
+                    if (this.Lexer.TestSymbol(Symbols.PT_RIGHTPARENTHESIS))
                     {
-                        this.Lexer.Next();
+                        this.Lexer.Expect(Symbols.PT_RIGHTPARENTHESIS);
                         return group;
                     }
                     while (true)
@@ -276,8 +336,8 @@ namespace AuroraScript.Compiler.Analyzer
                         if (this.Lexer.TestNext(Symbols.PT_COMMA)) continue;
                         break;
                     }
-                    var rightParen = this.Lexer.NextOfKind(Symbols.PT_RIGHTPARENTHESIS);
-                    return SetRange(group, token.Range, rightParen.Range);
+                    var rightParen = this.Lexer.NextRangeOfKind(Symbols.PT_RIGHTPARENTHESIS);
+                    return SetRange(group, token.Range, rightParen);
                 }
 
             }
@@ -300,11 +360,11 @@ namespace AuroraScript.Compiler.Analyzer
                         }
 
                         if (this.Lexer.TestSymbol(Symbols.PT_RIGHTBRACKET)) break;
-                        this.Lexer.NextOfKind(Symbols.PT_COMMA);
+                        this.Lexer.Expect(Symbols.PT_COMMA);
                     }
                 }
-                var rightBracket = this.Lexer.NextOfKind(Symbols.PT_RIGHTBRACKET);
-                return SetRange(arrayLiteral, token.Range, rightBracket.Range);
+                var rightBracket = this.Lexer.NextRangeOfKind(Symbols.PT_RIGHTBRACKET);
+                return SetRange(arrayLiteral, token.Range, rightBracket);
             }
 
             // Object Literal {
@@ -354,10 +414,102 @@ namespace AuroraScript.Compiler.Analyzer
             throw new AuroraParseException(this.Lexer.FullPath, token, $"Unknown prefix token: {token.Value}");
         }
 
-        private Expression ParseInfix(Expression left, Token opToken, Operator op)
+        private Expression ParsePrefix(Symbols symbol, SourceSpan range)
+        {
+            // Grouping (
+            if (symbol == Symbols.PT_LEFTPARENTHESIS)
+            {
+                using (scopeStack.Scope(ScopeType.GROUP))
+                {
+                    var group = new GroupExpression(Operator.Grouping);
+                    if (this.Lexer.TestSymbol(Symbols.PT_RIGHTPARENTHESIS))
+                    {
+                        var rightParen = this.Lexer.NextRangeOfKind(Symbols.PT_RIGHTPARENTHESIS);
+                        return SetRange(group, range, rightParen);
+                    }
+                    while (true)
+                    {
+                        var exp = ParseExpression(0);
+                        if (exp != null) group.AddNode(exp);
+                        if (this.Lexer.TestNext(Symbols.PT_COMMA)) continue;
+                        break;
+                    }
+                    var rightParenRange = this.Lexer.NextRangeOfKind(Symbols.PT_RIGHTPARENTHESIS);
+                    return SetRange(group, range, rightParenRange);
+                }
+            }
+
+            // Array Literal [
+            if (symbol == Symbols.PT_LEFTBRACKET)
+            {
+                var arrayLiteral = new ArrayLiteralExpression();
+                if (!this.Lexer.TestSymbol(Symbols.PT_RIGHTBRACKET))
+                {
+                    while (true)
+                    {
+                        var exp = ParseExpression(0);
+                        if (exp != null)
+                            arrayLiteral.AddNode(exp);
+                        else
+                        {
+                            var nullLiteral = new LiteralExpression(new NullToken());
+                            arrayLiteral.AddNode(nullLiteral);
+                        }
+
+                        if (this.Lexer.TestSymbol(Symbols.PT_RIGHTBRACKET)) break;
+                        this.Lexer.Expect(Symbols.PT_COMMA);
+                    }
+                }
+                var rightBracket = this.Lexer.NextRangeOfKind(Symbols.PT_RIGHTBRACKET);
+                return SetRange(arrayLiteral, range, rightBracket);
+            }
+
+            // Object Literal {
+            if (symbol == Symbols.PT_LEFTBRACE)
+            {
+                return ParseObjectConstructor(range);
+            }
+
+            // Spread Operator (...)
+            if (symbol == Symbols.OP_SPREAD)
+            {
+                var value = ParseExpression(0); // Lowest precedence
+                var spread = new SpreadExpression(value);
+                return SetRange(spread, range, (value != null ? value.Range : range));
+            }
+
+            // Unary Prefix Operators (!, -, ++, --, ~, typeof, new, ...)
+            if (IsPrefixOperator(symbol))
+            {
+                var op = Operator.FromSymbols(symbol, false);
+
+                if (op == Operator.New)
+                {
+                    var right = ParseExpression(op.Precedence);
+                    if (right is not FunctionCallExpression funcCall)
+                    {
+                        var token = new OperatorToken { Symbol = symbol, Value = symbol?.Name, Range = range };
+                        throw new AuroraParseException(this.Lexer.FullPath, token, $"Uncaught TypeError: {right} is not a constructor");
+                    }
+                    var binary = new NewExpression(op, funcCall);
+                    if (right != null) binary.Range = MergeRanges(range, right.Range);
+                    return binary;
+                }
+
+                var rightUnary = ParseExpression(op.Precedence);
+                var expression = new UnaryExpression(op, UnaryType.Prefix, rightUnary);
+                if (rightUnary != null) expression.Range = MergeRanges(range, rightUnary.Range);
+                return expression;
+            }
+
+            var unexpected = new OperatorToken { Symbol = symbol, Value = symbol?.Name, Range = range };
+            throw new AuroraParseException(this.Lexer.FullPath, unexpected, $"Unknown prefix token: {unexpected.Value}");
+        }
+
+        private Expression ParseInfix(Expression left, Symbols opSymbol, SourceSpan opRange, Operator op)
         {
             // Member Access .
-            if (opToken.Symbol == Symbols.PT_DOT)
+            if (opSymbol == Symbols.PT_DOT)
             {
 
                 var identifier = this.Lexer.NextOfToken<IdentifierToken, KeywordToken>();
@@ -367,7 +519,7 @@ namespace AuroraScript.Compiler.Analyzer
 
             // Index Access [
             // Function Call (
-            if (opToken.Symbol == Symbols.PT_LEFTPARENTHESIS)
+            if (opSymbol == Symbols.PT_LEFTPARENTHESIS)
             {
                 var callExp = new FunctionCallExpression(Operator.FunctionCall, left);
                 if (!this.Lexer.TestSymbol(Symbols.PT_RIGHTPARENTHESIS))
@@ -378,20 +530,20 @@ namespace AuroraScript.Compiler.Analyzer
                         if (arg != null) callExp.AddArgument(arg);
 
                         if (this.Lexer.TestSymbol(Symbols.PT_RIGHTPARENTHESIS)) break;
-                        this.Lexer.NextOfKind(Symbols.PT_COMMA);
+                        this.Lexer.Expect(Symbols.PT_COMMA);
                     }
                 }
-                var rightParen = this.Lexer.NextOfKind(Symbols.PT_RIGHTPARENTHESIS);
-                return SetRange(callExp, left.Range, rightParen.Range);
+                var rightParen = this.Lexer.NextRangeOfKind(Symbols.PT_RIGHTPARENTHESIS);
+                return SetRange(callExp, left.Range, rightParen);
             }
 
             // Index Access [
-            if (opToken.Symbol == Symbols.PT_LEFTBRACKET)
+            if (opSymbol == Symbols.PT_LEFTBRACKET)
             {
                 var indexExp = ParseExpression(0);
                 var getElem = new GetElementExpression(Operator.Index, left, indexExp);
-                var rightBracket = this.Lexer.NextOfKind(Symbols.PT_RIGHTBRACKET);
-                return SetRange(getElem, left.Range, rightBracket.Range);
+                var rightBracket = this.Lexer.NextRangeOfKind(Symbols.PT_RIGHTBRACKET);
+                return SetRange(getElem, left.Range, rightBracket);
             }
 
             // Lambda Expression =>
@@ -407,32 +559,33 @@ namespace AuroraScript.Compiler.Analyzer
                                     op == Operator.CompoundDivide || op == Operator.CompoundModulo);
 
                 Expression binary;
+                Expression right;
                 if (op == Operator.Assignment)
                 {
-                    var right = ParseExpression(op.Precedence - 1); // Right-associative
+                    right = ParseExpression(op.Precedence - 1); // Right-associative
                     var assign = new AssignmentExpression(op, left, right);
                     binary = assign;
                 }
                 else if (isCompound)
                 {
-                    var right = ParseExpression(op.Precedence - 1);
+                    right = ParseExpression(op.Precedence - 1);
                     var compound = new CompoundExpression(op, left, right);
                     binary = compound;
                 }
                 else if (op == Operator.In)
                 {
-                    var right = ParseExpression(op.Precedence);
+                    right = ParseExpression(op.Precedence);
                     var inExp = new IncludedExpression(op, left, right);
                     binary = inExp;
                 }
                 else
                 {
-                    var right = ParseExpression(op.Precedence);
+                    right = ParseExpression(op.Precedence);
                     var bin = new BinaryExpression(op, left, right);
                     binary = bin;
                 }
 
-                if (binary != null) SetRange(binary, left.Range, (binary.ChildNodes.GetEnumerator().MoveNext() ? binary.ChildNodes.Last() : binary).Range);
+                if (binary != null) SetRange(binary, left.Range, right?.Range ?? left.Range);
 
                 if (binary is AssignmentExpression assignExp) return OptimizeAssignment(assignExp);
 
@@ -444,17 +597,18 @@ namespace AuroraScript.Compiler.Analyzer
             {
                 var unary = new UnaryExpression(op, UnaryType.Post, left);
                 // SetDebug(unary, opToken); // Redundant
-                unary.Range = MergeRanges(left.Range, opToken.Range);
+                unary.Range = MergeRanges(left.Range, opRange);
                 return unary;
             }
 
+            var opToken = new OperatorToken { Symbol = opSymbol, Value = opSymbol?.Name, Range = opRange };
             throw new AuroraParseException(this.Lexer.FullPath, opToken, "Unexpected operator " + opToken.Value);
         }
 
         private Expression ParseStringTemplate(StringTemplateToken token)
         {
             var source = this.Lexer.InputData;
-            var raw = source.Substring(token.Range.Offset + 1, token.Range.Length - 2);
+            var raw = source.AsSpan(token.Range.Offset + 1, token.Range.Length - 2);
 
             Expression result = null;
 
@@ -546,10 +700,14 @@ namespace AuroraScript.Compiler.Analyzer
                         throw new AuroraParseException(this.Lexer.FullPath, token, "Template string interpolation missing closing brace '}'");
                     }
 
-                    string exprText = raw.Substring(exprStart, exprEnd - exprStart);
-                    var subLexer = new AuroraLexer(this.Lexer.BaseDirectory, new TextSource(this.Lexer.BaseDirectory, this.Lexer.FullPath, exprText));
-                    var subParser = new AuroraParser(subLexer, _options);
-                    var expr = subParser.ParseExpression(0);
+                    var expressionSource = raw.Slice(exprStart, exprEnd - exprStart);
+                    if (!TryParseTemplateIdentifier(expressionSource, token.Range, out var expr))
+                    {
+                        string exprText = expressionSource.ToString();
+                        var subLexer = new AuroraLexer(this.Lexer.BaseDirectory, new TextSource(this.Lexer.BaseDirectory, this.Lexer.FullPath, exprText));
+                        var subParser = new AuroraParser(subLexer, _options);
+                        expr = subParser.ParseExpression(0);
+                    }
 
                     if (expr != null)
                     {
@@ -583,14 +741,14 @@ namespace AuroraScript.Compiler.Analyzer
         // Helpers
         // ===================================
 
-        private static int GetPrecedence(Token token)
+        private static int GetPrecedence(Symbols symbol)
         {
-            if (token is PunctuatorToken || token is OperatorToken)
+            if (symbol != null)
             {
                 // Is this token operating as Infix?
                 // The boolean literal 'true' in FromSymbols(..., true) means "Has Left Operand"
                 // In GetPrecedence, we are looking ahead, so we assume we are inside ParseExpression loop where we already have a Left.
-                var op = Operator.FromSymbols(token.Symbol, true);
+                var op = Operator.FromSymbols(symbol, true);
                 if (op != null)
                 {
                     return op.Precedence;
@@ -605,37 +763,81 @@ namespace AuroraScript.Compiler.Analyzer
             return op != null && op.Placement == OperatorPlacement.Prefix;
         }
 
-        // ... (Include other parsing methods like ParseBlock, ParseFunction, ParseObjectConstructor from original file but cleaned up)
+        private bool CanParsePrefixWithoutToken(Symbols symbol)
+        {
+            return symbol == Symbols.PT_LEFTPARENTHESIS ||
+                   symbol == Symbols.PT_LEFTBRACKET ||
+                   symbol == Symbols.PT_LEFTBRACE ||
+                   symbol == Symbols.OP_SPREAD ||
+                   IsPrefixOperator(symbol);
+        }
 
-        // Placeholder for missing methods to make it compile initially
+        private bool TryParseTemplateIdentifier(ReadOnlySpan<char> expressionSource, SourceSpan range, out Expression expression)
+        {
+            expression = null;
+            var source = expressionSource.Trim();
+            if (source.Length == 0 || !IsIdentifierStart(source[0]) || Symbols.FromSpan(source) != null)
+            {
+                return false;
+            }
+
+            for (int i = 1; i < source.Length; i++)
+            {
+                if (!IsIdentifierPart(source[i]))
+                {
+                    return false;
+                }
+            }
+
+            var token = new IdentifierToken { Value = source.ToString(), Range = range };
+            expression = SetRange(new NameExpression(token), range, range);
+            return true;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool IsIdentifierStart(char c)
+        {
+            return (c >= 'a' && c <= 'z') ||
+                   (c >= 'A' && c <= 'Z') ||
+                   c == '_' ||
+                   c == '$' ||
+                   (c >= 0x4e00 && c <= 0x9fbb);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool IsIdentifierPart(char c)
+        {
+            return IsIdentifierStart(c) || (c >= '0' && c <= '9');
+        }
+
         private Statement ParseMetaInfo()
         {
-            this.Lexer.NextOfKind(Symbols.PT_METAINFO);
+            this.Lexer.Expect(Symbols.PT_METAINFO);
             var metaName = this.Lexer.NextOfKind<IdentifierToken>();
-            this.Lexer.NextOfKind(Symbols.PT_LEFTPARENTHESIS);
+            this.Lexer.Expect(Symbols.PT_LEFTPARENTHESIS);
             var token = this.Lexer.TestNextOfKind<IdentifierToken>();
-            this.Lexer.NextOfKind(Symbols.PT_RIGHTPARENTHESIS);
-            this.Lexer.NextOfKind(Symbols.PT_SEMICOLON);
+            this.Lexer.Expect(Symbols.PT_RIGHTPARENTHESIS);
+            this.Lexer.Expect(Symbols.PT_SEMICOLON);
             var statement = SetDebug(new ModuleMetaStatement(metaName, token), metaName);
             return statement;
         }
 
         private Statement ParseBlock(bool isFunction = false)
         {
-            var leftBrace = this.Lexer.NextOfKind(Symbols.PT_LEFTBRACE);
+            var leftBrace = this.Lexer.NextRangeOfKind(Symbols.PT_LEFTBRACE);
             using (scopeStack.Scope(ScopeType.BLOCK))
             {
                 var result = new BlockStatement();
                 while (true)
                 {
-                    var token = this.Lexer.LookAtHead();
-                    if (token.Symbol == Symbols.PT_RIGHTBRACE) break;
-                    if (token == Token.EOF) throw new AuroraParseException(this.Lexer.FullPath, this.Lexer.Previous(), "Unexpected end of file in block");
+                    var symbol = this.Lexer.PeekSymbol();
+                    if (symbol == Symbols.PT_RIGHTBRACE) break;
+                    if (symbol == Symbols.KW_EOF) throw new AuroraParseException(this.Lexer.FullPath, this.Lexer.Previous(), "Unexpected end of file in block");
 
                     var exp = this.ParseStatement();
                     if (exp is FunctionDeclaration functionDeclaration)
                     {
-                        result.Functions.Add(functionDeclaration);
+                        result.AddFunction(functionDeclaration);
                         functionDeclaration.Parent = result;
                     }
                     else if (exp != null)
@@ -643,8 +845,8 @@ namespace AuroraScript.Compiler.Analyzer
                         result.AddNode(exp);
                     }
                 }
-                var rightBrace = this.Lexer.NextOfKind(Symbols.PT_RIGHTBRACE);
-                SetRange(result, leftBrace.Range, rightBrace.Range);
+                var rightBrace = this.Lexer.NextRangeOfKind(Symbols.PT_RIGHTBRACE);
+                SetRange(result, leftBrace, rightBrace);
 
                 if (isFunction)
                 {
@@ -656,102 +858,98 @@ namespace AuroraScript.Compiler.Analyzer
         }
         private Statement ParseInclude()
         {
-            var importToken = this.Lexer.NextOfKind(Symbols.KW_INCLUDE);
+            var importRange = this.Lexer.NextRangeOfKind(Symbols.KW_INCLUDE);
             if (!this.Root.IsEmpty())
             {
-                throw new AuroraParseException(this.Lexer.FullPath, importToken, $"The Include statement must be placed at the top of the module.");
+                throw new AuroraParseException(this.Lexer.FullPath, importRange, "The Include statement must be placed at the top of the module.");
             }
             StringToken fileToken = this.Lexer.NextOfKind<StringToken>();
-            var closed = this.Lexer.NextOfKind(Symbols.PT_SEMICOLON);
+            var closed = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
             var (fullPath, modulePath) = ResolveImportPath(fileToken.Value);
             if (!File.Exists(fullPath))
             {
-                throw new AuroraEmitException(importToken, $"include file not found: {fileToken.Value}");
+                throw new AuroraEmitException(importRange, $"include file not found: {fileToken.Value}");
             }
             var import = new ImportDeclaration() { File = fileToken, FullPath = fullPath, ModulePath = modulePath, Include = true };
 
-            return SetRange(import, importToken.Range, closed.Range);
+            return SetRange(import, importRange, closed);
         }
 
 
 
         private Statement ParseImport()
         {
-            var importToken = this.Lexer.NextOfKind(Symbols.KW_IMPORT);
+            var importRange = this.Lexer.NextRangeOfKind(Symbols.KW_IMPORT);
             if (!this.Root.IsEmpty())
             {
-                throw new AuroraParseException(this.Lexer.FullPath, importToken, $"The Import statement must be placed at the top of the module.");
+                throw new AuroraParseException(this.Lexer.FullPath, importRange, "The Import statement must be placed at the top of the module.");
             }
             var module = this.Lexer.NextOfKind<IdentifierToken>();
-            this.Lexer.NextOfKind(Symbols.KW_FROM);
+            this.Lexer.Expect(Symbols.KW_FROM);
             StringToken fileToken = this.Lexer.NextOfKind<StringToken>();
-            var closed = this.Lexer.NextOfKind(Symbols.PT_SEMICOLON);
+            var closed = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
             var (fullPath, modulePath) = ResolveImportPath(fileToken.Value);
             if (!File.Exists(fullPath))
             {
-                throw new AuroraEmitException(importToken, $"Import file not found: {fileToken.Value}");
+                throw new AuroraEmitException(importRange, $"Import file not found: {fileToken.Value}");
             }
             var import = new ImportDeclaration() { Name = module, File = fileToken, FullPath = fullPath, ModulePath = modulePath, Include = false };
 
-            return SetRange(import, importToken.Range, closed.Range);
+            return SetRange(import, importRange, closed);
         }
 
         private Statement ParseExportStatement()
         {
-            var exportToken = this.Lexer.NextOfKind(Symbols.KW_EXPORT);
+            var exportRange = this.Lexer.NextRangeOfKind(Symbols.KW_EXPORT);
 
             if (scopeStack.Current != ScopeType.MODULE)
             {
-                throw new AuroraParseException(this.Lexer.FullPath, exportToken, $"Invalid “export” keyword in row {exportToken.LineNumber}, column {exportToken.ColumnNumber}, scope not supported.");
+                throw new AuroraParseException(this.Lexer.FullPath, exportRange, $"Invalid export keyword in row {exportRange.StartLine}, column {exportRange.StartColumn}, scope not supported.");
             }
 
-            var token = this.Lexer.LookAtHead();
-            if (token is KeywordToken && (token.Symbol == Symbols.KW_FUNCTION || token.Symbol == Symbols.KW_FUNC))
+            var symbol = this.Lexer.PeekSymbol();
+            if (symbol == Symbols.KW_FUNCTION || symbol == Symbols.KW_FUNC)
             {
                 return ParseFunctionDeclaration(MemberAccess.Export);
             }
-            else if (token is KeywordToken && token.Symbol == Symbols.KW_VAR)
+            else if (symbol == Symbols.KW_VAR)
             {
                 return ParseVariableDeclaration(MemberAccess.Export);
             }
-            else if (token is KeywordToken && token.Symbol == Symbols.KW_CONST)
+            else if (symbol == Symbols.KW_CONST)
             {
                 return ParseVariableDeclaration(MemberAccess.Export);
             }
-            else if (token is KeywordToken && token.Symbol == Symbols.KW_DECLARE)
+            else if (symbol == Symbols.KW_DECLARE)
             {
                 return ParseDeclare(MemberAccess.Export);
-                // Declare doesn't take Access in original call? Check.
-                // Original: return ParseDeclare(currentScope); 
-                // Wait, logic says: "The Declare keyword only allows the declaration of external methods"
-                // ParseDeclare just returns FunctionDeclaration with flags.
-                // But let's check signatures.
             }
-            else if (token is KeywordToken && token.Symbol == Symbols.KW_ENUM)
+            else if (symbol == Symbols.KW_ENUM)
             {
                 return ParseEnumDeclaration(MemberAccess.Export);
             }
 
+            var token = this.Lexer.LookAtHead();
             throw new AuroraParseException(this.Lexer.FullPath, token, "Invalid keywords appear in export declaration.");
         }
 
         private Statement ParseFunctionDeclaration(MemberAccess access = MemberAccess.Internal)
         {
-            var start = this.Lexer.NextOfKind(Symbols.KW_FUNCTION, Symbols.KW_FUNC);
+            var start = this.Lexer.NextRangeOfKind(Symbols.KW_FUNCTION, Symbols.KW_FUNC);
             var functionName = this.Lexer.NextOfKind<IdentifierToken>();
             var func = this.ParseFunction(functionName, access, FunctionFlags.General);
-            return SetRange(func, start.Range, func.Range);
+            return SetRange(func, start, func.Range);
         }
 
         private FunctionDeclaration ParseFunction(IdentifierToken functionName, MemberAccess access = MemberAccess.Internal, FunctionFlags flags = FunctionFlags.General)
         {
-            var token = this.Lexer.NextOfKind(Symbols.PT_LEFTPARENTHESIS);
+            var leftParenRange = this.Lexer.NextRangeOfKind(Symbols.PT_LEFTPARENTHESIS);
             var arguments = this.ParseFunctionArguments();
             // ParseFunctionArguments consumes the )
 
             if (flags == FunctionFlags.Lambda)
             {
-                this.Lexer.NextOfKind(Symbols.PT_LAMBDA);
+                this.Lexer.Expect(Symbols.PT_LAMBDA);
             }
 
             using (scopeStack.Scope(ScopeType.FUNCTION))
@@ -765,29 +963,29 @@ namespace AuroraScript.Compiler.Analyzer
                 }
                 ((BlockStatement)body).IsFunction = true;
                 var declaration = new FunctionDeclaration(access, functionName, arguments, body, flags);
-                return SetRange(declaration, (functionName?.Range ?? token.Range), body.Range);
+                return SetRange(declaration, (functionName?.Range ?? leftParenRange), body.Range);
             }
         }
 
         private Statement ParseDeclare(MemberAccess access = MemberAccess.Internal)
         {
-            this.Lexer.NextOfKind(Symbols.KW_DECLARE);
+            this.Lexer.Expect(Symbols.KW_DECLARE);
             if (this.Lexer.TestNext(Symbols.KW_FUNCTION) || this.Lexer.TestNext(Symbols.KW_FUNC))
             {
                 var funcName = this.Lexer.NextOfKind<IdentifierToken>();
-                this.Lexer.NextOfKind(Symbols.PT_LEFTPARENTHESIS);
+                this.Lexer.Expect(Symbols.PT_LEFTPARENTHESIS);
                 var arguments = this.ParseFunctionArguments();
                 // ParseFunctionArguments consumes the )
-                this.Lexer.NextOfKind(Symbols.PT_SEMICOLON);
+                var semiRange = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
                 var declaration = new FunctionDeclaration(access, funcName, arguments, null, FunctionFlags.Declare);
-                return SetRange(declaration, funcName.Range, this.Lexer.Previous(1).Range); // (1) because ;
+                return SetRange(declaration, funcName.Range, semiRange);
             }
             throw new AuroraParseException(this.Lexer.FullPath, this.Lexer.LookAtHead(), "The Declare keyword only allows the declaration of external methods");
         }
 
         private Expression ParseObjectDestructuringPattern()
         {
-            var token = this.Lexer.NextOfKind(Symbols.PT_LEFTBRACE);
+            var token = this.Lexer.NextRangeOfKind(Symbols.PT_LEFTBRACE);
             var pattern = new ObjectDestructuringPattern();
 
             while (true)
@@ -798,16 +996,16 @@ namespace AuroraScript.Compiler.Analyzer
                 pattern.Properties.Add(propName);
 
                 if (this.Lexer.TestSymbol(Symbols.PT_RIGHTBRACE)) break;
-                this.Lexer.NextOfKind(Symbols.PT_COMMA);
+                this.Lexer.Expect(Symbols.PT_COMMA);
             }
-            var rightBrace = this.Lexer.NextOfKind(Symbols.PT_RIGHTBRACE);
+            var rightBrace = this.Lexer.NextRangeOfKind(Symbols.PT_RIGHTBRACE);
 
-            return SetRange(pattern, token.Range, rightBrace.Range);
+            return SetRange(pattern, token, rightBrace);
         }
 
         private Expression ParseArrayDestructuringPattern()
         {
-            var token = this.Lexer.NextOfKind(Symbols.PT_LEFTBRACKET);
+            var token = this.Lexer.NextRangeOfKind(Symbols.PT_LEFTBRACKET);
             var pattern = new ArrayDestructuringPattern();
 
             while (true)
@@ -828,43 +1026,46 @@ namespace AuroraScript.Compiler.Analyzer
                 pattern.Elements.Add(new NameExpression(elemName));
 
                 if (this.Lexer.TestSymbol(Symbols.PT_RIGHTBRACKET)) break;
-                this.Lexer.NextOfKind(Symbols.PT_COMMA);
+                this.Lexer.Expect(Symbols.PT_COMMA);
             }
-            var rightBracket = this.Lexer.NextOfKind(Symbols.PT_RIGHTBRACKET);
+            var rightBracket = this.Lexer.NextRangeOfKind(Symbols.PT_RIGHTBRACKET);
 
-            return SetRange(pattern, token.Range, rightBracket.Range);
+            return SetRange(pattern, token, rightBracket);
         }
 
         private Statement ParseVariableDeclaration(MemberAccess access = MemberAccess.Internal)
         {
             var isConst = false;
-            Token start = null;
-            if (this.Lexer.TestSymbol(Symbols.KW_CONST)) start = this.Lexer.Next();
-            if (start != null) isConst = true;
-            else if (this.Lexer.TestSymbol(Symbols.KW_VAR)) start = this.Lexer.Next();
+            SourceSpan start;
+            if (this.Lexer.TestSymbol(Symbols.KW_CONST))
+            {
+                start = this.Lexer.NextRangeOfKind(Symbols.KW_CONST);
+                isConst = true;
+            }
+            else if (this.Lexer.TestSymbol(Symbols.KW_VAR)) start = this.Lexer.NextRangeOfKind(Symbols.KW_VAR);
             else throw new AuroraParseException(this.Lexer.FullPath, this.Lexer.LookAtHead(), "Variable declaration should be placed after var/const");
 
             // Check if this is a destructuring pattern
-            var nextToken = this.Lexer.LookAtHead();
-            if (nextToken.Symbol == Symbols.PT_LEFTBRACE)
+            var nextSymbol = this.Lexer.PeekSymbol();
+            if (nextSymbol == Symbols.PT_LEFTBRACE)
             {
                 // Object destructuring: var { a, b } = expr;
                 var pattern = ParseObjectDestructuringPattern();
-                this.Lexer.NextOfKind(Symbols.OP_ASSIGNMENT);
+                this.Lexer.Expect(Symbols.OP_ASSIGNMENT);
                 var init = this.ParseExpression(0);
-                var semi = this.Lexer.NextOfKind(Symbols.PT_SEMICOLON);
+                var semi = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
                 var varDecl = new VariableDeclaration(access, isConst, pattern, init);
-                return SetRange(varDecl, start.Range, semi.Range);
+                return SetRange(varDecl, start, semi);
             }
-            else if (nextToken.Symbol == Symbols.PT_LEFTBRACKET)
+            else if (nextSymbol == Symbols.PT_LEFTBRACKET)
             {
                 // Array destructuring: var [ a, b, ..c ] = expr;
                 var pattern = ParseArrayDestructuringPattern();
-                this.Lexer.NextOfKind(Symbols.OP_ASSIGNMENT);
+                this.Lexer.Expect(Symbols.OP_ASSIGNMENT);
                 var init = this.ParseExpression(0);
-                var semi = this.Lexer.NextOfKind(Symbols.PT_SEMICOLON);
+                var semi = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
                 var varDecl = new VariableDeclaration(access, isConst, pattern, init);
-                return SetRange(varDecl, start.Range, semi.Range);
+                return SetRange(varDecl, start, semi);
             }
 
             // Simple identifier logic (no commas allowed, multiple variables not supported by current AST)
@@ -876,25 +1077,25 @@ namespace AuroraScript.Compiler.Analyzer
                 initializer = this.ParseExpression(0);
             }
 
-            var semiToken = this.Lexer.NextOfKind(Symbols.PT_SEMICOLON);
+            var semiRange = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
 
             var variable = new VariableDeclaration(access, isConst, varName, initializer);
-            return SetRange(variable, start.Range, (semiToken?.Range ?? initializer?.Range ?? varName.Range));
+            return SetRange(variable, start, semiRange);
         }
 
         private Statement ParseEnumDeclaration(MemberAccess access)
         {
-            var start = this.Lexer.NextOfKind(Symbols.KW_ENUM);
+            var start = this.Lexer.NextRangeOfKind(Symbols.KW_ENUM);
             var enumName = this.Lexer.NextOfKind<IdentifierToken>();
             var elements = this.ParseEnumBody();
             var enumDecl = new EnumDeclaration() { Elements = elements, Identifier = enumName, Access = access };
-            return SetRange(enumDecl, start.Range, this.Lexer.Previous().Range);
+            return SetRange(enumDecl, start, this.Lexer.PreviousRange(1));
         }
 
         private List<EnumElement> ParseEnumBody()
         {
-            this.Lexer.NextOfKind(Symbols.PT_LEFTBRACE);
-            var result = new List<EnumElement>();
+            this.Lexer.Expect(Symbols.PT_LEFTBRACE);
+            var result = new List<EnumElement>(4);
             var elementValue = 0;
             while (true)
             {
@@ -903,30 +1104,21 @@ namespace AuroraScript.Compiler.Analyzer
                 if (this.Lexer.TestNext(Symbols.OP_ASSIGNMENT))
                 {
                     var token = this.Lexer.NextOfKind<ValueToken>();
-                    if (token.Type != Tokens.ValueType.Number) throw new AuroraParseException(this.Lexer.FullPath, token, "Enumeration types only apply to integers");
-                    elementValue = Int32.Parse(token.Value);
+                    if (token is not NumberToken numberToken) throw new AuroraParseException(this.Lexer.FullPath, token, "Enumeration types only apply to integers");
+                    elementValue = checked((int)numberToken.NumberValue);
                 }
                 var enumElement = new EnumElement() { Name = elementName, Value = elementValue };
                 result.Add(enumElement);
                 elementValue++;
                 this.Lexer.TestNext(Symbols.PT_COMMA);
             }
-            this.Lexer.NextOfKind(Symbols.PT_RIGHTBRACE);
+            this.Lexer.Expect(Symbols.PT_RIGHTBRACE);
             return result;
         }
 
         // Helpers Needed
         private Statement OptimizeStatement(Statement statement)
         {
-            //var node = statement;
-            //var parent = statement.Parent; // Parent logic normally managed by AST add, but statement here might be fresh?
-            //                               // Original: "var parent = statement.Parent;"
-            //while (node is BlockStatement block && block.Length == 1 && block.Functions.Count == 0)
-            //{
-            //    node = (Statement)block.ChildNodes.First();
-            //    node.Remove(); // Detach from block
-            //    if (parent != null) parent.AddNode(node);
-            //}
             return statement;
         }
 
@@ -945,25 +1137,25 @@ namespace AuroraScript.Compiler.Analyzer
         {
             using (scopeStack.Scope(ScopeType.FOR))
             {
-                var forToken = this.Lexer.NextOfKind(Symbols.KW_FOR);
-                this.Lexer.NextOfKind(Symbols.PT_LEFTPARENTHESIS);
+                var forRange = this.Lexer.NextRangeOfKind(Symbols.KW_FOR);
+                this.Lexer.Expect(Symbols.PT_LEFTPARENTHESIS);
                 Statement body = null;
                 // Branch 1: `for (var x ...)`
                 if (this.Lexer.TestSymbol(Symbols.KW_VAR))
                 {
 
                     var snapshot = this.Lexer.CreateSnapshot();
-                    var start = this.Lexer.Next(); // var
+                    var start = this.Lexer.NextRangeOfKind(Symbols.KW_VAR);
                     var idToken = this.Lexer.NextOfKind<IdentifierToken>();
                     if (this.Lexer.TestNext(Symbols.OP_IN))
                     {
                         // Case: `for (var x in y)`
                         this.Lexer.RestoreSnapshot(snapshot);
-                        this.Lexer.Next(); // var
+                        this.Lexer.Expect(Symbols.KW_VAR);
                         var varName = this.Lexer.NextOfKind<IdentifierToken>();
-                        this.Lexer.Next(); // in
+                        this.Lexer.Expect(Symbols.OP_IN);
                         var right = ParseExpression(0);
-                        this.Lexer.NextOfKind(Symbols.PT_RIGHTPARENTHESIS);
+                        this.Lexer.Expect(Symbols.PT_RIGHTPARENTHESIS);
 
                         var variable = new VariableDeclaration(MemberAccess.Internal, false, varName, null);
                         var inExp = new InExpression(Operator.In, new NameExpression(varName), right);
@@ -972,8 +1164,8 @@ namespace AuroraScript.Compiler.Analyzer
 
 
                         body = ParseStatement();
-                        var forStmt = new ForInStatement(SetRange(variable, start.Range, varName.Range), inExp, body);
-                        return SetRange(forStmt, forToken.Range, (body?.Range ?? right.Range));
+                        var forStmt = new ForInStatement(SetRange(variable, start, varName.Range), inExp, body);
+                        return SetRange(forStmt, forRange, (body?.Range ?? right.Range));
                     }
                     else
                     {
@@ -982,85 +1174,80 @@ namespace AuroraScript.Compiler.Analyzer
                         var initializer = ParseStatement(); // Parses `var x = 0;`
 
                         var condition = ParseExpression(0);
-                        this.Lexer.NextOfKind(Symbols.PT_SEMICOLON);
+                        this.Lexer.Expect(Symbols.PT_SEMICOLON);
 
                         var increment = ParseExpression(0);
-                        this.Lexer.NextOfKind(Symbols.PT_RIGHTPARENTHESIS);
+                        this.Lexer.Expect(Symbols.PT_RIGHTPARENTHESIS);
 
                         body = ParseStatement();
                         var forStmt = new ForStatement(condition, initializer, increment, body);
-                        return SetRange(forStmt, forToken.Range, (body?.Range ?? increment.Range));
+                        return SetRange(forStmt, forRange, (body?.Range ?? increment.Range));
                     }
                 }
 
-                var startToken = forToken;
+                var startRange = forRange;
                 // Branch 2: `for (x ...)`
                 var exp = ParseExpression(0);
                 if (exp is InExpression inExpr)
                 {
                     // Case: `for (x in y)`
-                    this.Lexer.NextOfKind(Symbols.PT_RIGHTPARENTHESIS);
+                    this.Lexer.Expect(Symbols.PT_RIGHTPARENTHESIS);
                     body = ParseStatement();
                     var forStmt = new ForInStatement(null, inExpr, body);
-                    return SetRange(forStmt, startToken.Range, (body?.Range ?? inExpr.Range));
+                    return SetRange(forStmt, startRange, (body?.Range ?? inExpr.Range));
                 }
 
                 // Case: `for (x = 0; ...)`
-                this.Lexer.NextOfKind(Symbols.PT_SEMICOLON);
+                this.Lexer.Expect(Symbols.PT_SEMICOLON);
                 var condExpr = ParseExpression(0);
-                this.Lexer.NextOfKind(Symbols.PT_SEMICOLON);
+                this.Lexer.Expect(Symbols.PT_SEMICOLON);
                 var incExpr = ParseExpression(0);
-                this.Lexer.NextOfKind(Symbols.PT_RIGHTPARENTHESIS);
+                this.Lexer.Expect(Symbols.PT_RIGHTPARENTHESIS);
 
                 body = ParseStatement();
                 var forStmtLoop = new ForStatement(condExpr, exp, incExpr, body);
-                return SetRange(forStmtLoop, startToken.Range, (body?.Range ?? incExpr.Range));
+                return SetRange(forStmtLoop, startRange, (body?.Range ?? incExpr.Range));
             }
         }
 
         private Statement ParseWhileBlock()
         {
-            var token = this.Lexer.NextOfKind(Symbols.KW_WHILE);
-            this.Lexer.NextOfKind(Symbols.PT_LEFTPARENTHESIS);
+            var range = this.Lexer.NextRangeOfKind(Symbols.KW_WHILE);
+            this.Lexer.Expect(Symbols.PT_LEFTPARENTHESIS);
             var condition = this.ParseExpression(0);
-            this.Lexer.NextOfKind(Symbols.PT_RIGHTPARENTHESIS);
+            this.Lexer.Expect(Symbols.PT_RIGHTPARENTHESIS);
             var body = this.ParseStatement();
-            // if (body == null) throw new AuroraParseException(this.Lexer.FullPath, token, "while body statement should not be empty");
-            // Original parser throws? Code viewer says: "if (body == null) throw..."
-            if (body == null) throw new AuroraParseException(this.Lexer.FullPath, token, "while body statement should not be empty");
-            return SetRange(new WhileStatement(condition, body), token.Range, body.Range);
+            if (body == null) throw new AuroraParseException(this.Lexer.FullPath, range, "while body statement should not be empty");
+            return SetRange(new WhileStatement(condition, body), range, body.Range);
         }
 
 
 
         private Statement ParseIfBlock()
         {
-            var token = this.Lexer.NextOfKind(Symbols.KW_IF);
-            this.Lexer.NextOfKind(Symbols.PT_LEFTPARENTHESIS);
+            var range = this.Lexer.NextRangeOfKind(Symbols.KW_IF);
+            this.Lexer.Expect(Symbols.PT_LEFTPARENTHESIS);
             var condition = this.ParseExpression(0);
-            this.Lexer.NextOfKind(Symbols.PT_RIGHTPARENTHESIS);
+            this.Lexer.Expect(Symbols.PT_RIGHTPARENTHESIS);
 
             var body = this.ParseStatement();
-            if (body == null) throw new AuroraParseException(this.Lexer.FullPath, token, "if body statement should not be empty");
+            if (body == null) throw new AuroraParseException(this.Lexer.FullPath, range, "if body statement should not be empty");
 
             Statement elseStatement = null;
-            if (this.Lexer.LookAtHead().Symbol == Symbols.KW_ELSE)
+            if (this.Lexer.TestSymbol(Symbols.KW_ELSE))
             {
                 elseStatement = this.ParseElseBlock();
             }
 
-            return SetRange(new IfStatement(condition, body, elseStatement), token.Range, (elseStatement ?? body).Range);
+            return SetRange(new IfStatement(condition, body, elseStatement), range, (elseStatement ?? body).Range);
         }
 
         private Statement ParseElseBlock()
         {
-            this.Lexer.NextOfKind(Symbols.KW_ELSE);
+            this.Lexer.Expect(Symbols.KW_ELSE);
             // If next is IF, standard parse.
             if (this.Lexer.TestSymbol(Symbols.KW_IF))
             {
-                // "else if" is just an IfStatement inside the else.
-                // Original parser wraps it in Block?
-                // "BlockStatement block = new... block.AddNode(ParseIfBlock...)"
                 var block = new BlockStatement();
                 block.AddNode(ParseIfBlock());
                 return OptimizeStatement(block);
@@ -1077,72 +1264,72 @@ namespace AuroraScript.Compiler.Analyzer
 
         private TryStatement ParseTryStatement()
         {
-            var token = this.Lexer.NextOfKind(Symbols.KW_TRY);
+            var range = this.Lexer.NextRangeOfKind(Symbols.KW_TRY);
 
             var body = this.ParseBlock();
             string catchVar = null;
             Statement catchBody = null;
             Statement finallyBody = null;
 
-            if (this.Lexer.LookAtHead().Symbol == Symbols.KW_CATCH)
+            if (this.Lexer.TestSymbol(Symbols.KW_CATCH))
             {
-                this.Lexer.NextOfKind(Symbols.KW_CATCH);
-                if (this.Lexer.LookAtHead().Symbol == Symbols.PT_LEFTPARENTHESIS)
+                this.Lexer.Expect(Symbols.KW_CATCH);
+                if (this.Lexer.TestSymbol(Symbols.PT_LEFTPARENTHESIS))
                 {
-                    this.Lexer.NextOfKind(Symbols.PT_LEFTPARENTHESIS);
+                    this.Lexer.Expect(Symbols.PT_LEFTPARENTHESIS);
                     var catchToken = this.Lexer.Next();
                     catchVar = catchToken.Value;
-                    this.Lexer.NextOfKind(Symbols.PT_RIGHTPARENTHESIS);
+                    this.Lexer.Expect(Symbols.PT_RIGHTPARENTHESIS);
                 }
                 catchBody = this.ParseBlock();
             }
 
-            if (this.Lexer.LookAtHead().Symbol == Symbols.KW_FINALLY)
+            if (this.Lexer.TestSymbol(Symbols.KW_FINALLY))
             {
-                this.Lexer.NextOfKind(Symbols.KW_FINALLY);
+                this.Lexer.Expect(Symbols.KW_FINALLY);
                 finallyBody = this.ParseBlock();
             }
 
-            return SetRange(new TryStatement(body, catchVar, catchBody, finallyBody), token.Range, (finallyBody ?? catchBody ?? body).Range);
+            return SetRange(new TryStatement(body, catchVar, catchBody, finallyBody), range, (finallyBody ?? catchBody ?? body).Range);
         }
 
         private ThrowStatement ParseThrowStatement()
         {
-            var token = this.Lexer.NextOfKind(Symbols.KW_THROW);
+            var range = this.Lexer.NextRangeOfKind(Symbols.KW_THROW);
 
             var exp = this.ParseExpression(0);
-            var semi = this.Lexer.NextOfKind(Symbols.PT_SEMICOLON);
+            var semi = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
 
-            return SetRange(new ThrowStatement(exp), token.Range, (semi != null ? semi.Range : exp.Range));
+            return SetRange(new ThrowStatement(exp), range, semi);
         }
 
         private Statement ParseContinueStatement()
         {
-            var token = this.Lexer.NextOfKind(Symbols.KW_CONTINUE);
-            var semi = this.Lexer.NextOfKind(Symbols.PT_SEMICOLON);
-            return SetRange(new ContinueStatement(), token.Range, semi.Range);
+            var range = this.Lexer.NextRangeOfKind(Symbols.KW_CONTINUE);
+            var semi = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
+            return SetRange(new ContinueStatement(), range, semi);
         }
 
         private Statement ParseYieldStatement()
         {
-            var token = this.Lexer.NextOfKind(Symbols.KW_YIELD);
-            var semi = this.Lexer.NextOfKind(Symbols.PT_SEMICOLON);
-            return SetRange(new YieldStatement(), token.Range, semi.Range);
+            var range = this.Lexer.NextRangeOfKind(Symbols.KW_YIELD);
+            var semi = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
+            return SetRange(new YieldStatement(), range, semi);
         }
 
         private Statement ParseBreakStatement()
         {
-            var token = this.Lexer.NextOfKind(Symbols.KW_BREAK);
-            var semi = this.Lexer.NextOfKind(Symbols.PT_SEMICOLON);
-            return SetRange(new BreakStatement(), token.Range, semi.Range);
+            var range = this.Lexer.NextRangeOfKind(Symbols.KW_BREAK);
+            var semi = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
+            return SetRange(new BreakStatement(), range, semi);
         }
 
 
         private Statement ParseDebuggerStatement()
         {
-            var token = this.Lexer.NextOfKind(Symbols.KW_DEBUGGER);
-            var semi = this.Lexer.NextOfKind(Symbols.PT_SEMICOLON);
-            return SetRange(new DebuggerStatement(), token.Range, semi.Range);
+            var range = this.Lexer.NextRangeOfKind(Symbols.KW_DEBUGGER);
+            var semi = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
+            return SetRange(new DebuggerStatement(), range, semi);
         }
 
 
@@ -1150,32 +1337,36 @@ namespace AuroraScript.Compiler.Analyzer
 
         private Statement ParseReturnStatement()
         {
-            var token = this.Lexer.NextOfKind(Symbols.KW_RETURN);
+            var range = this.Lexer.NextRangeOfKind(Symbols.KW_RETURN);
             // Check if next is ; (void return)
             if (this.Lexer.TestSymbol(Symbols.PT_SEMICOLON))
             {
-                var semi = this.Lexer.Next();
-                return SetRange(new ReturnStatement(null), token.Range, semi.Range);
+                var semi = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
+                return SetRange(new ReturnStatement(null), range, semi);
             }
             var exp = this.ParseExpression(0);
-            var endSemi = this.Lexer.NextOfKind(Symbols.PT_SEMICOLON);
-            return SetRange(new ReturnStatement(exp), token.Range, endSemi.Range);
+            var endSemi = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
+            return SetRange(new ReturnStatement(exp), range, endSemi);
         }
 
         private Statement ParseDeleteStatement()
         {
-            var token = this.Lexer.NextOfKind(Symbols.KW_DELETE);
+            var range = this.Lexer.NextRangeOfKind(Symbols.KW_DELETE);
             var exp = this.ParseExpression(0);
-            var semi = this.Lexer.NextOfKind(Symbols.PT_SEMICOLON);
-            return SetRange(new DeleteStatement(exp), token.Range, (semi?.Range ?? exp.Range));
+            var semi = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
+            return SetRange(new DeleteStatement(exp), range, semi);
         }
         private Expression ParseObjectConstructor()
         {
-            var token = this.Lexer.NextOfKind(Symbols.PT_LEFTBRACE);
+            return ParseObjectConstructor(this.Lexer.NextRangeOfKind(Symbols.PT_LEFTBRACE));
+        }
+
+        private Expression ParseObjectConstructor(SourceSpan token)
+        {
             var constructExpression = new MapExpression(Operator.ObjectLiteral);
             while (true)
             {
-                if (this.Lexer.TestAtHead<EndOfFileToken>()) throw new AuroraParseException(this.Lexer.FullPath, this.Lexer.LookAtHead(), "Unexpected end of file in object constructor");
+                if (this.Lexer.IsAtEnd) throw new AuroraParseException(this.Lexer.FullPath, this.Lexer.LookAtHead(), "Unexpected end of file in object constructor");
                 if (this.Lexer.TestSymbol(Symbols.PT_RIGHTBRACE)) break;
 
                 // Spread ...
@@ -1218,17 +1409,21 @@ namespace AuroraScript.Compiler.Analyzer
                     if (this.Lexer.TestSymbol(Symbols.PT_RIGHTBRACE)) break;
                 }
             }
-            var rightBrace = this.Lexer.NextOfKind(Symbols.PT_RIGHTBRACE);
-            return SetRange(constructExpression, token.Range, rightBrace.Range);
+            var rightBrace = this.Lexer.NextRangeOfKind(Symbols.PT_RIGHTBRACE);
+            return SetRange(constructExpression, token, rightBrace);
         }
 
-        private List<ParameterDeclaration> ParseFunctionArguments()
+        private IReadOnlyList<ParameterDeclaration> ParseFunctionArguments()
         {
-            var arguments = new List<ParameterDeclaration>();
+            if (this.Lexer.TestSymbol(Symbols.PT_RIGHTPARENTHESIS))
+            {
+                this.Lexer.Expect(Symbols.PT_RIGHTPARENTHESIS);
+                return Array.Empty<ParameterDeclaration>();
+            }
+
+            var arguments = new List<ParameterDeclaration>(4);
             while (true)
             {
-                if (this.Lexer.TestSymbol(Symbols.PT_RIGHTPARENTHESIS)) break;
-
                 // Check for spread operator
                 bool isSpread = this.Lexer.TestNext(Symbols.OP_SPREAD);
 
@@ -1245,9 +1440,9 @@ namespace AuroraScript.Compiler.Analyzer
                 arguments.Add(param);
 
                 if (this.Lexer.TestSymbol(Symbols.PT_RIGHTPARENTHESIS)) break;
-                this.Lexer.NextOfKind(Symbols.PT_COMMA);
+                this.Lexer.Expect(Symbols.PT_COMMA);
             }
-            this.Lexer.NextOfKind(Symbols.PT_RIGHTPARENTHESIS);
+            this.Lexer.Expect(Symbols.PT_RIGHTPARENTHESIS);
             return arguments;
         }
 
@@ -1256,13 +1451,14 @@ namespace AuroraScript.Compiler.Analyzer
         {
             // Left is arguments.
             // Needs to be converted to ParameterDeclarations.
-            var args = new List<ParameterDeclaration>();
+            var args = new List<ParameterDeclaration>(4);
 
             if (left is GroupExpression group)
             {
                 // Extract args from group
-                foreach (var node in group.ChildNodes)
+                for (int i = 0; i < group.Length; i++)
                 {
+                    var node = group[i];
                     if (node is NameExpression name)
                     {
                         args.Add(new ParameterDeclaration((byte)args.Count, name.Identifier, null));
@@ -1280,16 +1476,16 @@ namespace AuroraScript.Compiler.Analyzer
             }
 
             // Ensure unique name
-            var position = this.Lexer.LookAtHead();
-            var nameStr = "lambda_" + position.LineNumber + "_" + position.ColumnNumber;
-            var nameToken = new IdentifierToken() { Value = nameStr, LineNumber = position.LineNumber };
+            var position = this.Lexer.PeekRange();
+            var nameStr = "lambda_" + position.StartLine + "_" + position.StartColumn;
+            var nameToken = new IdentifierToken() { Value = nameStr, LineNumber = position.StartLine };
 
             // Parse Body
             // Lambda body can be Block or Expression.
             // `=> { ... }` or `=> expr`
 
             Statement bodyStmt = null;
-            if (this.Lexer.LookAtHead().Symbol == Symbols.PT_LEFTBRACE)
+            if (this.Lexer.TestSymbol(Symbols.PT_LEFTBRACE))
             {
                 using (scopeStack.Scope(ScopeType.FUNCTION)) bodyStmt = ParseBlock(true); // true = isFunction
             }
@@ -1300,12 +1496,6 @@ namespace AuroraScript.Compiler.Analyzer
                 {
                     var expr = ParseExpression(0);
                     bodyStmt = new ReturnStatement(expr);
-                    // Need wrapping Block? FunctionDeclaration expects Body as BlockStatement?
-                    // Original: "var declaration = new FunctionDeclaration(..., body, flags);"
-                    // Ctor: public FunctionDeclaration(..., Statement body, ...)
-                    // So single statement is fine?
-                    // But `((BlockStatement)body).IsFunction = true;` implies it casts.
-                    // So I better wrap it.
                     var block = new BlockStatement();
                     block.IsFunction = true;
                     block.AddNode(bodyStmt);
@@ -1361,15 +1551,7 @@ namespace AuroraScript.Compiler.Analyzer
 
         private void SetSourceRecursive(AstNode node)
         {
-            if (node == null) return;
-            if (string.IsNullOrEmpty(node.FileName))
-            {
-                node.Range.SetFileName(this.Lexer.FullPath);
-            }
-            foreach (var child in node.ChildNodes)
-            {
-                SetSourceRecursive(child);
-            }
+            _sourceFileVisitor.Apply(node, this.Lexer.FullPath);
         }
 
         private SourceSpan MergeRanges(SourceSpan start, SourceSpan end)
@@ -1438,7 +1620,7 @@ namespace AuroraScript.Compiler.Analyzer
             }
             else if (node is MapExpression map)
             {
-                foreach (var child in map.ChildNodes) FixRange(child, range);
+                for (int i = 0; i < map.Length; i++) FixRange(map[i], range);
             }
             else if (node is MapKeyValueExpression kv)
             {

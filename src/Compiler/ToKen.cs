@@ -24,10 +24,16 @@ namespace AuroraScript.Compiler
         /// <summary>
         /// Gets the literal string value of the token as it appeared in the source code.
         /// </summary>
-        public string Value
+        public virtual string Value
         {
             get;
             internal set;
+        }
+
+        internal int NameId
+        {
+            get;
+            set;
         }
 
 

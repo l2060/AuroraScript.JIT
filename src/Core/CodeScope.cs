@@ -1,5 +1,7 @@
 ﻿using AuroraScript.Compiler.Ast;
+using AuroraScript.Compiler;
 using AuroraScript.Compiler.Ast.Expressions;
+using System;
 using System.Collections.Generic;
 
 namespace AuroraScript.Core
@@ -28,19 +30,27 @@ namespace AuroraScript.Core
         /// Initializes a new instance of the <see cref="DeclareObject"/> class.
         /// </summary>
         /// <param name="name">The name of the declaration.</param>
+        /// <param name="nameId">The lexer-local interned identifier id.</param>
         /// <param name="type">The type of declaration.</param>
         /// <param name="access">The member access level.</param>
         /// <param name="variableNode">The associated AST node, if any.</param>
-        public DeclareObject(string name, DeclareType type, MemberAccess access, VariableDeclaration variableNode = null)
+        public DeclareObject(string name, int nameId, DeclareType type, MemberAccess access, VariableDeclaration variableNode = null)
         {
             Name = name;
+            NameId = nameId;
             Type = type;
             Access = access;
             VariableNode = variableNode;
         }
 
+        public DeclareObject(string name, DeclareType type, MemberAccess access, VariableDeclaration variableNode = null)
+            : this(name, 0, type, access, variableNode)
+        {
+        }
+
         /// <summary> The name of the declaration. </summary>
         public readonly string Name;
+        public readonly int NameId;
         /// <summary> The type of the declaration (Property, Variable, or Global). </summary>
         public readonly DeclareType Type;
         /// <summary> The index of the variable (e.g., in a local variable table). </summary>
@@ -77,7 +87,8 @@ namespace AuroraScript.Core
         public int ScopeDepth { get; private set; } = 0;
 
         /// <summary> The list of variables declared directly in this scope. </summary>
-        public readonly List<DeclareObject> Variables = new();
+        private List<DeclareObject> _variables;
+        private Dictionary<string, DeclareObject> _globalFallbacks;
 
         /// <summary> Gets the type of this scope. </summary>
         public ScopeType ScopeType { get; private set; }
@@ -123,11 +134,23 @@ namespace AuroraScript.Core
         /// <returns>The <see cref="DeclareObject"/> if found; otherwise, null.</returns>
         public DeclareObject FindByNameLocal(string name)
         {
-            for (int i = 0; i < Variables.Count; i++)
+            if (_variables == null) return null;
+            for (int i = 0; i < _variables.Count; i++)
             {
-                if (Variables[i].Name == name) return Variables[i];
+                if (_variables[i].Name == name) return _variables[i];
             }
             return null;
+        }
+
+        public DeclareObject FindByNameLocal(string name, int nameId)
+        {
+            if (nameId <= 0) return FindByNameLocal(name);
+            if (_variables == null) return null;
+            for (int i = 0; i < _variables.Count; i++)
+            {
+                if (_variables[i].NameId == nameId) return _variables[i];
+            }
+            return FindByNameLocal(name);
         }
 
         /// <summary>
@@ -144,7 +167,18 @@ namespace AuroraScript.Core
             var existing = FindByNameLocal(name);
             if (existing != null) return existing;
             var declare = new DeclareObject(name, type, access, variableNode);
-            Variables.Add(declare);
+            _variables ??= new List<DeclareObject>(4);
+            _variables.Add(declare);
+            return declare;
+        }
+
+        public DeclareObject Declare(Token name, DeclareType type, MemberAccess access = MemberAccess.Internal, VariableDeclaration variableNode = null)
+        {
+            var existing = FindByNameLocal(name.Value, name.NameId);
+            if (existing != null) return existing;
+            var declare = new DeclareObject(name.Value, name.NameId, type, access, variableNode);
+            _variables ??= new List<DeclareObject>(4);
+            _variables.Add(declare);
             return declare;
         }
 
@@ -168,21 +202,56 @@ namespace AuroraScript.Core
         /// <returns>Always returns true, either with a matched local/parent variable or a fallback Global declaration.</returns>
         public bool Resolve(string name, out DeclareObject value)
         {
-            var val = FindByNameLocal(name);
-            if (val != null)
+            for (var scope = this; scope != null; scope = scope.Parent)
             {
-                value = val;
-                return true;
+                var val = scope.FindByNameLocal(name);
+                if (val != null)
+                {
+                    value = val;
+                    return true;
+                }
+
+                if (scope.Parent == null)
+                {
+                    value = scope.GetOrCreateGlobal(name, 0);
+                    return true;
+                }
             }
 
-            if (Parent != null)
-            {
-                return Parent.Resolve(name, out value);
-            }
-
-            // Fallback: If not found in any scope, treat as a Global property/variable
-            value = new DeclareObject(name, DeclareType.Global, MemberAccess.Export);
+            value = null;
             return true;
+        }
+
+        public bool Resolve(Token name, out DeclareObject value)
+        {
+            for (var scope = this; scope != null; scope = scope.Parent)
+            {
+                var val = scope.FindByNameLocal(name.Value, name.NameId);
+                if (val != null)
+                {
+                    value = val;
+                    return true;
+                }
+
+                if (scope.Parent == null)
+                {
+                    value = scope.GetOrCreateGlobal(name.Value, name.NameId);
+                    return true;
+                }
+            }
+
+            value = null;
+            return true;
+        }
+
+        private DeclareObject GetOrCreateGlobal(string name, int nameId)
+        {
+            _globalFallbacks ??= new Dictionary<string, DeclareObject>(StringComparer.Ordinal);
+            if (_globalFallbacks.TryGetValue(name, out var value)) return value;
+
+            value = new DeclareObject(name, nameId, DeclareType.Global, MemberAccess.Export);
+            _globalFallbacks.Add(name, value);
+            return value;
         }
     }
 }

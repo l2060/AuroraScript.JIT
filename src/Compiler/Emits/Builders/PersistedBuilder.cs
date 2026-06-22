@@ -6,7 +6,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics.SymbolStore;
-using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
@@ -65,7 +64,7 @@ namespace AuroraScript.Compiler.Emits.Builders
         }
 
 
-        public void Serialize(Stream assemblyData)
+        public byte[] Serialize()
         {
             var builder = _assemblyBuilder;
             // 1. 生成元数据（确保只调用一次）
@@ -127,7 +126,7 @@ namespace AuroraScript.Compiler.Emits.Builders
             // 5. 执行序列化（关键：确保 PE 构建器未被重复使用）
             var peBlob = new BlobBuilder();
             peBuilder.Serialize(peBlob);
-            peBlob.WriteContentTo(assemblyData);
+            return peBlob.ToArray();
         }
 
 

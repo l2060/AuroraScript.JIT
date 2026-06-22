@@ -17,7 +17,7 @@ namespace AuroraScript.Compiler.Ast
         public Int32 ColumnNumber => Range.StartColumn;
         public String FileName => Range.FileName;
 
-        protected List<AstNode> _children = new List<AstNode>();
+        protected List<AstNode> _children;
 
 
         /// <summary>
@@ -73,7 +73,7 @@ namespace AuroraScript.Compiler.Ast
         {
             get
             {
-                return this._children.Count;
+                return this._children?.Count ?? 0;
             }
         }
 
@@ -89,7 +89,7 @@ namespace AuroraScript.Compiler.Ast
         {
             get
             {
-                return _children;
+                return _children ?? (IEnumerable<AstNode>)Array.Empty<AstNode>();
             }
         }
 
@@ -97,7 +97,7 @@ namespace AuroraScript.Compiler.Ast
         {
             if (this.Parent != null)
             {
-                this.Parent._children.Remove(this);
+                this.Parent._children?.Remove(this);
                 this.Parent = null;
             }
         }
@@ -105,12 +105,14 @@ namespace AuroraScript.Compiler.Ast
         public virtual void AddNode(AstNode node)
         {
             // if (node.Parent != null) throw new InvalidOperationException();
+            this._children ??= new List<AstNode>();
             this._children.Add(node);
             node.Parent = this;
         }
         public virtual void InsertNode(int index, AstNode node)
         {
             // if (node.Parent != null) throw new InvalidOperationException();
+            this._children ??= new List<AstNode>();
             this._children.Insert(index, node);
             node.Parent = this;
         }

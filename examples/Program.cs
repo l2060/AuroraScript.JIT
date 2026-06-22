@@ -84,7 +84,7 @@ namespace Examples
             //    GC.Collect();
             //    Thread.Sleep(100);
             //}
-            //Console.ReadLine();
+            Console.ReadLine();
         }
 
         /// <summary>

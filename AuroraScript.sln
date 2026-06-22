@@ -20,6 +20,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "optimization-benchmark", "o
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OptimizationBenchmark", "optimization-benchmark\OptimizationBenchmark.csproj", "{45F1D461-739C-4B1C-B9C7-D2E7C7F1F115}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CompilerBenchmark", "compiler-benchmark\CompilerBenchmark.csproj", "{8B16E0A4-0B3C-4D93-8841-42E806B1A189}"
+EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
 EndProject
 Global
@@ -80,6 +82,18 @@ Global
 		{45F1D461-739C-4B1C-B9C7-D2E7C7F1F115}.Release|x64.Build.0 = Release|Any CPU
 		{45F1D461-739C-4B1C-B9C7-D2E7C7F1F115}.Release|x86.ActiveCfg = Release|Any CPU
 		{45F1D461-739C-4B1C-B9C7-D2E7C7F1F115}.Release|x86.Build.0 = Release|Any CPU
+		{8B16E0A4-0B3C-4D93-8841-42E806B1A189}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8B16E0A4-0B3C-4D93-8841-42E806B1A189}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8B16E0A4-0B3C-4D93-8841-42E806B1A189}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{8B16E0A4-0B3C-4D93-8841-42E806B1A189}.Debug|x64.Build.0 = Debug|Any CPU
+		{8B16E0A4-0B3C-4D93-8841-42E806B1A189}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{8B16E0A4-0B3C-4D93-8841-42E806B1A189}.Debug|x86.Build.0 = Debug|Any CPU
+		{8B16E0A4-0B3C-4D93-8841-42E806B1A189}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8B16E0A4-0B3C-4D93-8841-42E806B1A189}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8B16E0A4-0B3C-4D93-8841-42E806B1A189}.Release|x64.ActiveCfg = Release|Any CPU
+		{8B16E0A4-0B3C-4D93-8841-42E806B1A189}.Release|x64.Build.0 = Release|Any CPU
+		{8B16E0A4-0B3C-4D93-8841-42E806B1A189}.Release|x86.ActiveCfg = Release|Any CPU
+		{8B16E0A4-0B3C-4D93-8841-42E806B1A189}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -1,0 +1,12 @@
+Name,SourceBytes,ElapsedMs,AllocatedBytes,Gen0,Gen1,Gen2
+CompileBlock,85,0.113,82314,0,0,0
+FullCompile_MultiModule,315,1.1,208129,0,0,0
+FullCompile_SingleModule,55088,36.041,7381675,12,5,2
+LexerOnly_CommentsWhitespace,111947,1.518,1002397,1,0,0
+LexerOnly_Large,55088,5.711,2187549,2,0,0
+LexerOnly_Small,182,0.047,65861,0,0,0
+LexerOnly_StringsTemplatesRegex,12985,0.305,463373,0,0,0
+LexerOnly_UnicodeIdentifiers,15374,0.453,477277,0,0,0
+ParseOnly_Large,55088,10.861,4023845,4,1,0
+ParseOnly_Small,182,0.095,71637,0,0,0
+ParseOnly_TemplateInterpolation,12985,12.314,9359053,13,3,0

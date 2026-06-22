@@ -323,27 +323,27 @@ namespace AuroraScript.Compiler
         {
             if (node.Include)
             {
-                foreach (var item in node.ChildNodes)
+                for (int i = 0; i < node.Length; i++)
                 {
-                    item.Accept(this);
+                    node[i].Accept(this);
                 }
             }
         }
 
         protected virtual void VisitModule(ModuleDeclaration node)
         {
-            foreach (var module in node.Imports)
+            for (int i = 0; i < node.Imports.Count; i++)
             {
-                module.Accept(this);
+                node.Imports[i].Accept(this);
             }
             VisitBlock(node);
         }
 
         protected virtual void VisitFunction(FunctionDeclaration node)
         {
-            foreach (var statement in node.Parameters)
+            for (int i = 0; i < node.Parameters.Count; i++)
             {
-                statement.Accept(this);
+                node.Parameters[i].Accept(this);
             }
             node.Body?.Accept(this);
         }
@@ -357,13 +357,13 @@ namespace AuroraScript.Compiler
 
         protected virtual void VisitBlock(BlockStatement node)
         {
-            foreach (var statement in node.ChildNodes)
+            for (int i = 0; i < node.Length; i++)
             {
-                statement.Accept(this);
+                node[i].Accept(this);
             }
-            foreach (var func in node.Functions)
+            for (int i = 0; i < node.Functions.Count; i++)
             {
-                func.Accept(this);
+                node.Functions[i].Accept(this);
             }
         }
 
@@ -501,9 +501,9 @@ namespace AuroraScript.Compiler
 
         protected virtual void VisitCallExpression(FunctionCallExpression node)
         {
-            foreach (var arg in node.Arguments)
+            for (int i = 0; i < node.Arguments.Count; i++)
             {
-                arg.Accept(this);
+                node.Arguments[i].Accept(this);
             }
             node.Target.Accept(this);
         }
@@ -520,9 +520,9 @@ namespace AuroraScript.Compiler
 
         protected virtual void VisitArrayExpression(ArrayLiteralExpression node)
         {
-            foreach (var item in node.ChildNodes)
+            for (int i = 0; i < node.Length; i++)
             {
-                item.Accept(this);
+                node[i].Accept(this);
             }
         }
 
@@ -556,8 +556,9 @@ namespace AuroraScript.Compiler
 
         protected virtual void VisitMapExpression(MapExpression node)
         {
-            foreach (var entry in node.ChildNodes)
+            for (int i = 0; i < node.Length; i++)
             {
+                var entry = node[i];
                 if (entry is MapKeyValueExpression property)
                 {
                     property.Value.Accept(this);

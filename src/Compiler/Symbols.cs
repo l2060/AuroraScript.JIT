@@ -1,4 +1,5 @@
 ﻿using AuroraScript.Common;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -321,16 +322,33 @@ namespace AuroraScript.Compiler
         public static readonly Symbols VALUE_NULL = new Symbols("null", SymbolTypes.NullValue);
 
         private static readonly Dictionary<string, Symbols> _SymbolMaps = new Dictionary<string, Symbols>();
+        private static Symbols[] _SymbolsById;
 
         static Symbols()
         {
             var type = typeof(Symbols);
             var fields = type.GetFields(BindingFlags.Public | BindingFlags.Static).Where(f => f.FieldType == typeof(Symbols));
+            var id = 0;
             foreach (var field in fields)
             {
                 var symbol = field.GetValue(null) as Symbols;
+                symbol.Id = id++;
                 _SymbolMaps.Add(symbol.Name, symbol);
             }
+            _SymbolsById = new Symbols[id];
+            foreach (var symbol in _SymbolMaps.Values)
+            {
+                _SymbolsById[symbol.Id] = symbol;
+            }
+        }
+
+        internal static int Count => _SymbolsById.Length;
+
+        internal int Id { get; private set; }
+
+        internal static Symbols FromId(int id)
+        {
+            return id >= 0 && id < _SymbolsById.Length ? _SymbolsById[id] : null;
         }
 
         /// <summary>
@@ -342,6 +360,103 @@ namespace AuroraScript.Compiler
         {
             _SymbolMaps.TryGetValue(name, out var symbol);
             return symbol;
+        }
+
+        internal static Symbols FromSpan(ReadOnlySpan<char> name)
+        {
+            switch (name.Length)
+            {
+                case 1:
+                    switch (name[0])
+                    {
+                        case '@': return PT_METAINFO;
+                        case '{': return PT_LEFTBRACE;
+                        case '}': return PT_RIGHTBRACE;
+                        case '(': return PT_LEFTPARENTHESIS;
+                        case ')': return PT_RIGHTPARENTHESIS;
+                        case '[': return PT_LEFTBRACKET;
+                        case ']': return PT_RIGHTBRACKET;
+                        case ';': return PT_SEMICOLON;
+                        case ',': return PT_COMMA;
+                        case '.': return PT_DOT;
+                        case ':': return PT_COLON;
+                        case '<': return OP_LESSTHAN;
+                        case '>': return OP_GREATERTHAN;
+                        case '+': return OP_PLUS;
+                        case '-': return OP_SUBTRACT;
+                        case '*': return OP_MULTIPLY;
+                        case '/': return OP_DIVIDE;
+                        case '%': return OP_MODULO;
+                        case '&': return OP_BIT_AND;
+                        case '|': return OP_BIT_OR;
+                        case '^': return OP_BIT_XOR;
+                        case '!': return OP_LOGICALNOT;
+                        case '~': return OP_BIT_NOT;
+                        case '?': return OP_CONDITIONAL;
+                        case '=': return OP_ASSIGNMENT;
+                    }
+                    break;
+                case 2:
+                    switch (name[0])
+                    {
+                        case '<': return name[1] == '=' ? OP_LESS_EQUAL : name[1] == '<' ? OP_LEFTSHIFT : null;
+                        case '>': return name[1] == '=' ? OP_GREATER_EQUAL : name[1] == '>' ? OP_SIGNEDRIGHTSHIFT : null;
+                        case '=': return name[1] == '=' ? OP_EQUAL : name[1] == '>' ? PT_LAMBDA : null;
+                        case '!': return name[1] == '=' ? OP_NOT_EQUAL : null;
+                        case '+': return name[1] == '+' ? OP_INCREMENT : name[1] == '=' ? OP_COMPOUNDADD : null;
+                        case '-': return name[1] == '-' ? OP_DECREMENT : name[1] == '=' ? OP_COMPOUNDSUBTRACT : null;
+                        case '*': return name[1] == '=' ? OP_COMPOUNDMULTIPLY : null;
+                        case '/': return name[1] == '=' ? OP_COMPOUNDDIVIDE : null;
+                        case '%': return name[1] == '=' ? OP_COMPOUNDMODULO : null;
+                        case '&': return name[1] == '&' ? OP_LOGICAL_AND : null;
+                        case '|': return name[1] == '|' ? OP_LOGICAL_OR : null;
+                        case 'i': return name[1] == 'f' ? KW_IF : name[1] == 'n' ? OP_IN : null;
+                    }
+                    break;
+                case 3:
+                    if (name[0] == '.' && name[1] == '.' && name[2] == '.') return OP_SPREAD;
+                    if (name[0] == '>' && name[1] == '>' && name[2] == '>') return OP_UNSIGNEDRIGHTSHIFT;
+                    if (name.SequenceEqual("var")) return KW_VAR;
+                    if (name.SequenceEqual("for")) return KW_FOR;
+                    if (name.SequenceEqual("new")) return KW_NEW;
+                    if (name.SequenceEqual("try")) return KW_TRY;
+                    break;
+                case 4:
+                    if (name.SequenceEqual("else")) return KW_ELSE;
+                    if (name.SequenceEqual("enum")) return KW_ENUM;
+                    if (name.SequenceEqual("from")) return KW_FROM;
+                    if (name.SequenceEqual("func")) return KW_FUNC;
+                    if (name.SequenceEqual("true")) return VALUE_TRUE;
+                    if (name.SequenceEqual("null")) return VALUE_NULL;
+                    break;
+                case 5:
+                    if (name.SequenceEqual("const")) return KW_CONST;
+                    if (name.SequenceEqual("while")) return KW_WHILE;
+                    if (name.SequenceEqual("break")) return KW_BREAK;
+                    if (name.SequenceEqual("yield")) return KW_YIELD;
+                    if (name.SequenceEqual("catch")) return KW_CATCH;
+                    if (name.SequenceEqual("throw")) return KW_THROW;
+                    if (name.SequenceEqual("false")) return VALUE_FALSE;
+                    break;
+                case 6:
+                    if (name.SequenceEqual("return")) return KW_RETURN;
+                    if (name.SequenceEqual("delete")) return KW_DELETE;
+                    if (name.SequenceEqual("import")) return KW_IMPORT;
+                    if (name.SequenceEqual("export")) return KW_EXPORT;
+                    if (name.SequenceEqual("typeof")) return OP_TYPEOF;
+                    break;
+                case 7:
+                    if (name.SequenceEqual("declare")) return KW_DECLARE;
+                    if (name.SequenceEqual("include")) return KW_INCLUDE;
+                    if (name.SequenceEqual("finally")) return KW_FINALLY;
+                    break;
+                case 8:
+                    if (name.SequenceEqual("function")) return KW_FUNCTION;
+                    if (name.SequenceEqual("debugger")) return KW_DEBUGGER;
+                    if (name.SequenceEqual("continue")) return KW_CONTINUE;
+                    break;
+            }
+            return null;
         }
 
         /// <summary>

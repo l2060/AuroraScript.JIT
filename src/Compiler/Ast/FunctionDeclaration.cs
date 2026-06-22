@@ -1,5 +1,6 @@
 ﻿using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Ast.Statements;
+using System;
 using System.Collections.Generic;
 
 
@@ -34,16 +35,16 @@ namespace AuroraScript.Compiler.Ast
     internal class FunctionDeclaration : Statement, INamedStatement
     {
 
-        internal FunctionDeclaration(MemberAccess access, Token identifier, List<ParameterDeclaration> parameters, Statement body, FunctionFlags flags)
+        internal FunctionDeclaration(MemberAccess access, Token identifier, IReadOnlyList<ParameterDeclaration> parameters, Statement body, FunctionFlags flags)
         {
             Access = access;
             Name = identifier;
-            Parameters = parameters;
+            Parameters = parameters ?? Array.Empty<ParameterDeclaration>();
             Body = body;
             Flags = flags;
-            if (parameters != null)
+            if (Parameters.Count > 0)
             {
-                foreach (var param in parameters) param.Parent = this;
+                for (int i = 0; i < Parameters.Count; i++) Parameters[i].Parent = this;
             }
             if (body != null) body.Parent = this;
         }
@@ -83,7 +84,7 @@ namespace AuroraScript.Compiler.Ast
         {
             get
             {
-                if (Parameters != null)
+                if (Parameters.Count > 0)
                 {
                     foreach (var param in Parameters) yield return param;
                 }

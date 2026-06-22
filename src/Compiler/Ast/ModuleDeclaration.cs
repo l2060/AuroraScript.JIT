@@ -14,7 +14,9 @@ namespace AuroraScript.Compiler.Ast
         /// </summary>
         public Dictionary<String, Object> MetaInfos = new Dictionary<string, object>();
 
-        public readonly List<ImportDeclaration> Imports = new List<ImportDeclaration>();
+        private List<ImportDeclaration> _imports;
+
+        public IReadOnlyList<ImportDeclaration> Imports => _imports ?? (IReadOnlyList<ImportDeclaration>)Array.Empty<ImportDeclaration>();
 
 
         internal ModuleDeclaration(String directory)
@@ -42,15 +44,18 @@ namespace AuroraScript.Compiler.Ast
 
         public override IEnumerable<AstNode> ChildNodes
         {
-            get
-            {
-                foreach (var node in _children) yield return node;
-            }
+            get { return base.ChildNodes; }
         }
 
         public override void Accept(IAstVisitor visitor)
         {
             visitor.AcceptModule(this);
+        }
+
+        public void AddImport(ImportDeclaration import)
+        {
+            _imports ??= new List<ImportDeclaration>();
+            _imports.Add(import);
         }
 
 

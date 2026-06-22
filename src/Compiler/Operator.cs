@@ -361,26 +361,30 @@ namespace AuroraScript.Compiler
             private set;
         }
 
-        private static readonly Dictionary<string, Operator> _OperatorMaps = new Dictionary<string, Operator>();
+        private static Operator[] _PrefixOperatorMaps;
+        private static Operator[] _LhsOperatorMaps;
 
         static Operator()
         {
             var type = typeof(Operator);
+            _PrefixOperatorMaps = new Operator[Symbols.Count];
+            _LhsOperatorMaps = new Operator[Symbols.Count];
             var fields = type.GetFields(BindingFlags.Public | BindingFlags.Static).Where(f => f.FieldType == typeof(Operator));
             foreach (var field in fields)
             {
                 var @operator = field.GetValue(null) as Operator;
-                var HasLHSOperand = @operator.HasLHSOperand;
-                _OperatorMaps.Add(@operator.Symbol.Name + "," + HasLHSOperand, @operator);
+                var map = @operator.HasLHSOperand ? _LhsOperatorMaps : _PrefixOperatorMaps;
+                map[@operator.Symbol.Id] = @operator;
             }
         }
 
 
         internal static Operator FromSymbols(Symbols symbols, bool hasLHSOperand)
         {
-            var key = symbols.Name + "," + hasLHSOperand;
-            _OperatorMaps.TryGetValue(key, out var symbol);
-            return symbol;
+            if (symbols == null) return null;
+            var map = hasLHSOperand ? _LhsOperatorMaps : _PrefixOperatorMaps;
+            var id = symbols.Id;
+            return (uint)id < (uint)map.Length ? map[id] : null;
         }
 
         public override string ToString()

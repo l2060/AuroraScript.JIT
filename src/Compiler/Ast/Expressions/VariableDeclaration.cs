@@ -118,11 +118,11 @@ namespace AuroraScript.Compiler.Ast.Expressions
                     }
                     else if (value.Kind == ValueKind.Boolean)
                     {
-                        token = new BooleanToken(value.Boolean.ToString());
+                        token = new BooleanToken(value.Boolean);
                     }
                     else if (value.Kind == ValueKind.Number)
                     {
-                        token = new NumberToken(value.Number.ToString());
+                        token = new NumberToken(value.Number);
                     }
                     else if (value.Kind == ValueKind.String)
                     {

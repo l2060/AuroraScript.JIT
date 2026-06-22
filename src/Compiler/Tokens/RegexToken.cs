@@ -7,19 +7,42 @@ namespace AuroraScript.Tokens
         internal RegexToken(String literal) : base()
         {
             Literal = literal ?? throw new ArgumentNullException(nameof(literal));
-            (Pattern, Flags) = SplitLiteral(literal);
             this.Type = ValueType.Regex;
         }
 
-        public String Pattern { get; }
+        private String _pattern;
+        private String _flags;
 
-        public String Flags { get; }
+        public String Pattern
+        {
+            get
+            {
+                EnsureSplit();
+                return _pattern;
+            }
+        }
+
+        public String Flags
+        {
+            get
+            {
+                EnsureSplit();
+                return _flags;
+            }
+        }
 
         public String Literal { get; }
 
         public override string ToValue()
         {
             return Literal;
+        }
+
+        private void EnsureSplit()
+        {
+            if (_pattern != null) return;
+
+            (_pattern, _flags) = SplitLiteral(Literal);
         }
 
         private static (String pattern, String flags) SplitLiteral(String literal)

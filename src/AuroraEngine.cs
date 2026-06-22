@@ -15,9 +15,11 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 [assembly: InternalsVisibleTo("AuroraScript.Generated")]
+[assembly: InternalsVisibleTo("CompilerBenchmark")]
 
 namespace AuroraScript
 {
@@ -162,40 +164,68 @@ namespace AuroraScript
         /// <returns>A task representing the asynchronous build operation.</returns>
         /// <exception cref="AuroraException">Thrown if the base directory is invalid.</exception>
         /// <exception cref="NotImplementedException">Thrown if the compilation mode is not supported.</exception>
-        public async Task BuildAsync(params ScriptSource[] sources)
+        public Task BuildAsync(params ScriptSource[] sources)
         {
-            var _baseDirectory = Path.GetFullPath(Options.BaseDirectory);
-            if (string.IsNullOrEmpty(_baseDirectory) || !Directory.Exists(_baseDirectory))
+            return BuildAsync(CancellationToken.None, sources);
+        }
+
+        /// <summary>
+        /// Compiles and builds the provided script sources into an executable assembly.
+        /// </summary>
+        /// <param name="cancellationToken">Token used to cancel source compilation or output persistence.</param>
+        /// <param name="sources">The script sources to compile.</param>
+        /// <returns>A task representing the asynchronous build operation.</returns>
+        public async Task BuildAsync(CancellationToken cancellationToken, params ScriptSource[] sources)
+        {
+            await _buildLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
             {
-                throw new AuroraException($"The BaseDirectory “{_baseDirectory}” field of the parameter options is not a valid directory");
-            }
-            AbstractCILBuilder builder = Options.CompilationMode switch
-            {
-                CompilationMode.Persistence => new PersistedBuilder(Options),
-                CompilationMode.OnlyRun => new DebuggableBuilder(Options),
-                CompilationMode.Dynamic => new DynamicBuilder(Options),
-                _ => throw new NotImplementedException()
-            };
-            var emitter = new CILEmitter(builder, Options);
-            var compiler = new ScriptCompiler(Options, emitter);
-            await compiler.BuildAsync(sources);
-            if (builder is PersistedBuilder persisted)
-            {
-                using (var pe = new MemoryStream())
+                var baseDirectory = Path.GetFullPath(Options.BaseDirectory);
+                if (string.IsNullOrEmpty(baseDirectory) || !Directory.Exists(baseDirectory))
                 {
-                    persisted.Serialize(pe);
+                    throw new AuroraException($"The BaseDirectory “{baseDirectory}” field of the parameter options is not a valid directory");
+                }
+                AbstractCILBuilder builder = Options.CompilationMode switch
+                {
+                    CompilationMode.Persistence => new PersistedBuilder(Options),
+                    CompilationMode.OnlyRun => new DebuggableBuilder(Options),
+                    CompilationMode.Dynamic => new DynamicBuilder(Options),
+                    _ => throw new NotImplementedException()
+                };
+                var emitter = new CILEmitter(builder, Options);
+                var compiler = new ScriptCompiler(Options, emitter);
+                await compiler.BuildAsync(sources, cancellationToken).ConfigureAwait(false);
+
+                Assembly scriptAssembly = null;
+                MethodInfo entryPoint;
+                if (builder is PersistedBuilder persisted)
+                {
+                    var peImage = persisted.Serialize();
                     if (!string.IsNullOrEmpty(Options.AssemblyOut))
                     {
-                        File.WriteAllBytes(Options.AssemblyOut, pe.ToArray());
+                        await File.WriteAllBytesAsync(Options.AssemblyOut, peImage, cancellationToken).ConfigureAwait(false);
                     }
-                    ScriptAssembly = Assembly.Load(pe.ToArray());
+                    scriptAssembly = Assembly.Load(peImage);
+                    var type = scriptAssembly.GetType(AbstractCILBuilder.EntryPointTypeName);
+                    entryPoint = type?.GetMethod(AbstractCILBuilder.EntryPointMethodName);
                 }
-                var type = ScriptAssembly.GetType(AbstractCILBuilder.EntryPointTypeName);
-                EntryPoint = type?.GetMethod(AbstractCILBuilder.EntryPointMethodName);
+                else
+                {
+                    entryPoint = builder.GetRuntimeEntryPoint();
+                }
+
+                if (entryPoint == null)
+                {
+                    throw new AuroraException("The compiler did not produce a runtime entry point.");
+                }
+
+                var entryPointDelegate = entryPoint.CreateDelegate<ScriptFunctionDelegate>();
+                ScriptAssembly = scriptAssembly;
+                _entryPointDelegate = entryPointDelegate;
             }
-            else
+            finally
             {
-                EntryPoint = builder.GetRuntimeEntryPoint();
+                _buildLock.Release();
             }
         }
 
@@ -302,7 +332,9 @@ namespace AuroraScript
         /// <summary>
         /// The entry point method of the compiled script assembly.
         /// </summary>
-        private MethodInfo EntryPoint;
+        private readonly SemaphoreSlim _buildLock = new(1, 1);
+
+        private ScriptFunctionDelegate _entryPointDelegate;
 
         /// <summary>
         /// The compiled script assembly. Only populated in Persistence mode.
@@ -365,8 +397,8 @@ namespace AuroraScript
             ScriptObject stateObject = ClrMarshaller.ToScript(userState);
             var domain = new ScriptDomain(this, domainGlobal, stateObject);
             var ctx = new ScriptContext(domain);
-            var callDelegate = EntryPoint.CreateDelegate<ScriptFunctionDelegate>();
-            callDelegate(ctx, Span<ScriptDatum>.Empty);
+            var entryPoint = _entryPointDelegate ?? throw new AuroraException("The engine has not been built.");
+            entryPoint(ctx, Span<ScriptDatum>.Empty);
             return domain;
         }
     }

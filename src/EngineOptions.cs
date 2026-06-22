@@ -139,6 +139,12 @@ namespace AuroraScript
         public StringPoolingStrategy StringPooling { get; init; } = StringPoolingStrategy.Intern;
 
         /// <summary>
+        /// Gets the maximum number of modules that may be parsed concurrently.
+        /// A value of zero selects <see cref="Environment.ProcessorCount"/>.
+        /// </summary>
+        public int MaxDegreeOfParallelism { get; init; }
+
+        /// <summary>
         /// Initializes a new instance of the <see cref="EngineOptions"/> record.
         /// </summary>
         public EngineOptions()
@@ -275,6 +281,19 @@ namespace AuroraScript
         public EngineOptions WithStringPooling(StringPoolingStrategy value)
         {
             return this with { StringPooling = value };
+        }
+
+        /// <summary>
+        /// Configures the maximum number of concurrently parsed modules.
+        /// Use zero to select the processor count automatically.
+        /// </summary>
+        public EngineOptions WithMaxDegreeOfParallelism(int value)
+        {
+            if (value < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), "The maximum degree of parallelism cannot be negative.");
+            }
+            return this with { MaxDegreeOfParallelism = value };
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿using AuroraScript.Compiler.Analyzer;
+using AuroraScript.Compiler.Analyzer;
 using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Emits;
 using AuroraScript.Core;
@@ -14,190 +14,379 @@ using System.Threading.Tasks;
 
 namespace AuroraScript.Compiler
 {
-    internal class ScriptCompiler
+    internal sealed class ScriptCompiler
     {
-        private readonly String _baseDirectory;
-        private readonly ConcurrentDictionary<string, ScriptSource> scriptSources = new();
-        private readonly ConcurrentDictionary<ScriptSource, ModuleDeclaration> scriptModules = new();
-        private readonly Channel<ScriptSource> _compileQueue = Channel.CreateUnbounded<ScriptSource>(new UnboundedChannelOptions { SingleReader = false, SingleWriter = false });
-        private readonly CILEmitter codeGenerator;
+        private static readonly StringComparer PathComparer = OperatingSystem.IsWindows()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal;
+
+        private readonly string _baseDirectory;
+        private readonly ConcurrentDictionary<string, ScriptSource> _sourcesByPath = new(PathComparer);
+        private readonly ConcurrentDictionary<string, ModuleDeclaration> _modulesByPath = new(PathComparer);
+        private readonly Channel<ScriptSource> _compileQueue = Channel.CreateUnbounded<ScriptSource>(
+            new UnboundedChannelOptions
+            {
+                SingleReader = false,
+                SingleWriter = false,
+                AllowSynchronousContinuations = false
+            });
+        private readonly ConcurrentQueue<Exception> _exceptions = new();
+        private readonly CILEmitter _codeGenerator;
         private readonly EngineOptions _options;
+        private readonly object _workerLock = new();
+        private Task[] _workers;
+        private CancellationToken _compilationCancellationToken;
+        private int _maxWorkerCount;
+        private int _workerCount;
         private int _pendingModules;
-        private ConcurrentBag<Exception> exceptions = new ConcurrentBag<Exception>();
+        private int _initialRegistrationCompleted;
 
         public ScriptCompiler(EngineOptions options, CILEmitter codeGenerator)
         {
             _options = options;
             _baseDirectory = Path.GetFullPath(_options.BaseDirectory);
-            this.codeGenerator = codeGenerator;
+            _codeGenerator = codeGenerator;
         }
 
-        public async Task BuildAsync(ScriptSource[] sources)
+        public async Task BuildAsync(ScriptSource[] sources, CancellationToken cancellationToken = default)
         {
-            foreach (var source in sources) RegisterCompileModule(source);
-            int workerCount = Math.Min(Environment.ProcessorCount, sources.Length);
-            var workers = Enumerable.Range(0, workerCount).Select(_ => Task.Factory.StartNew(CompileWorker, this)).ToArray();
-            await Task.WhenAll(workers);
-            foreach (var worker in workers) worker.Dispose();
-            if (exceptions.Any())
+            ArgumentNullException.ThrowIfNull(sources);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            for (var i = 0; i < sources.Length; i++)
             {
-                throw new AuroraCompileReportException(exceptions);
+                ArgumentNullException.ThrowIfNull(sources[i]);
+                ValidateCompileModule(sources[i]);
             }
-            var modules = scriptModules.Values.ToArray();
-            // 
+
+            _maxWorkerCount = ResolveWorkerCount();
+            _workers = new Task[_maxWorkerCount];
+            _compilationCancellationToken = cancellationToken;
+
+            for (var i = 0; i < sources.Length; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                RegisterCompileModule(sources[i]);
+            }
+
+            Volatile.Write(ref _initialRegistrationCompleted, 1);
+            if (Volatile.Read(ref _pendingModules) == 0)
+            {
+                _compileQueue.Writer.TryComplete();
+            }
+
+            try
+            {
+                await AwaitWorkersAsync().ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                _compileQueue.Writer.TryComplete();
+                throw;
+            }
+
+            if (!_exceptions.IsEmpty)
+            {
+                var errors = _exceptions.ToArray();
+                Array.Sort(errors, CompareCompileErrors);
+                throw new AuroraCompileReportException(errors);
+            }
+
+            var modules = _modulesByPath.Values.ToArray();
+            Array.Sort(modules, CompareModulesByPath);
             LinkModules(modules);
             ModuleNameConflictCheck(modules);
-            // Sort modules by dependency
             modules = ModuleSort(modules);
-            codeGenerator.Visit(modules);
+            _codeGenerator.Visit(modules);
         }
 
-        private static async Task CompileWorker(Object state)
+        private int ResolveWorkerCount()
         {
-            ScriptCompiler compiler = state as ScriptCompiler;
-            await foreach (var source in compiler._compileQueue.Reader.ReadAllAsync())
+            var configured = _options.MaxDegreeOfParallelism;
+            return configured > 0 ? configured : Math.Max(1, Environment.ProcessorCount);
+        }
+
+        private async Task CompileWorkerAsync(CancellationToken cancellationToken)
+        {
+            await Task.Yield();
+            await foreach (var source in _compileQueue.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
             {
                 try
                 {
-                    compiler.BuildSyntaxTree(source);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    BuildSyntaxTree(source);
                 }
-                catch (OperationCanceledException)
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
-                    break;
+                    throw;
                 }
                 catch (Exception ex)
                 {
-                    compiler.exceptions.Add(new AuroraCompileException(source.FullPath, ex));
-                    break;
+                    _exceptions.Enqueue(new AuroraCompileException(source.FullPath, ex));
                 }
                 finally
                 {
-                    if (Interlocked.Decrement(ref compiler._pendingModules) == 0)
-                    {
-                        compiler._compileQueue.Writer.Complete();
-                    }
+                    CompleteCompileModule();
                 }
             }
         }
-
 
         private void RegisterCompileModule(ScriptSource source)
         {
-            scriptSources.GetOrAdd(source.FullPath, path =>
+            ValidateCompileModule(source);
+            var fullPath = NormalizePath(source.FullPath);
+            if (!_sourcesByPath.TryAdd(fullPath, source))
             {
-                if (source is FileSource && !File.Exists(path))
-                {
-                    throw new AuroraException($"Import file source not found {path}");
-                }
-                Interlocked.Increment(ref _pendingModules);
-                _compileQueue.Writer.TryWrite(source);
-                return source;
-            });
+                return;
+            }
+
+            Interlocked.Increment(ref _pendingModules);
+            if (_compileQueue.Writer.TryWrite(source))
+            {
+                EnsureWorkerCapacity();
+                return;
+            }
+
+            _sourcesByPath.TryRemove(fullPath, out _);
+            CompleteCompileModule();
+            throw new InvalidOperationException("The compilation queue was completed before all modules were registered.");
         }
 
-
-        public void BuildSyntaxTree(ScriptSource source)
+        private void EnsureWorkerCapacity()
         {
-            scriptModules.GetOrAdd(source, (e) =>
+            lock (_workerLock)
             {
-                var lexer = new AuroraLexer(_baseDirectory, source);
-                var parser = new AuroraParser(lexer, _options);
-                var syntaxTree = parser.Parse();
-                foreach (var dep in syntaxTree.Imports)
+                var targetWorkerCount = Math.Min(_maxWorkerCount, Math.Max(1, Volatile.Read(ref _pendingModules)));
+                while (_workerCount < targetWorkerCount)
                 {
-                    RegisterCompileModule(new FileSource(source.BaseDirectory, dep.FullPath, Encoding.UTF8));
+                    _workers[_workerCount++] = CompileWorkerAsync(_compilationCancellationToken);
                 }
-                return syntaxTree;
-            });
-            return;
+            }
         }
 
+        private async Task AwaitWorkersAsync()
+        {
+            Exception workerFailure = null;
+            var observedWorkerCount = 0;
+            while (true)
+            {
+                Task[] snapshot;
+                lock (_workerLock)
+                {
+                    if (observedWorkerCount == _workerCount)
+                    {
+                        break;
+                    }
+                    observedWorkerCount = _workerCount;
+                    snapshot = new Task[observedWorkerCount];
+                    Array.Copy(_workers, snapshot, observedWorkerCount);
+                }
+
+                try
+                {
+                    await Task.WhenAll(snapshot).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    workerFailure ??= ex;
+                }
+            }
+
+            if (workerFailure != null)
+            {
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(workerFailure).Throw();
+            }
+        }
+
+        private void CompleteCompileModule()
+        {
+            if (Interlocked.Decrement(ref _pendingModules) == 0 &&
+                Volatile.Read(ref _initialRegistrationCompleted) != 0)
+            {
+                _compileQueue.Writer.TryComplete();
+            }
+        }
+
+        private static void ValidateCompileModule(ScriptSource source)
+        {
+            var fullPath = NormalizePath(source.FullPath);
+            if (source is FileSource && !File.Exists(fullPath))
+            {
+                throw new AuroraException($"Import file source not found {fullPath}");
+            }
+        }
+
+        private void BuildSyntaxTree(ScriptSource source)
+        {
+            var fullPath = NormalizePath(source.FullPath);
+            var lexer = new AuroraLexer(_baseDirectory, source);
+            var parser = new AuroraParser(lexer, _options);
+            var syntaxTree = parser.Parse();
+
+            if (!_modulesByPath.TryAdd(fullPath, syntaxTree))
+            {
+                throw new InvalidOperationException($"Module '{fullPath}' was parsed more than once.");
+            }
+
+            var dependencyEncoding = source is FileSource fileSource ? fileSource.Encoding : Encoding.UTF8;
+            for (var i = 0; i < syntaxTree.Imports.Count; i++)
+            {
+                var dependency = syntaxTree.Imports[i];
+                RegisterCompileModule(new FileSource(source.BaseDirectory, dependency.FullPath, dependencyEncoding));
+            }
+        }
 
         private void LinkModules(ModuleDeclaration[] modules)
         {
-            foreach (var module in modules)
+            for (var moduleIndex = 0; moduleIndex < modules.Length; moduleIndex++)
             {
-                foreach (var import in module.Imports)
+                var module = modules[moduleIndex];
+                for (var importIndex = 0; importIndex < module.Imports.Count; importIndex++)
                 {
-                    var source = scriptSources[import.FullPath];
-                    import.ModuleName = scriptModules[source].ModuleName;
+                    var import = module.Imports[importIndex];
+                    var dependencyPath = NormalizePath(import.FullPath);
+                    if (!_modulesByPath.TryGetValue(dependencyPath, out var dependency))
+                    {
+                        throw new AuroraException($"Imported module was not compiled: {import.FullPath}");
+                    }
+                    import.ModuleName = dependency.ModuleName;
                 }
             }
         }
-
 
         private static void ModuleNameConflictCheck(ModuleDeclaration[] modules)
         {
-            var conflicts = modules.GroupBy(e => e.ModuleName).Where(g => g.Count() > 1);
-            if (conflicts.Any())
+            var modulesByName = new Dictionary<string, List<ModuleDeclaration>>(modules.Length, StringComparer.Ordinal);
+            for (var i = 0; i < modules.Length; i++)
             {
-                var sb = new StringBuilder("Conflicting source names found:");
-                foreach (var conflict in conflicts)
+                var module = modules[i];
+                if (!modulesByName.TryGetValue(module.ModuleName, out var matchingModules))
                 {
-                    sb.Append($"\nModule '{conflict.Key}' conflict in files:");
-                    foreach (var m in conflict)
-                    {
-                        sb.Append($"\n  - {m.ModulePath}");
-                    }
+                    matchingModules = new List<ModuleDeclaration>(1);
+                    modulesByName.Add(module.ModuleName, matchingModules);
                 }
-                throw new AuroraException(sb.ToString());
+                matchingModules.Add(module);
+            }
+
+            StringBuilder message = null;
+            foreach (var pair in modulesByName)
+            {
+                if (pair.Value.Count < 2)
+                {
+                    continue;
+                }
+
+                message ??= new StringBuilder("Conflicting source names found:");
+                message.Append("\nModule '").Append(pair.Key).Append("' conflict in files:");
+                for (var i = 0; i < pair.Value.Count; i++)
+                {
+                    message.Append("\n  - ").Append(pair.Value[i].ModulePath);
+                }
+            }
+
+            if (message != null)
+            {
+                throw new AuroraException(message.ToString());
             }
         }
 
-        /// <summary>
-        /// kahn modules sort
-        /// </summary>
-        /// <param name="syntaxRefs"></param>
-        /// <returns></returns>
-        private static ModuleDeclaration[] ModuleSort(ModuleDeclaration[] syntaxRefs)
+        private static ModuleDeclaration[] ModuleSort(ModuleDeclaration[] modules)
         {
-            var moduleCount = syntaxRefs.Length;
-            var indexMap = new Dictionary<string, int>(moduleCount);
-            for (int i = 0; i < moduleCount; i++)
+            var moduleCount = modules.Length;
+            if (moduleCount < 2)
             {
-                indexMap[syntaxRefs[i].ModuleName] = i;
+                return modules;
             }
-            var inDegree = new int[moduleCount];
-            var graph = new List<int>[moduleCount];
 
-            for (int i = 0; i < moduleCount; i++)
+            var indexByName = new Dictionary<string, int>(moduleCount, StringComparer.Ordinal);
+            for (var i = 0; i < moduleCount; i++)
             {
-                graph[i] = new List<int>(4);
+                indexByName.Add(modules[i].ModuleName, i);
             }
-            foreach (var moduleRef in syntaxRefs)
+
+            var inDegree = new int[moduleCount];
+            var dependents = new List<int>[moduleCount];
+            for (var i = 0; i < moduleCount; i++)
             {
-                var from = indexMap[moduleRef.ModuleName];
-                foreach (var import in moduleRef.Imports)
+                dependents[i] = new List<int>(4);
+            }
+
+            for (var moduleIndex = 0; moduleIndex < moduleCount; moduleIndex++)
+            {
+                var imports = modules[moduleIndex].Imports;
+                var uniqueDependencies = new HashSet<int>();
+                for (var importIndex = 0; importIndex < imports.Count; importIndex++)
                 {
-                    if (!indexMap.TryGetValue(import.ModuleName, out var to))
+                    if (!indexByName.TryGetValue(imports[importIndex].ModuleName, out var dependencyIndex) ||
+                        !uniqueDependencies.Add(dependencyIndex))
                     {
                         continue;
                     }
-                    graph[to].Add(from);
-                    inDegree[from]++;
+                    dependents[dependencyIndex].Add(moduleIndex);
+                    inDegree[moduleIndex]++;
                 }
             }
-            var queue = new Queue<int>(moduleCount);
-            for (int i = 0; i < moduleCount; i++)
+
+            var ready = new PriorityQueue<int, string>(StringComparer.Ordinal);
+            for (var i = 0; i < moduleCount; i++)
             {
-                if (inDegree[i] == 0) queue.Enqueue(i);
-            }
-            var result = new ModuleDeclaration[moduleCount];
-            int idx = 0;
-            while (queue.Count > 0)
-            {
-                var current = queue.Dequeue();
-                result[idx++] = syntaxRefs[current];
-                foreach (var next in graph[current])
+                if (inDegree[i] == 0)
                 {
-                    if (--inDegree[next] == 0) queue.Enqueue(next);
+                    ready.Enqueue(i, modules[i].ModulePath);
                 }
             }
-            //if (idx != moduleCount)
-            //{
-            //    throw new InvalidOperationException("Detected circular module dependency");
-            //}
-            return idx == moduleCount ? result : result[..idx];
+
+            var result = new ModuleDeclaration[moduleCount];
+            var resultIndex = 0;
+            while (ready.TryDequeue(out var current, out _))
+            {
+                result[resultIndex++] = modules[current];
+                var currentDependents = dependents[current];
+                for (var i = 0; i < currentDependents.Count; i++)
+                {
+                    var dependent = currentDependents[i];
+                    if (--inDegree[dependent] == 0)
+                    {
+                        ready.Enqueue(dependent, modules[dependent].ModulePath);
+                    }
+                }
+            }
+
+            if (resultIndex != moduleCount)
+            {
+                var cycle = new StringBuilder("Circular module dependency detected:");
+                for (var i = 0; i < moduleCount; i++)
+                {
+                    if (inDegree[i] > 0)
+                    {
+                        cycle.Append("\n  - ").Append(modules[i].ModulePath);
+                    }
+                }
+                throw new AuroraException(cycle.ToString());
+            }
+
+            return result;
+        }
+
+        private static string NormalizePath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                throw new AuroraException("Script source paths cannot be empty.");
+            }
+            return Path.GetFullPath(path);
+        }
+
+        private static int CompareModulesByPath(ModuleDeclaration left, ModuleDeclaration right)
+        {
+            return PathComparer.Compare(left.FullPath, right.FullPath);
+        }
+
+        private static int CompareCompileErrors(Exception left, Exception right)
+        {
+            var leftPath = left is AuroraCompileException leftCompile ? leftCompile.ModulePath : left.Message;
+            var rightPath = right is AuroraCompileException rightCompile ? rightCompile.ModulePath : right.Message;
+            return PathComparer.Compare(leftPath, rightPath);
         }
     }
 }

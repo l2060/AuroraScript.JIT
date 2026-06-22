@@ -11,14 +11,11 @@ namespace AuroraScript.Compiler.Ast.Expressions
 
 
 
-        public Expression Expression => (Expression)_children[0];
+        public Expression Expression => _children == null || _children.Count == 0 ? null : (Expression)_children[0];
 
         public override IEnumerable<AstNode> ChildNodes
         {
-            get
-            {
-                foreach (var item in _children) yield return item;
-            }
+            get { return base.ChildNodes; }
         }
 
         public override void Accept(IAstVisitor visitor)

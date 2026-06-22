@@ -51,7 +51,7 @@ namespace AuroraScript.Compiler.Emits
             // 1. Collect Declarations (Pre-pass)
             if (node is FunctionDeclaration func)
             {
-                foreach (var param in func.Parameters) DeclaredVariables.Add(param.Name.Value);
+                for (int i = 0; i < func.Parameters.Count; i++) DeclaredVariables.Add(func.Parameters[i].Name.Value);
                 if (func.Name != null) DeclaredVariables.Add(func.Name.Value);
             }
 
