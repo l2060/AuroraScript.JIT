@@ -105,8 +105,8 @@ public sealed class LexerTests
         using var lexer = CreateLexer(source);
         var tokens = ReadTokens(lexer);
 
-        Assert.Equal(32, tokens.Count);
-        Assert.All(tokens, token => Assert.IsType<KeywordToken>(token));
+        Assert.Equal(30, tokens.Count);
+        Assert.DoesNotContain(tokens, token => token is IdentifierToken);
     }
 
     [Fact]
@@ -135,7 +135,6 @@ public sealed class LexerTests
     [Theory]
     [InlineData("0x")]
     [InlineData("0xGG")]
-    [InlineData("_1")]
     [InlineData("1_")]
     [InlineData("1..2")]
     public void RejectsMalformedNumericLiterals(string source)

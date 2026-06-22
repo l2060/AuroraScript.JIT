@@ -116,7 +116,7 @@ public sealed class ClrInteropTests
         public static int Multiply(int left, int right) => left * right;
     }
 
-    public static class HostOverloads
+    public sealed class HostOverloads
     {
         public static string Select(int value) => "number:" + value;
         public static string Select(string value) => "string:" + value;

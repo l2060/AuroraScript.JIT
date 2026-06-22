@@ -49,7 +49,7 @@ public sealed class RuntimeApiAndErrorTests
 
         Assert.Contains("release failure", error.Message, StringComparison.Ordinal);
         Assert.NotNull(error.StackTrace);
-        Assert.Contains(error.StackTrace, frame => frame.MethodName.Contains("inner", StringComparison.Ordinal));
+        Assert.Contains(error.StackTrace, frame => frame.Method.Contains("inner", StringComparison.Ordinal));
     }
 
     [Theory]

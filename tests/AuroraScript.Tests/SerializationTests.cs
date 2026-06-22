@@ -1,6 +1,7 @@
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Serialization;
 using AuroraScript.Runtime.Types;
+using AuroraScript.Tests.Infrastructure;
 using System;
 using Xunit;
 
