@@ -1397,11 +1397,6 @@ namespace AuroraScript.Compiler.Analyzer
                 finallyBody = this.ParseBlock();
             }
 
-            if (catchBody == null && finallyBody == null)
-            {
-                throw new AuroraParseException(this.Lexer.FullPath, range, "try statement requires catch or finally.");
-            }
-
             return SetRange(new TryStatement(body, catchVar, catchBody, finallyBody), range, (finallyBody ?? catchBody ?? body).Range);
         }
 

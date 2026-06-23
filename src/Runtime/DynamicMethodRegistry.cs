@@ -13,6 +13,16 @@ namespace AuroraScript.Runtime
         private static int _nextId = 0;
         private static readonly ConcurrentDictionary<int, Delegate> _registry = new();
 
+        public static int Reserve()
+        {
+            return Interlocked.Increment(ref _nextId);
+        }
+
+        public static void RegisterReserved(int id, String methodName, Delegate del)
+        {
+            _registry[id] = del;
+        }
+
         /// <summary>
         /// Registers a delegate and returns a unique ID.
         /// </summary>
@@ -63,7 +73,7 @@ namespace AuroraScript.Runtime
 
         private static int Register(String methodName, Delegate del)
         {
-            int id = Interlocked.Increment(ref _nextId);
+            int id = Reserve();
             _registry[id] = del;
             return id;
         }

@@ -21,6 +21,7 @@ using System.Threading.Tasks;
 [assembly: InternalsVisibleTo("AuroraScript.Generated")]
 [assembly: InternalsVisibleTo("Benchmark")]
 [assembly: InternalsVisibleTo("AuroraScript.Tests")]
+[assembly: InternalsVisibleTo("AuroraScript.CompilerBackend.Tests")]
 
 namespace AuroraScript
 {

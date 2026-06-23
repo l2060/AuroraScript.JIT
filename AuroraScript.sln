@@ -18,6 +18,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Benchmark", "benchmark\Benc
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AuroraScript.Tests", "tests\AuroraScript.Tests.csproj", "{E91B7838-4D35-4D55-A28C-22A70DD37182}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AuroraScript.CompilerBackend.Tests", "tests\CompilerBackend\AuroraScript.CompilerBackend.Tests.csproj", "{4E5C802A-E24E-4F75-81A1-8D3668FF1ACB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -40,6 +42,10 @@ Global
 		{E91B7838-4D35-4D55-A28C-22A70DD37182}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E91B7838-4D35-4D55-A28C-22A70DD37182}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{E91B7838-4D35-4D55-A28C-22A70DD37182}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4E5C802A-E24E-4F75-81A1-8D3668FF1ACB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4E5C802A-E24E-4F75-81A1-8D3668FF1ACB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4E5C802A-E24E-4F75-81A1-8D3668FF1ACB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4E5C802A-E24E-4F75-81A1-8D3668FF1ACB}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

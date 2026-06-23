@@ -1,5 +1,6 @@
 using AuroraScript.Runtime.Types;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -583,6 +584,30 @@ namespace AuroraScript.Runtime
             return function.Invoke(ctx, args);
         }
 
+        /// <summary>Invokes a named property with a rented materialized argument buffer.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum InvokePropertyMany(ScriptObject receiver, ScriptContext ctx, string name, ScriptDatum[] args, int count)
+        {
+            try
+            {
+                var span = args.AsSpan(0, count);
+                if (receiver.TryResolveProperty(name, out var property) &&
+                    property.Getter == null &&
+                    property.Value is BondingFunction { Target: null } nativeFunction)
+                {
+                    ScriptDatum result = default;
+                    nativeFunction.DatumMethod.Invoke(ctx, receiver, span, ref result);
+                    return result;
+                }
+                var function = receiver.GetPropertyValue(ctx, name);
+                return function.Invoke(ctx, span);
+            }
+            finally
+            {
+                ReturnArguments(args);
+            }
+        }
+
         /// <summary>Invokes a named zero-argument method without allocating an argument array for native methods.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum InvokeProperty0(ScriptObject receiver, ScriptContext ctx, string name)
@@ -831,6 +856,37 @@ namespace AuroraScript.Runtime
                 return closure.Invoke7(ctx, arg0, arg1, arg2, arg3, arg4, arg5, arg6);
             }
             return function.Invoke(ctx, arg0, arg1, arg2, arg3, arg4, arg5, arg6);
+        }
+
+        /// <summary>Rents a temporary argument buffer for materialized calls.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum[] RentArguments(int count)
+        {
+            return ArrayPool<ScriptDatum>.Shared.Rent(count);
+        }
+
+        /// <summary>Invokes a script object with a rented materialized argument buffer.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum InvokeMany(ScriptObject function, ScriptContext ctx, ScriptDatum[] args, int count)
+        {
+            try
+            {
+                return function.Invoke(ctx, args.AsSpan(0, count));
+            }
+            finally
+            {
+                ReturnArguments(args);
+            }
+        }
+
+        /// <summary>Returns a temporary argument buffer and clears script object references.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void ReturnArguments(ScriptDatum[] args)
+        {
+            if (args != null)
+            {
+                ArrayPool<ScriptDatum>.Shared.Return(args, clearArray: true);
+            }
         }
 
         /// <summary>Creates a direct-call context for a known module-local function.</summary>
@@ -1280,6 +1336,20 @@ namespace AuroraScript.Runtime
             }
             ThrowHelper.ThrowNotConstructor(type?.ToString() ?? "null");
             return default;
+        }
+
+        /// <summary>Creates a new script object with a rented materialized argument buffer.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum NewMany(ScriptObject type, ScriptContext ctx, ScriptDatum[] args, int count)
+        {
+            try
+            {
+                return New(type, ctx, args.AsSpan(0, count));
+            }
+            finally
+            {
+                ReturnArguments(args);
+            }
         }
 
         /// <summary>Creates a new script object with no constructor arguments.</summary>

@@ -95,6 +95,13 @@ namespace AuroraScript
         public bool EnableHotReload { get; init; } = true;
 
         /// <summary>
+        /// Gets a value indicating whether the compiler may emit direct calls for proven
+        /// same-module internal functions. This optimization is disabled by default and
+        /// also requires <see cref="EnableHotReload"/> to be false.
+        /// </summary>
+        public bool EnableModuleDirectCall { get; init; }
+
+        /// <summary>
         /// Gets a value indicating whether obfuscation (confusion) is enabled.
         /// When enabled:
         /// 1. Null, Number, and Boolean constants are hidden.
@@ -190,6 +197,15 @@ namespace AuroraScript
         public EngineOptions WithEnableHotReload(bool value)
         {
             return this with { EnableHotReload = value };
+        }
+
+        /// <summary>
+        /// Sets whether same-module internal direct-call optimization is enabled and returns a new options instance.
+        /// This option has no effect while hot reload is enabled.
+        /// </summary>
+        public EngineOptions WithEnableModuleDirectCall(bool value)
+        {
+            return this with { EnableModuleDirectCall = value };
         }
 
         /// <summary>
