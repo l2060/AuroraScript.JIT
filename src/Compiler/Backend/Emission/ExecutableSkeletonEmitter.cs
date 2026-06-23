@@ -30,11 +30,12 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private readonly EmissionSession _session;
         private readonly ModulePlan _module;
-        private readonly Dictionary<FunctionId, FunctionPlan> _functionsById = new();
-        private readonly Dictionary<FunctionId, ExecutableMethod> _methodsByFunction = new();
+        private readonly FunctionPlan[] _functionsById;
+        private readonly ExecutableMethod[] _methodsByFunction;
         private readonly Stack<Label> _breakLabels = new();
         private readonly Stack<Label> _continueLabels = new();
         private bool _prepared;
+        private bool _forceAllExecutable;
         private FunctionPlan _function;
         private ILGenerator _il;
         private LocalBuilder[] _locals;
@@ -48,13 +49,30 @@ namespace AuroraScript.Compiler.Backend.Emission
             _session = session ?? throw new ArgumentNullException(nameof(session));
             _module = module ?? throw new ArgumentNullException(nameof(module));
 
+            var maxFunctionId = -1;
             for (var i = 0; i < module.Functions.Count; i++)
             {
-                _functionsById[module.Functions[i].Id] = module.Functions[i];
+                var id = module.Functions[i].Id.Value;
+                if (id > maxFunctionId)
+                {
+                    maxFunctionId = id;
+                }
+            }
+
+            _functionsById = maxFunctionId >= 0 ? new FunctionPlan[maxFunctionId + 1] : Array.Empty<FunctionPlan>();
+            _methodsByFunction = maxFunctionId >= 0 ? new ExecutableMethod[maxFunctionId + 1] : Array.Empty<ExecutableMethod>();
+            for (var i = 0; i < module.Functions.Count; i++)
+            {
+                _functionsById[module.Functions[i].Id.Value] = module.Functions[i];
             }
         }
 
         public void Prepare()
+        {
+            Prepare(forceAllExecutable: false);
+        }
+
+        public void Prepare(bool forceAllExecutable)
         {
             if (_prepared)
             {
@@ -62,11 +80,12 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
 
             _prepared = true;
-            var executable = BuildExecutableSet();
+            _forceAllExecutable = forceAllExecutable;
+            var executable = forceAllExecutable ? null : BuildExecutableSet();
             for (var i = 0; i < _module.Functions.Count; i++)
             {
                 var function = _module.Functions[i];
-                if (!executable.Contains(function.Id))
+                if (executable != null && !executable.Contains(function.Id))
                 {
                     continue;
                 }
@@ -82,7 +101,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 var (method, il) = _session.Builder.DefineMethod(_module.Name, methodName, typeof(ScriptDatum), parameterTypes);
                 function.CallConvention = convention;
                 function.Method = method;
-                _methodsByFunction.Add(function.Id, new ExecutableMethod(function, method, il, convention));
+                _methodsByFunction[function.Id.Value] = new ExecutableMethod(function, method, il, convention);
             }
         }
 
@@ -92,10 +111,16 @@ namespace AuroraScript.Compiler.Backend.Emission
             localCount = 0;
             if (!_prepared)
             {
-                Prepare();
+                Prepare(_forceAllExecutable);
             }
 
-            if (!_methodsByFunction.TryGetValue(function.Id, out var executable) || executable.Emitted)
+            if ((uint)function.Id.Value >= (uint)_methodsByFunction.Length)
+            {
+                return false;
+            }
+
+            var executable = _methodsByFunction[function.Id.Value];
+            if (executable == null || executable.Emitted)
             {
                 return false;
             }
@@ -526,7 +551,7 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitFunctionDeclaration(LoweredFunctionDeclarationStatement statement)
         {
-            var function = _functionsById[statement.Function];
+            var function = _functionsById[statement.Function.Value];
             ClosureMaterializer.EmitClosure(_session, _il, function, EmitClosureUpvalue);
             _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromObject);
             EmitStoreLocalFromStack(statement.LocalSlot);
@@ -1111,7 +1136,7 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitLambda(LoweredLambdaExpression expression)
         {
-            var function = _functionsById[expression.Function];
+            var function = _functionsById[expression.Function.Value];
             ClosureMaterializer.EmitClosure(_session, _il, function, EmitClosureUpvalue);
             _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromObject);
         }
@@ -1524,15 +1549,11 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return;
             }
 
-            var skipLabel = _il.DefineLabel();
             _il.Emit(OpCodes.Ldarg_0);
-            _il.Emit(OpCodes.Brfalse, skipLabel);
             var location = ((long)_module.PathHash & 0xffffffffL) |
                 ((long)node.Range.StartLine << 32);
-            _il.Emit(OpCodes.Ldarg_0);
             _il.Emit(OpCodes.Ldc_I8, location);
             _il.Emit(OpCodes.Stfld, RuntimeMetadata.CILContext_Location);
-            _il.MarkLabel(skipLabel);
         }
 
         private bool CanEmitStatement(LoweredStatement statement, IReadOnlySet<FunctionId> executableFunctions)
@@ -1579,7 +1600,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             return statement.LocalSlot.IsValid &&
                 statement.Function.IsValid &&
                 executableFunctions.Contains(statement.Function) &&
-                _functionsById.TryGetValue(statement.Function, out var function) &&
+                TryGetFunction(statement.Function, out var function) &&
                 ClosureMaterializer.CanPlanMaterialize(function, requireName: true);
         }
 
@@ -1970,7 +1991,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             return expression.Function.IsValid &&
                 executableFunctions.Contains(expression.Function) &&
-                _functionsById.TryGetValue(expression.Function, out var function) &&
+                TryGetFunction(expression.Function, out var function) &&
                 ClosureMaterializer.CanPlanMaterialize(function, requireName: false);
         }
 
@@ -2004,8 +2025,8 @@ namespace AuroraScript.Compiler.Backend.Emission
             target = null;
             if (!_session.CompileSession.Capabilities.CanUseModuleDirectCall ||
                 !call.DirectFunction.IsValid ||
-                !_methodsByFunction.ContainsKey(call.DirectFunction) ||
-                !_functionsById.TryGetValue(call.DirectFunction, out var function) ||
+                !HasExecutableMethod(call.DirectFunction) ||
+                !TryGetFunction(call.DirectFunction, out var function) ||
                 !CanUseFastDirectSignature(function))
             {
                 return false;
@@ -2024,7 +2045,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             if (!_session.CompileSession.Capabilities.CanUseModuleDirectCall ||
                 !call.DirectFunction.IsValid ||
                 !executableFunctions.Contains(call.DirectFunction) ||
-                !_functionsById.TryGetValue(call.DirectFunction, out var function) ||
+                !TryGetFunction(call.DirectFunction, out var function) ||
                 !CanUseFastDirectSignature(function))
             {
                 return false;
@@ -2038,7 +2059,27 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             function = null;
             return TryResolveMaterializedFunction(symbolId, null, out function) &&
-                _methodsByFunction.ContainsKey(function.Id);
+                HasExecutableMethod(function.Id);
+        }
+
+        private bool HasExecutableMethod(FunctionId id)
+        {
+            return id.IsValid &&
+                (uint)id.Value < (uint)_methodsByFunction.Length &&
+                _methodsByFunction[id.Value] != null;
+        }
+
+        private bool TryGetFunction(FunctionId id, out FunctionPlan function)
+        {
+            if (id.IsValid &&
+                (uint)id.Value < (uint)_functionsById.Length)
+            {
+                function = _functionsById[id.Value];
+                return function != null;
+            }
+
+            function = null;
+            return false;
         }
 
         private bool TryResolveMaterializedFunction(

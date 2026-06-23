@@ -9,25 +9,28 @@ namespace AuroraScript.Compiler.Backend.Emission
 {
     internal sealed class EmissionSession
     {
-        private readonly Dictionary<DynamicDelegateKey, int> _dynamicDelegateIds = new();
-        private readonly List<DynamicDelegateKey> _pendingDynamicDelegates = new();
+        private Dictionary<DynamicDelegateKey, int> _dynamicDelegateIds;
+        private List<DynamicDelegateKey> _pendingDynamicDelegates;
 
         public EmissionSession(
             CompileSession compileSession,
             AbstractCILBuilder builder,
             bool emitExecutableSkeletons = false,
-            bool forceModuleDefinitions = false)
+            bool forceModuleDefinitions = false,
+            bool collectDiagnostics = false)
         {
             CompileSession = compileSession ?? throw new ArgumentNullException(nameof(compileSession));
             Builder = builder ?? throw new ArgumentNullException(nameof(builder));
             EmitExecutableSkeletons = emitExecutableSkeletons;
             ForceModuleDefinitions = forceModuleDefinitions;
+            CollectDiagnostics = collectDiagnostics;
         }
 
         public CompileSession CompileSession { get; }
         public AbstractCILBuilder Builder { get; }
         public bool EmitExecutableSkeletons { get; }
         public bool ForceModuleDefinitions { get; }
+        public bool CollectDiagnostics { get; }
         public EngineOptions Options => CompileSession.Options;
 
         public EmissionReport Emit()
@@ -45,22 +48,40 @@ namespace AuroraScript.Compiler.Backend.Emission
             return new EmissionReport(results);
         }
 
+        public void EmitAll()
+        {
+            var modules = CompileSession.Modules ?? Array.Empty<ModulePlan>();
+            var moduleEmitter = new ModuleEmitter(this);
+            for (var i = 0; i < modules.Length; i++)
+            {
+                CompileSession.CancellationToken.ThrowIfCancellationRequested();
+                moduleEmitter.EmitWithoutReport(modules[i]);
+            }
+
+            CompleteDynamicDelegates();
+        }
+
         internal int GetDynamicDelegateId(DynamicMethod method, FunctionCallConvention convention)
         {
             var key = new DynamicDelegateKey(method, convention);
-            if (_dynamicDelegateIds.TryGetValue(key, out var id))
+            if (_dynamicDelegateIds != null && _dynamicDelegateIds.TryGetValue(key, out var id))
             {
                 return id;
             }
 
             id = DynamicMethodRegistry.Reserve();
-            _dynamicDelegateIds.Add(key, id);
-            _pendingDynamicDelegates.Add(key);
+            (_dynamicDelegateIds ??= new Dictionary<DynamicDelegateKey, int>()).Add(key, id);
+            (_pendingDynamicDelegates ??= new List<DynamicDelegateKey>()).Add(key);
             return id;
         }
 
-        private void CompleteDynamicDelegates()
+        internal void CompleteDynamicDelegates()
         {
+            if (_pendingDynamicDelegates == null)
+            {
+                return;
+            }
+
             for (var i = 0; i < _pendingDynamicDelegates.Count; i++)
             {
                 var key = _pendingDynamicDelegates[i];

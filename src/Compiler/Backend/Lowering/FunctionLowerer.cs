@@ -15,18 +15,44 @@ namespace AuroraScript.Compiler.Backend.Lowering
             ArgumentNullException.ThrowIfNull(modulePlan);
             ArgumentNullException.ThrowIfNull(functionsByDeclaration);
 
+            var directFunctionsBySymbol = BuildDirectFunctionMap(modulePlan, functionsByDeclaration);
             for (var i = 0; i < modulePlan.Functions.Count; i++)
             {
-                var lowerer = new FunctionLowererCore(modulePlan, modulePlan.Functions[i], functionsByDeclaration);
+                var lowerer = new FunctionLowererCore(modulePlan, modulePlan.Functions[i], functionsByDeclaration, directFunctionsBySymbol);
                 var body = lowerer.LowerBody();
                 modulePlan.Functions[i].Body = body;
-                var counter = new UnsupportedCounter();
-                counter.Count(modulePlan.Functions[i].ParameterDefaults);
-                counter.Count(body);
-                modulePlan.Functions[i].UnsupportedLoweredStatementCount = counter.StatementCount;
-                modulePlan.Functions[i].UnsupportedLoweredExpressionCount = counter.ExpressionCount;
-                modulePlan.Functions[i].UnsupportedLoweredNodes = counter.ToArray();
+                modulePlan.Functions[i].UnsupportedLoweredStatementCount = lowerer.UnsupportedStatementCount;
+                modulePlan.Functions[i].UnsupportedLoweredExpressionCount = lowerer.UnsupportedExpressionCount;
+                modulePlan.Functions[i].UnsupportedLoweredNodes = lowerer.UnsupportedNodes;
             }
+        }
+
+        private static Dictionary<SymbolId, FunctionId> BuildDirectFunctionMap(
+            ModulePlan modulePlan,
+            IReadOnlyDictionary<FunctionDeclaration, FunctionPlan> functionsByDeclaration)
+        {
+            Dictionary<SymbolId, FunctionId> map = null;
+            for (var i = 0; i < modulePlan.Functions.Count; i++)
+            {
+                var function = modulePlan.Functions[i];
+                if (!function.IsDirectCallCandidate ||
+                    function.Visibility != FunctionVisibility.InternalOnly ||
+                    string.IsNullOrEmpty(function.Name) ||
+                    !modulePlan.TryGetSymbol(function.Name, out var symbol))
+                {
+                    continue;
+                }
+
+                if (function.Declaration != null &&
+                    functionsByDeclaration.TryGetValue(function.Declaration, out var resolved) &&
+                    resolved.Id.Equals(function.Id))
+                {
+                    map ??= new Dictionary<SymbolId, FunctionId>();
+                    map[symbol] = function.Id;
+                }
+            }
+
+            return map;
         }
 
         private sealed class FunctionLowererCore
@@ -35,55 +61,23 @@ namespace AuroraScript.Compiler.Backend.Lowering
             private readonly FunctionPlan _function;
             private readonly IReadOnlyDictionary<FunctionDeclaration, FunctionPlan> _functionsByDeclaration;
             private readonly Dictionary<SymbolId, FunctionId> _directFunctionsBySymbol;
-            private readonly Dictionary<string, LocalSlotId> _locals = new(StringComparer.Ordinal);
-            private readonly Dictionary<string, UpvalueSlotId> _upvalues = new(StringComparer.Ordinal);
+            private List<LoweredUnsupportedNode> _unsupportedNodes;
 
             public FunctionLowererCore(
                 ModulePlan modulePlan,
                 FunctionPlan function,
-                IReadOnlyDictionary<FunctionDeclaration, FunctionPlan> functionsByDeclaration)
+                IReadOnlyDictionary<FunctionDeclaration, FunctionPlan> functionsByDeclaration,
+                Dictionary<SymbolId, FunctionId> directFunctionsBySymbol)
             {
                 _modulePlan = modulePlan;
                 _function = function;
                 _functionsByDeclaration = functionsByDeclaration;
-                _directFunctionsBySymbol = BuildDirectFunctionMap(modulePlan, functionsByDeclaration);
-
-                for (var i = 0; i < function.LocalSlots.Length; i++)
-                {
-                    _locals.TryAdd(function.LocalSlots[i].Name, function.LocalSlots[i].Id);
-                }
-                for (var i = 0; i < function.UpvalueSlots.Length; i++)
-                {
-                    _upvalues.TryAdd(function.UpvalueSlots[i].Name, function.UpvalueSlots[i].Id);
-                }
+                _directFunctionsBySymbol = directFunctionsBySymbol;
             }
 
-            private static Dictionary<SymbolId, FunctionId> BuildDirectFunctionMap(
-                ModulePlan modulePlan,
-                IReadOnlyDictionary<FunctionDeclaration, FunctionPlan> functionsByDeclaration)
-            {
-                var map = new Dictionary<SymbolId, FunctionId>();
-                for (var i = 0; i < modulePlan.Functions.Count; i++)
-                {
-                    var function = modulePlan.Functions[i];
-                    if (!function.IsDirectCallCandidate ||
-                        function.Visibility != FunctionVisibility.InternalOnly ||
-                        string.IsNullOrEmpty(function.Name) ||
-                        !modulePlan.TryGetSymbol(function.Name, out var symbol))
-                    {
-                        continue;
-                    }
-
-                    if (function.Declaration != null &&
-                        functionsByDeclaration.TryGetValue(function.Declaration, out var resolved) &&
-                        resolved.Id.Equals(function.Id))
-                    {
-                        map[symbol] = function.Id;
-                    }
-                }
-
-                return map;
-            }
+            public int UnsupportedStatementCount { get; private set; }
+            public int UnsupportedExpressionCount { get; private set; }
+            public LoweredUnsupportedNode[] UnsupportedNodes => _unsupportedNodes == null ? Array.Empty<LoweredUnsupportedNode>() : _unsupportedNodes.ToArray();
 
             public LoweredBlockStatement LowerBody()
             {
@@ -122,16 +116,17 @@ namespace AuroraScript.Compiler.Backend.Lowering
                     return new LoweredBlockStatement(node, node == null ? Array.Empty<LoweredStatement>() : new[] { LowerStatement(node) });
                 }
 
-                var statements = new List<LoweredStatement>(block.Length + block.Functions.Count);
+                var statements = new LoweredStatement[block.Length + block.Functions.Count];
+                var index = 0;
                 for (var i = 0; i < block.Functions.Count; i++)
                 {
-                    statements.Add(LowerStatement(block.Functions[i]));
+                    statements[index++] = LowerStatement(block.Functions[i]);
                 }
                 for (var i = 0; i < block.Length; i++)
                 {
-                    statements.Add(LowerStatement(block[i]));
+                    statements[index++] = LowerStatement(block[i]);
                 }
-                return new LoweredBlockStatement(block, statements.ToArray());
+                return new LoweredBlockStatement(block, statements);
             }
 
             private LoweredStatement LowerStatement(AstNode node)
@@ -175,7 +170,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
                     DebuggerStatement statement => new LoweredDebuggerStatement(statement),
                     BreakStatement statement => new LoweredBreakStatement(statement),
                     ContinueStatement statement => new LoweredContinueStatement(statement),
-                    _ => new LoweredUnsupportedStatement(node)
+                    _ => UnsupportedStatement(node)
                 };
             }
 
@@ -213,7 +208,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
                 {
                     ObjectDestructuringPattern objectPattern => LowerObjectDestructuringDeclaration(declaration, objectPattern),
                     ArrayDestructuringPattern arrayPattern => LowerArrayDestructuringDeclaration(declaration, arrayPattern),
-                    _ => new LoweredUnsupportedStatement(declaration)
+                    _ => UnsupportedStatement(declaration)
                 };
             }
 
@@ -278,7 +273,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
                         continue;
                     }
 
-                    return new LoweredUnsupportedStatement(declaration);
+                    return UnsupportedStatement(declaration);
                 }
 
                 return new LoweredArrayDestructuringDeclarationStatement(
@@ -291,7 +286,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
             {
                 if (!_functionsByDeclaration.TryGetValue(declaration, out var function))
                 {
-                    return new LoweredUnsupportedStatement(declaration);
+                    return UnsupportedStatement(declaration);
                 }
 
                 var localSlot = declaration.Name == null ? LocalSlotId.Invalid : ResolveLocal(declaration.Name.Value);
@@ -322,7 +317,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
                     NewExpression newExpression => new LoweredNewExpression(newExpression, LowerCall(newExpression.Expression)),
                     FunctionCallExpression call => LowerCall(call),
                     LambdaExpression lambda => LowerLambda(lambda),
-                    _ => new LoweredUnsupportedExpression(expression)
+                    _ => UnsupportedExpression(expression)
                 };
             }
 
@@ -342,6 +337,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
             {
                 return target is LoweredNameExpression name &&
                     name.ModuleSymbol.IsValid &&
+                    _directFunctionsBySymbol != null &&
                     _directFunctionsBySymbol.TryGetValue(name.ModuleSymbol, out var function)
                     ? function
                     : FunctionId.Invalid;
@@ -383,7 +379,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
                     }
                     else
                     {
-                        entries[i] = new LoweredMapEntry(null, new LoweredUnsupportedExpression(null), expression[i]?.Range ?? SourceSpan.None);
+                        entries[i] = new LoweredMapEntry(null, UnsupportedExpression(null), expression[i]?.Range ?? SourceSpan.None);
                     }
                 }
 
@@ -402,7 +398,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
                 {
                     expressions[i] = node[i] is Expression expression
                         ? LowerExpression(expression)
-                        : new LoweredUnsupportedExpression(null);
+                        : UnsupportedExpression(null);
                 }
                 return expressions;
             }
@@ -414,7 +410,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
                     return new LoweredLambdaExpression(lambda, function.Id);
                 }
 
-                return new LoweredUnsupportedExpression(lambda);
+                return UnsupportedExpression(lambda);
             }
 
             private LoweredNameExpression LowerName(NameExpression name)
@@ -440,190 +436,60 @@ namespace AuroraScript.Compiler.Backend.Lowering
 
             private LocalSlotId ResolveLocal(string name)
             {
-                return name != null && _locals.TryGetValue(name, out var slot) ? slot : LocalSlotId.Invalid;
+                if (name == null)
+                {
+                    return LocalSlotId.Invalid;
+                }
+
+                var locals = _function.LocalSlots;
+                for (var i = 0; i < locals.Length; i++)
+                {
+                    if (locals[i].Name == name)
+                    {
+                        return locals[i].Id;
+                    }
+                }
+
+                return LocalSlotId.Invalid;
             }
 
             private UpvalueSlotId ResolveUpvalue(string name)
             {
-                return name != null && _upvalues.TryGetValue(name, out var slot) ? slot : UpvalueSlotId.Invalid;
-            }
-        }
-
-        private sealed class UnsupportedCounter
-        {
-            public int StatementCount { get; private set; }
-            public int ExpressionCount { get; private set; }
-            private List<LoweredUnsupportedNode> _nodes;
-
-            public LoweredUnsupportedNode[] ToArray()
-            {
-                return _nodes == null ? Array.Empty<LoweredUnsupportedNode>() : _nodes.ToArray();
-            }
-
-            public void Count(LoweredStatement statement)
-            {
-                switch (statement)
+                if (name == null)
                 {
-                    case null:
-                        return;
-                    case LoweredUnsupportedStatement unsupported:
-                        StatementCount++;
-                        Add(unsupported.Source, isExpression: false);
-                        return;
-                    case LoweredBlockStatement block:
-                        for (var i = 0; i < block.Statements.Length; i++)
-                        {
-                            Count(block.Statements[i]);
-                        }
-                        return;
-                    case LoweredExpressionStatement expressionStatement:
-                        Count(expressionStatement.Expression);
-                        return;
-                    case LoweredReturnStatement returnStatement:
-                        Count(returnStatement.Expression);
-                        return;
-                    case LoweredVariableDeclarationStatement variable:
-                        Count(variable.Initializer);
-                        return;
-                    case LoweredObjectDestructuringDeclarationStatement objectDestructuring:
-                        Count(objectDestructuring.Initializer);
-                        return;
-                    case LoweredArrayDestructuringDeclarationStatement arrayDestructuring:
-                        Count(arrayDestructuring.Initializer);
-                        return;
-                    case LoweredIfStatement ifStatement:
-                        Count(ifStatement.Condition);
-                        Count(ifStatement.Body);
-                        Count(ifStatement.Else);
-                        return;
-                    case LoweredWhileStatement whileStatement:
-                        Count(whileStatement.Condition);
-                        Count(whileStatement.Body);
-                        return;
-                    case LoweredForStatement forStatement:
-                        Count(forStatement.Initializer);
-                        Count(forStatement.Condition);
-                        Count(forStatement.Incrementor);
-                        Count(forStatement.Body);
-                        return;
-                    case LoweredForInStatement forInStatement:
-                        Count(forInStatement.Initializer);
-                        Count(forInStatement.Iterator);
-                        Count(forInStatement.Body);
-                        return;
-                    case LoweredTryStatement tryStatement:
-                        Count(tryStatement.Body);
-                        Count(tryStatement.CatchBody);
-                        Count(tryStatement.FinallyBody);
-                        return;
-                    case LoweredThrowStatement throwStatement:
-                        Count(throwStatement.Expression);
-                        return;
-                    case LoweredDeleteStatement deleteStatement:
-                        Count(deleteStatement.Expression);
-                        return;
-                    case LoweredDebuggerStatement:
-                    case LoweredBreakStatement:
-                    case LoweredContinueStatement:
-                        return;
-                }
-            }
-
-            public void Count(LoweredExpression[] expressions)
-            {
-                if (expressions == null)
-                {
-                    return;
+                    return UpvalueSlotId.Invalid;
                 }
 
-                for (var i = 0; i < expressions.Length; i++)
+                var upvalues = _function.UpvalueSlots;
+                for (var i = 0; i < upvalues.Length; i++)
                 {
-                    Count(expressions[i]);
+                    if (upvalues[i].Name == name)
+                    {
+                        return upvalues[i].Id;
+                    }
                 }
+
+                return UpvalueSlotId.Invalid;
             }
 
-            private void Count(LoweredExpression expression)
+            private LoweredUnsupportedStatement UnsupportedStatement(AstNode source)
             {
-                switch (expression)
-                {
-                    case null:
-                    case LoweredLiteralExpression:
-                    case LoweredNameExpression:
-                    case LoweredLambdaExpression:
-                        return;
-                    case LoweredUnsupportedExpression unsupported:
-                        ExpressionCount++;
-                        Add(unsupported.Source, isExpression: true);
-                        return;
-                    case LoweredBinaryExpression binary:
-                        Count(binary.Left);
-                        Count(binary.Right);
-                        return;
-                    case LoweredCallExpression call:
-                        Count(call.Target);
-                        for (var i = 0; i < call.Arguments.Length; i++)
-                        {
-                            Count(call.Arguments[i]);
-                        }
-                        return;
-                    case LoweredAssignmentExpression assignment:
-                        Count(assignment.Left);
-                        Count(assignment.Right);
-                        return;
-                    case LoweredCompoundExpression compound:
-                        Count(compound.Left);
-                        Count(compound.Right);
-                        return;
-                    case LoweredUnaryExpression unary:
-                        Count(unary.Expression);
-                        return;
-                    case LoweredInExpression inExpression:
-                        Count(inExpression.Left);
-                        Count(inExpression.Right);
-                        return;
-                    case LoweredGetPropertyExpression property:
-                        Count(property.Instance);
-                        Count(property.Property);
-                        return;
-                    case LoweredGetElementExpression element:
-                        Count(element.Instance);
-                        Count(element.Index);
-                        return;
-                    case LoweredSetPropertyExpression property:
-                        Count(property.Instance);
-                        Count(property.Property);
-                        Count(property.Value);
-                        return;
-                    case LoweredSetElementExpression element:
-                        Count(element.Instance);
-                        Count(element.Index);
-                        Count(element.Value);
-                        return;
-                    case LoweredArrayLiteralExpression array:
-                        for (var i = 0; i < array.Elements.Length; i++)
-                        {
-                            Count(array.Elements[i]);
-                        }
-                        return;
-                    case LoweredMapExpression map:
-                        for (var i = 0; i < map.Entries.Length; i++)
-                        {
-                            Count(map.Entries[i].Value);
-                        }
-                        return;
-                    case LoweredSpreadExpression spread:
-                        Count(spread.Expression);
-                        return;
-                    case LoweredNewExpression @new:
-                        Count(@new.Expression);
-                        return;
-                }
+                UnsupportedStatementCount++;
+                AddUnsupported(source, isExpression: false);
+                return new LoweredUnsupportedStatement(source);
             }
 
-            private void Add(AstNode source, bool isExpression)
+            private LoweredUnsupportedExpression UnsupportedExpression(Expression source)
             {
-                _nodes ??= new List<LoweredUnsupportedNode>();
-                _nodes.Add(new LoweredUnsupportedNode(source?.GetType().Name ?? "<null>", source?.Range ?? SourceSpan.None, isExpression));
+                UnsupportedExpressionCount++;
+                AddUnsupported(source, isExpression: true);
+                return new LoweredUnsupportedExpression(source);
+            }
+
+            private void AddUnsupported(AstNode source, bool isExpression)
+            {
+                _unsupportedNodes ??= new List<LoweredUnsupportedNode>();
+                _unsupportedNodes.Add(new LoweredUnsupportedNode(source?.GetType().Name ?? "<null>", source?.Range ?? SourceSpan.None, isExpression));
             }
         }
     }

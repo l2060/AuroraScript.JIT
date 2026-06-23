@@ -10,10 +10,15 @@ namespace AuroraScript.Compiler.Backend
         private int _nextFunctionId;
 
         public CompileSession(EngineOptions options, CancellationToken cancellationToken = default)
+            : this(options, CompilationModeCapabilities.FromOptions(options), cancellationToken)
+        {
+        }
+
+        public CompileSession(EngineOptions options, CompilationModeCapabilities capabilities, CancellationToken cancellationToken = default)
         {
             Options = options ?? throw new ArgumentNullException(nameof(options));
             CancellationToken = cancellationToken;
-            Capabilities = CompilationModeCapabilities.FromOptions(options);
+            Capabilities = capabilities;
             Scopes = new ScopeTable();
             Symbols = new SymbolTable();
             Modules = Array.Empty<ModulePlan>();

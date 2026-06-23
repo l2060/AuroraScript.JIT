@@ -781,7 +781,7 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder).Emit();
+        var report = new EmissionSession(session, builder, collectDiagnostics: true).Emit();
         var moduleResult = Assert.Single(report.Modules);
         var helper = Assert.Single(moduleResult.Functions, function => function.Name == "helper");
         var run = Assert.Single(moduleResult.Functions, function => function.Name == "run");
@@ -819,7 +819,7 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var exception = Assert.Throws<UnsupportedEmissionException>(() => new EmissionSession(session, builder).Emit());
+        var exception = Assert.Throws<UnsupportedEmissionException>(() => new EmissionSession(session, builder, collectDiagnostics: true).Emit());
 
         Assert.Equal("YieldStatement", exception.NodeType);
         Assert.False(exception.IsExpression);
@@ -849,7 +849,7 @@ public sealed class CompilerBackendPlanTests
         var runPlan = Assert.Single(Assert.Single(session.Modules).Functions, function => function.Name == "run");
         runPlan.Body = new LoweredBlockStatement(runPlan.Declaration.Body, Array.Empty<LoweredStatement>());
 
-        var report = new EmissionSession(session, builder).Emit();
+        var report = new EmissionSession(session, builder, collectDiagnostics: true).Emit();
 
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
         Assert.Equal(1, run.StatementCount);
@@ -882,7 +882,7 @@ public sealed class CompilerBackendPlanTests
         Assert.True(run.HasExecutableSkeleton);
         Assert.Equal(0, run.CilLocalCount);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = del(null, Span<ScriptDatum>.Empty);
+        var result = del(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(42, result.Number);
     }
 
@@ -913,7 +913,7 @@ public sealed class CompilerBackendPlanTests
         Assert.True(run.HasExecutableSkeleton);
         Assert.Equal(1, run.CilLocalCount);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = del(null, Span<ScriptDatum>.Empty);
+        var result = del(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal("ok", ScriptDatum.ToString(result));
     }
 
@@ -945,7 +945,7 @@ public sealed class CompilerBackendPlanTests
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var args = new ScriptDatum[1];
         args[0] = ScriptDatum.FromNumber(7);
-        var result = del(null, args);
+        var result = del(CreateTestContext(), args);
         Assert.Equal(7, result.Number);
     }
 
@@ -978,7 +978,7 @@ public sealed class CompilerBackendPlanTests
         Assert.True(run.HasExecutableSkeleton);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var args = new[] { ScriptDatum.FromNumber(3), ScriptDatum.FromNumber(4) };
-        var result = del(null, args);
+        var result = del(CreateTestContext(), args);
         Assert.Equal(1, result.Number);
     }
 
@@ -1009,7 +1009,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(run.HasExecutableSkeleton);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = del(null, Span<ScriptDatum>.Empty);
+        var result = del(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(5, result.Number);
     }
 
@@ -1041,7 +1041,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(run.HasExecutableSkeleton);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = del(null, Span<ScriptDatum>.Empty);
+        var result = del(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(64, result.Number);
     }
 
@@ -1074,7 +1074,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(run.HasExecutableSkeleton);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = del(null, Span<ScriptDatum>.Empty);
+        var result = del(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(31, result.Number);
     }
 
@@ -1110,7 +1110,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(run.HasExecutableSkeleton);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = del(null, Span<ScriptDatum>.Empty);
+        var result = del(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(22541, result.Number);
     }
 
@@ -1145,7 +1145,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(run.HasExecutableSkeleton);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = del(null, Span<ScriptDatum>.Empty);
+        var result = del(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(14, result.Number);
     }
 
@@ -1179,7 +1179,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(run.HasExecutableSkeleton);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = del(null, new[] { ScriptDatum.FromNumber(4) });
+        var result = del(CreateTestContext(), new[] { ScriptDatum.FromNumber(4) });
         Assert.Equal(10, result.Number);
     }
 
@@ -1218,7 +1218,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(run.HasExecutableSkeleton);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = del(null, new[] { ScriptDatum.FromNumber(8) });
+        var result = del(CreateTestContext(), new[] { ScriptDatum.FromNumber(8) });
         Assert.Equal(8, result.Number);
     }
 
@@ -1259,7 +1259,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(run.HasExecutableSkeleton);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = del(null, Span<ScriptDatum>.Empty);
+        var result = del(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(323, result.Number);
     }
 
@@ -1298,7 +1298,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(run.HasExecutableSkeleton);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = del(null, Span<ScriptDatum>.Empty);
+        var result = del(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(4, result.Number);
     }
 
@@ -1344,7 +1344,7 @@ public sealed class CompilerBackendPlanTests
         Assert.Equal(11, runResult.Number);
 
         var helperDel = (ScriptFunctionDelegate2)helper.Method.CreateDelegate(typeof(ScriptFunctionDelegate2));
-        var helperResult = helperDel(null, ScriptDatum.FromNumber(6), ScriptDatum.FromNumber(7));
+        var helperResult = helperDel(CreateTestContext(), ScriptDatum.FromNumber(6), ScriptDatum.FromNumber(7));
         Assert.Equal(13, helperResult.Number);
     }
 
@@ -1456,7 +1456,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(run.HasExecutableSkeleton);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = del(null, new[] { ScriptDatum.FromObject(callback) });
+        var result = del(CreateTestContext(), new[] { ScriptDatum.FromObject(callback) });
         Assert.Equal(40, result.Number);
     }
 
@@ -1497,7 +1497,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(run.HasExecutableSkeleton);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = del(null, new[] { ScriptDatum.FromObject(callback) });
+        var result = del(CreateTestContext(), new[] { ScriptDatum.FromObject(callback) });
         Assert.Equal(63, result.Number);
     }
 
@@ -1530,7 +1530,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(run.HasExecutableSkeleton);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = del(null, new[] { ScriptDatum.FromObject(callback) });
+        var result = del(CreateTestContext(), new[] { ScriptDatum.FromObject(callback) });
         Assert.Equal(21, result.Number);
     }
 
@@ -1746,7 +1746,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(run.HasExecutableSkeleton);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = runDel(null, new[] { ScriptDatum.FromObject(receiver) });
+        var result = runDel(CreateTestContext(), new[] { ScriptDatum.FromObject(receiver) });
         Assert.Equal(63, result.Number);
     }
 
@@ -1776,7 +1776,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(run.HasExecutableSkeleton);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = runDel(null, Span<ScriptDatum>.Empty);
+        var result = runDel(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.True(result.Boolean);
     }
 
@@ -1809,7 +1809,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(run.HasExecutableSkeleton);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = runDel(null, new[] { ScriptDatum.FromObject(receiver) });
+        var result = runDel(CreateTestContext(), new[] { ScriptDatum.FromObject(receiver) });
         Assert.Equal(20, result.Number);
     }
 
@@ -1841,7 +1841,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(run.HasExecutableSkeleton);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = runDel(null, Span<ScriptDatum>.Empty);
+        var result = runDel(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(15, result.Number);
     }
 
@@ -1875,7 +1875,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(run.HasExecutableSkeleton);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = runDel(null, Span<ScriptDatum>.Empty);
+        var result = runDel(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(4317, result.Number);
     }
 
@@ -1909,7 +1909,7 @@ public sealed class CompilerBackendPlanTests
         Assert.Empty(runPlan.UnsupportedLoweredNodes);
         Assert.True(run.HasExecutableSkeleton);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = runDel(null, Span<ScriptDatum>.Empty);
+        var result = runDel(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(1246, result.Number);
     }
 
@@ -1941,7 +1941,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(run.HasExecutableSkeleton);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = runDel(null, Span<ScriptDatum>.Empty);
+        var result = runDel(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(9, result.Number);
     }
 
@@ -1973,7 +1973,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(run.HasExecutableSkeleton);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = runDel(null, Span<ScriptDatum>.Empty);
+        var result = runDel(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(5, result.Number);
     }
 
@@ -2003,7 +2003,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(run.HasExecutableSkeleton);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = runDel(null, new[] { ScriptDatum.FromObject(new CountingType()) });
+        var result = runDel(CreateTestContext(), new[] { ScriptDatum.FromObject(new CountingType()) });
         Assert.Equal(19, result.Number);
     }
 
@@ -2034,7 +2034,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(run.HasExecutableSkeleton);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = runDel(null, new[] { ScriptDatum.FromObject(new CountingType()) });
+        var result = runDel(CreateTestContext(), new[] { ScriptDatum.FromObject(new CountingType()) });
         Assert.Equal(20, result.Number);
     }
 
@@ -2066,7 +2066,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(run.HasExecutableSkeleton);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = runDel(null, Span<ScriptDatum>.Empty);
+        var result = runDel(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.True(result.Boolean);
     }
 
@@ -2097,7 +2097,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(run.HasExecutableSkeleton);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        Assert.Throws<AuroraRuntimeException>(() => runDel(null, Span<ScriptDatum>.Empty));
+        Assert.Throws<AuroraRuntimeException>(() => runDel(CreateTestContext(), Span<ScriptDatum>.Empty));
     }
 
     [Fact]
@@ -2130,7 +2130,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(run.HasExecutableSkeleton);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = runDel(null, Span<ScriptDatum>.Empty);
+        var result = runDel(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.True(result.Boolean);
     }
 
@@ -2163,7 +2163,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(run.HasExecutableSkeleton);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = runDel(null, Span<ScriptDatum>.Empty);
+        var result = runDel(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(9, result.Number);
     }
 
@@ -2202,7 +2202,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(run.HasExecutableSkeleton);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = runDel(null, Span<ScriptDatum>.Empty);
+        var result = runDel(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(5, result.Number);
     }
 
@@ -2238,7 +2238,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(run.HasExecutableSkeleton);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = runDel(null, Span<ScriptDatum>.Empty);
+        var result = runDel(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(3, result.Number);
     }
 
@@ -2275,7 +2275,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(run.HasExecutableSkeleton);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = runDel(null, Span<ScriptDatum>.Empty);
+        var result = runDel(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(2, result.Number);
     }
 
@@ -2306,7 +2306,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(run.HasExecutableSkeleton);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = runDel(null, Span<ScriptDatum>.Empty);
+        var result = runDel(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(7, result.Number);
     }
 
@@ -2575,6 +2575,13 @@ public sealed class CompilerBackendPlanTests
         result = function.InvokeClr(ctx, args[1], args[2]);
     }
 
+    private static ScriptContext CreateTestContext()
+    {
+        var options = EngineOptions.Default.WithCompilationMode(CompilationMode.Dynamic);
+        var domain = new AuroraEngine(options).CreateEmptyDomain(null);
+        return new ScriptContext(domain);
+    }
+
     private delegate void ModuleInitializerDelegate(ScriptContext ctx, Span<ScriptDatum> args);
 
     private sealed class CountingType : ScriptType
@@ -2638,3 +2645,4 @@ public sealed class CompilerBackendPlanTests
         }
     }
 }
+

@@ -5,7 +5,6 @@ using AuroraScript.Compiler.Emits.Builders;
 using AuroraScript.Core;
 using AuroraScript.Runtime;
 using System;
-using System.Collections.Generic;
 using System.Reflection.Emit;
 
 namespace AuroraScript.Compiler.Backend.Emission
@@ -15,7 +14,6 @@ namespace AuroraScript.Compiler.Backend.Emission
         private readonly EmissionSession _session;
         private readonly AbstractCILBuilder _builder;
         private readonly HotPatchType _patchType;
-        private readonly Dictionary<ModuleId, ModuleEmissionResult> _resultsByModule = new();
 
         public HotPatchEmitter(EmissionSession session, HotPatchType patchType)
         {
@@ -28,11 +26,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             ArgumentNullException.ThrowIfNull(mainModule);
 
-            var report = _session.Emit();
-            for (var i = 0; i < report.Modules.Length; i++)
-            {
-                _resultsByModule[report.Modules[i].Module] = report.Modules[i];
-            }
+            _session.EmitAll();
 
             var (patchMethod, il) = _builder.DefineDynamicMethod(mainModule.Declaration);
             var globalLocal = il.DeclareLocal(typeof(ScriptGlobal));
@@ -75,7 +69,7 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void InitializeModule(ILGenerator il, ModulePlan module, LocalBuilder globalLocal)
         {
-            if (!_resultsByModule.TryGetValue(module.Id, out var result) || result.Initializer == null)
+            if (module.Initializer == null)
             {
                 return;
             }
@@ -87,7 +81,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             il.Emit(OpCodes.Ldnull);
             il.Emit(OpCodes.Callvirt, RuntimeMetadata.CILContext_With);
             il.Emit(OpCodes.Ldarg_1);
-            il.Emit(OpCodes.Call, result.Initializer);
+            il.Emit(OpCodes.Call, module.Initializer);
         }
     }
 }

@@ -141,13 +141,17 @@ namespace AuroraScript.Compiler.Backend.Plans
 
     internal sealed class ModulePlan
     {
-        private readonly List<FunctionPlan> _functions = new();
-        private readonly Dictionary<string, SymbolId> _symbolsByName = new(StringComparer.Ordinal);
+        private readonly List<FunctionPlan> _functions;
+        private readonly Dictionary<string, SymbolId> _symbolsByName;
 
         public ModulePlan(ModuleId id, ModuleDeclaration declaration)
         {
             Id = id;
             Declaration = declaration ?? throw new ArgumentNullException(nameof(declaration));
+            _functions = new List<FunctionPlan>(Math.Max(4, declaration.Functions.Count));
+            _symbolsByName = new Dictionary<string, SymbolId>(
+                Math.Max(4, declaration.Imports.Count + declaration.Length + declaration.Functions.Count),
+                StringComparer.Ordinal);
             Name = declaration.ModuleName;
             Path = declaration.ModulePath;
             FullPath = declaration.FullPath;
@@ -163,7 +167,7 @@ namespace AuroraScript.Compiler.Backend.Plans
         public int PathHash { get; }
         public ScopeId ModuleScope { get; set; }
         public MethodInfo Initializer { get; set; }
-        public IReadOnlyList<FunctionPlan> Functions => _functions;
+        public List<FunctionPlan> Functions => _functions;
 
         public bool TryDeclareSymbol(string name, SymbolId symbol)
         {

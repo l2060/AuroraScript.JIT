@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>AuroraBenchmark.CompilerPipelineBenchmarks-20260623-234935</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.15.8, Windows 11 (10.0.26200.8655/25H2/2025Update/HudsonValley2)
+13th Gen Intel Core i7-13700KF 3.40GHz, 1 CPU, 24 logical and 16 physical cores
+.NET SDK 10.0.301
+  [Host]   : .NET 10.0.9 (10.0.9, 10.0.926.27113), X64 RyuJIT x86-64-v3
+  ShortRun : .NET 10.0.9 (10.0.9, 10.0.926.27113), X64 RyuJIT x86-64-v3
+</code></pre>
+<pre><code>Job=ShortRun  IterationCount=3  LaunchCount=1  
+WarmupCount=3  
+</code></pre>
+
+<table>
+<thead><tr><th>Method                   </th><th>Categories</th><th>Mean  </th><th>Error  </th><th>StdDev</th><th>Min   </th><th>Max   </th><th>Median</th><th>Rank</th><th>Gen0</th><th>Gen1</th><th>Allocated</th>
+</tr>
+</thead><tbody><tr><td>CompileBlock</td><td>compile</td><td>13.323 &mu;s</td><td>0.8652 &mu;s</td><td>0.0474 &mu;s</td><td>13.289 &mu;s</td><td>13.377 &mu;s</td><td>13.302 &mu;s</td><td>1</td><td>1.1597</td><td>1.0986</td><td>18.56 KB</td>
+</tr><tr><td>FullCompile_MultiModule</td><td>compile</td><td>486.402 &mu;s</td><td>217.0591 &mu;s</td><td>11.8977 &mu;s</td><td>475.240 &mu;s</td><td>498.919 &mu;s</td><td>485.047 &mu;s</td><td>2</td><td>4.8828</td><td>1.4648</td><td>74.19 KB</td>
+</tr><tr><td>FullCompile_SingleModule</td><td>compile</td><td>7,577.394 &mu;s</td><td>820.7999 &mu;s</td><td>44.9908 &mu;s</td><td>7,530.687 &mu;s</td><td>7,620.445 &mu;s</td><td>7,581.049 &mu;s</td><td>3</td><td>265.6250</td><td>132.8125</td><td>4104.74 KB</td>
+</tr><tr><td>EmitOnly_ParsedLargeModule</td><td>emitter</td><td>6,101.443 &mu;s</td><td>4,899.3739 &mu;s</td><td>268.5512 &mu;s</td><td>5,796.427 &mu;s</td><td>6,302.363 &mu;s</td><td>6,205.541 &mu;s</td><td>1</td><td>164.0625</td><td>82.0313</td><td>2529.36 KB</td>
+</tr><tr><td>LexerOnly_Small</td><td>lexer</td><td>3.709 &mu;s</td><td>0.6460 &mu;s</td><td>0.0354 &mu;s</td><td>3.678 &mu;s</td><td>3.748 &mu;s</td><td>3.702 &mu;s</td><td>1</td><td>0.1144</td><td>-</td><td>1.77 KB</td>
+</tr><tr><td>LexerOnly_StringsTemplatesRegex</td><td>lexer</td><td>59.254 &mu;s</td><td>0.6182 &mu;s</td><td>0.0339 &mu;s</td><td>59.219 &mu;s</td><td>59.287 &mu;s</td><td>59.258 &mu;s</td><td>2</td><td>1.5869</td><td>0.0610</td><td>25.13 KB</td>
+</tr><tr><td>LexerOnly_UnicodeIdentifiers</td><td>lexer</td><td>67.018 &mu;s</td><td>6.7903 &mu;s</td><td>0.3722 &mu;s</td><td>66.723 &mu;s</td><td>67.437 &mu;s</td><td>66.895 &mu;s</td><td>2</td><td>2.6855</td><td>0.2441</td><td>41.28 KB</td>
+</tr><tr><td>LexerOnly_CommentsWhitespace</td><td>lexer</td><td>96.661 &mu;s</td><td>6.8284 &mu;s</td><td>0.3743 &mu;s</td><td>96.432 &mu;s</td><td>97.092 &mu;s</td><td>96.457 &mu;s</td><td>3</td><td>-</td><td>-</td><td>1.85 KB</td>
+</tr><tr><td>LexerOnly_Large</td><td>lexer</td><td>556.749 &mu;s</td><td>193.0395 &mu;s</td><td>10.5811 &mu;s</td><td>544.546 &mu;s</td><td>563.386 &mu;s</td><td>562.314 &mu;s</td><td>4</td><td>0.9766</td><td>-</td><td>21.26 KB</td>
+</tr><tr><td>ParseOnly_Small</td><td>parser</td><td>7.303 &mu;s</td><td>0.5086 &mu;s</td><td>0.0279 &mu;s</td><td>7.281 &mu;s</td><td>7.334 &mu;s</td><td>7.294 &mu;s</td><td>1</td><td>0.4425</td><td>0.0076</td><td>6.79 KB</td>
+</tr><tr><td>ParseOnly_TemplateInterpolation</td><td>parser</td><td>152.201 &mu;s</td><td>20.0449 &mu;s</td><td>1.0987 &mu;s</td><td>151.553 &mu;s</td><td>153.469 &mu;s</td><td>151.580 &mu;s</td><td>2</td><td>26.8555</td><td>9.5215</td><td>412.59 KB</td>
+</tr><tr><td>ParseOnly_Large</td><td>parser</td><td>810.549 &mu;s</td><td>57.3603 &mu;s</td><td>3.1441 &mu;s</td><td>807.574 &mu;s</td><td>813.838 &mu;s</td><td>810.233 &mu;s</td><td>3</td><td>101.5625</td><td>56.6406</td><td>1562.48 KB</td>
+</tr></tbody></table>
+</body>
+</html>

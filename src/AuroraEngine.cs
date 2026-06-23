@@ -265,8 +265,9 @@ namespace AuroraScript
             var builder = new DynamicBuilder(builderOptions);
             var backend = new BackendCompiler(builder, builderOptions);
             var blockPlan = backend.CreateCompileBlockPlan(block, options.Parameters, sourceName);
-            var report = new EmissionSession(blockPlan.Session, builder, emitExecutableSkeletons: true).Emit();
-            var method = report.Modules[0].Functions.FirstOrDefault(function => function.Function.Equals(blockPlan.Function.Id)).Method;
+            var method = new CompileBlockEmitter(
+                new EmissionSession(blockPlan.Session, builder, emitExecutableSkeletons: true),
+                blockPlan).Emit();
             if (method == null)
             {
                 throw new AuroraException("The compiler did not produce a compiled block entry point.");

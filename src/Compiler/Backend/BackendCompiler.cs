@@ -56,9 +56,9 @@ namespace AuroraScript.Compiler.Backend
             ArgumentNullException.ThrowIfNull(body);
 
             var blockPlan = new CompileBlockPlan(body, parameters, sourceName);
-            var session = CreateSession(cancellationToken);
+            var session = CreateCompileBlockSession(cancellationToken);
             var modulePlan = new ModulePlan(new ModuleId(0), CreateCompileBlockModule(body, blockPlan.Parameters, blockPlan.SourceName));
-            PredefineModule(session, modulePlan);
+            PredefineCompileBlockModule(session, modulePlan);
             session.Modules = [modulePlan];
 
             var functionMaps = RegisterNestedFunctions(session, [modulePlan], cancellationToken);
@@ -70,6 +70,39 @@ namespace AuroraScript.Compiler.Backend
             blockPlan.Module = modulePlan;
             blockPlan.Function = modulePlan.Functions[0];
             return blockPlan;
+        }
+
+        private CompileSession CreateCompileBlockSession(CancellationToken cancellationToken)
+        {
+            return new CompileSession(
+                _options,
+                CompilationModeCapabilities.FromOptions(_options).WithoutModuleDirectCall(),
+                cancellationToken);
+        }
+
+        private static void PredefineCompileBlockModule(CompileSession session, ModulePlan modulePlan)
+        {
+            var moduleScope = session.Scopes.Add(new ScopeInfo(
+                ScopeId.Invalid,
+                modulePlan.Id,
+                FunctionId.Invalid,
+                BackendScopeKind.CompileBlock));
+            modulePlan.ModuleScope = moduleScope;
+
+            var function = modulePlan.Declaration.Functions[0];
+            var functionId = session.AllocateFunctionId();
+            var functionScope = session.Scopes.Add(new ScopeInfo(
+                moduleScope,
+                modulePlan.Id,
+                functionId,
+                BackendScopeKind.Function));
+            modulePlan.AddFunction(new FunctionPlan(
+                functionId,
+                modulePlan.Id,
+                functionScope,
+                function,
+                FunctionVisibility.Exported,
+                isModuleFunction: true));
         }
 
         public CompileSession CreateHotPatchPlans(

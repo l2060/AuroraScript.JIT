@@ -24,7 +24,7 @@ namespace Examples
             .WithAssemblyOut("123.dll")
             .WithEnableConfused(false)
             .WithEnableHotReload(false)
-            .WithCompilationMode(CompilationMode.Persistence)
+            .WithCompilationMode(CompilationMode.Dynamic)
             .WithOptimizeOption(OptimizeOptions.Release);
 
         private static readonly AuroraEngine engine = new AuroraEngine(engineOptions);

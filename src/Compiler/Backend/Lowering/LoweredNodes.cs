@@ -5,85 +5,34 @@ using System;
 
 namespace AuroraScript.Compiler.Backend.Lowering
 {
-    internal enum LoweredStatementKind
-    {
-        Unsupported,
-        Block,
-        Expression,
-        Return,
-        VariableDeclaration,
-        ObjectDestructuringDeclaration,
-        ArrayDestructuringDeclaration,
-        FunctionDeclaration,
-        If,
-        While,
-        For,
-        ForIn,
-        Try,
-        Throw,
-        Delete,
-        Debugger,
-        Break,
-        Continue
-    }
-
-    internal enum LoweredExpressionKind
-    {
-        Unsupported,
-        Literal,
-        Name,
-        Binary,
-        Call,
-        Lambda,
-        Assignment,
-        Compound,
-        Unary,
-        In,
-        GetProperty,
-        GetElement,
-        SetProperty,
-        SetElement,
-        ArrayLiteral,
-        Map,
-        Spread,
-        New
-    }
-
     internal abstract class LoweredNode
     {
         protected LoweredNode(AstNode source)
         {
             Source = source;
-            Range = source?.Range ?? SourceSpan.None;
         }
 
         public AstNode Source { get; }
-        public SourceSpan Range { get; }
+        public SourceSpan Range => Source?.Range ?? SourceSpan.None;
     }
 
     internal abstract class LoweredStatement : LoweredNode
     {
-        protected LoweredStatement(AstNode source, LoweredStatementKind kind) : base(source)
+        protected LoweredStatement(AstNode source) : base(source)
         {
-            Kind = kind;
         }
-
-        public LoweredStatementKind Kind { get; }
     }
 
     internal abstract class LoweredExpression : LoweredNode
     {
-        protected LoweredExpression(Expression source, LoweredExpressionKind kind) : base(source)
+        protected LoweredExpression(Expression source) : base(source)
         {
-            Kind = kind;
         }
-
-        public LoweredExpressionKind Kind { get; }
     }
 
     internal sealed class LoweredBlockStatement : LoweredStatement
     {
-        public LoweredBlockStatement(AstNode source, LoweredStatement[] statements) : base(source, LoweredStatementKind.Block)
+        public LoweredBlockStatement(AstNode source, LoweredStatement[] statements) : base(source)
         {
             Statements = statements ?? Array.Empty<LoweredStatement>();
         }
@@ -93,7 +42,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
 
     internal sealed class LoweredExpressionStatement : LoweredStatement
     {
-        public LoweredExpressionStatement(AstNode source, LoweredExpression expression) : base(source, LoweredStatementKind.Expression)
+        public LoweredExpressionStatement(AstNode source, LoweredExpression expression) : base(source)
         {
             Expression = expression;
         }
@@ -103,7 +52,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
 
     internal sealed class LoweredReturnStatement : LoweredStatement
     {
-        public LoweredReturnStatement(AstNode source, LoweredExpression expression) : base(source, LoweredStatementKind.Return)
+        public LoweredReturnStatement(AstNode source, LoweredExpression expression) : base(source)
         {
             Expression = expression;
         }
@@ -114,7 +63,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
     internal sealed class LoweredVariableDeclarationStatement : LoweredStatement
     {
         public LoweredVariableDeclarationStatement(AstNode source, LocalSlotId slot, LoweredExpression initializer)
-            : base(source, LoweredStatementKind.VariableDeclaration)
+            : base(source)
         {
             Slot = slot;
             Initializer = initializer;
@@ -142,7 +91,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
             AstNode source,
             LoweredExpression initializer,
             LoweredObjectDestructuringBinding[] bindings)
-            : base(source, LoweredStatementKind.ObjectDestructuringDeclaration)
+            : base(source)
         {
             Initializer = initializer;
             Bindings = bindings ?? Array.Empty<LoweredObjectDestructuringBinding>();
@@ -174,7 +123,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
             AstNode source,
             LoweredExpression initializer,
             LoweredArrayDestructuringBinding[] bindings)
-            : base(source, LoweredStatementKind.ArrayDestructuringDeclaration)
+            : base(source)
         {
             Initializer = initializer;
             Bindings = bindings ?? Array.Empty<LoweredArrayDestructuringBinding>();
@@ -187,7 +136,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
     internal sealed class LoweredFunctionDeclarationStatement : LoweredStatement
     {
         public LoweredFunctionDeclarationStatement(AstNode source, FunctionId function, LocalSlotId localSlot)
-            : base(source, LoweredStatementKind.FunctionDeclaration)
+            : base(source)
         {
             Function = function;
             LocalSlot = localSlot;
@@ -200,7 +149,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
     internal sealed class LoweredIfStatement : LoweredStatement
     {
         public LoweredIfStatement(AstNode source, LoweredExpression condition, LoweredStatement body, LoweredStatement @else)
-            : base(source, LoweredStatementKind.If)
+            : base(source)
         {
             Condition = condition;
             Body = body;
@@ -215,7 +164,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
     internal sealed class LoweredWhileStatement : LoweredStatement
     {
         public LoweredWhileStatement(AstNode source, LoweredExpression condition, LoweredStatement body)
-            : base(source, LoweredStatementKind.While)
+            : base(source)
         {
             Condition = condition;
             Body = body;
@@ -233,7 +182,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
             LoweredExpression condition,
             LoweredExpression incrementor,
             LoweredStatement body)
-            : base(source, LoweredStatementKind.For)
+            : base(source)
         {
             Initializer = initializer;
             Condition = condition;
@@ -254,7 +203,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
             LoweredStatement initializer,
             LoweredInExpression iterator,
             LoweredStatement body)
-            : base(source, LoweredStatementKind.ForIn)
+            : base(source)
         {
             Initializer = initializer;
             Iterator = iterator;
@@ -275,7 +224,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
             LocalSlotId catchSlot,
             LoweredStatement catchBody,
             LoweredStatement finallyBody)
-            : base(source, LoweredStatementKind.Try)
+            : base(source)
         {
             Body = body;
             CatchVariable = catchVariable;
@@ -294,7 +243,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
     internal sealed class LoweredThrowStatement : LoweredStatement
     {
         public LoweredThrowStatement(AstNode source, LoweredExpression expression)
-            : base(source, LoweredStatementKind.Throw)
+            : base(source)
         {
             Expression = expression;
         }
@@ -305,7 +254,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
     internal sealed class LoweredDeleteStatement : LoweredStatement
     {
         public LoweredDeleteStatement(AstNode source, LoweredExpression expression)
-            : base(source, LoweredStatementKind.Delete)
+            : base(source)
         {
             Expression = expression;
         }
@@ -315,28 +264,28 @@ namespace AuroraScript.Compiler.Backend.Lowering
 
     internal sealed class LoweredDebuggerStatement : LoweredStatement
     {
-        public LoweredDebuggerStatement(AstNode source) : base(source, LoweredStatementKind.Debugger)
+        public LoweredDebuggerStatement(AstNode source) : base(source)
         {
         }
     }
 
     internal sealed class LoweredBreakStatement : LoweredStatement
     {
-        public LoweredBreakStatement(AstNode source) : base(source, LoweredStatementKind.Break)
+        public LoweredBreakStatement(AstNode source) : base(source)
         {
         }
     }
 
     internal sealed class LoweredContinueStatement : LoweredStatement
     {
-        public LoweredContinueStatement(AstNode source) : base(source, LoweredStatementKind.Continue)
+        public LoweredContinueStatement(AstNode source) : base(source)
         {
         }
     }
 
     internal sealed class LoweredUnsupportedStatement : LoweredStatement
     {
-        public LoweredUnsupportedStatement(AstNode source) : base(source, LoweredStatementKind.Unsupported)
+        public LoweredUnsupportedStatement(AstNode source) : base(source)
         {
         }
     }
@@ -357,7 +306,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
 
     internal sealed class LoweredLiteralExpression : LoweredExpression
     {
-        public LoweredLiteralExpression(LiteralExpression source) : base(source, LoweredExpressionKind.Literal)
+        public LoweredLiteralExpression(LiteralExpression source) : base(source)
         {
             Token = source.Token;
         }
@@ -368,7 +317,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
     internal sealed class LoweredNameExpression : LoweredExpression
     {
         public LoweredNameExpression(NameExpression source, LocalSlotId localSlot, UpvalueSlotId upvalueSlot, SymbolId moduleSymbol)
-            : base(source, LoweredExpressionKind.Name)
+            : base(source)
         {
             Name = source.Identifier?.Value;
             LocalSlot = localSlot;
@@ -385,7 +334,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
     internal sealed class LoweredBinaryExpression : LoweredExpression
     {
         public LoweredBinaryExpression(BinaryExpression source, LoweredExpression left, LoweredExpression right)
-            : base(source, LoweredExpressionKind.Binary)
+            : base(source)
         {
             Operator = source.Operator;
             Left = left;
@@ -400,7 +349,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
     internal sealed class LoweredCallExpression : LoweredExpression
     {
         public LoweredCallExpression(FunctionCallExpression source, LoweredExpression target, LoweredExpression[] arguments, FunctionId directFunction)
-            : base(source, LoweredExpressionKind.Call)
+            : base(source)
         {
             Target = target;
             Arguments = arguments ?? Array.Empty<LoweredExpression>();
@@ -415,7 +364,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
     internal sealed class LoweredAssignmentExpression : LoweredExpression
     {
         public LoweredAssignmentExpression(AssignmentExpression source, LoweredExpression left, LoweredExpression right)
-            : base(source, LoweredExpressionKind.Assignment)
+            : base(source)
         {
             Operator = source.Operator;
             Left = left;
@@ -430,7 +379,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
     internal sealed class LoweredCompoundExpression : LoweredExpression
     {
         public LoweredCompoundExpression(CompoundExpression source, LoweredExpression left, LoweredExpression right)
-            : base(source, LoweredExpressionKind.Compound)
+            : base(source)
         {
             Operator = source.Operator;
             Left = left;
@@ -445,7 +394,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
     internal sealed class LoweredUnaryExpression : LoweredExpression
     {
         public LoweredUnaryExpression(UnaryExpression source, LoweredExpression expression)
-            : base(source, LoweredExpressionKind.Unary)
+            : base(source)
         {
             Operator = source.Operator;
             Type = source.Type;
@@ -460,7 +409,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
     internal sealed class LoweredInExpression : LoweredExpression
     {
         public LoweredInExpression(Expression source, LoweredExpression left, LoweredExpression right)
-            : base(source, LoweredExpressionKind.In)
+            : base(source)
         {
             Left = left;
             Right = right;
@@ -473,7 +422,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
     internal sealed class LoweredGetPropertyExpression : LoweredExpression
     {
         public LoweredGetPropertyExpression(GetPropertyExpression source, LoweredExpression instance, LoweredExpression property)
-            : base(source, LoweredExpressionKind.GetProperty)
+            : base(source)
         {
             Instance = instance;
             Property = property;
@@ -486,7 +435,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
     internal sealed class LoweredGetElementExpression : LoweredExpression
     {
         public LoweredGetElementExpression(GetElementExpression source, LoweredExpression instance, LoweredExpression index)
-            : base(source, LoweredExpressionKind.GetElement)
+            : base(source)
         {
             Instance = instance;
             Index = index;
@@ -499,7 +448,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
     internal sealed class LoweredSetPropertyExpression : LoweredExpression
     {
         public LoweredSetPropertyExpression(SetPropertyExpression source, LoweredExpression instance, LoweredExpression property, LoweredExpression value)
-            : base(source, LoweredExpressionKind.SetProperty)
+            : base(source)
         {
             Instance = instance;
             Property = property;
@@ -514,7 +463,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
     internal sealed class LoweredSetElementExpression : LoweredExpression
     {
         public LoweredSetElementExpression(SetElementExpression source, LoweredExpression instance, LoweredExpression index, LoweredExpression value)
-            : base(source, LoweredExpressionKind.SetElement)
+            : base(source)
         {
             Instance = instance;
             Index = index;
@@ -529,7 +478,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
     internal sealed class LoweredArrayLiteralExpression : LoweredExpression
     {
         public LoweredArrayLiteralExpression(ArrayLiteralExpression source, LoweredExpression[] elements)
-            : base(source, LoweredExpressionKind.ArrayLiteral)
+            : base(source)
         {
             Elements = elements ?? Array.Empty<LoweredExpression>();
         }
@@ -554,7 +503,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
     internal sealed class LoweredMapExpression : LoweredExpression
     {
         public LoweredMapExpression(MapExpression source, LoweredMapEntry[] entries)
-            : base(source, LoweredExpressionKind.Map)
+            : base(source)
         {
             Entries = entries ?? Array.Empty<LoweredMapEntry>();
         }
@@ -565,7 +514,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
     internal sealed class LoweredSpreadExpression : LoweredExpression
     {
         public LoweredSpreadExpression(SpreadExpression source, LoweredExpression expression)
-            : base(source, LoweredExpressionKind.Spread)
+            : base(source)
         {
             Expression = expression;
         }
@@ -576,7 +525,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
     internal sealed class LoweredNewExpression : LoweredExpression
     {
         public LoweredNewExpression(NewExpression source, LoweredCallExpression expression)
-            : base(source, LoweredExpressionKind.New)
+            : base(source)
         {
             Expression = expression;
         }
@@ -587,7 +536,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
     internal sealed class LoweredLambdaExpression : LoweredExpression
     {
         public LoweredLambdaExpression(LambdaExpression source, FunctionId function)
-            : base(source, LoweredExpressionKind.Lambda)
+            : base(source)
         {
             Function = function;
         }
@@ -597,7 +546,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
 
     internal sealed class LoweredUnsupportedExpression : LoweredExpression
     {
-        public LoweredUnsupportedExpression(Expression source) : base(source, LoweredExpressionKind.Unsupported)
+        public LoweredUnsupportedExpression(Expression source) : base(source)
         {
         }
     }

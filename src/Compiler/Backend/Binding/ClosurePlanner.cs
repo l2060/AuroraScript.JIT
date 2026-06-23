@@ -18,12 +18,36 @@ namespace AuroraScript.Compiler.Backend.Binding
                 return;
             }
 
-            var indexById = new Dictionary<FunctionId, int>();
+            if (modulePlan.Functions.Count == 1 &&
+                modulePlan.Functions[0].NestedFunctions.Length == 0)
+            {
+                PlanSingleNonNestedFunction(modulePlan.Functions[0]);
+                return;
+            }
+
+            if (!HasNestedFunctions(modulePlan))
+            {
+                PlanFlatModule(modulePlan);
+                return;
+            }
+
             var parentByIndex = new int[modulePlan.Functions.Count];
             Array.Fill(parentByIndex, -1);
+            var maxFunctionId = -1;
             for (var i = 0; i < modulePlan.Functions.Count; i++)
             {
-                indexById[modulePlan.Functions[i].Id] = i;
+                var id = modulePlan.Functions[i].Id.Value;
+                if (id > maxFunctionId)
+                {
+                    maxFunctionId = id;
+                }
+            }
+
+            var indexById = maxFunctionId >= 0 ? new int[maxFunctionId + 1] : Array.Empty<int>();
+            Array.Fill(indexById, -1);
+            for (var i = 0; i < modulePlan.Functions.Count; i++)
+            {
+                indexById[modulePlan.Functions[i].Id.Value] = i;
             }
 
             for (var i = 0; i < modulePlan.Functions.Count; i++)
@@ -31,17 +55,22 @@ namespace AuroraScript.Compiler.Backend.Binding
                 var parent = modulePlan.Functions[i];
                 for (var childIndex = 0; childIndex < parent.NestedFunctions.Length; childIndex++)
                 {
-                    if (indexById.TryGetValue(parent.NestedFunctions[childIndex], out var nestedIndex))
+                    var child = parent.NestedFunctions[childIndex];
+                    if (child.IsValid &&
+                        (uint)child.Value < (uint)indexById.Length)
                     {
-                        parentByIndex[nestedIndex] = i;
+                        var nestedIndex = indexById[child.Value];
+                        if (nestedIndex >= 0)
+                        {
+                            parentByIndex[nestedIndex] = i;
+                        }
                     }
                 }
             }
 
-            var localIndexByName = BuildLocalIndexes(modulePlan);
             var freeNames = CollectFreeNames(modulePlan);
             var builders = CreateLayoutBuilders(modulePlan);
-            var resolver = new CaptureResolver(modulePlan, parentByIndex, localIndexByName, builders);
+            var resolver = new CaptureResolver(modulePlan, parentByIndex, builders);
 
             for (var i = 0; i < modulePlan.Functions.Count; i++)
             {
@@ -73,6 +102,47 @@ namespace AuroraScript.Compiler.Backend.Binding
             }
         }
 
+        private static void PlanSingleNonNestedFunction(FunctionPlan function)
+        {
+            function.UpvalueSlots = Array.Empty<UpvalueSlot>();
+            function.CapturedLocalSlots = Array.Empty<UpvalueSlot>();
+            if (function.IsDirectCallCandidate && !CanUseModuleDirectCall(function))
+            {
+                function.IsDirectCallCandidate = false;
+                if (function.IsModuleFunction && function.Visibility == FunctionVisibility.InternalOnly)
+                {
+                    function.Visibility = FunctionVisibility.ModuleVisible;
+                }
+            }
+
+            function.RequiresClosureObject = function.Visibility != FunctionVisibility.InternalOnly || !function.IsDirectCallCandidate;
+            function.CanCacheClosureObject = function.RequiresClosureObject &&
+                function.UpvalueSlots.Length == 0 &&
+                !function.IsModuleFunction &&
+                function.IsLambda;
+        }
+
+        private static bool HasNestedFunctions(ModulePlan modulePlan)
+        {
+            for (var i = 0; i < modulePlan.Functions.Count; i++)
+            {
+                if (modulePlan.Functions[i].NestedFunctions.Length != 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static void PlanFlatModule(ModulePlan modulePlan)
+        {
+            for (var i = 0; i < modulePlan.Functions.Count; i++)
+            {
+                PlanSingleNonNestedFunction(modulePlan.Functions[i]);
+            }
+        }
+
         private static bool CanUseModuleDirectCall(FunctionPlan function)
         {
             return function.IsModuleFunction &&
@@ -96,22 +166,6 @@ namespace AuroraScript.Compiler.Backend.Binding
             }
 
             return count;
-        }
-
-        private static Dictionary<string, LocalSlotId>[] BuildLocalIndexes(ModulePlan modulePlan)
-        {
-            var result = new Dictionary<string, LocalSlotId>[modulePlan.Functions.Count];
-            for (var i = 0; i < modulePlan.Functions.Count; i++)
-            {
-                var locals = modulePlan.Functions[i].LocalSlots;
-                var map = new Dictionary<string, LocalSlotId>(StringComparer.Ordinal);
-                for (var slotIndex = 0; slotIndex < locals.Length; slotIndex++)
-                {
-                    map.TryAdd(locals[slotIndex].Name, locals[slotIndex].Id);
-                }
-                result[i] = map;
-            }
-            return result;
         }
 
         private static List<string>[] CollectFreeNames(ModulePlan modulePlan)
@@ -145,12 +199,11 @@ namespace AuroraScript.Compiler.Backend.Binding
             public CaptureResolver(
                 ModulePlan modulePlan,
                 int[] parentByIndex,
-                Dictionary<string, LocalSlotId>[] localIndexByName,
                 LayoutBuilders builders)
             {
                 _modulePlan = modulePlan;
                 _parentByIndex = parentByIndex;
-                _localIndexByName = localIndexByName;
+                _localIndexByName = new Dictionary<string, LocalSlotId>[modulePlan.Functions.Count];
                 _builders = builders;
             }
 
@@ -169,7 +222,7 @@ namespace AuroraScript.Compiler.Backend.Binding
                 }
 
                 var parent = _modulePlan.Functions[parentIndex];
-                if (_localIndexByName[parentIndex].TryGetValue(name, out var parentLocal))
+                if (GetLocalIndex(parentIndex).TryGetValue(name, out var parentLocal))
                 {
                     var upvalue = AddUpvalue(functionIndex,
                         name,
@@ -241,6 +294,25 @@ namespace AuroraScript.Compiler.Backend.Binding
                     childUpvalue.SourceLocal,
                     UpvalueSlotId.Invalid,
                     isInherited: false));
+            }
+
+            private Dictionary<string, LocalSlotId> GetLocalIndex(int functionIndex)
+            {
+                var existing = _localIndexByName[functionIndex];
+                if (existing != null)
+                {
+                    return existing;
+                }
+
+                var locals = _modulePlan.Functions[functionIndex].LocalSlots;
+                var map = new Dictionary<string, LocalSlotId>(StringComparer.Ordinal);
+                for (var i = 0; i < locals.Length; i++)
+                {
+                    map.TryAdd(locals[i].Name, locals[i].Id);
+                }
+
+                _localIndexByName[functionIndex] = map;
+                return map;
             }
         }
 

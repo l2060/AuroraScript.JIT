@@ -4,7 +4,6 @@ using AuroraScript.Compiler.Emits;
 using AuroraScript.Compiler.Emits.Builders;
 using AuroraScript.Runtime;
 using System;
-using System.Collections.Generic;
 using System.Reflection.Emit;
 
 namespace AuroraScript.Compiler.Backend.Emission
@@ -13,7 +12,6 @@ namespace AuroraScript.Compiler.Backend.Emission
     {
         private readonly EmissionSession _session;
         private readonly AbstractCILBuilder _builder;
-        private readonly Dictionary<ModuleId, ModuleEmissionResult> _resultsByModule = new();
 
         public BackendBuildEmitter(EmissionSession session)
         {
@@ -21,18 +19,12 @@ namespace AuroraScript.Compiler.Backend.Emission
             _builder = session.Builder;
         }
 
-        public EmissionReport Emit()
+        public void Emit()
         {
-            var report = _session.Emit();
-            for (var i = 0; i < report.Modules.Length; i++)
-            {
-                _resultsByModule[report.Modules[i].Module] = report.Modules[i];
-            }
-
+            _session.EmitAll();
             EnsureCompleteExecutableCoverage();
             EmitDomainInitializer();
             _builder.FinalizeBuild();
-            return report;
         }
 
         private void EnsureCompleteExecutableCoverage()
@@ -41,11 +33,6 @@ namespace AuroraScript.Compiler.Backend.Emission
             for (var moduleIndex = 0; moduleIndex < modules.Length; moduleIndex++)
             {
                 var module = modules[moduleIndex];
-                if (!_resultsByModule.TryGetValue(module.Id, out var moduleResult))
-                {
-                    throw new InvalidOperationException("Missing emission result for module '" + module.Name + "'.");
-                }
-
                 for (var i = 0; i < module.Functions.Count; i++)
                 {
                     var function = module.Functions[i];
@@ -102,7 +89,7 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitInitializeModule(ILGenerator il, ModulePlan module, LocalBuilder globalLocal)
         {
-            if (!_resultsByModule.TryGetValue(module.Id, out var result) || result.Initializer == null)
+            if (module.Initializer == null)
             {
                 return;
             }
@@ -114,7 +101,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             il.Emit(OpCodes.Ldnull);
             il.Emit(OpCodes.Callvirt, RuntimeMetadata.CILContext_With);
             il.Emit(OpCodes.Ldarg_1);
-            il.Emit(OpCodes.Call, result.Initializer);
+            il.Emit(OpCodes.Call, module.Initializer);
         }
     }
 }

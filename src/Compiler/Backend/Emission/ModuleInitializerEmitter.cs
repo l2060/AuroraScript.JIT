@@ -19,7 +19,7 @@ namespace AuroraScript.Compiler.Backend.Emission
     {
         private readonly EmissionSession _session;
         private readonly ModulePlan _module;
-        private readonly Dictionary<FunctionDeclaration, FunctionPlan> _functionsByDeclaration;
+        private Dictionary<FunctionDeclaration, FunctionPlan> _functionsByDeclaration;
         private MethodInfo _initializer;
         private ILGenerator _il;
         private bool _defined;
@@ -29,15 +29,6 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             _session = session ?? throw new ArgumentNullException(nameof(session));
             _module = module ?? throw new ArgumentNullException(nameof(module));
-            _functionsByDeclaration = new Dictionary<FunctionDeclaration, FunctionPlan>(ReferenceEqualityComparer.Instance);
-            for (var i = 0; i < module.Functions.Count; i++)
-            {
-                var function = module.Functions[i];
-                if (function.Declaration != null)
-                {
-                    _functionsByDeclaration[function.Declaration] = function;
-                }
-            }
         }
 
         public void Define()
@@ -628,7 +619,7 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitLambda(LambdaExpression expression)
         {
-            if (!_functionsByDeclaration.TryGetValue(expression.Function, out var function) ||
+            if (!GetFunctionsByDeclaration().TryGetValue(expression.Function, out var function) ||
                 !ClosureMaterializer.CanMaterialize(function, requireName: false))
             {
                 throw new NotSupportedException("Module lambda closure");
@@ -636,6 +627,27 @@ namespace AuroraScript.Compiler.Backend.Emission
 
             ClosureMaterializer.EmitClosure(_session, _il, function);
             _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromObject);
+        }
+
+        private Dictionary<FunctionDeclaration, FunctionPlan> GetFunctionsByDeclaration()
+        {
+            if (_functionsByDeclaration != null)
+            {
+                return _functionsByDeclaration;
+            }
+
+            var map = new Dictionary<FunctionDeclaration, FunctionPlan>(_module.Functions.Count, ReferenceEqualityComparer.Instance);
+            for (var i = 0; i < _module.Functions.Count; i++)
+            {
+                var function = _module.Functions[i];
+                if (function.Declaration != null)
+                {
+                    map[function.Declaration] = function;
+                }
+            }
+
+            _functionsByDeclaration = map;
+            return map;
         }
 
         private void EmitNew(FunctionCallExpression call)

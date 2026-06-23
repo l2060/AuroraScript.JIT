@@ -16,6 +16,39 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             ArgumentNullException.ThrowIfNull(module);
 
+            var state = CreateState(module);
+            var functions = new FunctionEmissionResult[module.Functions.Count];
+            for (var i = 0; i < module.Functions.Count; i++)
+            {
+                _session.CompileSession.CancellationToken.ThrowIfCancellationRequested();
+                functions[i] = state.FunctionEmitter.Emit(module.Functions[i]);
+            }
+
+            var initializer = default(System.Reflection.MethodInfo);
+            if (state.InitializerEmitter != null)
+            {
+                state.InitializerEmitter.TryEmit(out initializer);
+            }
+
+            return new ModuleEmissionResult(module.Id, module.Name, functions, initializer);
+        }
+
+        public void EmitWithoutReport(ModulePlan module)
+        {
+            ArgumentNullException.ThrowIfNull(module);
+
+            var state = CreateState(module);
+            for (var i = 0; i < module.Functions.Count; i++)
+            {
+                _session.CompileSession.CancellationToken.ThrowIfCancellationRequested();
+                state.FunctionEmitter.EmitWithoutResult(module.Functions[i]);
+            }
+
+            state.InitializerEmitter?.TryEmit(out _);
+        }
+
+        private ModuleEmissionState CreateState(ModulePlan module)
+        {
             ExecutableSkeletonEmitter skeleton = null;
             ModuleInitializerEmitter initializerEmitter = null;
             if (_session.EmitExecutableSkeletons)
@@ -27,20 +60,19 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
 
             var functionEmitter = new FunctionEmitter(_session, module, skeleton);
-            var functions = new FunctionEmissionResult[module.Functions.Count];
-            for (var i = 0; i < module.Functions.Count; i++)
+            return new ModuleEmissionState(functionEmitter, initializerEmitter);
+        }
+
+        private readonly struct ModuleEmissionState
+        {
+            public ModuleEmissionState(FunctionEmitter functionEmitter, ModuleInitializerEmitter initializerEmitter)
             {
-                _session.CompileSession.CancellationToken.ThrowIfCancellationRequested();
-                functions[i] = functionEmitter.Emit(module.Functions[i]);
+                FunctionEmitter = functionEmitter;
+                InitializerEmitter = initializerEmitter;
             }
 
-            var initializer = default(System.Reflection.MethodInfo);
-            if (initializerEmitter != null)
-            {
-                initializerEmitter.TryEmit(out initializer);
-            }
-
-            return new ModuleEmissionResult(module.Id, module.Name, functions, initializer);
+            public FunctionEmitter FunctionEmitter { get; }
+            public ModuleInitializerEmitter InitializerEmitter { get; }
         }
     }
 }

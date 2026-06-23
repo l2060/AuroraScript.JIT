@@ -10,12 +10,18 @@ namespace AuroraScript.Compiler.Backend.Emission
     internal sealed class FunctionEmissionContext
     {
         private List<SourceSpan> _sequencePoints;
+        private readonly HashSet<SymbolId> _directCallCandidateSymbols;
 
-        public FunctionEmissionContext(CompileSession session, ModulePlan module, FunctionPlan function)
+        public FunctionEmissionContext(
+            CompileSession session,
+            ModulePlan module,
+            FunctionPlan function,
+            HashSet<SymbolId> directCallCandidateSymbols = null)
         {
             Session = session ?? throw new ArgumentNullException(nameof(session));
             Module = module ?? throw new ArgumentNullException(nameof(module));
             Function = function ?? throw new ArgumentNullException(nameof(function));
+            _directCallCandidateSymbols = directCallCandidateSymbols;
         }
 
         public CompileSession Session { get; }
@@ -158,22 +164,8 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private bool IsDirectCallCandidate(SymbolId symbolId)
         {
-            var symbol = Session.Symbols[symbolId];
-            if (symbol.Kind != BackendSymbolKind.Function)
-            {
-                return false;
-            }
-
-            for (var i = 0; i < Module.Functions.Count; i++)
-            {
-                var function = Module.Functions[i];
-                if (function.IsDirectCallCandidate && ReferenceEquals(function.Declaration, symbol.Declaration))
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            return _directCallCandidateSymbols != null &&
+                _directCallCandidateSymbols.Contains(symbolId);
         }
     }
 }

@@ -70,5 +70,19 @@ namespace AuroraScript.Compiler.Backend
                 _ => throw new NotImplementedException($"Unsupported compilation mode '{options.CompilationMode}'.")
             };
         }
+
+        public CompilationModeCapabilities WithoutModuleDirectCall()
+        {
+            return CanUseModuleDirectCall
+                ? new CompilationModeCapabilities(
+                    Mode,
+                    CanAnalyzeModulesInParallel,
+                    CanLowerModulesInParallel,
+                    CanEmitModulesInParallel,
+                    RequiresSerializedMetadata,
+                    RequiresDeterministicPdb,
+                    canUseModuleDirectCall: false)
+                : this;
+        }
     }
 }
