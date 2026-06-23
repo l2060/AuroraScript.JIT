@@ -1,5 +1,4 @@
 ﻿using AuroraScript.Compiler;
-using AuroraScript.Compiler.Emits;
 using AuroraScript.Compiler.Emits.Builders;
 using AuroraScript.Core;
 using AuroraScript.Runtime.Interop;
@@ -185,8 +184,7 @@ namespace AuroraScript.Runtime
                 throw new AuroraException("Dynamic patching is disabled by EngineOptions.EnableHotReload.");
             }
             DynamicBuilder builder = new DynamicBuilder(ExeOptions);
-            var emitter = new CILEmitter(builder, ExeOptions);
-            var compiler = new IncrementalCompiler(this, ExeOptions, emitter);
+            var compiler = new IncrementalCompiler(this, ExeOptions, builder);
             var invoker = compiler.BuildPatch(source, patchType);
             var ctx = new ScriptContext(this);
             _ = invoker(ctx, []);

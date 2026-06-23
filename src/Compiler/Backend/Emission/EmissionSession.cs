@@ -12,16 +12,22 @@ namespace AuroraScript.Compiler.Backend.Emission
         private readonly Dictionary<DynamicDelegateKey, int> _dynamicDelegateIds = new();
         private readonly List<DynamicDelegateKey> _pendingDynamicDelegates = new();
 
-        public EmissionSession(CompileSession compileSession, AbstractCILBuilder builder, bool emitExecutableSkeletons = false)
+        public EmissionSession(
+            CompileSession compileSession,
+            AbstractCILBuilder builder,
+            bool emitExecutableSkeletons = false,
+            bool forceModuleDefinitions = false)
         {
             CompileSession = compileSession ?? throw new ArgumentNullException(nameof(compileSession));
             Builder = builder ?? throw new ArgumentNullException(nameof(builder));
             EmitExecutableSkeletons = emitExecutableSkeletons;
+            ForceModuleDefinitions = forceModuleDefinitions;
         }
 
         public CompileSession CompileSession { get; }
         public AbstractCILBuilder Builder { get; }
         public bool EmitExecutableSkeletons { get; }
+        public bool ForceModuleDefinitions { get; }
         public EngineOptions Options => CompileSession.Options;
 
         public EmissionReport Emit()

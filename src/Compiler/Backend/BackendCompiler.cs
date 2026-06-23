@@ -1,10 +1,12 @@
 using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
+using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Compiler.Backend.Analysis;
 using AuroraScript.Compiler.Backend.Binding;
 using AuroraScript.Compiler.Backend.Lowering;
 using AuroraScript.Compiler.Backend.Plans;
 using AuroraScript.Compiler.Emits.Builders;
+using AuroraScript.Tokens;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -44,6 +46,60 @@ namespace AuroraScript.Compiler.Backend
                 PredefineModule(session, modulePlan);
             }
             session.Modules = plans;
+            var functionMaps = RegisterNestedFunctions(session, plans, cancellationToken);
+            AnalyzeModules(session, plans, functionMaps, cancellationToken);
+            return session;
+        }
+
+        public CompileBlockPlan CreateCompileBlockPlan(BlockStatement body, IReadOnlyList<string> parameters, string sourceName, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(body);
+
+            var blockPlan = new CompileBlockPlan(body, parameters, sourceName);
+            var session = CreateSession(cancellationToken);
+            var modulePlan = new ModulePlan(new ModuleId(0), CreateCompileBlockModule(body, blockPlan.Parameters, blockPlan.SourceName));
+            PredefineModule(session, modulePlan);
+            session.Modules = [modulePlan];
+
+            var functionMaps = RegisterNestedFunctions(session, [modulePlan], cancellationToken);
+            FunctionBinder.BindFunctionBodies(session, modulePlan, functionMaps[0]);
+            ClosurePlanner.PlanModule(modulePlan);
+            FunctionLowerer.LowerModule(modulePlan, functionMaps[0]);
+
+            blockPlan.Session = session;
+            blockPlan.Module = modulePlan;
+            blockPlan.Function = modulePlan.Functions[0];
+            return blockPlan;
+        }
+
+        public CompileSession CreateHotPatchPlans(
+            ModuleDeclaration mainModule,
+            ModuleDeclaration[] dependencies,
+            IReadOnlyCollection<string> existingMainModuleSymbols,
+            out ModulePlan mainModulePlan,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(mainModule);
+            dependencies ??= Array.Empty<ModuleDeclaration>();
+
+            var modules = new ModuleDeclaration[dependencies.Length + 1];
+            Array.Copy(dependencies, modules, dependencies.Length);
+            modules[^1] = mainModule;
+
+            var session = CreateSession(cancellationToken);
+            var plans = new ModulePlan[modules.Length];
+            for (var i = 0; i < modules.Length; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var modulePlan = new ModulePlan(new ModuleId(i), modules[i]);
+                plans[i] = modulePlan;
+                PredefineModule(session, modulePlan);
+            }
+
+            mainModulePlan = plans[^1];
+            AddExistingModuleSymbols(session, mainModulePlan, existingMainModuleSymbols);
+            session.Modules = plans;
+
             var functionMaps = RegisterNestedFunctions(session, plans, cancellationToken);
             AnalyzeModules(session, plans, functionMaps, cancellationToken);
             return session;
@@ -171,6 +227,79 @@ namespace AuroraScript.Compiler.Backend
             }
 
             session.Scopes[moduleScope] = session.Scopes[moduleScope].WithSymbolRange(firstSymbol, symbolCount);
+        }
+
+        private static ModuleDeclaration CreateCompileBlockModule(BlockStatement body, IReadOnlyList<string> parameters, string sourceName)
+        {
+            var module = new ModuleDeclaration(string.Empty)
+            {
+                ModuleName = "__compile_block__",
+                ModulePath = sourceName,
+                FullPath = sourceName
+            };
+            var function = new FunctionDeclaration(
+                MemberAccess.Export,
+                CreateIdentifier("__compile_block_entry__", body.Range),
+                CreateParameters(parameters),
+                body,
+                FunctionFlags.General);
+            module.AddFunction(function);
+            return module;
+        }
+
+        private static ParameterDeclaration[] CreateParameters(IReadOnlyList<string> parameters)
+        {
+            if (parameters == null || parameters.Count == 0)
+            {
+                return Array.Empty<ParameterDeclaration>();
+            }
+
+            var result = new ParameterDeclaration[parameters.Count];
+            for (var i = 0; i < parameters.Count; i++)
+            {
+                result[i] = new ParameterDeclaration((byte)i, CreateIdentifier(parameters[i], SourceSpan.None), null);
+            }
+
+            return result;
+        }
+
+        private static IdentifierToken CreateIdentifier(string value, SourceSpan range)
+        {
+            return new IdentifierToken
+            {
+                Value = value,
+                Range = range
+            };
+        }
+
+        private static void AddExistingModuleSymbols(
+            CompileSession session,
+            ModulePlan modulePlan,
+            IReadOnlyCollection<string> existingSymbols)
+        {
+            if (existingSymbols == null || existingSymbols.Count == 0)
+            {
+                return;
+            }
+
+            var moduleScope = modulePlan.ModuleScope;
+            foreach (var name in existingSymbols)
+            {
+                if (string.IsNullOrEmpty(name) ||
+                    modulePlan.TryGetSymbol(name, out _))
+                {
+                    continue;
+                }
+
+                AddModuleSymbol(
+                    session,
+                    modulePlan,
+                    moduleScope,
+                    name,
+                    BackendSymbolKind.ModuleProperty,
+                    BackendSymbolFlags.ModuleVisible,
+                    modulePlan.Declaration);
+            }
         }
 
         private static int AddIncludedExportSymbols(CompileSession session, ModulePlan modulePlan, ScopeId moduleScope, ModuleDeclaration includedModule)

@@ -2857,12 +2857,134 @@ net9.0:  289 passed, 0 failed, 0 skipped
 net10.0: 289 passed, 0 failed, 0 skipped
 ```
 
-后续：
+### I027: spread call and spread constructor coverage
 
-- I027 spread call / spread constructor：
-  - 需要统一到 materialized argument path。
-  - 当前旧 helper 使用 `List<ScriptDatum>` + `CollectionsMarshal.AsSpan`，可用但有额外分配。
-  - 新架构应优先评估 pooled buffer 或 `ValueListBuilder` 风格，避免把 spread call 固化为高分配路径。
+状态：已完成。
+
+本轮完成：
+
+- executable skeleton 支持 ordinary function object spread call：
+  - `callback(0, ...values, 5)`
+- executable skeleton 支持 property spread call：
+  - `obj.sum(1, ...values, 5)`
+- executable skeleton 支持 constructor spread call：
+  - `new Type(1, ...values, 5)`
+- spread call 不复用旧 emitter 的 `List<ScriptDatum>` + `CollectionsMarshal.AsSpan` 路径。
+
+实现：
+
+- `CILHelper`：
+  - 新增 `EnsureArgumentCapacity(ScriptDatum[] args, int count)`。
+  - 新增 `AddArgument(ScriptDatum[] args, ref int count, ScriptDatum value)`。
+  - 新增 `SpreadIntoArguments(ScriptDatum[] args, ref int count, ScriptObject value)`。
+  - 使用 `ArrayPool<ScriptDatum>` 扩容，扩容时只复制已写入的 `count` 个元素。
+  - 最终仍复用 `InvokeMany` / `InvokePropertyMany` / `NewMany` 的 `finally ReturnArguments` 归还路径。
+- `RuntimeMetadata`：
+  - 缓存 `CILHelper_AddArgument`。
+  - 缓存 `CILHelper_SpreadIntoArguments`。
+- `ExecutableSkeletonEmitter`：
+  - `EmitRegularCall`：有 spread 时强制走 materialized pooled buffer path。
+  - `EmitPropertyCall`：有 spread 时强制走 materialized pooled buffer path。
+  - `EmitNew`：有 spread 时强制走 `EmitNewMany`。
+  - 新增 `EmitArgumentsToBuffer`：
+    - 初始按 argument expression 数量租用 buffer，至少 1。
+    - 普通实参调用 `AddArgument`。
+    - spread 实参先转 `ScriptObject`，再调用 `SpreadIntoArguments`。
+    - 左到右发射表达式，保留求值顺序。
+  - `CanEmitDirectCall` 明确拒绝 spread 参数，避免 direct-call fast path 把 spread 当普通实参。
+  - ordinary/property/new call 的 eligibility 改为 `CanEmitArgument`，spread 时检查内部 expression 是否可发射。
+
+新增测试：
+
+- `EmissionSkeletonExecutesSpreadFunctionObjectCalls`
+  - 验证 ordinary function object spread call。
+- `EmissionSkeletonExecutesSpreadPropertyCalls`
+  - 验证 property spread call。
+- `EmissionSkeletonExecutesSpreadConstructorCalls`
+  - 验证 constructor spread call。
+
+验证：
+
+```text
+dotnet test tests\CompilerBackend\AuroraScript.CompilerBackend.Tests.csproj --no-restore -f net9.0
+net9.0:  63 passed, 0 failed, 0 skipped
+
+dotnet test tests\CompilerBackend\AuroraScript.CompilerBackend.Tests.csproj --no-restore -f net10.0
+net10.0: 63 passed, 0 failed, 0 skipped
+
+dotnet test tests\AuroraScript.Tests.csproj --no-restore -f net9.0
+net9.0:  289 passed, 0 failed, 0 skipped
+
+dotnet test tests\AuroraScript.Tests.csproj --no-restore -f net10.0
+net10.0: 289 passed, 0 failed, 0 skipped
+```
+
+备注：
+
+- 本机当前缺少 `Microsoft.NETCore.App 8.0.0` x64 runtime，net8 testhost 无法启动。
+- net8 未出现断言失败，测试进程在启动阶段因 runtime 缺失中止。
+
+### I028: uncaptured local function hoist and materialization
+
+状态：已完成。
+
+本轮完成：
+
+- 修正 lowering 的 block function declaration 顺序：
+  - 旧 emitter 在 block 内先访问 `block.Functions`，再执行普通语句。
+  - 新 lowering 原先把 `block.Functions` 追加到普通语句之后，可能破坏声明前调用语义。
+  - 现在 `LowerBlock` 先 lowering `block.Functions`，再 lowering `block` 普通语句。
+- executable skeleton 支持无捕获局部函数声明：
+  - `func helper(...) { ... }`
+  - 声明被物化为 `ClosureFunction`，转为 `ScriptDatum` 后写入对应 local slot。
+  - 后续 `helper(...)` 走既有 ordinary function object call path。
+
+边界：
+
+- 仅支持无 upvalue / 无 captured local 的局部函数。
+- 捕获局部的函数仍不进入 skeleton，等待后续 upvalue materialization。
+- 局部函数闭包物化需要有效 `ScriptContext`，测试中使用真实 domain/module context。
+
+实现：
+
+- `FunctionLowerer.LowerBlock`：
+  - 函数声明 lowering 顺序改为先 `block.Functions`，再普通 statement。
+- `ExecutableSkeletonEmitter`：
+  - `EmitStatement` 新增 `LoweredFunctionDeclarationStatement`。
+  - 新增 `EmitFunctionDeclaration`：
+    - `ClosureMaterializer.EmitClosure`
+    - `ScriptDatum.FromObject`
+    - `stloc localSlot`
+  - 新增 `CanEmitFunctionDeclaration`：
+    - local slot 有效。
+    - function id 有效且在 executable set 内。
+    - 目标函数可无捕获物化。
+
+新增测试：
+
+- `EmissionSkeletonHoistsUncapturedLocalFunctionDeclarations`
+  - 验证声明前调用 `helper(value)`。
+  - 验证 `run` 和局部 `helper` 都生成 executable skeleton。
+
+验证：
+
+```text
+dotnet test tests\CompilerBackend\AuroraScript.CompilerBackend.Tests.csproj --no-restore -f net9.0
+net9.0:  64 passed, 0 failed, 0 skipped
+
+dotnet test tests\CompilerBackend\AuroraScript.CompilerBackend.Tests.csproj --no-restore -f net10.0
+net10.0: 64 passed, 0 failed, 0 skipped
+
+dotnet test tests\AuroraScript.Tests.csproj --no-restore -f net9.0
+net9.0:  289 passed, 0 failed, 0 skipped
+
+dotnet test tests\AuroraScript.Tests.csproj --no-restore -f net10.0
+net10.0: 289 passed, 0 failed, 0 skipped
+```
+
+备注：
+
+- 本机当前仍缺少 `Microsoft.NETCore.App 8.0.0` x64 runtime，net8 testhost 无法启动。
 
 ### I025: default parameter lowering and skeleton initialization
 
@@ -3020,3 +3142,233 @@ net8.0:  289 passed, 0 failed, 0 skipped
 net9.0:  289 passed, 0 failed, 0 skipped
 net10.0: 289 passed, 0 failed, 0 skipped
 ```
+
+### I029: `$args` object skeleton coverage
+
+状态：已完成。
+
+背景：
+
+- 旧 emitter 支持函数体内读取 `$args`，通过当前调用的 `Span<ScriptDatum>` 构造 `ScriptArray`。
+- 使用 `$args` 的函数不能进入 fast direct-call，否则会丢失真实实参数量；应保持 Span 调用约定。
+- `arguments` 不是旧 emitter 的内置名，本轮不扩展语义，避免把普通标识符误判为参数对象并误伤 direct-call。
+
+本轮完成：
+
+- `FunctionBinder.SpecialUsageScanner`：
+  - 扫描函数体内 `$args`。
+  - 跳过嵌套函数/lambda，避免父函数误继承子函数的 `$args` 使用。
+  - 只识别 `$args`，不再将 `arguments` 当成内置参数对象。
+- `ExecutableSkeletonEmitter.EmitName`：
+  - 对 `$args` 发射 `ldarg.1` + `new ScriptArray(Span<ScriptDatum>)`。
+  - 转为 `ScriptDatum` 后参与普通表达式路径。
+- `ExecutableSkeletonEmitter.CanEmitName`：
+  - 将 `$args` 作为 skeleton 可发射内置名。
+- direct-call 约束保持：
+  - `UsesArgumentsObject == true` 时函数仍走 `FunctionCallConvention.Span`。
+  - module direct-call 继续拒绝该函数，保留真实实参数组语义。
+
+新增测试：
+
+- `EmissionSkeletonExecutesArgsObjectFunctions`
+  - `func count(a, b = 5) { return a + b + $args.length; }`
+  - 验证 `count(2) + count(2, 10) == 22`。
+  - 验证 `UsesArgumentsObject == true`、`IsDirectCallCandidate == false`、`CallConvention == Span`。
+
+验证：
+
+```text
+dotnet test tests\CompilerBackend\AuroraScript.CompilerBackend.Tests.csproj --no-restore -f net9.0
+net9.0:  65 passed, 0 failed, 0 skipped
+
+dotnet test tests\CompilerBackend\AuroraScript.CompilerBackend.Tests.csproj --no-restore -f net10.0
+net10.0: 65 passed, 0 failed, 0 skipped
+
+dotnet test tests\AuroraScript.Tests.csproj --no-restore -f net9.0
+net9.0:  289 passed, 0 failed, 0 skipped
+
+dotnet test tests\AuroraScript.Tests.csproj --no-restore -f net10.0
+net10.0: 289 passed, 0 failed, 0 skipped
+```
+
+备注：
+
+- 本机当前缺少 `Microsoft.NETCore.App 8.0.0` x64 runtime，net8 testhost 无法启动；本轮只验证 net9.0 / net10.0。
+
+### I030: destructuring declaration lowering and skeleton coverage
+
+状态：已完成。
+
+背景：
+
+- 主测试和 Examples 已使用变量解构，如 `var [first, ...middle, last] = ...` 与 `var { name, age } = ...`。
+- 旧 lowering 将 `VariableDeclaration` 解构直接标为 unsupported，导致新 executable skeleton 无法接管这类高频业务代码。
+- Parser 当前可达语法范围：
+  - 对象解构只支持属性简写 `{ a, b }`。
+  - 数组解构支持标识符元素与 spread 标识符，支持 rest 后继续跟尾部元素。
+  - 不支持对象别名、默认值、嵌套 pattern；本轮不为不可达 AST 设计额外分支。
+
+本轮完成：
+
+- Lowered model：
+  - 新增 `LoweredObjectDestructuringDeclarationStatement`。
+  - 新增 `LoweredArrayDestructuringDeclarationStatement`。
+  - 新增 object/array destructuring binding 结构，直接保存目标 `LocalSlotId`。
+- `FunctionLowerer`：
+  - 普通变量声明保持 `LoweredVariableDeclarationStatement`。
+  - `{ a, b }` lowering 为对象解构声明，initializer 只 lowering 一次。
+  - `[first, ...middle, last]` lowering 为数组解构声明：
+    - 普通前缀元素按固定 index 读取。
+    - rest 使用 start index 与 trailing count。
+    - rest 后尾部元素按 `array.Length - trailingCount` 读取。
+  - unsupported counter 递归统计解构 initializer。
+- 非执行型 emission 统计：
+  - 记录解构目标 local slot 引用。
+  - 记录 initializer 表达式引用。
+- `ExecutableSkeletonEmitter`：
+  - 对象解构：
+    - initializer 转 `ScriptObject` 后存临时 local。
+    - 逐属性调用 `ScriptObject.GetPropertyDatum(ctx, name)`。
+  - 数组解构：
+    - initializer 转 `ScriptArray` 后存临时 local。
+    - 普通元素调用 `ScriptArray.GetElement(index)`。
+    - rest 调用现有 `ScriptArray.SliceTo(start, end, ref target)`。
+  - `CanEmit` / protected try block 判定都接入解构声明。
+
+新增/调整测试：
+
+- `LoweringCountsUnsupportedNodes`
+  - 解构不再作为 unsupported 样例。
+  - 保留 `YieldStatement` unsupported 断言；Yield 旧 emitter 也未实装，仍不实现。
+- `LoweringRepresentsDestructuringDeclarations`
+  - 验证 object/array destructuring lowered 结构、rest trailing count。
+- `EmissionSkeletonExecutesDestructuringDeclarations`
+  - 验证 object/array destructuring 可生成 executable skeleton 并执行。
+  - 覆盖 rest 与 rest 后尾部元素。
+
+验证：
+
+```text
+dotnet test tests\CompilerBackend\AuroraScript.CompilerBackend.Tests.csproj --no-restore -f net9.0
+net9.0:  67 passed, 0 failed, 0 skipped
+
+dotnet test tests\CompilerBackend\AuroraScript.CompilerBackend.Tests.csproj --no-restore -f net10.0
+net10.0: 67 passed, 0 failed, 0 skipped
+
+dotnet test tests\AuroraScript.Tests.csproj --no-restore -f net9.0
+net9.0:  289 passed, 0 failed, 0 skipped
+
+dotnet test tests\AuroraScript.Tests.csproj --no-restore -f net10.0
+net10.0: 289 passed, 0 failed, 0 skipped
+```
+
+备注：
+
+- 本机当前缺少 `Microsoft.NETCore.App 8.0.0` x64 runtime，net8 testhost 无法启动；本轮只验证 net9.0 / net10.0。
+
+### I031: regex literal and element compound-add skeleton coverage
+
+状态：已完成。
+
+背景：
+
+- Parser 已将模板字符串 lowering 为普通 `BinaryExpression(Add)` 链，新后端无需专用模板节点。
+- `typeof` 已通过 `UnaryExpression` + `CILHelper.TypeOf` 接入 skeleton。
+- 剩余高价值表达式缺口包括：
+  - Regex literal：旧 emitter 支持 `/pattern/flags`，新 skeleton literal 白名单未包含 `RegexToken`。
+  - 元素 `+=`：Parser 对 `values[index++] += 2` 保留 `CompoundExpression`，旧 emitter 使用 helper 保证目标只求值一次；新 skeleton 只支持 local compound。
+
+本轮完成：
+
+- `ExecutableSkeletonEmitter.EmitLiteral`：
+  - `RegexToken` 发射 `RegexManager.Resolve(pattern, flags)`。
+  - 转为 `ScriptDatum.FromObject`，后续 property call 路径可直接调用 `.test(...)`。
+- `ExecutableSkeletonEmitter.CanEmitExpression`：
+  - literal 白名单加入 `RegexToken`。
+- `ExecutableSkeletonEmitter.EmitCompound`：
+  - 支持 `LoweredGetElementExpression` 左值的 `+=`。
+  - 使用现有 `CILHelper.CompoundAddElement(ScriptDatum, ScriptDatum, ScriptDatum)`。
+  - 保持 receiver/index/right 各求值一次。
+- `CanEmitCompound`：
+  - local compound 保持原 fast path。
+  - element compound 仅允许 `+=`，与旧 helper 覆盖范围一致。
+
+新增测试：
+
+- `EmissionSkeletonExecutesElementCompoundAddOnce`
+  - 验证 `values[index++] += 2` 结果正确且 index 只递增一次。
+- `EmissionSkeletonExecutesRegexLiteralCalls`
+  - 验证 `/aurora/i.test('AURORA Script')` 可生成 executable skeleton 并返回 `true`。
+
+验证：
+
+```text
+dotnet test tests\CompilerBackend\AuroraScript.CompilerBackend.Tests.csproj --no-restore -f net9.0
+net9.0:  69 passed, 0 failed, 0 skipped
+
+dotnet test tests\CompilerBackend\AuroraScript.CompilerBackend.Tests.csproj --no-restore -f net10.0
+net10.0: 69 passed, 0 failed, 0 skipped
+
+dotnet test tests\AuroraScript.Tests.csproj --no-restore -f net9.0
+net9.0:  289 passed, 0 failed, 0 skipped
+
+dotnet test tests\AuroraScript.Tests.csproj --no-restore -f net10.0
+net10.0: 289 passed, 0 failed, 0 skipped
+```
+
+备注：
+
+- 本机当前缺少 `Microsoft.NETCore.App 8.0.0` x64 runtime，net8 testhost 无法启动；本轮只验证 net9.0 / net10.0。
+
+### I032: property/element unary mutation skeleton coverage
+
+状态：已完成。
+
+背景：
+
+- 旧 emitter 支持 `obj.value++`、`--obj.value`、`array[index]++`、`--array[index]`。
+- 新 skeleton 此前只支持本地变量自增自减，导致包含属性/元素 mutation 的函数无法进入 skeleton。
+- Runtime 已有 mutation helper，且能保证 receiver/index 求值一次。
+
+本轮完成：
+
+- `ExecutableSkeletonEmitter.EmitUnary`：
+  - local mutation 保持 `ldloca + CILHelper.Increment/Decrement*`。
+  - element mutation：
+    - receiver 转 `ScriptObject`。
+    - index 按表达式求值一次。
+    - 调用 `CILHelper.IncrementElement*` / `DecrementElement*`。
+  - property mutation：
+    - 限制静态属性名。
+    - receiver 转 `ScriptObject`。
+    - 调用 `CILHelper.IncrementProperty*` / `DecrementProperty*`。
+- `CanEmitUnary`：
+  - 扩展允许本地变量、静态属性、元素三类 mutation target。
+  - 动态属性名仍拒绝进入 skeleton。
+
+新增测试：
+
+- `EmissionSkeletonExecutesPropertyAndElementUnaryMutation`
+  - 覆盖 `obj.value++`、`--obj.value`、`values[index++]++`。
+  - 验证 postfix/prefix 返回值语义。
+  - 验证元素索引表达式只求值一次。
+
+验证：
+
+```text
+dotnet test tests\CompilerBackend\AuroraScript.CompilerBackend.Tests.csproj --no-restore -f net9.0
+net9.0:  70 passed, 0 failed, 0 skipped
+
+dotnet test tests\CompilerBackend\AuroraScript.CompilerBackend.Tests.csproj --no-restore -f net10.0
+net10.0: 70 passed, 0 failed, 0 skipped
+
+dotnet test tests\AuroraScript.Tests.csproj --no-restore -f net9.0
+net9.0:  289 passed, 0 failed, 0 skipped
+
+dotnet test tests\AuroraScript.Tests.csproj --no-restore -f net10.0
+net10.0: 289 passed, 0 failed, 0 skipped
+```
+
+备注：
+
+- 本机当前缺少 `Microsoft.NETCore.App 8.0.0` x64 runtime，net8 testhost 无法启动；本轮只验证 net9.0 / net10.0。

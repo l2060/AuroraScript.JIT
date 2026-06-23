@@ -41,6 +41,14 @@ namespace AuroraScript.Compiler.Backend.Emission
                     _locals.EmitDeclaration(context, variable);
                     _expressions.Emit(context, variable.Initializer);
                     return;
+                case LoweredObjectDestructuringDeclarationStatement objectDestructuring:
+                    _locals.EmitObjectDestructuringDeclaration(context, objectDestructuring);
+                    _expressions.Emit(context, objectDestructuring.Initializer);
+                    return;
+                case LoweredArrayDestructuringDeclarationStatement arrayDestructuring:
+                    _locals.EmitArrayDestructuringDeclaration(context, arrayDestructuring);
+                    _expressions.Emit(context, arrayDestructuring.Initializer);
+                    return;
                 case LoweredFunctionDeclarationStatement function:
                     _locals.EmitFunctionDeclaration(context, function);
                     return;

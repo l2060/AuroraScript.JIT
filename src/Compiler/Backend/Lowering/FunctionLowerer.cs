@@ -123,13 +123,13 @@ namespace AuroraScript.Compiler.Backend.Lowering
                 }
 
                 var statements = new List<LoweredStatement>(block.Length + block.Functions.Count);
-                for (var i = 0; i < block.Length; i++)
-                {
-                    statements.Add(LowerStatement(block[i]));
-                }
                 for (var i = 0; i < block.Functions.Count; i++)
                 {
                     statements.Add(LowerStatement(block.Functions[i]));
+                }
+                for (var i = 0; i < block.Length; i++)
+                {
+                    statements.Add(LowerStatement(block[i]));
                 }
                 return new LoweredBlockStatement(block, statements.ToArray());
             }
@@ -201,15 +201,90 @@ namespace AuroraScript.Compiler.Backend.Lowering
 
             private LoweredStatement LowerVariableDeclaration(VariableDeclaration declaration)
             {
-                if (declaration.Name == null)
+                if (declaration.Name != null)
                 {
+                    return new LoweredVariableDeclarationStatement(
+                        declaration,
+                        ResolveLocal(declaration.Name.Value),
+                        LowerExpression(declaration.Initializer));
+                }
+
+                return declaration.Pattern switch
+                {
+                    ObjectDestructuringPattern objectPattern => LowerObjectDestructuringDeclaration(declaration, objectPattern),
+                    ArrayDestructuringPattern arrayPattern => LowerArrayDestructuringDeclaration(declaration, arrayPattern),
+                    _ => new LoweredUnsupportedStatement(declaration)
+                };
+            }
+
+            private LoweredStatement LowerObjectDestructuringDeclaration(
+                VariableDeclaration declaration,
+                ObjectDestructuringPattern pattern)
+            {
+                var bindings = new LoweredObjectDestructuringBinding[pattern.Properties.Count];
+                for (var i = 0; i < pattern.Properties.Count; i++)
+                {
+                    var property = pattern.Properties[i];
+                    bindings[i] = new LoweredObjectDestructuringBinding(property, ResolveLocal(property.Value));
+                }
+
+                return new LoweredObjectDestructuringDeclarationStatement(
+                    declaration,
+                    LowerExpression(declaration.Initializer),
+                    bindings);
+            }
+
+            private LoweredStatement LowerArrayDestructuringDeclaration(
+                VariableDeclaration declaration,
+                ArrayDestructuringPattern pattern)
+            {
+                var bindings = new List<LoweredArrayDestructuringBinding>(pattern.Elements.Count);
+                var restIndex = -1;
+                for (var i = 0; i < pattern.Elements.Count; i++)
+                {
+                    if (pattern.Elements[i] is SpreadExpression)
+                    {
+                        restIndex = i;
+                        break;
+                    }
+                }
+
+                var trailingCount = restIndex >= 0 ? pattern.Elements.Count - restIndex - 1 : 0;
+                for (var i = 0; i < pattern.Elements.Count; i++)
+                {
+                    var element = pattern.Elements[i];
+                    if (element == null)
+                    {
+                        continue;
+                    }
+
+                    if (element is NameExpression name)
+                    {
+                        bindings.Add(new LoweredArrayDestructuringBinding(
+                            ResolveLocal(name.Identifier.Value),
+                            i,
+                            isRest: false,
+                            trailingCount: restIndex >= 0 && i > restIndex ? pattern.Elements.Count - i : 0));
+                        continue;
+                    }
+
+                    if (element is SpreadExpression { Expression: NameExpression spreadName })
+                    {
+                        bindings.Add(new LoweredArrayDestructuringBinding(
+                            ResolveLocal(spreadName.Identifier.Value),
+                            i,
+                            isRest: true,
+                            trailingCount));
+                        continue;
+                    }
+
                     return new LoweredUnsupportedStatement(declaration);
                 }
 
-                return new LoweredVariableDeclarationStatement(
+                return new LoweredArrayDestructuringDeclarationStatement(
                     declaration,
-                    ResolveLocal(declaration.Name.Value),
-                    LowerExpression(declaration.Initializer));
+                    LowerExpression(declaration.Initializer),
+                    bindings.ToArray());
             }
 
             private LoweredStatement LowerFunctionDeclaration(FunctionDeclaration declaration)
@@ -409,6 +484,12 @@ namespace AuroraScript.Compiler.Backend.Lowering
                         return;
                     case LoweredVariableDeclarationStatement variable:
                         Count(variable.Initializer);
+                        return;
+                    case LoweredObjectDestructuringDeclarationStatement objectDestructuring:
+                        Count(objectDestructuring.Initializer);
+                        return;
+                    case LoweredArrayDestructuringDeclarationStatement arrayDestructuring:
+                        Count(arrayDestructuring.Initializer);
                         return;
                     case LoweredIfStatement ifStatement:
                         Count(ifStatement.Condition);

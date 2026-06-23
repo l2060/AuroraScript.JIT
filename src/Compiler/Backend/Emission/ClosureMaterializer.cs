@@ -1,6 +1,7 @@
 using AuroraScript.Compiler.Backend.Plans;
 using AuroraScript.Compiler.Emits;
 using AuroraScript.Runtime;
+using AuroraScript.Runtime.Types;
 using System;
 using System.Reflection;
 using System.Reflection.Emit;
@@ -14,8 +15,6 @@ namespace AuroraScript.Compiler.Backend.Emission
             return function != null &&
                 function.RequiresClosureObject &&
                 function.Method != null &&
-                function.UpvalueSlots.Length == 0 &&
-                function.CapturedLocalSlots.Length == 0 &&
                 (!requireName || !string.IsNullOrEmpty(function.Name));
         }
 
@@ -23,19 +22,21 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             return function != null &&
                 function.RequiresClosureObject &&
-                function.UpvalueSlots.Length == 0 &&
-                function.CapturedLocalSlots.Length == 0 &&
                 (!requireName || !string.IsNullOrEmpty(function.Name));
         }
 
-        public static void EmitClosure(EmissionSession session, ILGenerator il, FunctionPlan function)
+        public static void EmitClosure(
+            EmissionSession session,
+            ILGenerator il,
+            FunctionPlan function,
+            Action<UpvalueSlot> emitUpvalue = null)
         {
             il.Emit(OpCodes.Ldarg_0);
             il.Emit(OpCodes.Ldfld, RuntimeMetadata.CILContext_Domain);
             il.Emit(OpCodes.Ldarg_0);
             il.Emit(OpCodes.Ldfld, RuntimeMetadata.CILContext_Module);
             EmitDelegate(session, il, function);
-            il.Emit(OpCodes.Call, RuntimeMetadata.Array_Empty_Upvalue);
+            EmitUpvalues(il, function, emitUpvalue);
             if (string.IsNullOrEmpty(function.Name))
             {
                 il.Emit(OpCodes.Ldnull);
@@ -45,6 +46,30 @@ namespace AuroraScript.Compiler.Backend.Emission
                 session.Builder.LoadStringConstant(il, function.Name);
             }
             il.Emit(OpCodes.Newobj, GetClosureConstructor(function.CallConvention));
+        }
+
+        private static void EmitUpvalues(ILGenerator il, FunctionPlan function, Action<UpvalueSlot> emitUpvalue)
+        {
+            if (function.UpvalueSlots.Length == 0)
+            {
+                il.Emit(OpCodes.Call, RuntimeMetadata.Array_Empty_Upvalue);
+                return;
+            }
+
+            if (emitUpvalue == null)
+            {
+                throw new NotSupportedException("Closure requires lexical upvalues.");
+            }
+
+            il.Emit(OpCodes.Ldc_I4, function.UpvalueSlots.Length);
+            il.Emit(OpCodes.Newarr, typeof(Upvalue));
+            for (var i = 0; i < function.UpvalueSlots.Length; i++)
+            {
+                il.Emit(OpCodes.Dup);
+                il.Emit(OpCodes.Ldc_I4, i);
+                emitUpvalue(function.UpvalueSlots[i]);
+                il.Emit(OpCodes.Stelem_Ref);
+            }
         }
 
         private static void EmitDelegate(EmissionSession session, ILGenerator il, FunctionPlan function)

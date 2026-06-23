@@ -1,6 +1,5 @@
 using AuroraScript.Compiler.Analyzer;
 using AuroraScript.Compiler.Ast;
-using AuroraScript.Compiler.Emits;
 using AuroraScript.Core;
 using System;
 using System.Collections.Concurrent;
@@ -31,7 +30,6 @@ namespace AuroraScript.Compiler
                 AllowSynchronousContinuations = false
             });
         private readonly ConcurrentQueue<Exception> _exceptions = new();
-        private readonly CILEmitter _codeGenerator;
         private readonly EngineOptions _options;
         private readonly object _workerLock = new();
         private Task[] _workers;
@@ -41,14 +39,13 @@ namespace AuroraScript.Compiler
         private int _pendingModules;
         private int _initialRegistrationCompleted;
 
-        public ScriptCompiler(EngineOptions options, CILEmitter codeGenerator)
+        public ScriptCompiler(EngineOptions options)
         {
             _options = options;
             _baseDirectory = Path.GetFullPath(_options.BaseDirectory);
-            _codeGenerator = codeGenerator;
         }
 
-        public async Task BuildAsync(ScriptSource[] sources, CancellationToken cancellationToken = default)
+        public async Task<ModuleDeclaration[]> BuildModuleGraphAsync(ScriptSource[] sources, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(sources);
             cancellationToken.ThrowIfCancellationRequested();
@@ -96,8 +93,13 @@ namespace AuroraScript.Compiler
             Array.Sort(modules, CompareModulesByPath);
             LinkModules(modules);
             ModuleNameConflictCheck(modules);
-            modules = ModuleSort(modules);
-            _codeGenerator.Visit(modules);
+            return ModuleSort(modules);
+        }
+
+        public async Task BuildAsync(ScriptSource[] sources, CancellationToken cancellationToken = default)
+        {
+            var modules = await BuildModuleGraphAsync(sources, cancellationToken).ConfigureAwait(false);
+            throw new NotSupportedException("ScriptCompiler no longer owns emission. Use AuroraEngine build pipeline.");
         }
 
         private int ResolveWorkerCount()

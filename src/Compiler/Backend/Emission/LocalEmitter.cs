@@ -9,6 +9,22 @@ namespace AuroraScript.Compiler.Backend.Emission
             context.RecordLocal(statement.Slot);
         }
 
+        public void EmitObjectDestructuringDeclaration(FunctionEmissionContext context, LoweredObjectDestructuringDeclarationStatement statement)
+        {
+            for (var i = 0; i < statement.Bindings.Length; i++)
+            {
+                context.RecordLocal(statement.Bindings[i].Slot);
+            }
+        }
+
+        public void EmitArrayDestructuringDeclaration(FunctionEmissionContext context, LoweredArrayDestructuringDeclarationStatement statement)
+        {
+            for (var i = 0; i < statement.Bindings.Length; i++)
+            {
+                context.RecordLocal(statement.Bindings[i].Slot);
+            }
+        }
+
         public void EmitFunctionDeclaration(FunctionEmissionContext context, LoweredFunctionDeclarationStatement statement)
         {
             context.RecordNestedFunction(statement.Function);

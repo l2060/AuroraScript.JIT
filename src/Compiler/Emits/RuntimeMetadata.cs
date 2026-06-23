@@ -9,7 +9,7 @@ using System.Runtime.InteropServices;
 namespace AuroraScript.Compiler.Emits
 {
     /// <summary>
-    /// Static registry of Reflected metadata used by the <see cref="CILEmitter"/> to generate JIT code.
+    /// Static registry of reflected metadata used by the compiler backend to generate JIT code.
     /// This class caches MethodInfo and FieldInfo objects to avoid repeated reflection lookups during compilation.
     /// </summary>
     internal static class RuntimeMetadata
@@ -40,6 +40,7 @@ namespace AuroraScript.Compiler.Emits
         public static readonly MethodInfo ScriptObject_GetPropertyDatum = typeof(ScriptObject).GetMethod(nameof(ScriptObject.GetPropertyDatum), BindingFlags.NonPublic | BindingFlags.Instance, [typeof(ScriptContext), typeof(string)]);
         public static readonly MethodInfo ScriptObject_SetPropertyValue = typeof(ScriptObject).GetMethod(nameof(ScriptObject.SetPropertyValue), BindingFlags.NonPublic | BindingFlags.Instance, [typeof(ScriptContext), typeof(string), typeof(ScriptObject)]);
         public static readonly MethodInfo ScriptObject_SetPropertyDatum = typeof(ScriptObject).GetMethod(nameof(ScriptObject.SetPropertyDatum), BindingFlags.NonPublic | BindingFlags.Instance, [typeof(ScriptContext), typeof(string), typeof(ScriptDatum)]);
+        public static readonly MethodInfo ScriptObject_InternalDefineDatum = typeof(ScriptObject).GetMethod("InternalDefine", BindingFlags.NonPublic | BindingFlags.Instance, [typeof(string), typeof(ScriptDatum), typeof(bool), typeof(bool), typeof(bool)]);
         public static readonly MethodInfo ScriptObject_Patch = typeof(ScriptObject).GetMethod(nameof(ScriptObject.Patch), BindingFlags.NonPublic | BindingFlags.Instance, [typeof(string), typeof(ScriptObject), typeof(bool), typeof(bool)]);
         public static readonly MethodInfo ScriptObject_ClearProperties = typeof(ScriptObject).GetMethod(nameof(ScriptObject.ClearProperties), BindingFlags.NonPublic | BindingFlags.Instance, []);
         public static readonly MethodInfo ScriptObject_Invoke = typeof(ScriptObject).GetMethod(nameof(ScriptObject.Invoke), BindingFlags.NonPublic | BindingFlags.Instance, [typeof(ScriptContext), typeof(Span<ScriptDatum>)]);
@@ -151,6 +152,8 @@ namespace AuroraScript.Compiler.Emits
         public static readonly MethodInfo CILHelper_Invoke6 = typeof(CILHelper).GetMethod(nameof(CILHelper.Invoke6), [typeof(ScriptObject), typeof(ScriptContext), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum)]);
         public static readonly MethodInfo CILHelper_Invoke7 = typeof(CILHelper).GetMethod(nameof(CILHelper.Invoke7), [typeof(ScriptObject), typeof(ScriptContext), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum)]);
         public static readonly MethodInfo CILHelper_RentArguments = typeof(CILHelper).GetMethod(nameof(CILHelper.RentArguments), [typeof(int)]);
+        public static readonly MethodInfo CILHelper_AddArgument = typeof(CILHelper).GetMethod(nameof(CILHelper.AddArgument), [typeof(ScriptDatum[]), typeof(int).MakeByRefType(), typeof(ScriptDatum)]);
+        public static readonly MethodInfo CILHelper_SpreadIntoArguments = typeof(CILHelper).GetMethod(nameof(CILHelper.SpreadIntoArguments), [typeof(ScriptDatum[]), typeof(int).MakeByRefType(), typeof(ScriptObject)]);
         public static readonly MethodInfo CILHelper_InvokeMany = typeof(CILHelper).GetMethod(nameof(CILHelper.InvokeMany), [typeof(ScriptObject), typeof(ScriptContext), typeof(ScriptDatum[]), typeof(int)]);
         public static readonly MethodInfo CILHelper_ReturnArguments = typeof(CILHelper).GetMethod(nameof(CILHelper.ReturnArguments), [typeof(ScriptDatum[])]);
         public static readonly MethodInfo CILHelper_EnterDirect = typeof(CILHelper).GetMethod(nameof(CILHelper.EnterDirect), [typeof(ScriptContext), typeof(string)]);

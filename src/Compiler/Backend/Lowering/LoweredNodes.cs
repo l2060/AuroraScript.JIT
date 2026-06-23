@@ -12,6 +12,8 @@ namespace AuroraScript.Compiler.Backend.Lowering
         Expression,
         Return,
         VariableDeclaration,
+        ObjectDestructuringDeclaration,
+        ArrayDestructuringDeclaration,
         FunctionDeclaration,
         If,
         While,
@@ -120,6 +122,66 @@ namespace AuroraScript.Compiler.Backend.Lowering
 
         public LocalSlotId Slot { get; }
         public LoweredExpression Initializer { get; }
+    }
+
+    internal readonly struct LoweredObjectDestructuringBinding
+    {
+        public LoweredObjectDestructuringBinding(Token property, LocalSlotId slot)
+        {
+            Property = property;
+            Slot = slot;
+        }
+
+        public Token Property { get; }
+        public LocalSlotId Slot { get; }
+    }
+
+    internal sealed class LoweredObjectDestructuringDeclarationStatement : LoweredStatement
+    {
+        public LoweredObjectDestructuringDeclarationStatement(
+            AstNode source,
+            LoweredExpression initializer,
+            LoweredObjectDestructuringBinding[] bindings)
+            : base(source, LoweredStatementKind.ObjectDestructuringDeclaration)
+        {
+            Initializer = initializer;
+            Bindings = bindings ?? Array.Empty<LoweredObjectDestructuringBinding>();
+        }
+
+        public LoweredExpression Initializer { get; }
+        public LoweredObjectDestructuringBinding[] Bindings { get; }
+    }
+
+    internal readonly struct LoweredArrayDestructuringBinding
+    {
+        public LoweredArrayDestructuringBinding(LocalSlotId slot, int index, bool isRest, int trailingCount)
+        {
+            Slot = slot;
+            Index = index;
+            IsRest = isRest;
+            TrailingCount = trailingCount;
+        }
+
+        public LocalSlotId Slot { get; }
+        public int Index { get; }
+        public bool IsRest { get; }
+        public int TrailingCount { get; }
+    }
+
+    internal sealed class LoweredArrayDestructuringDeclarationStatement : LoweredStatement
+    {
+        public LoweredArrayDestructuringDeclarationStatement(
+            AstNode source,
+            LoweredExpression initializer,
+            LoweredArrayDestructuringBinding[] bindings)
+            : base(source, LoweredStatementKind.ArrayDestructuringDeclaration)
+        {
+            Initializer = initializer;
+            Bindings = bindings ?? Array.Empty<LoweredArrayDestructuringBinding>();
+        }
+
+        public LoweredExpression Initializer { get; }
+        public LoweredArrayDestructuringBinding[] Bindings { get; }
     }
 
     internal sealed class LoweredFunctionDeclarationStatement : LoweredStatement

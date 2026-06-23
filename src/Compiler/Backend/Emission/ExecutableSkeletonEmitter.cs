@@ -35,8 +35,12 @@ namespace AuroraScript.Compiler.Backend.Emission
         private readonly Stack<Label> _breakLabels = new();
         private readonly Stack<Label> _continueLabels = new();
         private bool _prepared;
+        private FunctionPlan _function;
         private ILGenerator _il;
         private LocalBuilder[] _locals;
+        private LocalBuilder _capturedUpvalues;
+        private LocalBuilder _contextUpvalues;
+        private Dictionary<int, int> _capturedLocalByLocalSlot;
         private int _cilLocalCount;
 
         public ExecutableSkeletonEmitter(EmissionSession session, ModulePlan module)
@@ -98,13 +102,23 @@ namespace AuroraScript.Compiler.Backend.Emission
 
             executable.Emitted = true;
             method = executable.Method;
+            _function = function;
             _il = executable.IL;
             _locals = DeclareLocals(function);
+            _capturedLocalByLocalSlot = BuildCapturedLocalMap(function);
+            _capturedUpvalues = null;
+            _contextUpvalues = null;
             _cilLocalCount = _locals.Length;
+            InitializeCapturedLocals(function);
             InitializeParameters(function, executable.Convention);
+            EmitLocation(function.Body);
             EmitStatement(function.Body);
             LoadNull();
             _il.Emit(OpCodes.Ret);
+            _function = null;
+            _capturedLocalByLocalSlot = null;
+            _capturedUpvalues = null;
+            _contextUpvalues = null;
             localCount = _cilLocalCount;
             return true;
         }
@@ -142,9 +156,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         private static bool CanEverEmit(FunctionPlan function)
         {
             return function != null &&
-                function.Body != null &&
-                function.UpvalueSlots.Length == 0 &&
-                function.CapturedLocalSlots.Length == 0;
+                function.Body != null;
         }
 
         private bool CanEmit(FunctionPlan function, IReadOnlySet<FunctionId> executableFunctions)
@@ -203,7 +215,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     parameterIndex++;
                 }
 
-                _il.Emit(OpCodes.Stloc, _locals[slot.Id.Value]);
+                EmitStoreLocalFromStack(slot.Id);
             }
         }
 
@@ -216,6 +228,170 @@ namespace AuroraScript.Compiler.Backend.Emission
                 : null;
         }
 
+        private static Dictionary<int, int> BuildCapturedLocalMap(FunctionPlan function)
+        {
+            if (function.CapturedLocalSlots.Length == 0)
+            {
+                return null;
+            }
+
+            var map = new Dictionary<int, int>(function.CapturedLocalSlots.Length);
+            for (var i = 0; i < function.CapturedLocalSlots.Length; i++)
+            {
+                var slot = function.CapturedLocalSlots[i];
+                if (slot.SourceLocal.IsValid)
+                {
+                    map[slot.SourceLocal.Value] = slot.Id.Value;
+                }
+            }
+
+            return map;
+        }
+
+        private void InitializeCapturedLocals(FunctionPlan function)
+        {
+            if (function.CapturedLocalSlots.Length == 0)
+            {
+                return;
+            }
+
+            _capturedUpvalues = DeclareLocal(typeof(Upvalue[]));
+            _il.Emit(OpCodes.Ldc_I4, function.CapturedLocalSlots.Length);
+            _il.Emit(OpCodes.Newarr, typeof(Upvalue));
+            _il.Emit(OpCodes.Stloc, _capturedUpvalues);
+
+            for (var i = 0; i < function.CapturedLocalSlots.Length; i++)
+            {
+                _il.Emit(OpCodes.Ldloc, _capturedUpvalues);
+                _il.Emit(OpCodes.Ldc_I4, i);
+                _il.Emit(OpCodes.Newobj, RuntimeMetadata.Upvalue_CtorEmpty);
+                _il.Emit(OpCodes.Stelem_Ref);
+            }
+
+        }
+
+        private void InitializeCapturedLocal(int index)
+        {
+            _il.Emit(OpCodes.Ldloc, _capturedUpvalues);
+            _il.Emit(OpCodes.Ldc_I4, index);
+            _il.Emit(OpCodes.Newobj, RuntimeMetadata.Upvalue_CtorEmpty);
+            _il.Emit(OpCodes.Stelem_Ref);
+        }
+
+        private bool TryGetCapturedLocalIndex(LocalSlotId slot, out int index)
+        {
+            if (slot.IsValid &&
+                _capturedLocalByLocalSlot != null &&
+                _capturedLocalByLocalSlot.TryGetValue(slot.Value, out index))
+            {
+                return true;
+            }
+
+            index = -1;
+            return false;
+        }
+
+        private void EmitLoadLocal(LocalSlotId slot)
+        {
+            if (TryGetCapturedLocalIndex(slot, out var index))
+            {
+                EmitLoadCapturedUpvalue(index);
+                _il.Emit(OpCodes.Ldfld, RuntimeMetadata.Upvalue_Value);
+                return;
+            }
+
+            _il.Emit(OpCodes.Ldloc, _locals[slot.Value]);
+        }
+
+        private void EmitStoreLocalFromStack(LocalSlotId slot)
+        {
+            if (TryGetCapturedLocalIndex(slot, out var index))
+            {
+                var value = DeclareTemp();
+                _il.Emit(OpCodes.Stloc, value);
+                EmitLoadCapturedUpvalue(index);
+                _il.Emit(OpCodes.Ldloc, value);
+                _il.Emit(OpCodes.Stfld, RuntimeMetadata.Upvalue_Value);
+                return;
+            }
+
+            _il.Emit(OpCodes.Stloc, _locals[slot.Value]);
+        }
+
+        private void EmitLoadLocalAddress(LocalSlotId slot)
+        {
+            if (TryGetCapturedLocalIndex(slot, out var index))
+            {
+                EmitLoadCapturedUpvalue(index);
+                _il.Emit(OpCodes.Ldflda, RuntimeMetadata.Upvalue_Value);
+                return;
+            }
+
+            _il.Emit(OpCodes.Ldloca, _locals[slot.Value]);
+        }
+
+        private void EmitLoadNameAddress(LoweredNameExpression name)
+        {
+            if (name.LocalSlot.IsValid && !name.ModuleSymbol.IsValid)
+            {
+                EmitLoadLocalAddress(name.LocalSlot);
+                return;
+            }
+
+            if (name.UpvalueSlot.IsValid && !name.ModuleSymbol.IsValid)
+            {
+                EmitLoadContextUpvalue(name.UpvalueSlot.Value);
+                _il.Emit(OpCodes.Ldflda, RuntimeMetadata.Upvalue_Value);
+                return;
+            }
+
+            throw new NotSupportedException("Name cannot be addressed by reference.");
+        }
+
+        private void EmitLoadCapturedUpvalue(int index)
+        {
+            _il.Emit(OpCodes.Ldloc, _capturedUpvalues);
+            _il.Emit(OpCodes.Ldc_I4, index);
+            _il.Emit(OpCodes.Ldelem_Ref);
+        }
+
+        private void EmitLoadContextUpvalue(int index)
+        {
+            EmitLoadContextUpvalues();
+            _il.Emit(OpCodes.Ldc_I4, index);
+            _il.Emit(OpCodes.Ldelem_Ref);
+        }
+
+        private void EmitLoadContextUpvalues()
+        {
+            if (_contextUpvalues == null)
+            {
+                _contextUpvalues = DeclareLocal(typeof(Upvalue[]));
+                _il.Emit(OpCodes.Ldarg_0);
+                _il.Emit(OpCodes.Ldfld, RuntimeMetadata.CILContext_Upvalues);
+                _il.Emit(OpCodes.Stloc, _contextUpvalues);
+            }
+
+            _il.Emit(OpCodes.Ldloc, _contextUpvalues);
+        }
+
+        private void EmitClosureUpvalue(UpvalueSlot slot)
+        {
+            if (slot.IsInherited)
+            {
+                EmitLoadContextUpvalue(slot.SourceUpvalue.Value);
+                return;
+            }
+
+            if (TryGetCapturedLocalIndex(slot.SourceLocal, out var index))
+            {
+                EmitLoadCapturedUpvalue(index);
+                return;
+            }
+
+            throw new NotSupportedException("Unresolved closure upvalue '" + slot.Name + "'.");
+        }
+
         private void EmitStatement(LoweredStatement statement)
         {
             switch (statement)
@@ -223,10 +399,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 case null:
                     return;
                 case LoweredBlockStatement block:
-                    for (var i = 0; i < block.Statements.Length; i++)
-                    {
-                        EmitStatement(block.Statements[i]);
-                    }
+                    EmitBlock(block);
                     return;
                 case LoweredReturnStatement returnStatement:
                     EmitExpressionOrNull(returnStatement.Expression);
@@ -234,7 +407,16 @@ namespace AuroraScript.Compiler.Backend.Emission
                     return;
                 case LoweredVariableDeclarationStatement variable:
                     EmitExpressionOrNull(variable.Initializer);
-                    _il.Emit(OpCodes.Stloc, _locals[variable.Slot.Value]);
+                    EmitStoreLocalFromStack(variable.Slot);
+                    return;
+                case LoweredObjectDestructuringDeclarationStatement objectDestructuring:
+                    EmitObjectDestructuringDeclaration(objectDestructuring);
+                    return;
+                case LoweredArrayDestructuringDeclarationStatement arrayDestructuring:
+                    EmitArrayDestructuringDeclaration(arrayDestructuring);
+                    return;
+                case LoweredFunctionDeclarationStatement function:
+                    EmitFunctionDeclaration(function);
                     return;
                 case LoweredExpressionStatement expressionStatement:
                     EmitExpressionOrNull(expressionStatement.Expression);
@@ -293,6 +475,119 @@ namespace AuroraScript.Compiler.Backend.Emission
             if (statement.Else != null)
             {
                 _il.MarkLabel(endLabel);
+            }
+        }
+
+        private void EmitBlock(LoweredBlockStatement block)
+        {
+            if (!ReferenceEquals(block, _function.Body))
+            {
+                InitializeCapturedLocalsForBlock(block);
+            }
+
+            for (var i = 0; i < block.Statements.Length; i++)
+            {
+                EmitStatement(block.Statements[i]);
+            }
+        }
+
+        private void InitializeCapturedLocalsForBlock(LoweredBlockStatement block)
+        {
+            for (var i = 0; i < block.Statements.Length; i++)
+            {
+                switch (block.Statements[i])
+                {
+                    case LoweredVariableDeclarationStatement variable:
+                        InitializeCapturedLocalForSlot(variable.Slot);
+                        break;
+                    case LoweredObjectDestructuringDeclarationStatement objectDestructuring:
+                        for (var bindingIndex = 0; bindingIndex < objectDestructuring.Bindings.Length; bindingIndex++)
+                        {
+                            InitializeCapturedLocalForSlot(objectDestructuring.Bindings[bindingIndex].Slot);
+                        }
+                        break;
+                    case LoweredArrayDestructuringDeclarationStatement arrayDestructuring:
+                        for (var bindingIndex = 0; bindingIndex < arrayDestructuring.Bindings.Length; bindingIndex++)
+                        {
+                            InitializeCapturedLocalForSlot(arrayDestructuring.Bindings[bindingIndex].Slot);
+                        }
+                        break;
+                }
+            }
+        }
+
+        private void InitializeCapturedLocalForSlot(LocalSlotId slot)
+        {
+            if (TryGetCapturedLocalIndex(slot, out var capturedIndex))
+            {
+                InitializeCapturedLocal(capturedIndex);
+            }
+        }
+
+        private void EmitFunctionDeclaration(LoweredFunctionDeclarationStatement statement)
+        {
+            var function = _functionsById[statement.Function];
+            ClosureMaterializer.EmitClosure(_session, _il, function, EmitClosureUpvalue);
+            _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromObject);
+            EmitStoreLocalFromStack(statement.LocalSlot);
+        }
+
+        private void EmitObjectDestructuringDeclaration(LoweredObjectDestructuringDeclarationStatement statement)
+        {
+            var targetLocal = DeclareLocal(typeof(ScriptObject));
+            EmitExpression(statement.Initializer);
+            _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
+            _il.Emit(OpCodes.Stloc, targetLocal);
+
+            for (var i = 0; i < statement.Bindings.Length; i++)
+            {
+                var binding = statement.Bindings[i];
+                _il.Emit(OpCodes.Ldloc, targetLocal);
+                _il.Emit(OpCodes.Ldarg_0);
+                _session.Builder.LoadStringConstant(_il, binding.Property.Value);
+                _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptObject_GetPropertyDatum);
+                EmitStoreLocalFromStack(binding.Slot);
+            }
+        }
+
+        private void EmitArrayDestructuringDeclaration(LoweredArrayDestructuringDeclarationStatement statement)
+        {
+            var arrayLocal = DeclareLocal(typeof(ScriptArray));
+            EmitExpression(statement.Initializer);
+            _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
+            _il.Emit(OpCodes.Castclass, typeof(ScriptArray));
+            _il.Emit(OpCodes.Stloc, arrayLocal);
+
+            for (var i = 0; i < statement.Bindings.Length; i++)
+            {
+                var binding = statement.Bindings[i];
+                if (binding.IsRest)
+                {
+                    _il.Emit(OpCodes.Ldloc, arrayLocal);
+                    _il.Emit(OpCodes.Ldc_I4, binding.Index);
+                    _il.Emit(OpCodes.Ldloc, arrayLocal);
+                    _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptArray_get_Length);
+                    _il.Emit(OpCodes.Ldc_I4, binding.TrailingCount);
+                    _il.Emit(OpCodes.Sub);
+                    EmitLoadLocalAddress(binding.Slot);
+                    _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptArray_SliceTo);
+                    continue;
+                }
+
+                _il.Emit(OpCodes.Ldloc, arrayLocal);
+                if (binding.TrailingCount > 0)
+                {
+                    _il.Emit(OpCodes.Ldloc, arrayLocal);
+                    _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptArray_get_Length);
+                    _il.Emit(OpCodes.Ldc_I4, binding.TrailingCount);
+                    _il.Emit(OpCodes.Sub);
+                }
+                else
+                {
+                    _il.Emit(OpCodes.Ldc_I4, binding.Index);
+                }
+                _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptArray_Get);
+                EmitStoreLocalFromStack(binding.Slot);
             }
         }
 
@@ -365,7 +660,7 @@ namespace AuroraScript.Compiler.Backend.Emission
 
             _il.MarkLabel(conditionLabel);
             _il.Emit(OpCodes.Ldloc, iterator);
-            _il.Emit(OpCodes.Ldloca, _locals[((LoweredNameExpression)statement.Iterator.Left).LocalSlot.Value]);
+            EmitLoadNameAddress((LoweredNameExpression)statement.Iterator.Left);
             _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptEnumerator_NextValue);
             _il.Emit(OpCodes.Brfalse, endLabel);
 
@@ -395,8 +690,12 @@ namespace AuroraScript.Compiler.Backend.Emission
                 _il.BeginCatchBlock(typeof(Exception));
                 if (statement.CatchSlot.IsValid)
                 {
+                    if (TryGetCapturedLocalIndex(statement.CatchSlot, out var capturedIndex))
+                    {
+                        InitializeCapturedLocal(capturedIndex);
+                    }
                     _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_ExceptionToError);
-                    _il.Emit(OpCodes.Stloc, _locals[statement.CatchSlot.Value]);
+                    EmitStoreLocalFromStack(statement.CatchSlot);
                 }
                 else
                 {
@@ -404,6 +703,11 @@ namespace AuroraScript.Compiler.Backend.Emission
                 }
 
                 EmitStatement(statement.CatchBody);
+            }
+            else
+            {
+                _il.BeginCatchBlock(typeof(Exception));
+                _il.Emit(OpCodes.Pop);
             }
 
             if (statement.FinallyBody != null)
@@ -418,6 +722,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         private void EmitThrow(LoweredThrowStatement statement)
         {
             EmitExpressionOrNull(statement.Expression);
+            EmitLocation(statement);
             _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_Throw);
         }
 
@@ -586,17 +891,26 @@ namespace AuroraScript.Compiler.Backend.Emission
             var name = (LoweredNameExpression)expression.Left;
             EmitExpression(expression.Right);
             _il.Emit(OpCodes.Dup);
-            _il.Emit(OpCodes.Stloc, _locals[name.LocalSlot.Value]);
+            EmitStoreNameFromStack(name);
         }
 
         private void EmitCompound(LoweredCompoundExpression expression)
         {
+            if (expression.Left is LoweredGetElementExpression element && expression.Operator.SimplerOperator == Operator.Add)
+            {
+                EmitExpression(element.Instance);
+                EmitExpression(element.Index);
+                EmitExpression(expression.Right);
+                _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_CompoundAddElementDatum);
+                return;
+            }
+
             var name = (LoweredNameExpression)expression.Left;
-            _il.Emit(OpCodes.Ldloc, _locals[name.LocalSlot.Value]);
+            EmitName(name);
             EmitExpression(expression.Right);
             _il.Emit(OpCodes.Call, GetBinaryMethod(expression.Operator.SimplerOperator));
             _il.Emit(OpCodes.Dup);
-            _il.Emit(OpCodes.Stloc, _locals[name.LocalSlot.Value]);
+            EmitStoreNameFromStack(name);
         }
 
         private void EmitUnary(LoweredUnaryExpression expression)
@@ -604,14 +918,49 @@ namespace AuroraScript.Compiler.Backend.Emission
             var incrementMethod = GetIncrementMethod(expression.Operator);
             if (incrementMethod != null)
             {
-                var name = (LoweredNameExpression)expression.Expression;
-                _il.Emit(OpCodes.Ldloca, _locals[name.LocalSlot.Value]);
-                _il.Emit(OpCodes.Call, incrementMethod);
+                EmitMutationUnary(expression);
                 return;
             }
 
             EmitExpression(expression.Expression);
             _il.Emit(OpCodes.Call, GetUnaryMethod(expression.Operator));
+        }
+
+        private void EmitMutationUnary(LoweredUnaryExpression expression)
+        {
+            if (expression.Expression is LoweredNameExpression name)
+            {
+                if ((name.LocalSlot.IsValid || name.UpvalueSlot.IsValid) && !name.ModuleSymbol.IsValid)
+                {
+                    EmitLoadNameAddress(name);
+                    _il.Emit(OpCodes.Call, GetIncrementMethod(expression.Operator));
+                    return;
+                }
+
+                EmitStoreTargetObject(name);
+                _session.Builder.LoadStringConstant(_il, name.Name);
+                _il.Emit(OpCodes.Call, GetPropertyMutationMethod(expression.Operator));
+                return;
+            }
+
+            if (expression.Expression is LoweredGetElementExpression element)
+            {
+                EmitExpression(element.Instance);
+                _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
+                EmitExpression(element.Index);
+                _il.Emit(OpCodes.Call, GetElementMutationMethod(expression.Operator));
+                return;
+            }
+
+            var property = (LoweredGetPropertyExpression)expression.Expression;
+            if (!TryGetStaticPropertyName(property, out var propertyName))
+            {
+                throw new NotSupportedException("Dynamic property mutation");
+            }
+            EmitExpression(property.Instance);
+            _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
+            _session.Builder.LoadStringConstant(_il, propertyName);
+            _il.Emit(OpCodes.Call, GetPropertyMutationMethod(expression.Operator));
         }
 
         private void EmitIn(LoweredInExpression expression)
@@ -763,14 +1112,14 @@ namespace AuroraScript.Compiler.Backend.Emission
         private void EmitLambda(LoweredLambdaExpression expression)
         {
             var function = _functionsById[expression.Function];
-            ClosureMaterializer.EmitClosure(_session, _il, function);
+            ClosureMaterializer.EmitClosure(_session, _il, function, EmitClosureUpvalue);
             _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromObject);
         }
 
         private void EmitNew(LoweredNewExpression expression)
         {
             var call = expression.Expression;
-            if (call.Arguments.Length > 2)
+            if (HasSpread(call.Arguments) || call.Arguments.Length > 2)
             {
                 EmitNewMany(call);
                 return;
@@ -783,6 +1132,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 EmitExpression(call.Arguments[i]);
             }
+            EmitLocation(expression);
             _il.Emit(OpCodes.Call, GetNewMethod(call.Arguments.Length));
         }
 
@@ -794,24 +1144,14 @@ namespace AuroraScript.Compiler.Backend.Emission
             EmitExpression(call.Target);
             _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
             _il.Emit(OpCodes.Stloc, typeLocal);
-            var argumentLocals = EmitArgumentsToLocals(call.Arguments);
 
-            _il.Emit(OpCodes.Ldc_I4, call.Arguments.Length);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_RentArguments);
-            _il.Emit(OpCodes.Stloc, argsLocal);
-
-            for (var i = 0; i < argumentLocals.Length; i++)
-            {
-                _il.Emit(OpCodes.Ldloc, argsLocal);
-                _il.Emit(OpCodes.Ldc_I4, i);
-                _il.Emit(OpCodes.Ldloc, argumentLocals[i]);
-                _il.Emit(OpCodes.Stelem, typeof(ScriptDatum));
-            }
+            var countLocal = EmitArgumentsToBuffer(call.Arguments, argsLocal);
 
             _il.Emit(OpCodes.Ldloc, typeLocal);
             _il.Emit(OpCodes.Ldarg_0);
             _il.Emit(OpCodes.Ldloc, argsLocal);
-            _il.Emit(OpCodes.Ldc_I4, call.Arguments.Length);
+            _il.Emit(OpCodes.Ldloc, countLocal);
+            EmitLocation(call);
             _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_NewMany);
         }
 
@@ -823,10 +1163,16 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitDirectCall(LoweredCallExpression call, FunctionPlan target)
         {
+            var directContext = DeclareLocal(typeof(ScriptContext));
+            _il.Emit(OpCodes.Ldarg_0);
+            _session.Builder.LoadStringConstant(_il, target.Name);
+            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_EnterDirect);
+            _il.Emit(OpCodes.Stloc, directContext);
+
             var arity = GetFastArity(target.CallConvention);
             if (call.Arguments.Length <= arity)
             {
-                _il.Emit(OpCodes.Ldarg_0);
+                _il.Emit(OpCodes.Ldloc, directContext);
                 for (var i = 0; i < arity; i++)
                 {
                     if (i < call.Arguments.Length)
@@ -839,7 +1185,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                     }
                 }
 
+                EmitLocation(call);
                 _il.Emit(OpCodes.Call, target.Method);
+                EmitLeaveDirect(directContext);
                 return;
             }
 
@@ -862,17 +1210,28 @@ namespace AuroraScript.Compiler.Backend.Emission
                 }
             }
 
-            _il.Emit(OpCodes.Ldarg_0);
+            _il.Emit(OpCodes.Ldloc, directContext);
             for (var i = 0; i < arity; i++)
             {
                 _il.Emit(OpCodes.Ldloc, temps[i]);
             }
+            EmitLocation(call);
             _il.Emit(OpCodes.Call, target.Method);
+            EmitLeaveDirect(directContext);
+        }
+
+        private void EmitLeaveDirect(LocalBuilder directContext)
+        {
+            var result = DeclareTemp();
+            _il.Emit(OpCodes.Stloc, result);
+            _il.Emit(OpCodes.Ldloc, directContext);
+            _il.Emit(OpCodes.Ldloc, result);
+            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_LeaveDirect);
         }
 
         private void EmitRegularCall(LoweredCallExpression call)
         {
-            if (call.Arguments.Length > 7)
+            if (HasSpread(call.Arguments) || call.Arguments.Length > 7)
             {
                 EmitRegularCallMany(call);
                 return;
@@ -885,6 +1244,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 EmitExpression(call.Arguments[i]);
             }
+            EmitLocation(call);
             _il.Emit(OpCodes.Call, GetInvokeMethod(call.Arguments.Length));
         }
 
@@ -896,7 +1256,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 throw new NotSupportedException("Dynamic property call");
             }
 
-            if (call.Arguments.Length > 7)
+            if (HasSpread(call.Arguments) || call.Arguments.Length > 7)
             {
                 EmitPropertyCallMany(call, property, name);
                 return;
@@ -910,6 +1270,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 EmitExpression(call.Arguments[i]);
             }
+            EmitLocation(call);
             _il.Emit(OpCodes.Call, GetInvokePropertyMethod(call.Arguments.Length));
         }
 
@@ -921,25 +1282,14 @@ namespace AuroraScript.Compiler.Backend.Emission
             EmitExpression(property.Instance);
             _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
             _il.Emit(OpCodes.Stloc, receiverLocal);
-            var argumentLocals = EmitArgumentsToLocals(call.Arguments);
-
-            _il.Emit(OpCodes.Ldc_I4, call.Arguments.Length);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_RentArguments);
-            _il.Emit(OpCodes.Stloc, argsLocal);
-
-            for (var i = 0; i < argumentLocals.Length; i++)
-            {
-                _il.Emit(OpCodes.Ldloc, argsLocal);
-                _il.Emit(OpCodes.Ldc_I4, i);
-                _il.Emit(OpCodes.Ldloc, argumentLocals[i]);
-                _il.Emit(OpCodes.Stelem, typeof(ScriptDatum));
-            }
+            var countLocal = EmitArgumentsToBuffer(call.Arguments, argsLocal);
 
             _il.Emit(OpCodes.Ldloc, receiverLocal);
             _il.Emit(OpCodes.Ldarg_0);
             _session.Builder.LoadStringConstant(_il, name);
             _il.Emit(OpCodes.Ldloc, argsLocal);
-            _il.Emit(OpCodes.Ldc_I4, call.Arguments.Length);
+            _il.Emit(OpCodes.Ldloc, countLocal);
+            EmitLocation(call);
             _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_InvokePropertyMany);
         }
 
@@ -951,25 +1301,44 @@ namespace AuroraScript.Compiler.Backend.Emission
             EmitExpression(call.Target);
             _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
             _il.Emit(OpCodes.Stloc, functionLocal);
-            var argumentLocals = EmitArgumentsToLocals(call.Arguments);
-
-            _il.Emit(OpCodes.Ldc_I4, call.Arguments.Length);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_RentArguments);
-            _il.Emit(OpCodes.Stloc, argsLocal);
-
-            for (var i = 0; i < argumentLocals.Length; i++)
-            {
-                _il.Emit(OpCodes.Ldloc, argsLocal);
-                _il.Emit(OpCodes.Ldc_I4, i);
-                _il.Emit(OpCodes.Ldloc, argumentLocals[i]);
-                _il.Emit(OpCodes.Stelem, typeof(ScriptDatum));
-            }
+            var countLocal = EmitArgumentsToBuffer(call.Arguments, argsLocal);
 
             _il.Emit(OpCodes.Ldloc, functionLocal);
             _il.Emit(OpCodes.Ldarg_0);
             _il.Emit(OpCodes.Ldloc, argsLocal);
-            _il.Emit(OpCodes.Ldc_I4, call.Arguments.Length);
+            _il.Emit(OpCodes.Ldloc, countLocal);
+            EmitLocation(call);
             _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_InvokeMany);
+        }
+
+        private LocalBuilder EmitArgumentsToBuffer(LoweredExpression[] arguments, LocalBuilder argsLocal)
+        {
+            var countLocal = DeclareLocal(typeof(int));
+            _il.Emit(OpCodes.Ldc_I4, Math.Max(arguments.Length, 1));
+            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_RentArguments);
+            _il.Emit(OpCodes.Stloc, argsLocal);
+            _il.Emit(OpCodes.Ldc_I4_0);
+            _il.Emit(OpCodes.Stloc, countLocal);
+
+            for (var i = 0; i < arguments.Length; i++)
+            {
+                _il.Emit(OpCodes.Ldloc, argsLocal);
+                _il.Emit(OpCodes.Ldloca, countLocal);
+                if (arguments[i] is LoweredSpreadExpression spread)
+                {
+                    EmitExpression(spread.Expression);
+                    _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
+                    _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_SpreadIntoArguments);
+                }
+                else
+                {
+                    EmitExpression(arguments[i]);
+                    _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_AddArgument);
+                }
+                _il.Emit(OpCodes.Stloc, argsLocal);
+            }
+
+            return countLocal;
         }
 
         private LocalBuilder[] EmitArgumentsToLocals(LoweredExpression[] arguments)
@@ -988,9 +1357,38 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitName(LoweredNameExpression name)
         {
+            if (StringComparer.Ordinal.Equals(name.Name, "$args"))
+            {
+                _il.Emit(OpCodes.Ldarg_1);
+                _il.Emit(OpCodes.Newobj, RuntimeMetadata.ScriptArray_SpanCtor);
+                _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromObject);
+                return;
+            }
+            if (StringComparer.Ordinal.Equals(name.Name, "$state"))
+            {
+                _il.Emit(OpCodes.Ldarg_0);
+                _il.Emit(OpCodes.Ldfld, RuntimeMetadata.CILContext_UserState);
+                _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromObject);
+                return;
+            }
+            if (StringComparer.Ordinal.Equals(name.Name, "global"))
+            {
+                _il.Emit(OpCodes.Ldarg_0);
+                _il.Emit(OpCodes.Ldfld, RuntimeMetadata.CILContext_Global);
+                _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromObject);
+                return;
+            }
+
             if (IsLocalName(name))
             {
-                _il.Emit(OpCodes.Ldloc, _locals[name.LocalSlot.Value]);
+                EmitLoadLocal(name.LocalSlot);
+                return;
+            }
+
+            if (name.UpvalueSlot.IsValid && !name.ModuleSymbol.IsValid)
+            {
+                EmitLoadContextUpvalue(name.UpvalueSlot.Value);
+                _il.Emit(OpCodes.Ldfld, RuntimeMetadata.Upvalue_Value);
                 return;
             }
 
@@ -1000,15 +1398,70 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return;
             }
 
-            throw new NotSupportedException("Name " + (name.Name ?? "<null>"));
+            if (name.ModuleSymbol.IsValid)
+            {
+                EmitModulePropertyLoad(name.Name);
+                return;
+            }
+
+            EmitGlobalPropertyLoad(name.Name);
         }
 
         private void EmitModuleFunctionLoad(FunctionPlan function)
         {
+            EmitModulePropertyLoad(function.Name);
+        }
+
+        private void EmitModulePropertyLoad(string name)
+        {
             _il.Emit(OpCodes.Ldarg_0);
             _il.Emit(OpCodes.Ldfld, RuntimeMetadata.CILContext_Module);
             _il.Emit(OpCodes.Ldarg_0);
-            _session.Builder.LoadStringConstant(_il, function.Name);
+            _session.Builder.LoadStringConstant(_il, name);
+            _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptObject_GetPropertyDatum);
+        }
+
+        private void EmitStoreNameFromStack(LoweredNameExpression name)
+        {
+            if (IsLocalName(name))
+            {
+                EmitStoreLocalFromStack(name.LocalSlot);
+                return;
+            }
+
+            if (name.UpvalueSlot.IsValid && !name.ModuleSymbol.IsValid)
+            {
+                var value = DeclareTemp();
+                _il.Emit(OpCodes.Stloc, value);
+                EmitLoadContextUpvalue(name.UpvalueSlot.Value);
+                _il.Emit(OpCodes.Ldloc, value);
+                _il.Emit(OpCodes.Stfld, RuntimeMetadata.Upvalue_Value);
+                return;
+            }
+
+            var valueLocal = DeclareTemp();
+            _il.Emit(OpCodes.Stloc, valueLocal);
+            EmitStoreTargetObject(name);
+            _il.Emit(OpCodes.Ldarg_0);
+            _session.Builder.LoadStringConstant(_il, name.Name);
+            _il.Emit(OpCodes.Ldloc, valueLocal);
+            _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptObject_SetPropertyDatum);
+        }
+
+        private void EmitStoreTargetObject(LoweredNameExpression name)
+        {
+            _il.Emit(OpCodes.Ldarg_0);
+            _il.Emit(OpCodes.Ldfld, name.ModuleSymbol.IsValid
+                ? RuntimeMetadata.CILContext_Module
+                : RuntimeMetadata.CILContext_Global);
+        }
+
+        private void EmitGlobalPropertyLoad(string name)
+        {
+            _il.Emit(OpCodes.Ldarg_0);
+            _il.Emit(OpCodes.Ldfld, RuntimeMetadata.CILContext_Global);
+            _il.Emit(OpCodes.Ldarg_0);
+            _session.Builder.LoadStringConstant(_il, name);
             _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptObject_GetPropertyDatum);
         }
 
@@ -1039,6 +1492,12 @@ namespace AuroraScript.Compiler.Backend.Emission
                         _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromString);
                     }
                     return;
+                case RegexToken regex:
+                    _session.Builder.LoadStringConstant(_il, regex.Pattern);
+                    _session.Builder.LoadStringConstant(_il, regex.Flags);
+                    _il.Emit(OpCodes.Call, RuntimeMetadata.RegexManager_LoadRegex);
+                    _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromObject);
+                    return;
                 case BooleanToken boolean:
                     if (_session.Builder.LoadBoolean(_il, boolean.BoolValue) == LoadState.Constant)
                     {
@@ -1058,6 +1517,24 @@ namespace AuroraScript.Compiler.Backend.Emission
             _session.Builder.LoadNull(_il);
         }
 
+        private void EmitLocation(LoweredNode node)
+        {
+            if (node == null || node.Range.StartLine <= 0)
+            {
+                return;
+            }
+
+            var skipLabel = _il.DefineLabel();
+            _il.Emit(OpCodes.Ldarg_0);
+            _il.Emit(OpCodes.Brfalse, skipLabel);
+            var location = ((long)_module.PathHash & 0xffffffffL) |
+                ((long)node.Range.StartLine << 32);
+            _il.Emit(OpCodes.Ldarg_0);
+            _il.Emit(OpCodes.Ldc_I8, location);
+            _il.Emit(OpCodes.Stfld, RuntimeMetadata.CILContext_Location);
+            _il.MarkLabel(skipLabel);
+        }
+
         private bool CanEmitStatement(LoweredStatement statement, IReadOnlySet<FunctionId> executableFunctions)
         {
             return statement switch
@@ -1066,6 +1543,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                 LoweredBlockStatement block => CanEmitBlock(block, executableFunctions),
                 LoweredReturnStatement returnStatement => CanEmitExpression(returnStatement.Expression, executableFunctions),
                 LoweredVariableDeclarationStatement variable => variable.Slot.IsValid && CanEmitExpression(variable.Initializer, executableFunctions),
+                LoweredObjectDestructuringDeclarationStatement objectDestructuring => CanEmitObjectDestructuringDeclaration(objectDestructuring, executableFunctions),
+                LoweredArrayDestructuringDeclarationStatement arrayDestructuring => CanEmitArrayDestructuringDeclaration(arrayDestructuring, executableFunctions),
+                LoweredFunctionDeclarationStatement function => CanEmitFunctionDeclaration(function, executableFunctions),
                 LoweredExpressionStatement expressionStatement => CanEmitExpression(expressionStatement.Expression, executableFunctions),
                 LoweredIfStatement ifStatement => CanEmitExpression(ifStatement.Condition, executableFunctions) &&
                     CanEmitStatement(ifStatement.Body, executableFunctions) &&
@@ -1094,6 +1574,15 @@ namespace AuroraScript.Compiler.Backend.Emission
                 CanEmitStatement(statement.Body, executableFunctions);
         }
 
+        private bool CanEmitFunctionDeclaration(LoweredFunctionDeclarationStatement statement, IReadOnlySet<FunctionId> executableFunctions)
+        {
+            return statement.LocalSlot.IsValid &&
+                statement.Function.IsValid &&
+                executableFunctions.Contains(statement.Function) &&
+                _functionsById.TryGetValue(statement.Function, out var function) &&
+                ClosureMaterializer.CanPlanMaterialize(function, requireName: true);
+        }
+
         private bool CanEmitTry(LoweredTryStatement statement, IReadOnlySet<FunctionId> executableFunctions)
         {
             if (!HasExceptionHandler(statement))
@@ -1113,6 +1602,8 @@ namespace AuroraScript.Compiler.Backend.Emission
                 null => true,
                 LoweredBlockStatement block => CanEmitProtectedBlock(block, executableFunctions),
                 LoweredVariableDeclarationStatement variable => variable.Slot.IsValid && CanEmitExpression(variable.Initializer, executableFunctions),
+                LoweredObjectDestructuringDeclarationStatement objectDestructuring => CanEmitObjectDestructuringDeclaration(objectDestructuring, executableFunctions),
+                LoweredArrayDestructuringDeclarationStatement arrayDestructuring => CanEmitArrayDestructuringDeclaration(arrayDestructuring, executableFunctions),
                 LoweredExpressionStatement expressionStatement => CanEmitExpression(expressionStatement.Expression, executableFunctions),
                 LoweredIfStatement ifStatement => CanEmitExpression(ifStatement.Condition, executableFunctions) &&
                     CanEmitProtectedStatement(ifStatement.Body, executableFunctions) &&
@@ -1178,21 +1669,59 @@ namespace AuroraScript.Compiler.Backend.Emission
             return true;
         }
 
+        private bool CanEmitObjectDestructuringDeclaration(
+            LoweredObjectDestructuringDeclarationStatement statement,
+            IReadOnlySet<FunctionId> executableFunctions)
+        {
+            if (!CanEmitExpression(statement.Initializer, executableFunctions))
+            {
+                return false;
+            }
+
+            for (var i = 0; i < statement.Bindings.Length; i++)
+            {
+                var binding = statement.Bindings[i];
+                if (!binding.Slot.IsValid || binding.Property == null || string.IsNullOrEmpty(binding.Property.Value))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private bool CanEmitArrayDestructuringDeclaration(
+            LoweredArrayDestructuringDeclarationStatement statement,
+            IReadOnlySet<FunctionId> executableFunctions)
+        {
+            if (!CanEmitExpression(statement.Initializer, executableFunctions))
+            {
+                return false;
+            }
+
+            for (var i = 0; i < statement.Bindings.Length; i++)
+            {
+                if (!statement.Bindings[i].Slot.IsValid)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         private bool CanEmitExpression(LoweredExpression expression, IReadOnlySet<FunctionId> executableFunctions)
         {
             return expression switch
             {
                 null => true,
-                LoweredLiteralExpression literal => literal.Token is NumberToken or StringToken or BooleanToken or NullToken,
+                LoweredLiteralExpression literal => literal.Token is NumberToken or StringToken or RegexToken or BooleanToken or NullToken,
                 LoweredNameExpression name => CanEmitName(name, executableFunctions),
                 LoweredBinaryExpression binary => CanEmitBinary(binary, executableFunctions),
                 LoweredAssignmentExpression assignment => assignment.Left is LoweredNameExpression name &&
-                    IsLocalName(name) &&
+                    CanEmitNameAssignmentTarget(name) &&
                     CanEmitExpression(assignment.Right, executableFunctions),
-                LoweredCompoundExpression compound => compound.Left is LoweredNameExpression name &&
-                    IsLocalName(name) &&
-                    GetBinaryMethod(compound.Operator.SimplerOperator) != null &&
-                    CanEmitExpression(compound.Right, executableFunctions),
+                LoweredCompoundExpression compound => CanEmitCompound(compound, executableFunctions),
                 LoweredUnaryExpression unary => CanEmitUnary(unary, executableFunctions),
                 LoweredInExpression inExpression => CanEmitIn(inExpression, executableFunctions),
                 LoweredGetPropertyExpression property => CanEmitGetProperty(property, executableFunctions),
@@ -1223,12 +1752,42 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             if (GetIncrementMethod(expression.Operator) != null)
             {
-                return expression.Expression is LoweredNameExpression name &&
-                    IsLocalName(name);
+                if (expression.Expression is LoweredNameExpression name)
+                {
+                    return CanEmitNameAssignmentTarget(name);
+                }
+
+                if (expression.Expression is LoweredGetElementExpression element)
+                {
+                    return CanEmitGetElement(element, executableFunctions);
+                }
+
+                return expression.Expression is LoweredGetPropertyExpression property &&
+                    TryGetStaticPropertyName(property, out _) &&
+                    CanEmitExpression(property.Instance, executableFunctions);
             }
 
             return GetUnaryMethod(expression.Operator) != null &&
                 CanEmitExpression(expression.Expression, executableFunctions);
+        }
+
+        private bool CanEmitCompound(LoweredCompoundExpression expression, IReadOnlySet<FunctionId> executableFunctions)
+        {
+            if (expression.Left is LoweredNameExpression name)
+            {
+                return CanEmitNameAssignmentTarget(name) &&
+                    GetBinaryMethod(expression.Operator.SimplerOperator) != null &&
+                    CanEmitExpression(expression.Right, executableFunctions);
+            }
+
+            if (expression.Left is LoweredGetElementExpression element)
+            {
+                return expression.Operator.SimplerOperator == Operator.Add &&
+                    CanEmitGetElement(element, executableFunctions) &&
+                    CanEmitExpression(expression.Right, executableFunctions);
+            }
+
+            return false;
         }
 
         private bool CanEmitIn(LoweredInExpression expression, IReadOnlySet<FunctionId> executableFunctions)
@@ -1249,6 +1808,11 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private bool CanEmitDirectCall(LoweredCallExpression call, IReadOnlySet<FunctionId> executableFunctions)
         {
+            if (HasSpread(call.Arguments))
+            {
+                return false;
+            }
+
             if (!TryResolveDirectCallTarget(call, executableFunctions, out _))
             {
                 return false;
@@ -1256,7 +1820,7 @@ namespace AuroraScript.Compiler.Backend.Emission
 
             for (var i = 0; i < call.Arguments.Length; i++)
             {
-                if (!CanEmitExpression(call.Arguments[i], executableFunctions))
+                if (!CanEmitArgument(call.Arguments[i], executableFunctions))
                 {
                     return false;
                 }
@@ -1275,7 +1839,7 @@ namespace AuroraScript.Compiler.Backend.Emission
 
             for (var i = 0; i < call.Arguments.Length; i++)
             {
-                if (!CanEmitExpression(call.Arguments[i], executableFunctions))
+                if (!CanEmitArgument(call.Arguments[i], executableFunctions))
                 {
                     return false;
                 }
@@ -1294,7 +1858,7 @@ namespace AuroraScript.Compiler.Backend.Emission
 
             for (var i = 0; i < call.Arguments.Length; i++)
             {
-                if (!CanEmitExpression(call.Arguments[i], executableFunctions))
+                if (!CanEmitArgument(call.Arguments[i], executableFunctions))
                 {
                     return false;
                 }
@@ -1305,7 +1869,21 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private bool CanEmitName(LoweredNameExpression name, IReadOnlySet<FunctionId> executableFunctions)
         {
-            return IsLocalName(name) || TryResolveMaterializedFunction(name.ModuleSymbol, executableFunctions, out _);
+            return StringComparer.Ordinal.Equals(name.Name, "$args") ||
+                StringComparer.Ordinal.Equals(name.Name, "$state") ||
+                StringComparer.Ordinal.Equals(name.Name, "global") ||
+                IsLocalName(name) ||
+                (name.UpvalueSlot.IsValid && !name.ModuleSymbol.IsValid) ||
+                name.ModuleSymbol.IsValid ||
+                !name.UpvalueSlot.IsValid;
+        }
+
+        private static bool CanEmitNameAssignmentTarget(LoweredNameExpression name)
+        {
+            return name.LocalSlot.IsValid ||
+                (name.UpvalueSlot.IsValid && !name.ModuleSymbol.IsValid) ||
+                name.ModuleSymbol.IsValid ||
+                !name.UpvalueSlot.IsValid;
         }
 
         private bool CanEmitGetProperty(LoweredGetPropertyExpression property, IReadOnlySet<FunctionId> executableFunctions)
@@ -1405,13 +1983,20 @@ namespace AuroraScript.Compiler.Backend.Emission
 
             for (var i = 0; i < call.Arguments.Length; i++)
             {
-                if (!CanEmitExpression(call.Arguments[i], executableFunctions))
+                if (!CanEmitArgument(call.Arguments[i], executableFunctions))
                 {
                     return false;
                 }
             }
 
             return true;
+        }
+
+        private bool CanEmitArgument(LoweredExpression expression, IReadOnlySet<FunctionId> executableFunctions)
+        {
+            return expression is LoweredSpreadExpression spread
+                ? CanEmitExpression(spread.Expression, executableFunctions)
+                : CanEmitExpression(expression, executableFunctions);
         }
 
         private bool TryResolveDirectCallTarget(LoweredCallExpression call, out FunctionPlan target)
@@ -1634,6 +2219,24 @@ namespace AuroraScript.Compiler.Backend.Emission
             if (op == Operator.PostIncrement) return RuntimeMetadata.CILHelper_IncrementPostfix;
             if (op == Operator.PreDecrement) return RuntimeMetadata.CILHelper_DecrementPrefix;
             if (op == Operator.PostDecrement) return RuntimeMetadata.CILHelper_DecrementPostfix;
+            return null;
+        }
+
+        private static MethodInfo GetElementMutationMethod(Operator op)
+        {
+            if (op == Operator.PreIncrement) return RuntimeMetadata.CILHelper_IncrementElementPrefix;
+            if (op == Operator.PostIncrement) return RuntimeMetadata.CILHelper_IncrementElementPostfix;
+            if (op == Operator.PreDecrement) return RuntimeMetadata.CILHelper_DecrementElementPrefix;
+            if (op == Operator.PostDecrement) return RuntimeMetadata.CILHelper_DecrementElementPostfix;
+            return null;
+        }
+
+        private static MethodInfo GetPropertyMutationMethod(Operator op)
+        {
+            if (op == Operator.PreIncrement) return RuntimeMetadata.CILHelper_IncrementPropertyPrefix;
+            if (op == Operator.PostIncrement) return RuntimeMetadata.CILHelper_IncrementPropertyPostfix;
+            if (op == Operator.PreDecrement) return RuntimeMetadata.CILHelper_DecrementPropertyPrefix;
+            if (op == Operator.PostDecrement) return RuntimeMetadata.CILHelper_DecrementPropertyPostfix;
             return null;
         }
 

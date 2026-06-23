@@ -197,6 +197,8 @@ namespace AuroraScript.Compiler.Backend.Plans
         public BlockStatement Body { get; }
         public IReadOnlyList<string> Parameters { get; }
         public string SourceName { get; }
+        public CompileSession Session { get; set; }
+        public ModulePlan Module { get; set; }
         public FunctionPlan Function { get; set; }
     }
 }

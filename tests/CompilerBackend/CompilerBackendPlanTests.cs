@@ -197,7 +197,7 @@ public sealed class CompilerBackendPlanTests
                 const localConst = a + b;
                 var { left, right } = { left: 1, right: 2 };
                 var [first, ...rest] = [1, 2, 3];
-                return arguments;
+                return $args;
             }
             """,
             root);
@@ -707,10 +707,44 @@ public sealed class CompilerBackendPlanTests
         var test = Assert.Single(Assert.Single(session.Modules).Functions, function => function.Name == "test");
 
         Assert.True(test.UnsupportedLoweredStatementCount > 0);
-        Assert.Contains(test.UnsupportedLoweredNodes, node => node.NodeType == "VariableDeclaration" && !node.IsExpression);
         Assert.Contains(test.UnsupportedLoweredNodes, node => node.NodeType == "YieldStatement" && !node.IsExpression);
         Assert.Equal(test.UnsupportedLoweredStatementCount, test.UnsupportedLoweredNodes.Count(node => !node.IsExpression));
         Assert.Equal(test.UnsupportedLoweredExpressionCount, test.UnsupportedLoweredNodes.Count(node => node.IsExpression));
+    }
+
+    [Fact]
+    public void LoweringRepresentsDestructuringDeclarations()
+    {
+        var root = Path.GetTempPath();
+        var module = Parse(
+            """
+            @module(TEST);
+            func test(value, obj) {
+                var [first, ...middle, last] = value;
+                var { name, age } = obj;
+                return first + last + middle.length + age;
+            }
+            """,
+            root);
+        var options = EngineOptions.Default
+            .WithBaseDirectory(root)
+            .WithCompilationMode(CompilationMode.Dynamic)
+            .WithEnableHotReload(false);
+        var backend = new BackendCompiler(new DynamicBuilder(options), options);
+
+        var session = backend.CreateModulePlans([module]);
+        var test = Assert.Single(Assert.Single(session.Modules).Functions, function => function.Name == "test");
+
+        Assert.Empty(test.UnsupportedLoweredNodes);
+        var array = Assert.IsType<LoweredArrayDestructuringDeclarationStatement>(test.Body.Statements[0]);
+        Assert.Equal(3, array.Bindings.Length);
+        Assert.False(array.Bindings[0].IsRest);
+        Assert.True(array.Bindings[1].IsRest);
+        Assert.Equal(1, array.Bindings[1].TrailingCount);
+        Assert.Equal(1, array.Bindings[2].TrailingCount);
+
+        var obj = Assert.IsType<LoweredObjectDestructuringDeclarationStatement>(test.Body.Statements[1]);
+        Assert.Equal(new[] { "name", "age" }, obj.Bindings.Select(binding => binding.Property.Value).ToArray());
     }
 
     [Fact]
@@ -1012,6 +1046,75 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
+    public void EmissionSkeletonExecutesElementCompoundAddOnce()
+    {
+        var root = Path.GetTempPath();
+        var module = Parse(
+            """
+            @module(TEST);
+            export func run() {
+                var index = 0;
+                var values = [1];
+                values[index++] += 2;
+                return values[0] * 10 + index;
+            }
+            """,
+            root);
+        var options = EngineOptions.Default
+            .WithBaseDirectory(root)
+            .WithCompilationMode(CompilationMode.Dynamic)
+            .WithEnableHotReload(false)
+            .WithEnableModuleDirectCall(true);
+        var builder = new DynamicBuilder(options);
+        var backend = new BackendCompiler(builder, options);
+
+        var session = backend.CreateModulePlans([module]);
+        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
+
+        Assert.True(run.HasExecutableSkeleton);
+        var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
+        var result = del(null, Span<ScriptDatum>.Empty);
+        Assert.Equal(31, result.Number);
+    }
+
+    [Fact]
+    public void EmissionSkeletonExecutesPropertyAndElementUnaryMutation()
+    {
+        var root = Path.GetTempPath();
+        var module = Parse(
+            """
+            @module(TEST);
+            export func run() {
+                var obj = { value: 2 };
+                var before = obj.value++;
+                var after = --obj.value;
+                var index = 0;
+                var values = [4];
+                var elementBefore = values[index++]++;
+                return before * 10000 + after * 1000 + values[0] * 100 + elementBefore * 10 + index;
+            }
+            """,
+            root);
+        var options = EngineOptions.Default
+            .WithBaseDirectory(root)
+            .WithCompilationMode(CompilationMode.Dynamic)
+            .WithEnableHotReload(false)
+            .WithEnableModuleDirectCall(true);
+        var builder = new DynamicBuilder(options);
+        var backend = new BackendCompiler(builder, options);
+
+        var session = backend.CreateModulePlans([module]);
+        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
+
+        Assert.True(run.HasExecutableSkeleton);
+        var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
+        var result = del(null, Span<ScriptDatum>.Empty);
+        Assert.Equal(22541, result.Number);
+    }
+
+    [Fact]
     public void EmissionSkeletonExecutesLogicalShortCircuitAndBitwiseOperators()
     {
         var root = Path.GetTempPath();
@@ -1233,13 +1336,58 @@ public sealed class CompilerBackendPlanTests
         Assert.True(run.HasExecutableSkeleton);
         Assert.True(helper.HasExecutableSkeleton);
         Assert.Equal(FunctionCallConvention.Fast2, helperPlan.CallConvention);
+        var engine = new AuroraEngine(options);
+        var domain = engine.CreateEmptyDomain(null);
+        var ctx = new ScriptContext(domain) { Module = new ScriptModule("TEST", root) };
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var runResult = runDel(null, new[] { ScriptDatum.FromNumber(5) });
+        var runResult = runDel(ctx, new[] { ScriptDatum.FromNumber(5) });
         Assert.Equal(11, runResult.Number);
 
         var helperDel = (ScriptFunctionDelegate2)helper.Method.CreateDelegate(typeof(ScriptFunctionDelegate2));
         var helperResult = helperDel(null, ScriptDatum.FromNumber(6), ScriptDatum.FromNumber(7));
         Assert.Equal(13, helperResult.Number);
+    }
+
+    [Fact]
+    public void EmissionSkeletonHoistsUncapturedLocalFunctionDeclarations()
+    {
+        var root = Path.GetTempPath();
+        var module = Parse(
+            """
+            @module(TEST);
+            export func run(value) {
+                var result = helper(value);
+                func helper(input) {
+                    return input + 4;
+                }
+                return result + helper(1);
+            }
+            """,
+            root);
+        var options = EngineOptions.Default
+            .WithBaseDirectory(root)
+            .WithCompilationMode(CompilationMode.Dynamic)
+            .WithEnableHotReload(false)
+            .WithEnableModuleDirectCall(true);
+        var builder = new DynamicBuilder(options);
+        var backend = new BackendCompiler(builder, options);
+
+        var session = backend.CreateModulePlans([module]);
+        var modulePlan = Assert.Single(session.Modules);
+        var helperPlan = Assert.Single(modulePlan.Functions, function => function.Name == "helper" && !function.IsModuleFunction);
+        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var moduleResult = Assert.Single(report.Modules);
+        var run = Assert.Single(moduleResult.Functions, function => function.Name == "run");
+        var helper = Assert.Single(moduleResult.Functions, function => function.Function.Equals(helperPlan.Id));
+        var engine = new AuroraEngine(options);
+        var domain = engine.CreateEmptyDomain(null);
+        var ctx = new ScriptContext(domain) { Module = new ScriptModule("TEST", root) };
+
+        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(helper.HasExecutableSkeleton);
+        var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
+        var result = runDel(ctx, new[] { ScriptDatum.FromNumber(2) });
+        Assert.Equal(11, result.Number);
     }
 
     [Fact]
@@ -1272,9 +1420,12 @@ public sealed class CompilerBackendPlanTests
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
         Assert.True(run.HasExecutableSkeleton);
-        Assert.Equal(2, run.CilLocalCount);
+        Assert.Equal(4, run.CilLocalCount);
+        var engine = new AuroraEngine(options);
+        var domain = engine.CreateEmptyDomain(null);
+        var ctx = new ScriptContext(domain) { Module = new ScriptModule("TEST", root) };
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = del(null, Span<ScriptDatum>.Empty);
+        var result = del(ctx, Span<ScriptDatum>.Empty);
         Assert.Equal(4, result.Number);
     }
 
@@ -1348,6 +1499,39 @@ public sealed class CompilerBackendPlanTests
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = del(null, new[] { ScriptDatum.FromObject(callback) });
         Assert.Equal(63, result.Number);
+    }
+
+    [Fact]
+    public void EmissionSkeletonExecutesSpreadFunctionObjectCalls()
+    {
+        var root = Path.GetTempPath();
+        var module = Parse(
+            """
+            @module(TEST);
+            export func run(callback) {
+                var prefix = [1, 2];
+                var suffix = [4, 5];
+                return callback(0, ...prefix, 3, ...suffix);
+            }
+            """,
+            root);
+        var options = EngineOptions.Default
+            .WithBaseDirectory(root)
+            .WithCompilationMode(CompilationMode.Dynamic)
+            .WithEnableHotReload(false)
+            .WithEnableModuleDirectCall(true);
+        var builder = new DynamicBuilder(options);
+        var backend = new BackendCompiler(builder, options);
+
+        var session = backend.CreateModulePlans([module]);
+        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
+        var callback = new BondingFunction(SumArgumentCountAndValues);
+
+        Assert.True(run.HasExecutableSkeleton);
+        var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
+        var result = del(null, new[] { ScriptDatum.FromObject(callback) });
+        Assert.Equal(21, result.Number);
     }
 
     [Fact]
@@ -1439,6 +1623,56 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
+    public void EmissionSkeletonExecutesArgsObjectFunctions()
+    {
+        var root = Path.GetTempPath();
+        var module = Parse(
+            """
+            @module(TEST);
+            func count(a, b = 5) {
+                return a + b + $args.length;
+            }
+            export func run() {
+                return count(2) + count(2, 10);
+            }
+            """,
+            root);
+        var options = EngineOptions.Default
+            .WithBaseDirectory(root)
+            .WithCompilationMode(CompilationMode.Dynamic)
+            .WithEnableHotReload(false)
+            .WithEnableModuleDirectCall(true);
+        var builder = new DynamicBuilder(options);
+        var backend = new BackendCompiler(builder, options);
+
+        var session = backend.CreateModulePlans([module]);
+        var modulePlan = Assert.Single(session.Modules);
+        var countPlan = Assert.Single(modulePlan.Functions, function => function.Name == "count");
+        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var moduleResult = Assert.Single(report.Modules);
+        var count = Assert.Single(moduleResult.Functions, function => function.Name == "count");
+        var run = Assert.Single(moduleResult.Functions, function => function.Name == "run");
+        var engine = new AuroraEngine(options);
+        var domain = engine.CreateEmptyDomain(null);
+        var runtimeModule = new ScriptModule("TEST", root);
+        var ctx = new ScriptContext(domain) { Module = runtimeModule };
+
+        Assert.True(countPlan.UsesArgumentsObject);
+        Assert.False(countPlan.IsDirectCallCandidate);
+        Assert.Equal(FunctionCallConvention.Span, countPlan.CallConvention);
+        Assert.True(count.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(moduleResult.HasExecutableInitializer);
+
+        var initialize = (ModuleInitializerDelegate)moduleResult.Initializer.CreateDelegate(typeof(ModuleInitializerDelegate));
+        initialize(ctx, Span<ScriptDatum>.Empty);
+
+        var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
+        var result = runDel(ctx, Span<ScriptDatum>.Empty);
+        Assert.Equal(22, result.Number);
+    }
+
+    [Fact]
     public void EmissionSkeletonMaterializesWideModuleCallsInsteadOfInvalidDirectCall()
     {
         var root = Path.GetTempPath();
@@ -1517,6 +1751,69 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
+    public void EmissionSkeletonExecutesRegexLiteralCalls()
+    {
+        var root = Path.GetTempPath();
+        var module = Parse(
+            """
+            @module(TEST);
+            export func run() {
+                return /aurora/i.test('AURORA Script');
+            }
+            """,
+            root);
+        var options = EngineOptions.Default
+            .WithBaseDirectory(root)
+            .WithCompilationMode(CompilationMode.Dynamic)
+            .WithEnableHotReload(false)
+            .WithEnableModuleDirectCall(true);
+        var builder = new DynamicBuilder(options);
+        var backend = new BackendCompiler(builder, options);
+
+        var session = backend.CreateModulePlans([module]);
+        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
+
+        Assert.True(run.HasExecutableSkeleton);
+        var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
+        var result = runDel(null, Span<ScriptDatum>.Empty);
+        Assert.True(result.Boolean);
+    }
+
+    [Fact]
+    public void EmissionSkeletonExecutesSpreadPropertyCalls()
+    {
+        var root = Path.GetTempPath();
+        var module = Parse(
+            """
+            @module(TEST);
+            export func run(obj) {
+                var values = [2, 3, 4];
+                return obj.sum(1, ...values, 5);
+            }
+            """,
+            root);
+        var options = EngineOptions.Default
+            .WithBaseDirectory(root)
+            .WithCompilationMode(CompilationMode.Dynamic)
+            .WithEnableHotReload(false)
+            .WithEnableModuleDirectCall(true);
+        var builder = new DynamicBuilder(options);
+        var backend = new BackendCompiler(builder, options);
+        var receiver = new ScriptObject();
+        receiver.SetPropertyValue("sum", new BondingFunction(SumArgumentCountAndValues));
+
+        var session = backend.CreateModulePlans([module]);
+        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
+
+        Assert.True(run.HasExecutableSkeleton);
+        var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
+        var result = runDel(null, new[] { ScriptDatum.FromObject(receiver) });
+        Assert.Equal(20, result.Number);
+    }
+
+    [Fact]
     public void EmissionSkeletonExecutesArrayAndMapLiteralFastPaths()
     {
         var root = Path.GetTempPath();
@@ -1580,6 +1877,40 @@ public sealed class CompilerBackendPlanTests
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = runDel(null, Span<ScriptDatum>.Empty);
         Assert.Equal(4317, result.Number);
+    }
+
+    [Fact]
+    public void EmissionSkeletonExecutesDestructuringDeclarations()
+    {
+        var root = Path.GetTempPath();
+        var module = Parse(
+            """
+            @module(TEST);
+            export func run() {
+                var [first, ...middle, last] = [1, 2, 3, 4];
+                var { name, age } = { name: 'Aurora', age: 6 };
+                return first * 1000 + middle.length * 100 + last * 10 + age;
+            }
+            """,
+            root);
+        var options = EngineOptions.Default
+            .WithBaseDirectory(root)
+            .WithCompilationMode(CompilationMode.Dynamic)
+            .WithEnableHotReload(false)
+            .WithEnableModuleDirectCall(true);
+        var builder = new DynamicBuilder(options);
+        var backend = new BackendCompiler(builder, options);
+
+        var session = backend.CreateModulePlans([module]);
+        var runPlan = Assert.Single(Assert.Single(session.Modules).Functions, function => function.Name == "run");
+        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
+
+        Assert.Empty(runPlan.UnsupportedLoweredNodes);
+        Assert.True(run.HasExecutableSkeleton);
+        var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
+        var result = runDel(null, Span<ScriptDatum>.Empty);
+        Assert.Equal(1246, result.Number);
     }
 
     [Fact]
@@ -1674,6 +2005,37 @@ public sealed class CompilerBackendPlanTests
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = runDel(null, new[] { ScriptDatum.FromObject(new CountingType()) });
         Assert.Equal(19, result.Number);
+    }
+
+    [Fact]
+    public void EmissionSkeletonExecutesSpreadConstructorCalls()
+    {
+        var root = Path.GetTempPath();
+        var module = Parse(
+            """
+            @module(TEST);
+            export func run(Type) {
+                var values = [2, 3, 4];
+                return new Type(1, ...values, 5);
+            }
+            """,
+            root);
+        var options = EngineOptions.Default
+            .WithBaseDirectory(root)
+            .WithCompilationMode(CompilationMode.Dynamic)
+            .WithEnableHotReload(false)
+            .WithEnableModuleDirectCall(true);
+        var builder = new DynamicBuilder(options);
+        var backend = new BackendCompiler(builder, options);
+
+        var session = backend.CreateModulePlans([module]);
+        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
+
+        Assert.True(run.HasExecutableSkeleton);
+        var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
+        var result = runDel(null, new[] { ScriptDatum.FromObject(new CountingType()) });
+        Assert.Equal(20, result.Number);
     }
 
     [Fact]
@@ -1881,6 +2243,43 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
+    public void EmissionSkeletonSwallowsThrowInTryFinallyWithoutCatch()
+    {
+        var root = Path.GetTempPath();
+        var module = Parse(
+            """
+            @module(TEST);
+            export func run() {
+                var value = 0;
+                try {
+                    throw "boom";
+                    value = 1;
+                } finally {
+                    value = value + 2;
+                }
+                return value;
+            }
+            """,
+            root);
+        var options = EngineOptions.Default
+            .WithBaseDirectory(root)
+            .WithCompilationMode(CompilationMode.Dynamic)
+            .WithEnableHotReload(false)
+            .WithEnableModuleDirectCall(true);
+        var builder = new DynamicBuilder(options);
+        var backend = new BackendCompiler(builder, options);
+
+        var session = backend.CreateModulePlans([module]);
+        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
+
+        Assert.True(run.HasExecutableSkeleton);
+        var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
+        var result = runDel(null, Span<ScriptDatum>.Empty);
+        Assert.Equal(2, result.Number);
+    }
+
+    [Fact]
     public void EmissionSkeletonAcceptsDebuggerStatement()
     {
         var root = Path.GetTempPath();
@@ -1909,6 +2308,66 @@ public sealed class CompilerBackendPlanTests
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = runDel(null, Span<ScriptDatum>.Empty);
         Assert.Equal(7, result.Number);
+    }
+
+    [Fact]
+    public void CompileBlockPlanEmitsExecutableEntry()
+    {
+        var root = Path.GetTempPath();
+        var block = ParseBlock(
+            """
+            function add(left, right) {
+                return left + right;
+            }
+            return add(value, 2);
+            """,
+            root);
+        var options = EngineOptions.Default
+            .WithBaseDirectory(root)
+            .WithCompilationMode(CompilationMode.Dynamic)
+            .WithEnableHotReload(false);
+        var builder = new DynamicBuilder(options);
+        var backend = new BackendCompiler(builder, options);
+
+        var plan = backend.CreateCompileBlockPlan(block, ["value"], "compile-block-plan.as");
+        var report = new EmissionSession(plan.Session, builder, emitExecutableSkeletons: true).Emit();
+        var entry = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Function.Equals(plan.Function.Id));
+
+        Assert.True(entry.HasExecutableSkeleton);
+        Assert.Equal(FunctionCallConvention.Span, plan.Function.CallConvention);
+        var del = (ScriptFunctionDelegate)entry.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
+        var ctx = new ScriptContext(new AuroraEngine(options).CreateEmptyDomain(null));
+        var result = del(ctx, new[] { ScriptDatum.FromNumber(40) });
+        Assert.Equal(42, result.Number);
+    }
+
+    [Fact]
+    public void HotPatchPlanResolvesExistingModuleMembers()
+    {
+        var root = Path.GetTempPath();
+        var patch = Parse(
+            """
+            @module(TEST);
+            export func version() { return oldValue + 1; }
+            """,
+            root);
+        var options = EngineOptions.Default
+            .WithBaseDirectory(root)
+            .WithCompilationMode(CompilationMode.Dynamic)
+            .WithEnableHotReload(true);
+        var backend = new BackendCompiler(new DynamicBuilder(options), options);
+
+        var session = backend.CreateHotPatchPlans(patch, [], ["oldValue"], out var mainModule);
+        var version = Assert.Single(mainModule.Functions, function => function.Name == "version");
+        var returnStatement = Assert.IsType<LoweredReturnStatement>(Assert.Single(version.Body.Statements));
+        var binary = Assert.IsType<LoweredBinaryExpression>(returnStatement.Expression);
+        var oldValue = Assert.IsType<LoweredNameExpression>(binary.Left);
+
+        Assert.True(mainModule.TryGetSymbol("oldValue", out _));
+        Assert.True(oldValue.ModuleSymbol.IsValid);
+        Assert.False(oldValue.LocalSlot.IsValid);
+        Assert.False(oldValue.UpvalueSlot.IsValid);
+        Assert.Single(session.Modules);
     }
 
     [Fact]
@@ -2091,6 +2550,13 @@ public sealed class CompilerBackendPlanTests
         using var lexer = new AuroraLexer(root, new TextSource(root, Path.Combine(root, "backend-plan-test.as"), source));
         var parser = new AuroraParser(lexer, EngineOptions.Default.WithBaseDirectory(root));
         return parser.Parse();
+    }
+
+    private static AuroraScript.Compiler.Ast.Statements.BlockStatement ParseBlock(string source, string root)
+    {
+        using var lexer = new AuroraLexer(root, new TextSource(root, Path.Combine(root, "backend-block-test.as"), source));
+        var parser = new AuroraParser(lexer, EngineOptions.Default.WithBaseDirectory(root));
+        return parser.ParseBlockBody();
     }
 
     private static void SumArgumentCountAndValues([NotNull] ScriptContext ctx, ScriptObject target, [NotNull] Span<ScriptDatum> args, ref ScriptDatum result)

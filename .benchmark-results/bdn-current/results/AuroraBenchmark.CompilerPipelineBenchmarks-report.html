@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>AuroraBenchmark.CompilerPipelineBenchmarks-20260623-231029</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.15.8, Windows 11 (10.0.26200.8655/25H2/2025Update/HudsonValley2)
+13th Gen Intel Core i7-13700KF 3.40GHz, 1 CPU, 24 logical and 16 physical cores
+.NET SDK 10.0.301
+  [Host]   : .NET 10.0.9 (10.0.9, 10.0.926.27113), X64 RyuJIT x86-64-v3
+  ShortRun : .NET 10.0.9 (10.0.9, 10.0.926.27113), X64 RyuJIT x86-64-v3
+</code></pre>
+<pre><code>Job=ShortRun  IterationCount=3  LaunchCount=1  
+WarmupCount=3  
+</code></pre>
+
+<table>
+<thead><tr><th>Method                   </th><th>Categories</th><th>Mean  </th><th>Error  </th><th>StdDev</th><th>Min   </th><th>Max   </th><th>Median</th><th>Rank</th><th>Gen0</th><th>Gen1</th><th>Allocated</th>
+</tr>
+</thead><tbody><tr><td>CompileBlock</td><td>compile</td><td>45.683 &mu;s</td><td>24.4194 &mu;s</td><td>1.3385 &mu;s</td><td>44.468 &mu;s</td><td>47.118 &mu;s</td><td>45.461 &mu;s</td><td>1</td><td>1.4954</td><td>0.3662</td><td>23.2 KB</td>
+</tr><tr><td>FullCompile_MultiModule</td><td>compile</td><td>547.264 &mu;s</td><td>611.6858 &mu;s</td><td>33.5286 &mu;s</td><td>510.583 &mu;s</td><td>576.330 &mu;s</td><td>554.881 &mu;s</td><td>2</td><td>4.8828</td><td>0.9766</td><td>77.55 KB</td>
+</tr><tr><td>FullCompile_SingleModule</td><td>compile</td><td>8,734.531 &mu;s</td><td>2,688.7788 &mu;s</td><td>147.3810 &mu;s</td><td>8,601.100 &mu;s</td><td>8,892.725 &mu;s</td><td>8,709.769 &mu;s</td><td>3</td><td>281.2500</td><td>125.0000</td><td>4380.24 KB</td>
+</tr><tr><td>EmitOnly_ParsedLargeModule</td><td>emitter</td><td>7,304.519 &mu;s</td><td>1,580.9715 &mu;s</td><td>86.6584 &mu;s</td><td>7,239.366 &mu;s</td><td>7,402.868 &mu;s</td><td>7,271.324 &mu;s</td><td>1</td><td>179.6875</td><td>89.8438</td><td>2804.86 KB</td>
+</tr><tr><td>LexerOnly_Small</td><td>lexer</td><td>3.606 &mu;s</td><td>0.1078 &mu;s</td><td>0.0059 &mu;s</td><td>3.599 &mu;s</td><td>3.610 &mu;s</td><td>3.608 &mu;s</td><td>1</td><td>0.1144</td><td>-</td><td>1.77 KB</td>
+</tr><tr><td>LexerOnly_StringsTemplatesRegex</td><td>lexer</td><td>102.421 &mu;s</td><td>40.5670 &mu;s</td><td>2.2236 &mu;s</td><td>99.853 &mu;s</td><td>103.721 &mu;s</td><td>103.689 &mu;s</td><td>2</td><td>1.5869</td><td>0.0610</td><td>25.13 KB</td>
+</tr><tr><td>LexerOnly_UnicodeIdentifiers</td><td>lexer</td><td>120.450 &mu;s</td><td>30.7858 &mu;s</td><td>1.6875 &mu;s</td><td>118.532 &mu;s</td><td>121.703 &mu;s</td><td>121.116 &mu;s</td><td>2</td><td>2.6855</td><td>0.2441</td><td>41.28 KB</td>
+</tr><tr><td>LexerOnly_CommentsWhitespace</td><td>lexer</td><td>187.540 &mu;s</td><td>12.7691 &mu;s</td><td>0.6999 &mu;s</td><td>186.936 &mu;s</td><td>188.307 &mu;s</td><td>187.377 &mu;s</td><td>3</td><td>-</td><td>-</td><td>1.85 KB</td>
+</tr><tr><td>LexerOnly_Large</td><td>lexer</td><td>544.268 &mu;s</td><td>356.1705 &mu;s</td><td>19.5229 &mu;s</td><td>521.923 &mu;s</td><td>558.020 &mu;s</td><td>552.862 &mu;s</td><td>4</td><td>0.9766</td><td>-</td><td>21.26 KB</td>
+</tr><tr><td>ParseOnly_Small</td><td>parser</td><td>13.536 &mu;s</td><td>4.7789 &mu;s</td><td>0.2619 &mu;s</td><td>13.384 &mu;s</td><td>13.839 &mu;s</td><td>13.386 &mu;s</td><td>1</td><td>0.4425</td><td>0.0076</td><td>6.79 KB</td>
+</tr><tr><td>ParseOnly_TemplateInterpolation</td><td>parser</td><td>268.605 &mu;s</td><td>33.8857 &mu;s</td><td>1.8574 &mu;s</td><td>266.465 &mu;s</td><td>269.806 &mu;s</td><td>269.543 &mu;s</td><td>2</td><td>26.8555</td><td>9.5215</td><td>412.59 KB</td>
+</tr><tr><td>ParseOnly_Large</td><td>parser</td><td>1,388.077 &mu;s</td><td>304.1068 &mu;s</td><td>16.6691 &mu;s</td><td>1,369.168 &mu;s</td><td>1,400.647 &mu;s</td><td>1,394.416 &mu;s</td><td>3</td><td>101.5625</td><td>56.6406</td><td>1562.48 KB</td>
+</tr></tbody></table>
+</body>
+</html>

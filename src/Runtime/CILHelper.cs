@@ -865,6 +865,55 @@ namespace AuroraScript.Runtime
             return ArrayPool<ScriptDatum>.Shared.Rent(count);
         }
 
+        /// <summary>Ensures a rented argument buffer can hold the requested item count.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum[] EnsureArgumentCapacity(ScriptDatum[] args, int count)
+        {
+            return EnsureArgumentCapacity(args, count, Math.Min(args.Length, count));
+        }
+
+        private static ScriptDatum[] EnsureArgumentCapacity(ScriptDatum[] args, int count, int copyCount)
+        {
+            if (args.Length >= count)
+            {
+                return args;
+            }
+
+            var resized = ArrayPool<ScriptDatum>.Shared.Rent(count);
+            Array.Copy(args, resized, copyCount);
+            ReturnArguments(args);
+            return resized;
+        }
+
+        /// <summary>Appends one argument to a rented argument buffer.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum[] AddArgument(ScriptDatum[] args, ref int count, ScriptDatum value)
+        {
+            args = EnsureArgumentCapacity(args, count + 1, count);
+            args[count++] = value;
+            return args;
+        }
+
+        /// <summary>Appends spread values to a rented argument buffer.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum[] SpreadIntoArguments(ScriptDatum[] args, ref int count, ScriptObject value)
+        {
+            if (value is ScriptArray source)
+            {
+                args = EnsureArgumentCapacity(args, count + source.Length, count);
+                for (var i = 0; i < source.Length; i++)
+                {
+                    args[count++] = source._items[i];
+                }
+            }
+            else
+            {
+                args = AddArgument(args, ref count, ScriptDatum.FromObject(value));
+            }
+
+            return args;
+        }
+
         /// <summary>Invokes a script object with a rented materialized argument buffer.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum InvokeMany(ScriptObject function, ScriptContext ctx, ScriptDatum[] args, int count)
@@ -893,8 +942,7 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptContext EnterDirect(ScriptContext ctx, string name)
         {
-            var closure = (ClosureFunction)ScriptDatum.ToObject(ctx.Module.GetPropertyDatum(ctx, name));
-            return ctx.With(ctx.Module, closure);
+            return ctx.WithDirect(ctx.Module, name);
         }
 
         /// <summary>Creates a direct-call context for a cached module-local function.</summary>

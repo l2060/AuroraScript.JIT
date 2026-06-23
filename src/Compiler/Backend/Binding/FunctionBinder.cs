@@ -17,6 +17,7 @@ namespace AuroraScript.Compiler.Backend.Binding
             ArgumentNullException.ThrowIfNull(modulePlan);
 
             var functionsByDeclaration = BuildFunctionMap(modulePlan);
+            RegisterModuleInitializerFunctions(session, modulePlan, functionsByDeclaration);
             for (var i = 0; i < modulePlan.Functions.Count; i++)
             {
                 RegisterNestedFunctionsCore(session, modulePlan, modulePlan.Functions[i], functionsByDeclaration);
@@ -47,6 +48,18 @@ namespace AuroraScript.Compiler.Backend.Binding
                 functionsByDeclaration[modulePlan.Functions[i].Declaration] = modulePlan.Functions[i];
             }
             return functionsByDeclaration;
+        }
+
+        private static void RegisterModuleInitializerFunctions(
+            CompileSession session,
+            ModulePlan modulePlan,
+            Dictionary<FunctionDeclaration, FunctionPlan> functionsByDeclaration)
+        {
+            var collector = new ModuleInitializerFunctionCollector(session, modulePlan, functionsByDeclaration);
+            for (var i = 0; i < modulePlan.Declaration.Length; i++)
+            {
+                collector.Visit(modulePlan.Declaration[i]);
+            }
         }
 
         private static void RegisterNestedFunctionsCore(
@@ -151,6 +164,64 @@ namespace AuroraScript.Compiler.Backend.Binding
                 _functionsByDeclaration.Add(declaration, plan);
                 _ids ??= new List<FunctionId>();
                 _ids.Add(functionId);
+            }
+        }
+
+        private sealed class ModuleInitializerFunctionCollector
+        {
+            private readonly CompileSession _session;
+            private readonly ModulePlan _modulePlan;
+            private readonly Dictionary<FunctionDeclaration, FunctionPlan> _functionsByDeclaration;
+
+            public ModuleInitializerFunctionCollector(
+                CompileSession session,
+                ModulePlan modulePlan,
+                Dictionary<FunctionDeclaration, FunctionPlan> functionsByDeclaration)
+            {
+                _session = session;
+                _modulePlan = modulePlan;
+                _functionsByDeclaration = functionsByDeclaration;
+            }
+
+            public void Visit(AstNode node)
+            {
+                if (node == null)
+                {
+                    return;
+                }
+
+                switch (node)
+                {
+                    case FunctionDeclaration function:
+                        Register(function);
+                        return;
+                    case LambdaExpression lambda:
+                        Register(lambda.Function);
+                        return;
+                }
+
+                var visitor = new ModuleInitializerChildVisitor(this);
+                AstTraversal.VisitChildren(node, ref visitor);
+            }
+
+            private void Register(FunctionDeclaration declaration)
+            {
+                if (declaration == null ||
+                    declaration.Flags == FunctionFlags.Declare ||
+                    _functionsByDeclaration.ContainsKey(declaration))
+                {
+                    return;
+                }
+
+                var functionId = _session.AllocateFunctionId();
+                var functionScope = _session.Scopes.Add(new ScopeInfo(
+                    _modulePlan.ModuleScope,
+                    _modulePlan.Id,
+                    functionId,
+                    BackendScopeKind.Function));
+                var plan = new FunctionPlan(functionId, _modulePlan.Id, functionScope, declaration, FunctionVisibility.InternalOnly, isModuleFunction: false);
+                _modulePlan.AddFunction(plan);
+                _functionsByDeclaration.Add(declaration, plan);
             }
         }
 
@@ -345,7 +416,7 @@ namespace AuroraScript.Compiler.Backend.Binding
 
                 switch (node)
                 {
-                    case NameExpression name when name.Identifier?.Value == "arguments":
+                    case NameExpression name when name.Identifier?.Value == "$args":
                         UsesArgumentsObject = true;
                         return;
                     case FunctionDeclaration:
@@ -363,6 +434,21 @@ namespace AuroraScript.Compiler.Backend.Binding
             private readonly NestedFunctionCollector _collector;
 
             public ChildVisitor(NestedFunctionCollector collector)
+            {
+                _collector = collector;
+            }
+
+            public void Visit(AstNode node)
+            {
+                _collector.Visit(node);
+            }
+        }
+
+        private readonly struct ModuleInitializerChildVisitor : IAstChildVisitor
+        {
+            private readonly ModuleInitializerFunctionCollector _collector;
+
+            public ModuleInitializerChildVisitor(ModuleInitializerFunctionCollector collector)
             {
                 _collector = collector;
             }
