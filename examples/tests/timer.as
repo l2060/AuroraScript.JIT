@@ -69,8 +69,6 @@ export function createTimer(callback, interval = 521) {
         |> 4. <Buy/@Buy> <Close/@Close>
         |> 5. <Buys/@Buys:input-number>
     );
-    yield;
-
 
     timers.push(timer);
     return Object(timer);
