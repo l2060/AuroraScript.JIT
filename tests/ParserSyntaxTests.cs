@@ -178,10 +178,57 @@ public sealed class ParserSyntaxTests
     [Fact]
     public void ParsesNonModuleMetadata()
     {
-        var module = Parse("@author(TEST);\n@module(TEST);");
+        var module = Parse("@module(TEST);\n@author(TEST);");
 
         Assert.Equal("TEST", module.MetaInfos["author"]);
         Assert.Equal("TEST", module.ModuleName);
+    }
+
+    [Theory]
+    [InlineData("@author(TEST);\n@module(TEST);")]
+    [InlineData("var value = 1;\n@module(TEST);")]
+    [InlineData(";\n@module(TEST);")]
+    [InlineData("@directCall()\nfunc run() { return 1; }\n@module(TEST);")]
+    public void RejectsModuleMetadataAfterOtherSyntax(string source)
+    {
+        var error = Record.Exception(() => Parse(source));
+
+        Assert.NotNull(error);
+        Assert.IsAssignableFrom<AuroraException>(error);
+    }
+
+    [Fact]
+    public void ParsesFunctionAnnotations()
+    {
+        var module = Parse(
+            """
+            @module(TEST);
+            @directCall
+            export func run() { return 42; }
+            """);
+
+        var function = Assert.Single(module.Functions);
+        Assert.Equal("run", function.Name.Value);
+        var annotation = Assert.Single(function.Annotations);
+        Assert.Equal("directCall", annotation.Name.Value);
+        Assert.Empty(annotation.Arguments);
+    }
+
+    [Fact]
+    public void ParsesDirectCallAnnotationArgument()
+    {
+        var module = Parse(
+            """
+            @module(TEST);
+            @directCall(false)
+            func run() { return 42; }
+            """);
+
+        var function = Assert.Single(module.Functions);
+        var annotation = Assert.Single(function.Annotations);
+        Assert.Equal("directCall", annotation.Name.Value);
+        var argument = Assert.IsType<AuroraScript.Tokens.BooleanToken>(annotation.Arguments[0]);
+        Assert.False(argument.BoolValue);
     }
 
     [Fact]

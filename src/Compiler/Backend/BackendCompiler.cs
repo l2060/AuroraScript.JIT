@@ -3,9 +3,9 @@ using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Compiler.Backend.Analysis;
 using AuroraScript.Compiler.Backend.Binding;
+using AuroraScript.Compiler.Backend.Builders;
 using AuroraScript.Compiler.Backend.Lowering;
 using AuroraScript.Compiler.Backend.Plans;
-using AuroraScript.Compiler.Emits.Builders;
 using AuroraScript.Tokens;
 using System;
 using System.Collections.Generic;
@@ -138,12 +138,12 @@ namespace AuroraScript.Compiler.Backend
             return session;
         }
 
-        private static Dictionary<FunctionDeclaration, FunctionPlan>[] RegisterNestedFunctions(
+        private static FunctionBinder.FunctionPlanRegistry[] RegisterNestedFunctions(
             CompileSession session,
             ModulePlan[] plans,
             CancellationToken cancellationToken)
         {
-            var functionMaps = new Dictionary<FunctionDeclaration, FunctionPlan>[plans.Length];
+            var functionMaps = new FunctionBinder.FunctionPlanRegistry[plans.Length];
             for (var i = 0; i < plans.Length; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -155,7 +155,7 @@ namespace AuroraScript.Compiler.Backend
         private static void AnalyzeModules(
             CompileSession session,
             ModulePlan[] plans,
-            Dictionary<FunctionDeclaration, FunctionPlan>[] functionMaps,
+            FunctionBinder.FunctionPlanRegistry[] functionMaps,
             CancellationToken cancellationToken)
         {
             if (!session.Capabilities.CanAnalyzeModulesInParallel || plans.Length <= 1)

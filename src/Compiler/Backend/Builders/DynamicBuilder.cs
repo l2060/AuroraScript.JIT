@@ -4,9 +4,9 @@ using System;
 using System.Reflection;
 using System.Reflection.Emit;
 
-namespace AuroraScript.Compiler.Emits.Builders
+namespace AuroraScript.Compiler.Backend.Builders
 {
-    internal class DynamicBuilder : AbstractCILBuilder
+    internal sealed class DynamicBuilder : AbstractCILBuilder
     {
         private static readonly Type[] s_standardParameters = [typeof(ScriptContext), typeof(Span<ScriptDatum>)];
         private MethodInfo _domainInitMethod;

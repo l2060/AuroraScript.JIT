@@ -90,16 +90,15 @@ namespace AuroraScript
 
         /// <summary>
         /// Gets a value indicating whether runtime hot reload and dynamic patching are enabled.
-        /// Disable this to allow more aggressive module-local call optimizations.
         /// </summary>
         public bool EnableHotReload { get; init; } = true;
 
         /// <summary>
-        /// Gets a value indicating whether the compiler may emit direct calls for proven
-        /// same-module internal functions. This optimization is disabled by default and
-        /// also requires <see cref="EnableHotReload"/> to be false.
+        /// Gets a value indicating whether the compiler may automatically infer direct calls
+        /// for proven same-module internal functions without an explicit script annotation.
+        /// Explicit @directCall annotations are not controlled by this option.
         /// </summary>
-        public bool EnableModuleDirectCall { get; init; }
+        public bool EnableAutoModuleDirectCall { get; init; }
 
         /// <summary>
         /// Gets a value indicating whether obfuscation (confusion) is enabled.
@@ -192,7 +191,7 @@ namespace AuroraScript
         /// <summary>
         /// Sets whether runtime hot reload and dynamic patching are enabled and returns a new options instance.
         /// </summary>
-        /// <param name="value">True to keep hot reload enabled; false to allow more aggressive static optimizations.</param>
+        /// <param name="value">True to allow runtime hot patching; false to reject dynamic patches.</param>
         /// <returns>A new <see cref="EngineOptions"/> instance with the updated hot reload setting.</returns>
         public EngineOptions WithEnableHotReload(bool value)
         {
@@ -200,12 +199,12 @@ namespace AuroraScript
         }
 
         /// <summary>
-        /// Sets whether same-module internal direct-call optimization is enabled and returns a new options instance.
-        /// This option has no effect while hot reload is enabled.
+        /// Sets whether same-module internal direct-call inference is enabled and returns a new options instance.
+        /// Explicit @directCall annotations are not controlled by this option.
         /// </summary>
-        public EngineOptions WithEnableModuleDirectCall(bool value)
+        public EngineOptions WithEnableAutoModuleDirectCall(bool value)
         {
-            return this with { EnableModuleDirectCall = value };
+            return this with { EnableAutoModuleDirectCall = value };
         }
 
         /// <summary>

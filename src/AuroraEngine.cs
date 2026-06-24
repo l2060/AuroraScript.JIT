@@ -1,8 +1,8 @@
 ﻿using AuroraScript.Compiler;
 using AuroraScript.Compiler.Analyzer;
 using AuroraScript.Compiler.Backend;
+using AuroraScript.Compiler.Backend.Builders;
 using AuroraScript.Compiler.Backend.Emission;
-using AuroraScript.Compiler.Emits.Builders;
 using AuroraScript.Core;
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Extensions;
@@ -22,7 +22,6 @@ using System.Threading.Tasks;
 [assembly: InternalsVisibleTo("AuroraScript.Generated")]
 [assembly: InternalsVisibleTo("Benchmark")]
 [assembly: InternalsVisibleTo("AuroraScript.Tests")]
-[assembly: InternalsVisibleTo("AuroraScript.CompilerBackend.Tests")]
 
 namespace AuroraScript
 {
@@ -191,7 +190,7 @@ namespace AuroraScript
                 AbstractCILBuilder builder = Options.CompilationMode switch
                 {
                     CompilationMode.Persistence => new PersistedBuilder(Options),
-                    CompilationMode.OnlyRun => new DebuggableBuilder(Options),
+                    CompilationMode.OnlyRun => new OnlyRunBuilder(Options),
                     CompilationMode.Dynamic => new DynamicBuilder(Options),
                     _ => throw new NotImplementedException()
                 };

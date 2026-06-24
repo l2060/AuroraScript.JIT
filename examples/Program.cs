@@ -1,4 +1,4 @@
-﻿using AuroraScript;
+using AuroraScript;
 using AuroraScript.Core;
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Types;
@@ -24,7 +24,8 @@ namespace Examples
             .WithAssemblyOut("123.dll")
             .WithEnableConfused(false)
             .WithEnableHotReload(false)
-            .WithCompilationMode(CompilationMode.Dynamic)
+            .WithEnableAutoModuleDirectCall(false)
+            .WithCompilationMode(CompilationMode.OnlyRun)
             .WithOptimizeOption(OptimizeOptions.Release);
 
         private static readonly AuroraEngine engine = new AuroraEngine(engineOptions);

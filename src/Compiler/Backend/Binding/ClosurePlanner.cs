@@ -94,7 +94,7 @@ namespace AuroraScript.Compiler.Backend.Binding
                     }
                 }
 
-                function.RequiresClosureObject = function.Visibility != FunctionVisibility.InternalOnly || !function.IsDirectCallCandidate;
+                function.RequiresClosureObject = RequiresClosureObject(function);
                 function.CanCacheClosureObject = function.RequiresClosureObject &&
                     function.UpvalueSlots.Length == 0 &&
                     !function.IsModuleFunction &&
@@ -115,7 +115,7 @@ namespace AuroraScript.Compiler.Backend.Binding
                 }
             }
 
-            function.RequiresClosureObject = function.Visibility != FunctionVisibility.InternalOnly || !function.IsDirectCallCandidate;
+            function.RequiresClosureObject = RequiresClosureObject(function);
             function.CanCacheClosureObject = function.RequiresClosureObject &&
                 function.UpvalueSlots.Length == 0 &&
                 !function.IsModuleFunction &&
@@ -146,12 +146,21 @@ namespace AuroraScript.Compiler.Backend.Binding
         private static bool CanUseModuleDirectCall(FunctionPlan function)
         {
             return function.IsModuleFunction &&
-                function.Visibility == FunctionVisibility.InternalOnly &&
                 !function.HasDefaultParameters &&
                 !function.UsesArgumentsObject &&
                 function.UpvalueSlots.Length == 0 &&
                 function.CapturedLocalSlots.Length == 0 &&
                 GetParameterCount(function) <= 7;
+        }
+
+        private static bool RequiresClosureObject(FunctionPlan function)
+        {
+            if (function.DirectCallDirective == DirectCallDirective.PreserveClosure)
+            {
+                return true;
+            }
+
+            return function.Visibility != FunctionVisibility.InternalOnly || !function.IsDirectCallCandidate;
         }
 
         private static int GetParameterCount(FunctionPlan function)

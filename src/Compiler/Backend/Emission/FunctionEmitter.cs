@@ -27,7 +27,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                 _controlFlow = new ControlFlowEmitter(_locals, _expressions);
             }
 
-            _directCallCandidateSymbols = BuildDirectCallCandidateSymbols(session, module);
+            _directCallCandidateSymbols = session.CollectDiagnostics
+                ? BuildDirectCallCandidateSymbols(session, module)
+                : null;
         }
 
         public FunctionEmissionResult Emit(FunctionPlan function)

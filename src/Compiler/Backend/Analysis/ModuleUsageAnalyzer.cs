@@ -15,6 +15,11 @@ namespace AuroraScript.Compiler.Backend.Analysis
             ArgumentNullException.ThrowIfNull(session);
             ArgumentNullException.ThrowIfNull(modulePlan);
 
+            if (!session.Capabilities.CanUseModuleDirectCall || modulePlan.Functions.Count == 0)
+            {
+                return;
+            }
+
             for (var i = 0; i < modulePlan.Functions.Count; i++)
             {
                 var function = modulePlan.Functions[i];
@@ -23,11 +28,6 @@ namespace AuroraScript.Compiler.Backend.Analysis
                 {
                     function.Visibility = FunctionVisibility.ModuleVisible;
                 }
-            }
-
-            if (!session.Capabilities.CanUseModuleDirectCall || modulePlan.Functions.Count == 0)
-            {
-                return;
             }
 
             var candidateNames = BuildCandidateNameMap(session, modulePlan);
@@ -42,13 +42,32 @@ namespace AuroraScript.Compiler.Backend.Analysis
 
             for (var i = 0; i < modulePlan.Functions.Count; i++)
             {
+                var function = modulePlan.Functions[i];
                 var usage = usages[i];
+                if (function.DirectCallDirective == DirectCallDirective.Disabled)
+                {
+                    continue;
+                }
+
+                if (function.DirectCallDirective == DirectCallDirective.PreserveClosure)
+                {
+                    if (usage.HasAssignment)
+                    {
+                        throw new AuroraEmitException(function.Declaration, "@directCall() function name cannot be assigned.");
+                    }
+
+                    if (usage.DirectCallCount > 0)
+                    {
+                        function.IsDirectCallCandidate = true;
+                    }
+                    continue;
+                }
+
                 if (usage.DirectCallCount == 0 || usage.HasAssignment || usage.HasValueRead)
                 {
                     continue;
                 }
 
-                var function = modulePlan.Functions[i];
                 function.IsDirectCallCandidate = true;
                 function.Visibility = FunctionVisibility.InternalOnly;
             }
@@ -62,7 +81,9 @@ namespace AuroraScript.Compiler.Backend.Analysis
             for (var i = 0; i < modulePlan.Functions.Count; i++)
             {
                 var function = modulePlan.Functions[i];
-                if (!function.IsModuleFunction || function.Visibility != FunctionVisibility.ModuleVisible || string.IsNullOrEmpty(function.Name))
+                if (!function.IsModuleFunction ||
+                    string.IsNullOrEmpty(function.Name) ||
+                    !CanAnalyzeCandidate(session, function))
                 {
                     continue;
                 }
@@ -92,6 +113,17 @@ namespace AuroraScript.Compiler.Backend.Analysis
                 }
             }
             return result;
+        }
+
+        private static bool CanAnalyzeCandidate(CompileSession session, FunctionPlan function)
+        {
+            return function.DirectCallDirective switch
+            {
+                DirectCallDirective.PreserveClosure => true,
+                DirectCallDirective.Disabled => false,
+                _ => session.Capabilities.CanInferAutoModuleDirectCall &&
+                    function.Visibility == FunctionVisibility.ModuleVisible
+            };
         }
 
         private struct FunctionUsage
@@ -213,7 +245,14 @@ namespace AuroraScript.Compiler.Backend.Analysis
             {
                 if (call.Target is NameExpression target && TryGetCandidateIndex(target, out var index))
                 {
-                    _usages[index].DirectCallCount++;
+                    if (HasSpreadArgument(call))
+                    {
+                        _usages[index].HasValueRead = true;
+                    }
+                    else
+                    {
+                        _usages[index].DirectCallCount++;
+                    }
                 }
                 else
                 {
@@ -224,6 +263,19 @@ namespace AuroraScript.Compiler.Backend.Analysis
                 {
                     Visit(call.Arguments[i]);
                 }
+            }
+
+            private static bool HasSpreadArgument(FunctionCallExpression call)
+            {
+                for (var i = 0; i < call.Arguments.Count; i++)
+                {
+                    if (call.Arguments[i] is SpreadExpression)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
             }
 
             private void VisitConstructorCall(FunctionCallExpression call)

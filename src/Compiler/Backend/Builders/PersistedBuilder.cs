@@ -14,10 +14,10 @@ using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
 
 
-namespace AuroraScript.Compiler.Emits.Builders
+namespace AuroraScript.Compiler.Backend.Builders
 {
 #if NET9_0_OR_GREATER
-    internal class PersistedBuilder : AbstractCILBuilder
+    internal sealed class PersistedBuilder : AbstractCILBuilder
     {
         private readonly PersistedAssemblyBuilder _assemblyBuilder;
         private readonly ModuleBuilder _moduleBuilder;
@@ -326,7 +326,7 @@ namespace AuroraScript.Compiler.Emits.Builders
 
     }
 #else
-    internal class PersistedBuilder : AbstractCILBuilder
+    internal sealed class PersistedBuilder : AbstractCILBuilder
     {
         public PersistedBuilder(EngineOptions options) : base(options)
         {

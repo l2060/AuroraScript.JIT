@@ -72,8 +72,75 @@ namespace AuroraScript.Runtime
         /// </summary>
         public ScriptDatum Invoke(ScriptContext context, ReadOnlySpan<ScriptDatum> arguments)
         {
-            var args = arguments.ToArray();
-            return _target(context, args);
+            switch (arguments.Length)
+            {
+                case 0:
+                    return _target(context, Span<ScriptDatum>.Empty);
+                case 1:
+                    {
+                        DatumBuffer1 buffer = default;
+                        CopyArguments(arguments, buffer);
+                        return _target(context, buffer);
+                    }
+                case 2:
+                    {
+                        DatumBuffer2 buffer = default;
+                        CopyArguments(arguments, buffer);
+                        return _target(context, buffer);
+                    }
+                case 3:
+                    {
+                        DatumBuffer3 buffer = default;
+                        CopyArguments(arguments, buffer);
+                        return _target(context, buffer);
+                    }
+                case 4:
+                    {
+                        DatumBuffer4 buffer = default;
+                        CopyArguments(arguments, buffer);
+                        return _target(context, buffer);
+                    }
+                case 5:
+                    {
+                        DatumBuffer5 buffer = default;
+                        CopyArguments(arguments, buffer);
+                        return _target(context, buffer);
+                    }
+                case 6:
+                    {
+                        DatumBuffer6 buffer = default;
+                        CopyArguments(arguments, buffer);
+                        return _target(context, buffer);
+                    }
+                case 7:
+                    {
+                        DatumBuffer7 buffer = default;
+                        CopyArguments(arguments, buffer);
+                        return _target(context, buffer);
+                    }
+                case 8:
+                    {
+                        DatumBuffer8 buffer = default;
+                        CopyArguments(arguments, buffer);
+                        return _target(context, buffer);
+                    }
+                default:
+                    var rented = CILHelper.RentArguments(arguments.Length);
+                    try
+                    {
+                        arguments.CopyTo(rented);
+                        return _target(context, rented.AsSpan(0, arguments.Length));
+                    }
+                    finally
+                    {
+                        CILHelper.ReturnArguments(rented, arguments.Length);
+                    }
+            }
+        }
+
+        private static void CopyArguments(ReadOnlySpan<ScriptDatum> source, Span<ScriptDatum> target)
+        {
+            source.CopyTo(target);
         }
     }
 }

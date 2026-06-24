@@ -135,6 +135,30 @@ public sealed class BuiltInLibraryTests
     }
 
     [Fact]
+    public async Task HashMapEnumerationUsesSnapshotWhenMutated()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func run() {
+                var map = new HashMap();
+                map.set("a", 1);
+                map.set("b", 2);
+                var keys = [];
+                for (var key in map) {
+                    keys.push(key);
+                    map.set("c", 3);
+                    map.delete("b");
+                }
+                return [keys.length, keys.indexOf("a") >= 0, keys.indexOf("b") >= 0, map.has("c"), map.has("b")];
+            }
+            """);
+
+        ScriptAssert.Equal(new object?[] { 2, true, true, true, false }, TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
     public async Task HashMapStringKeysWorkWithoutStringPooling()
     {
         using var workspace = new TestWorkspace();

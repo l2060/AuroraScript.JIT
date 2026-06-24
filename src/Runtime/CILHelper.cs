@@ -3,7 +3,6 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using AuroraScript.Runtime.Property;
 
 namespace AuroraScript.Runtime
@@ -30,7 +29,7 @@ namespace AuroraScript.Runtime
             }
             if (a.Kind == ValueKind.String || b.Kind == ValueKind.String)
             {
-                return ScriptDatum.FromString(ScriptDatum.ToString(a) + ScriptDatum.ToString(b));
+                return ScriptDatum.FromString(string.Concat(ToStringForConcat(a), ToStringForConcat(b)));
             }
             if (ScriptDatum.TryToNumber(a, out var na) && ScriptDatum.TryToNumber(b, out var nb))
             {
@@ -38,7 +37,7 @@ namespace AuroraScript.Runtime
             }
             else
             {
-                return ScriptDatum.FromString(ScriptDatum.ToString(a) + ScriptDatum.ToString(b));
+                return ScriptDatum.FromString(string.Concat(ToStringForConcat(a), ToStringForConcat(b)));
             }
         }
 
@@ -46,21 +45,34 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum AddStringRight(ScriptDatum a, string b)
         {
-            return ScriptDatum.FromString(ScriptDatum.ToString(a) + b);
+            return ScriptDatum.FromString(string.Concat(ToStringForConcat(a), b));
         }
 
         /// <summary>Concatenates a literal string on the left with a script value.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum AddStringLeft(string a, ScriptDatum b)
         {
-            return ScriptDatum.FromString(a + ScriptDatum.ToString(b));
+            return ScriptDatum.FromString(string.Concat(a, ToStringForConcat(b)));
         }
 
         /// <summary>Concatenates a script value, literal string, and script value in one pass.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum AddStringMiddle(ScriptDatum a, string b, ScriptDatum c)
         {
-            return ScriptDatum.FromString(string.Concat(ScriptDatum.ToString(a), b, ScriptDatum.ToString(c)));
+            return ScriptDatum.FromString(string.Concat(ToStringForConcat(a), b, ToStringForConcat(c)));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static string ToStringForConcat(ScriptDatum value)
+        {
+            return value.Kind switch
+            {
+                ValueKind.Null => "null",
+                ValueKind.Boolean => value.Boolean.ToString(),
+                ValueKind.Number => value.Number.ToString(),
+                ValueKind.String => value.String.Value,
+                _ => value.Object.ToString(),
+            };
         }
 
         /// <summary>
@@ -604,7 +616,7 @@ namespace AuroraScript.Runtime
             }
             finally
             {
-                ReturnArguments(args);
+                ReturnArguments(args, count);
             }
         }
 
@@ -632,7 +644,8 @@ namespace AuroraScript.Runtime
                 property.Getter == null &&
                 property.Value is BondingFunction { Target: null } nativeFunction)
             {
-                var args = MemoryMarshal.CreateSpan(ref arg0, 1);
+                DatumBuffer1 args = default;
+                args[0] = arg0;
                 ScriptDatum result = default;
                 nativeFunction.DatumMethod.Invoke(ctx, receiver, args, ref result);
                 return result;
@@ -881,7 +894,7 @@ namespace AuroraScript.Runtime
 
             var resized = ArrayPool<ScriptDatum>.Shared.Rent(count);
             Array.Copy(args, resized, copyCount);
-            ReturnArguments(args);
+            ReturnArguments(args, copyCount);
             return resized;
         }
 
@@ -924,7 +937,7 @@ namespace AuroraScript.Runtime
             }
             finally
             {
-                ReturnArguments(args);
+                ReturnArguments(args, count);
             }
         }
 
@@ -936,6 +949,22 @@ namespace AuroraScript.Runtime
             {
                 ArrayPool<ScriptDatum>.Shared.Return(args, clearArray: true);
             }
+        }
+
+        /// <summary>Returns a temporary argument buffer and clears only the slots written by the call.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void ReturnArguments(ScriptDatum[] args, int count)
+        {
+            if (args == null)
+            {
+                return;
+            }
+
+            if (count > 0)
+            {
+                Array.Clear(args, 0, count);
+            }
+            ArrayPool<ScriptDatum>.Shared.Return(args, clearArray: false);
         }
 
         /// <summary>Creates a direct-call context for a known module-local function.</summary>
@@ -1076,12 +1105,12 @@ namespace AuroraScript.Runtime
             else
             {
                 string key = ScriptDatum.ToString(index);
-                ScriptDatum val = ScriptDatum.FromObject(obj.GetPropertyValue(key));
+                ScriptDatum val = obj.GetPropertyDatum(null, key);
                 if (ScriptDatum.TryToNumber(val, out var n))
                     val = ScriptDatum.FromNumber(n + 1);
                 else
                     val = ScriptDatum.FromNumber(double.NaN);
-                obj.SetPropertyValue(key, ScriptDatum.ToObject(val));
+                obj.SetPropertyDatum(null, key, val);
                 return val;
             }
         }
@@ -1108,13 +1137,13 @@ namespace AuroraScript.Runtime
             else
             {
                 string key = ScriptDatum.ToString(index);
-                ScriptDatum val = ScriptDatum.FromObject(obj.GetPropertyValue(key));
+                ScriptDatum val = obj.GetPropertyDatum(null, key);
                 ScriptDatum result = val;
                 if (ScriptDatum.TryToNumber(val, out var n))
                     val = ScriptDatum.FromNumber(n + 1);
                 else
                     val = ScriptDatum.FromNumber(double.NaN);
-                obj.SetPropertyValue(key, ScriptDatum.ToObject(val));
+                obj.SetPropertyDatum(null, key, val);
                 return result;
             }
         }
@@ -1140,12 +1169,12 @@ namespace AuroraScript.Runtime
             else
             {
                 string key = ScriptDatum.ToString(index);
-                ScriptDatum val = ScriptDatum.FromObject(obj.GetPropertyValue(key));
+                ScriptDatum val = obj.GetPropertyDatum(null, key);
                 if (ScriptDatum.TryToNumber(val, out var n))
                     val = ScriptDatum.FromNumber(n - 1);
                 else
                     val = ScriptDatum.FromNumber(double.NaN);
-                obj.SetPropertyValue(key, ScriptDatum.ToObject(val));
+                obj.SetPropertyDatum(null, key, val);
                 return val;
             }
         }
@@ -1172,13 +1201,13 @@ namespace AuroraScript.Runtime
             else
             {
                 string key = ScriptDatum.ToString(index);
-                ScriptDatum val = ScriptDatum.FromObject(obj.GetPropertyValue(key));
+                ScriptDatum val = obj.GetPropertyDatum(null, key);
                 ScriptDatum result = val;
                 if (ScriptDatum.TryToNumber(val, out var n))
                     val = ScriptDatum.FromNumber(n - 1);
                 else
                     val = ScriptDatum.FromNumber(double.NaN);
-                obj.SetPropertyValue(key, ScriptDatum.ToObject(val));
+                obj.SetPropertyDatum(null, key, val);
                 return result;
             }
         }
@@ -1189,12 +1218,12 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum IncrementPropertyPrefix(ScriptObject obj, string name)
         {
-            ScriptDatum val = ScriptDatum.FromObject(obj.GetPropertyValue(name));
+            ScriptDatum val = obj.GetPropertyDatum(null, name);
             if (ScriptDatum.TryToNumber(val, out var n))
                 val = ScriptDatum.FromNumber(n + 1);
             else
                 val = ScriptDatum.FromNumber(double.NaN);
-            obj.SetPropertyValue(name, ScriptDatum.ToObject(val));
+            obj.SetPropertyDatum(null, name, val);
             return val;
         }
 
@@ -1204,13 +1233,13 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum IncrementPropertyPostfix(ScriptObject obj, string name)
         {
-            ScriptDatum val = ScriptDatum.FromObject(obj.GetPropertyValue(name));
+            ScriptDatum val = obj.GetPropertyDatum(null, name);
             ScriptDatum result = val;
             if (ScriptDatum.TryToNumber(val, out var n))
                 val = ScriptDatum.FromNumber(n + 1);
             else
                 val = ScriptDatum.FromNumber(double.NaN);
-            obj.SetPropertyValue(name, ScriptDatum.ToObject(val));
+            obj.SetPropertyDatum(null, name, val);
             return result;
         }
 
@@ -1220,12 +1249,12 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum DecrementPropertyPrefix(ScriptObject obj, string name)
         {
-            ScriptDatum val = ScriptDatum.FromObject(obj.GetPropertyValue(name));
+            ScriptDatum val = obj.GetPropertyDatum(null, name);
             if (ScriptDatum.TryToNumber(val, out var n))
                 val = ScriptDatum.FromNumber(n - 1);
             else
                 val = ScriptDatum.FromNumber(double.NaN);
-            obj.SetPropertyValue(name, ScriptDatum.ToObject(val));
+            obj.SetPropertyDatum(null, name, val);
             return val;
         }
 
@@ -1235,14 +1264,14 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum DecrementPropertyPostfix(ScriptObject obj, string name)
         {
-            ScriptDatum val = ScriptDatum.FromObject(obj.GetPropertyValue(name));
+            ScriptDatum val = obj.GetPropertyDatum(null, name);
             ScriptDatum result = val;
 
             if (ScriptDatum.TryToNumber(val, out var n))
                 val = ScriptDatum.FromNumber(n - 1);
             else
                 val = ScriptDatum.FromNumber(double.NaN);
-            obj.SetPropertyValue(name, ScriptDatum.ToObject(val));
+            obj.SetPropertyDatum(null, name, val);
             return result;
         }
 
@@ -1396,7 +1425,7 @@ namespace AuroraScript.Runtime
             }
             finally
             {
-                ReturnArguments(args);
+                ReturnArguments(args, count);
             }
         }
 

@@ -28,6 +28,13 @@ namespace AuroraScript.Compiler.Backend.Plans
         Fast7
     }
 
+    internal enum DirectCallDirective
+    {
+        Auto,
+        PreserveClosure,
+        Disabled
+    }
+
     internal readonly struct LocalSlot
     {
         public LocalSlot(
@@ -110,6 +117,7 @@ namespace AuroraScript.Compiler.Backend.Plans
             NestedFunctions = Array.Empty<FunctionId>();
             ParameterDefaults = Array.Empty<LoweredExpression>();
             UnsupportedLoweredNodes = Array.Empty<LoweredUnsupportedNode>();
+            DirectCallDirective = FunctionAnnotationBinder.ResolveDirectCallDirective(declaration);
         }
 
         public FunctionId Id { get; }
@@ -121,6 +129,7 @@ namespace AuroraScript.Compiler.Backend.Plans
         public FunctionVisibility Visibility { get; set; }
         public FunctionCallConvention CallConvention { get; set; }
         public MethodInfo Method { get; set; }
+        public int DynamicDelegateId { get; set; }
         public FieldInfo DirectClosureField { get; set; }
         public LocalSlot[] LocalSlots { get; set; }
         public UpvalueSlot[] UpvalueSlots { get; set; }
@@ -132,11 +141,13 @@ namespace AuroraScript.Compiler.Backend.Plans
         public int UnsupportedLoweredExpressionCount { get; set; }
         public LoweredUnsupportedNode[] UnsupportedLoweredNodes { get; set; }
         public bool IsDirectCallCandidate { get; set; }
+        public DirectCallDirective DirectCallDirective { get; }
         public bool UsesArgumentsObject { get; set; }
         public bool HasDefaultParameters { get; set; }
         public bool RequiresClosureObject { get; set; } = true;
         public bool CanCacheClosureObject { get; set; }
         public bool IsLambda => Declaration?.Flags == FunctionFlags.Lambda;
+
     }
 
     internal sealed class ModulePlan

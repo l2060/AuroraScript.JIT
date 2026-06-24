@@ -1,5 +1,4 @@
 using AuroraScript.Compiler.Backend.Plans;
-using AuroraScript.Compiler.Emits;
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Types;
 using System;
@@ -76,7 +75,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             if (function.Method is DynamicMethod dynamicMethod)
             {
-                var delegateId = session.GetDynamicDelegateId(dynamicMethod, function.CallConvention);
+                var delegateId = session.GetDynamicDelegateId(function, dynamicMethod);
                 il.Emit(OpCodes.Dup);
                 il.Emit(OpCodes.Ldc_I4, delegateId);
                 il.Emit(OpCodes.Call, GetResolveDelegateMethod(function.CallConvention));

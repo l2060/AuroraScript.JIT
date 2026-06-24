@@ -4,15 +4,15 @@ using System;
 using System.Reflection;
 using System.Reflection.Emit;
 
-namespace AuroraScript.Compiler.Emits.Builders
+namespace AuroraScript.Compiler.Backend.Builders
 {
-    internal class DebuggableBuilder : AbstractCILBuilder
+    internal sealed class OnlyRunBuilder : AbstractCILBuilder
     {
         private readonly AssemblyBuilder _assemblyBuilder;
         private readonly ModuleBuilder _moduleBuilder;
         private TypeBuilder _typeBuilder;
 
-        public DebuggableBuilder(EngineOptions options) : base(options)
+        public OnlyRunBuilder(EngineOptions options) : base(options)
         {
             var assemblyName = new AssemblyName(InternalConstant.AssemblyName);
             assemblyName.Version = new Version(1, 0, 0, 0);
@@ -21,7 +21,7 @@ namespace AuroraScript.Compiler.Emits.Builders
             _moduleBuilder = _assemblyBuilder.DefineDynamicModule(InternalConstant.AssemblyName);
         }
 
-        public override (MethodInfo Method, ILGenerator IL) DefineModuleInitMethod(ModuleDeclaration module)
+        public sealed override (MethodInfo Method, ILGenerator IL) DefineModuleInitMethod(ModuleDeclaration module)
         {
             var typeBuilder = _moduleBuilder.DefineType(ConfuseTypeName(module.ModuleName, ConfuseTarget.Class), TypeAttributes.Public | TypeAttributes.Class);
             var methodBuilder = typeBuilder.DefineMethod(ConfuseTypeName("Initialize", ConfuseTarget.Method), MethodAttributes.Public | MethodAttributes.Static, typeof(void), [typeof(ScriptContext), typeof(Span<ScriptDatum>)]);
@@ -29,7 +29,7 @@ namespace AuroraScript.Compiler.Emits.Builders
             return (methodBuilder, methodBuilder.GetILGenerator());
         }
 
-        public override (MethodInfo Method, ILGenerator IL) DefineDomainInitMethod()
+        public sealed override (MethodInfo Method, ILGenerator IL) DefineDomainInitMethod()
         {
             _typeBuilder = _moduleBuilder.DefineType(EntryPointTypeName, TypeAttributes.Public | TypeAttributes.Class);
             var methodBuilder = _typeBuilder.DefineMethod(EntryPointMethodName, MethodAttributes.Public | MethodAttributes.Static, typeof(ScriptDatum), [typeof(ScriptContext), typeof(Span<ScriptDatum>)]);
@@ -39,7 +39,7 @@ namespace AuroraScript.Compiler.Emits.Builders
 
 
 
-        public override (MethodInfo Method, ILGenerator IL) DefineMethod(string moduleName, string methodName, Type returnType, Type[] parameterTypes)
+        public sealed override (MethodInfo Method, ILGenerator IL) DefineMethod(string moduleName, string methodName, Type returnType, Type[] parameterTypes)
         {
             var typeName = moduleName;
             if (!TryResolveType(typeName, out var typeBuilder))
@@ -50,7 +50,7 @@ namespace AuroraScript.Compiler.Emits.Builders
             return (method, method.GetILGenerator());
         }
 
-        public override MethodInfo GetRuntimeEntryPoint()
+        public sealed override MethodInfo GetRuntimeEntryPoint()
         {
             if (_typeBuilder == null) return null;
             var runtimeType = _typeBuilder.UnderlyingSystemType;
@@ -62,20 +62,20 @@ namespace AuroraScript.Compiler.Emits.Builders
             return null;
         }
 
-        public override void SetLocalSymInfo(LocalBuilder local, string name)
+        public sealed override void SetLocalSymInfo(LocalBuilder local, string name)
         {
             //local.SetLocalSymInfo(ConfuseTypeName(IsDebugMode ? name : String.Empty, ConfuseTarget.Local));
         }
 
-        public override void MarkSequencePoint(AstNode node, ILGenerator il)
+        public sealed override void MarkSequencePoint(AstNode node, ILGenerator il)
         {
         }
 
-        public override void MarkSequencePoint(SourceSpan range, ILGenerator il)
+        public sealed override void MarkSequencePoint(SourceSpan range, ILGenerator il)
         {
         }
 
-        public override (MethodInfo Method, ILGenerator IL) DefineDynamicMethod(ModuleDeclaration module)
+        public sealed override (MethodInfo Method, ILGenerator IL) DefineDynamicMethod(ModuleDeclaration module)
         {
             throw new NotImplementedException();
         }

@@ -1,6 +1,11 @@
 using AuroraScript.Tests.Infrastructure;
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
+using System.Text;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -35,6 +40,53 @@ public sealed class CompilationModeTests
         }
     }
 
+#if NET9_0_OR_GREATER
+    [Fact]
+    public async Task PersistenceDebugBuildEmitsAsSequencePoints()
+    {
+        using var workspace = new TestWorkspace();
+        var assemblyPath = Path.Combine(workspace.Root, "debug-output.dll");
+        var sourcePath = workspace.WriteSource("main.as",
+            """
+            @module(TEST);
+            var value = 40;
+            export func run() {
+                var local = value + 2;
+                return local;
+            }
+            """);
+        var options = EngineOptions.Default
+            .WithBaseDirectory(workspace.Root)
+            .WithCompilationMode(CompilationMode.Persistence)
+            .WithOptimizeOption(OptimizeOptions.Debug)
+            .WithAssemblyOut(assemblyPath)
+            .WithConsoleStdOut(TextWriter.Null)
+            .WithConsoleErrorOut(TextWriter.Null);
+        var engine = new AuroraEngine(options);
+
+        await engine.BuildAsync(engine.FileSource(sourcePath, Encoding.UTF8));
+
+        Assert.True(File.Exists(assemblyPath));
+
+        using var stream = File.OpenRead(assemblyPath);
+        using var peReader = new PEReader(stream);
+        var embeddedPdb = Assert.Single(peReader.ReadDebugDirectory()
+            .Where(entry => entry.Type == DebugDirectoryEntryType.EmbeddedPortablePdb));
+        using var provider = peReader.ReadEmbeddedPortablePdbDebugDirectoryData(embeddedPdb);
+        var reader = provider.GetMetadataReader();
+        var document = Assert.Single(reader.Documents.Where(handle =>
+            string.Equals(
+                Path.GetFullPath(ReadDocumentName(reader, handle)),
+                Path.GetFullPath(sourcePath),
+                StringComparison.OrdinalIgnoreCase)));
+        var lines = GetVisibleSequencePointLines(reader, document);
+
+        Assert.Contains(2, lines);
+        Assert.Contains(4, lines);
+        Assert.Contains(5, lines);
+    }
+#endif
+
 #if NET8_0
     [Fact]
     public async Task PersistenceModeRequiresNet9OrLater()
@@ -60,4 +112,30 @@ public sealed class CompilationModeTests
 
         ScriptAssert.Equal(42, TestWorkspace.Execute(domain, "run"));
     }
+
+#if NET9_0_OR_GREATER
+    private static string ReadDocumentName(MetadataReader reader, DocumentHandle handle)
+    {
+        return reader.GetString(reader.GetDocument(handle).Name);
+    }
+
+    private static List<int> GetVisibleSequencePointLines(MetadataReader reader, DocumentHandle document)
+    {
+        var lines = new List<int>();
+        foreach (var methodHandle in reader.MethodDebugInformation)
+        {
+            var method = reader.GetMethodDebugInformation(methodHandle);
+            foreach (var point in method.GetSequencePoints())
+            {
+                var pointDocument = point.Document.IsNil ? method.Document : point.Document;
+                if (!point.IsHidden && pointDocument == document)
+                {
+                    lines.Add(point.StartLine);
+                }
+            }
+        }
+
+        return lines;
+    }
+#endif
 }

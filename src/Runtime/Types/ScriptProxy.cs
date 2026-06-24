@@ -44,15 +44,7 @@ namespace AuroraScript.Runtime.Types
         {
             if (_delete != null)
             {
-                if (ctx != null)
-                {
-                    ctx = ctx.With(_getter);
-                }
-                else
-                {
-                    ctx = new ScriptContext(_getter.Domain);
-                }
-                _delete.Invoke(ctx, [ScriptDatum.FromObject(_object), ScriptDatum.FromString(key)]);
+                InvokeHandler(ctx, _delete, ScriptDatum.FromObject(_object), ScriptDatum.FromString(key));
             }
             return true;
         }
@@ -68,15 +60,7 @@ namespace AuroraScript.Runtime.Types
         {
             if (_getter != null)
             {
-                if (ctx != null)
-                {
-                    ctx = ctx.With(_getter);
-                }
-                else
-                {
-                    ctx = new ScriptContext(_getter.Domain);
-                }
-                return _getter.Invoke(ctx, [ScriptDatum.FromObject(_object), ScriptDatum.FromString(key)]);
+                return InvokeHandler(ctx, _getter, ScriptDatum.FromObject(_object), ScriptDatum.FromString(key));
             }
             return ScriptDatum.Null;
         }
@@ -90,16 +74,53 @@ namespace AuroraScript.Runtime.Types
         {
             if (_setter != null)
             {
-                if (ctx != null)
-                {
-                    ctx = ctx.With(_getter);
-                }
-                else
-                {
-                    ctx = new ScriptContext(_getter.Domain);
-                }
-                _setter.Invoke(ctx, [ScriptDatum.FromObject(_object), ScriptDatum.FromString(key), value]);
+                InvokeHandler(ctx, _setter, ScriptDatum.FromObject(_object), ScriptDatum.FromString(key), value);
             }
+        }
+
+        private static ScriptDatum InvokeHandler(ScriptContext ctx, ClosureFunction handler, ScriptDatum target, ScriptDatum key)
+        {
+            if (ctx != null)
+            {
+                return handler.Invoke(ctx, target, key);
+            }
+
+            var root = handler.Domain.ContextPool.Rent(handler.Domain, handler.Domain.UserState, null, null);
+            try
+            {
+                return handler.Invoke(root, target, key);
+            }
+            finally
+            {
+                ReleaseRoot(root);
+            }
+        }
+
+        private static ScriptDatum InvokeHandler(ScriptContext ctx, ClosureFunction handler, ScriptDatum target, ScriptDatum key, ScriptDatum value)
+        {
+            if (ctx != null)
+            {
+                return handler.Invoke(ctx, target, key, value);
+            }
+
+            var root = handler.Domain.ContextPool.Rent(handler.Domain, handler.Domain.UserState, null, null);
+            try
+            {
+                return handler.Invoke(root, target, key, value);
+            }
+            finally
+            {
+                ReleaseRoot(root);
+            }
+        }
+
+        private static void ReleaseRoot(ScriptContext root)
+        {
+            while (root.Next != null)
+            {
+                root.Next.ReleaseLinked();
+            }
+            root.Release();
         }
 
         /// <summary>

@@ -3,7 +3,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -270,7 +269,7 @@ namespace AuroraScript.Runtime.Types
         {
             if (thisObject is ScriptArray array)
             {
-                var newArray = new ScriptArray(array._count);
+                var newArray = new ScriptArray();
                 AppendArrayContents(newArray, array);
                 if (args != null)
                 {

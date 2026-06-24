@@ -12,9 +12,18 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Remove="CompilerBackend\**\*.cs" />
-    <EmbeddedResource Remove="CompilerBackend\**\*" />
-    <None Remove="CompilerBackend\**\*" />
+    <Compile Remove="bin\**\*.cs" />
+    <Compile Remove="obj\**\*.cs" />
+    <Compile Remove="CompilerBackend\bin\**\*.cs" />
+    <Compile Remove="CompilerBackend\obj\**\*.cs" />
+    <EmbeddedResource Remove="bin\**\*" />
+    <EmbeddedResource Remove="obj\**\*" />
+    <EmbeddedResource Remove="CompilerBackend\bin\**\*" />
+    <EmbeddedResource Remove="CompilerBackend\obj\**\*" />
+    <None Remove="bin\**\*" />
+    <None Remove="obj\**\*" />
+    <None Remove="CompilerBackend\bin\**\*" />
+    <None Remove="CompilerBackend\obj\**\*" />
   </ItemGroup>
 
   <ItemGroup>

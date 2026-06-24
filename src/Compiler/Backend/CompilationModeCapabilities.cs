@@ -11,7 +11,8 @@ namespace AuroraScript.Compiler.Backend
             bool canEmitModulesInParallel,
             bool requiresSerializedMetadata,
             bool requiresDeterministicPdb,
-            bool canUseModuleDirectCall)
+            bool canUseModuleDirectCall,
+            bool canInferAutoModuleDirectCall)
         {
             Mode = mode;
             CanAnalyzeModulesInParallel = canAnalyzeModulesInParallel;
@@ -20,6 +21,7 @@ namespace AuroraScript.Compiler.Backend
             RequiresSerializedMetadata = requiresSerializedMetadata;
             RequiresDeterministicPdb = requiresDeterministicPdb;
             CanUseModuleDirectCall = canUseModuleDirectCall;
+            CanInferAutoModuleDirectCall = canInferAutoModuleDirectCall;
         }
 
         public CompilationMode Mode { get; }
@@ -29,14 +31,16 @@ namespace AuroraScript.Compiler.Backend
         public bool RequiresSerializedMetadata { get; }
         public bool RequiresDeterministicPdb { get; }
         public bool CanUseModuleDirectCall { get; }
+        public bool CanInferAutoModuleDirectCall { get; }
 
         public static CompilationModeCapabilities FromOptions(EngineOptions options)
         {
             ArgumentNullException.ThrowIfNull(options);
 
-            var canUseModuleDirectCall =
-                !options.EnableHotReload &&
-                options.EnableModuleDirectCall;
+            var canUseModuleDirectCall = true;
+            var canInferAutoModuleDirectCall =
+                canUseModuleDirectCall &&
+                options.EnableAutoModuleDirectCall;
 
             return options.CompilationMode switch
             {
@@ -47,7 +51,8 @@ namespace AuroraScript.Compiler.Backend
                     canEmitModulesInParallel: false,
                     requiresSerializedMetadata: false,
                     requiresDeterministicPdb: false,
-                    canUseModuleDirectCall),
+                    canUseModuleDirectCall,
+                    canInferAutoModuleDirectCall),
 
                 CompilationMode.OnlyRun => new CompilationModeCapabilities(
                     options.CompilationMode,
@@ -56,7 +61,8 @@ namespace AuroraScript.Compiler.Backend
                     canEmitModulesInParallel: false,
                     requiresSerializedMetadata: true,
                     requiresDeterministicPdb: false,
-                    canUseModuleDirectCall),
+                    canUseModuleDirectCall,
+                    canInferAutoModuleDirectCall),
 
                 CompilationMode.Persistence => new CompilationModeCapabilities(
                     options.CompilationMode,
@@ -65,7 +71,8 @@ namespace AuroraScript.Compiler.Backend
                     canEmitModulesInParallel: false,
                     requiresSerializedMetadata: true,
                     requiresDeterministicPdb: options.OptimizeOption == OptimizeOptions.Debug,
-                    canUseModuleDirectCall),
+                    canUseModuleDirectCall,
+                    canInferAutoModuleDirectCall),
 
                 _ => throw new NotImplementedException($"Unsupported compilation mode '{options.CompilationMode}'.")
             };
@@ -81,7 +88,8 @@ namespace AuroraScript.Compiler.Backend
                     CanEmitModulesInParallel,
                     RequiresSerializedMetadata,
                     RequiresDeterministicPdb,
-                    canUseModuleDirectCall: false)
+                    canUseModuleDirectCall: false,
+                    canInferAutoModuleDirectCall: false)
                 : this;
         }
     }

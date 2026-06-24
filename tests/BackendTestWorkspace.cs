@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Text;
 
-namespace AuroraScript.CompilerBackend.Tests;
+namespace AuroraScript.Tests;
 
 internal sealed class BackendTestWorkspace : IDisposable
 {

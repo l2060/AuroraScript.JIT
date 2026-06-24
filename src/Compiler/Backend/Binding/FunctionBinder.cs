@@ -11,49 +11,37 @@ namespace AuroraScript.Compiler.Backend.Binding
 {
     internal static class FunctionBinder
     {
-        public static Dictionary<FunctionDeclaration, FunctionPlan> RegisterNestedFunctions(CompileSession session, ModulePlan modulePlan)
+        public static FunctionPlanRegistry RegisterNestedFunctions(CompileSession session, ModulePlan modulePlan)
         {
             ArgumentNullException.ThrowIfNull(session);
             ArgumentNullException.ThrowIfNull(modulePlan);
 
-            var functionsByDeclaration = BuildFunctionMap(modulePlan);
-            RegisterModuleInitializerFunctions(session, modulePlan, functionsByDeclaration);
-            return functionsByDeclaration;
+            var functions = new FunctionPlanRegistry(modulePlan);
+            RegisterModuleInitializerFunctions(session, modulePlan, functions);
+            return functions;
         }
 
         public static void BindFunctionBodies(
             CompileSession session,
             ModulePlan modulePlan,
-            Dictionary<FunctionDeclaration, FunctionPlan> functionsByDeclaration)
+            FunctionPlanRegistry functions)
         {
             ArgumentNullException.ThrowIfNull(session);
             ArgumentNullException.ThrowIfNull(modulePlan);
-            ArgumentNullException.ThrowIfNull(functionsByDeclaration);
+            ArgumentNullException.ThrowIfNull(functions);
 
             for (var i = 0; i < modulePlan.Functions.Count; i++)
             {
-                BindFunction(session, modulePlan, modulePlan.Functions[i], functionsByDeclaration);
+                BindFunction(session, modulePlan, modulePlan.Functions[i], functions);
             }
-        }
-
-        private static Dictionary<FunctionDeclaration, FunctionPlan> BuildFunctionMap(ModulePlan modulePlan)
-        {
-            var functionsByDeclaration = new Dictionary<FunctionDeclaration, FunctionPlan>(
-                Math.Max(4, modulePlan.Functions.Count),
-                ReferenceEqualityComparer.Instance);
-            for (var i = 0; i < modulePlan.Functions.Count; i++)
-            {
-                functionsByDeclaration[modulePlan.Functions[i].Declaration] = modulePlan.Functions[i];
-            }
-            return functionsByDeclaration;
         }
 
         private static void RegisterModuleInitializerFunctions(
             CompileSession session,
             ModulePlan modulePlan,
-            Dictionary<FunctionDeclaration, FunctionPlan> functionsByDeclaration)
+            FunctionPlanRegistry functions)
         {
-            var collector = new ModuleInitializerFunctionCollector(session, modulePlan, functionsByDeclaration);
+            var collector = new ModuleInitializerFunctionCollector(session, modulePlan, functions);
             for (var i = 0; i < modulePlan.Declaration.Length; i++)
             {
                 collector.Visit(modulePlan.Declaration[i]);
@@ -64,31 +52,81 @@ namespace AuroraScript.Compiler.Backend.Binding
             CompileSession session,
             ModulePlan modulePlan,
             FunctionPlan function,
-            Dictionary<FunctionDeclaration, FunctionPlan> functionsByDeclaration)
+            FunctionPlanRegistry functions)
         {
             if (function.Declaration == null)
             {
                 return;
             }
 
-            var binder = new FunctionBodyBinder(session, modulePlan, function, functionsByDeclaration);
+            var binder = new FunctionBodyBinder(session, modulePlan, function, functions);
             binder.Bind();
+        }
+
+        internal sealed class FunctionPlanRegistry
+        {
+            private readonly ModulePlan _modulePlan;
+            private Dictionary<FunctionDeclaration, FunctionPlan> _map;
+
+            public FunctionPlanRegistry(ModulePlan modulePlan)
+            {
+                _modulePlan = modulePlan ?? throw new ArgumentNullException(nameof(modulePlan));
+            }
+
+            public bool TryGetValue(FunctionDeclaration declaration, out FunctionPlan function)
+            {
+                if (declaration == null)
+                {
+                    function = null;
+                    return false;
+                }
+
+                return EnsureMap().TryGetValue(declaration, out function);
+            }
+
+            public void Add(FunctionDeclaration declaration, FunctionPlan function)
+            {
+                EnsureMap().Add(declaration, function);
+            }
+
+            private Dictionary<FunctionDeclaration, FunctionPlan> EnsureMap()
+            {
+                if (_map != null)
+                {
+                    return _map;
+                }
+
+                var map = new Dictionary<FunctionDeclaration, FunctionPlan>(
+                    Math.Max(4, _modulePlan.Functions.Count),
+                    ReferenceEqualityComparer.Instance);
+                for (var i = 0; i < _modulePlan.Functions.Count; i++)
+                {
+                    var function = _modulePlan.Functions[i];
+                    if (function.Declaration != null)
+                    {
+                        map[function.Declaration] = function;
+                    }
+                }
+
+                _map = map;
+                return map;
+            }
         }
 
         private sealed class ModuleInitializerFunctionCollector
         {
             private readonly CompileSession _session;
             private readonly ModulePlan _modulePlan;
-            private readonly Dictionary<FunctionDeclaration, FunctionPlan> _functionsByDeclaration;
+            private readonly FunctionPlanRegistry _functions;
 
             public ModuleInitializerFunctionCollector(
                 CompileSession session,
                 ModulePlan modulePlan,
-                Dictionary<FunctionDeclaration, FunctionPlan> functionsByDeclaration)
+                FunctionPlanRegistry functions)
             {
                 _session = session;
                 _modulePlan = modulePlan;
-                _functionsByDeclaration = functionsByDeclaration;
+                _functions = functions;
             }
 
             public void Visit(AstNode node)
@@ -116,7 +154,7 @@ namespace AuroraScript.Compiler.Backend.Binding
             {
                 if (declaration == null ||
                     declaration.Flags == FunctionFlags.Declare ||
-                    _functionsByDeclaration.ContainsKey(declaration))
+                    _functions.TryGetValue(declaration, out _))
                 {
                     return;
                 }
@@ -129,7 +167,7 @@ namespace AuroraScript.Compiler.Backend.Binding
                     BackendScopeKind.Function));
                 var plan = new FunctionPlan(functionId, _modulePlan.Id, functionScope, declaration, FunctionVisibility.InternalOnly, isModuleFunction: false);
                 _modulePlan.AddFunction(plan);
-                _functionsByDeclaration.Add(declaration, plan);
+                _functions.Add(declaration, plan);
             }
         }
 
@@ -138,20 +176,21 @@ namespace AuroraScript.Compiler.Backend.Binding
             private readonly CompileSession _session;
             private readonly ModulePlan _modulePlan;
             private readonly FunctionPlan _function;
-            private readonly Dictionary<FunctionDeclaration, FunctionPlan> _functionsByDeclaration;
-            private readonly List<LocalSlot> _localSlots = new();
+            private readonly FunctionPlanRegistry _functions;
+            private LocalSlotBuilder _localSlots;
             private List<FunctionId> _nestedFunctions;
 
             public FunctionBodyBinder(
                 CompileSession session,
                 ModulePlan modulePlan,
                 FunctionPlan function,
-                Dictionary<FunctionDeclaration, FunctionPlan> functionsByDeclaration)
+                FunctionPlanRegistry functions)
             {
                 _session = session;
                 _modulePlan = modulePlan;
                 _function = function;
-                _functionsByDeclaration = functionsByDeclaration;
+                _functions = functions;
+                _localSlots = new LocalSlotBuilder(Math.Max(4, function.Declaration?.Parameters.Count ?? 0));
             }
 
             public void Bind()
@@ -246,7 +285,7 @@ namespace AuroraScript.Compiler.Backend.Binding
 
             private FunctionPlan EnsureNestedFunction(FunctionDeclaration declaration)
             {
-                if (_functionsByDeclaration.TryGetValue(declaration, out var existing))
+                if (_functions.TryGetValue(declaration, out var existing))
                 {
                     return existing;
                 }
@@ -259,7 +298,7 @@ namespace AuroraScript.Compiler.Backend.Binding
                     BackendScopeKind.Function));
                 var plan = new FunctionPlan(functionId, _modulePlan.Id, functionScope, declaration, FunctionVisibility.InternalOnly, isModuleFunction: false);
                 _modulePlan.AddFunction(plan);
-                _functionsByDeclaration.Add(declaration, plan);
+                _functions.Add(declaration, plan);
                 return plan;
             }
 
@@ -336,6 +375,60 @@ namespace AuroraScript.Compiler.Backend.Binding
                 return declaration is VariableDeclaration { IsConst: true }
                     ? BackendSymbolFlags.Const
                     : BackendSymbolFlags.None;
+            }
+        }
+
+        private struct LocalSlotBuilder
+        {
+            private LocalSlot[] _items;
+
+            public LocalSlotBuilder(int capacity)
+            {
+                _items = capacity == 0 ? Array.Empty<LocalSlot>() : new LocalSlot[capacity];
+                Count = 0;
+            }
+
+            public int Count { get; private set; }
+
+            public LocalSlot this[int index] => _items[index];
+
+            public void Add(LocalSlot slot)
+            {
+                if (Count == _items.Length)
+                {
+                    Grow();
+                }
+
+                _items[Count++] = slot;
+            }
+
+            public LocalSlot[] ToArray()
+            {
+                if (Count == 0)
+                {
+                    return Array.Empty<LocalSlot>();
+                }
+
+                if (Count == _items.Length)
+                {
+                    return _items;
+                }
+
+                var result = new LocalSlot[Count];
+                Array.Copy(_items, result, Count);
+                return result;
+            }
+
+            private void Grow()
+            {
+                var newSize = _items.Length == 0 ? 4 : _items.Length * 2;
+                var replacement = new LocalSlot[newSize];
+                if (Count != 0)
+                {
+                    Array.Copy(_items, replacement, Count);
+                }
+
+                _items = replacement;
             }
         }
 

@@ -1,4 +1,3 @@
-using AuroraScript.Runtime;
 using AuroraScript.Runtime.Pool;
 using AuroraScript.Runtime.Types;
 using System;
@@ -6,7 +5,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.InteropServices;
 
-namespace AuroraScript.Compiler.Emits
+namespace AuroraScript.Runtime
 {
     /// <summary>
     /// Static registry of reflected metadata used by the compiler backend to generate JIT code.

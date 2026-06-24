@@ -1,16 +1,17 @@
+using AuroraScript.Compiler.Backend.Builders;
 using AuroraScript.Compiler.Backend.Plans;
-using AuroraScript.Compiler.Emits.Builders;
 using AuroraScript.Runtime;
 using System;
-using System.Collections.Generic;
+using System.Buffers;
 using System.Reflection.Emit;
 
 namespace AuroraScript.Compiler.Backend.Emission
 {
     internal sealed class EmissionSession
     {
-        private Dictionary<DynamicDelegateKey, int> _dynamicDelegateIds;
-        private List<DynamicDelegateKey> _pendingDynamicDelegates;
+        private readonly int _dynamicDelegateCapacity;
+        private PendingDynamicDelegate[] _pendingDynamicDelegates;
+        private int _pendingDynamicDelegateCount;
 
         public EmissionSession(
             CompileSession compileSession,
@@ -24,6 +25,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             EmitExecutableSkeletons = emitExecutableSkeletons;
             ForceModuleDefinitions = forceModuleDefinitions;
             CollectDiagnostics = collectDiagnostics;
+            _dynamicDelegateCapacity = CountFunctions(compileSession);
         }
 
         public CompileSession CompileSession { get; }
@@ -61,18 +63,37 @@ namespace AuroraScript.Compiler.Backend.Emission
             CompleteDynamicDelegates();
         }
 
-        internal int GetDynamicDelegateId(DynamicMethod method, FunctionCallConvention convention)
+        internal int GetDynamicDelegateId(FunctionPlan function, DynamicMethod method)
         {
-            var key = new DynamicDelegateKey(method, convention);
-            if (_dynamicDelegateIds != null && _dynamicDelegateIds.TryGetValue(key, out var id))
+            if (function.DynamicDelegateId != 0)
             {
-                return id;
+                return function.DynamicDelegateId;
             }
 
-            id = DynamicMethodRegistry.Reserve();
-            (_dynamicDelegateIds ??= new Dictionary<DynamicDelegateKey, int>()).Add(key, id);
-            (_pendingDynamicDelegates ??= new List<DynamicDelegateKey>()).Add(key);
+            var id = DynamicMethodRegistry.Reserve();
+            function.DynamicDelegateId = id;
+            AddPendingDynamicDelegate(new PendingDynamicDelegate(id, method, function.CallConvention));
             return id;
+        }
+
+        private void AddPendingDynamicDelegate(PendingDynamicDelegate pending)
+        {
+            var delegates = _pendingDynamicDelegates;
+            if (delegates == null)
+            {
+                _pendingDynamicDelegates = ArrayPool<PendingDynamicDelegate>.Shared.Rent(Math.Max(4, _dynamicDelegateCapacity));
+                delegates = _pendingDynamicDelegates;
+            }
+            else if (_pendingDynamicDelegateCount == delegates.Length)
+            {
+                var replacement = ArrayPool<PendingDynamicDelegate>.Shared.Rent(delegates.Length * 2);
+                Array.Copy(delegates, replacement, delegates.Length);
+                ArrayPool<PendingDynamicDelegate>.Shared.Return(delegates, clearArray: true);
+                _pendingDynamicDelegates = replacement;
+                delegates = replacement;
+            }
+
+            delegates[_pendingDynamicDelegateCount++] = pending;
         }
 
         internal void CompleteDynamicDelegates()
@@ -82,43 +103,44 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return;
             }
 
-            for (var i = 0; i < _pendingDynamicDelegates.Count; i++)
+            for (var i = 0; i < _pendingDynamicDelegateCount; i++)
             {
-                var key = _pendingDynamicDelegates[i];
+                var pending = _pendingDynamicDelegates[i];
                 ClosureMaterializer.RegisterDynamicDelegate(
-                    _dynamicDelegateIds[key],
-                    key.Method,
-                    key.Convention);
+                    pending.Id,
+                    pending.Method,
+                    pending.Convention);
             }
 
-            _pendingDynamicDelegates.Clear();
+            ArrayPool<PendingDynamicDelegate>.Shared.Return(_pendingDynamicDelegates, clearArray: true);
+            _pendingDynamicDelegates = null;
+            _pendingDynamicDelegateCount = 0;
         }
 
-        private readonly struct DynamicDelegateKey : IEquatable<DynamicDelegateKey>
+        private static int CountFunctions(CompileSession compileSession)
         {
-            public DynamicDelegateKey(DynamicMethod method, FunctionCallConvention convention)
+            var modules = compileSession.Modules;
+            var count = 0;
+            for (var moduleIndex = 0; moduleIndex < modules.Length; moduleIndex++)
             {
+                count += modules[moduleIndex].Functions.Count;
+            }
+
+            return count;
+        }
+
+        private readonly struct PendingDynamicDelegate
+        {
+            public PendingDynamicDelegate(int id, DynamicMethod method, FunctionCallConvention convention)
+            {
+                Id = id;
                 Method = method;
                 Convention = convention;
             }
 
+            public int Id { get; }
             public DynamicMethod Method { get; }
             public FunctionCallConvention Convention { get; }
-
-            public bool Equals(DynamicDelegateKey other)
-            {
-                return ReferenceEquals(Method, other.Method) && Convention == other.Convention;
-            }
-
-            public override bool Equals(object obj)
-            {
-                return obj is DynamicDelegateKey other && Equals(other);
-            }
-
-            public override int GetHashCode()
-            {
-                return HashCode.Combine(Method, Convention);
-            }
         }
     }
 }

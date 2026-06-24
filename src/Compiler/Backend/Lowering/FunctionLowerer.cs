@@ -10,15 +10,17 @@ namespace AuroraScript.Compiler.Backend.Lowering
 {
     internal static class FunctionLowerer
     {
-        public static void LowerModule(ModulePlan modulePlan, IReadOnlyDictionary<FunctionDeclaration, FunctionPlan> functionsByDeclaration)
+        public static void LowerModule(ModulePlan modulePlan, FunctionBinder.FunctionPlanRegistry functions)
         {
             ArgumentNullException.ThrowIfNull(modulePlan);
-            ArgumentNullException.ThrowIfNull(functionsByDeclaration);
+            ArgumentNullException.ThrowIfNull(functions);
 
-            var directFunctionsBySymbol = BuildDirectFunctionMap(modulePlan, functionsByDeclaration);
+            var directFunctionsBySymbol = HasDirectCallCandidate(modulePlan)
+                ? BuildDirectFunctionMap(modulePlan, functions)
+                : null;
             for (var i = 0; i < modulePlan.Functions.Count; i++)
             {
-                var lowerer = new FunctionLowererCore(modulePlan, modulePlan.Functions[i], functionsByDeclaration, directFunctionsBySymbol);
+                var lowerer = new FunctionLowererCore(modulePlan, modulePlan.Functions[i], functions, directFunctionsBySymbol);
                 var body = lowerer.LowerBody();
                 modulePlan.Functions[i].Body = body;
                 modulePlan.Functions[i].UnsupportedLoweredStatementCount = lowerer.UnsupportedStatementCount;
@@ -27,16 +29,28 @@ namespace AuroraScript.Compiler.Backend.Lowering
             }
         }
 
+        private static bool HasDirectCallCandidate(ModulePlan modulePlan)
+        {
+            for (var i = 0; i < modulePlan.Functions.Count; i++)
+            {
+                if (modulePlan.Functions[i].IsDirectCallCandidate)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private static Dictionary<SymbolId, FunctionId> BuildDirectFunctionMap(
             ModulePlan modulePlan,
-            IReadOnlyDictionary<FunctionDeclaration, FunctionPlan> functionsByDeclaration)
+            FunctionBinder.FunctionPlanRegistry functions)
         {
             Dictionary<SymbolId, FunctionId> map = null;
             for (var i = 0; i < modulePlan.Functions.Count; i++)
             {
                 var function = modulePlan.Functions[i];
                 if (!function.IsDirectCallCandidate ||
-                    function.Visibility != FunctionVisibility.InternalOnly ||
                     string.IsNullOrEmpty(function.Name) ||
                     !modulePlan.TryGetSymbol(function.Name, out var symbol))
                 {
@@ -44,7 +58,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
                 }
 
                 if (function.Declaration != null &&
-                    functionsByDeclaration.TryGetValue(function.Declaration, out var resolved) &&
+                    functions.TryGetValue(function.Declaration, out var resolved) &&
                     resolved.Id.Equals(function.Id))
                 {
                     map ??= new Dictionary<SymbolId, FunctionId>();
@@ -55,23 +69,23 @@ namespace AuroraScript.Compiler.Backend.Lowering
             return map;
         }
 
-        private sealed class FunctionLowererCore
+        private struct FunctionLowererCore
         {
             private readonly ModulePlan _modulePlan;
             private readonly FunctionPlan _function;
-            private readonly IReadOnlyDictionary<FunctionDeclaration, FunctionPlan> _functionsByDeclaration;
+            private readonly FunctionBinder.FunctionPlanRegistry _functions;
             private readonly Dictionary<SymbolId, FunctionId> _directFunctionsBySymbol;
             private List<LoweredUnsupportedNode> _unsupportedNodes;
 
             public FunctionLowererCore(
                 ModulePlan modulePlan,
                 FunctionPlan function,
-                IReadOnlyDictionary<FunctionDeclaration, FunctionPlan> functionsByDeclaration,
+                FunctionBinder.FunctionPlanRegistry functions,
                 Dictionary<SymbolId, FunctionId> directFunctionsBySymbol)
             {
                 _modulePlan = modulePlan;
                 _function = function;
-                _functionsByDeclaration = functionsByDeclaration;
+                _functions = functions;
                 _directFunctionsBySymbol = directFunctionsBySymbol;
             }
 
@@ -87,6 +101,11 @@ namespace AuroraScript.Compiler.Backend.Lowering
 
             private LoweredExpression[] LowerParameterDefaults()
             {
+                if (!_function.HasDefaultParameters)
+                {
+                    return Array.Empty<LoweredExpression>();
+                }
+
                 var parameters = _function.Declaration?.Parameters;
                 if (parameters == null || parameters.Count == 0)
                 {
@@ -116,7 +135,13 @@ namespace AuroraScript.Compiler.Backend.Lowering
                     return new LoweredBlockStatement(node, node == null ? Array.Empty<LoweredStatement>() : new[] { LowerStatement(node) });
                 }
 
-                var statements = new LoweredStatement[block.Length + block.Functions.Count];
+                var statementCount = block.Length + block.Functions.Count;
+                if (statementCount == 0)
+                {
+                    return new LoweredBlockStatement(block, Array.Empty<LoweredStatement>());
+                }
+
+                var statements = new LoweredStatement[statementCount];
                 var index = 0;
                 for (var i = 0; i < block.Functions.Count; i++)
                 {
@@ -284,7 +309,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
 
             private LoweredStatement LowerFunctionDeclaration(FunctionDeclaration declaration)
             {
-                if (!_functionsByDeclaration.TryGetValue(declaration, out var function))
+                if (!_functions.TryGetValue(declaration, out var function))
                 {
                     return UnsupportedStatement(declaration);
                 }
@@ -323,7 +348,9 @@ namespace AuroraScript.Compiler.Backend.Lowering
 
             private LoweredCallExpression LowerCall(FunctionCallExpression call)
             {
-                var arguments = new LoweredExpression[call.Arguments.Count];
+                var arguments = call.Arguments.Count == 0
+                    ? Array.Empty<LoweredExpression>()
+                    : new LoweredExpression[call.Arguments.Count];
                 for (var i = 0; i < call.Arguments.Count; i++)
                 {
                     arguments[i] = LowerExpression(call.Arguments[i]);
@@ -405,7 +432,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
 
             private LoweredExpression LowerLambda(LambdaExpression lambda)
             {
-                if (lambda.Function != null && _functionsByDeclaration.TryGetValue(lambda.Function, out var function))
+                if (lambda.Function != null && _functions.TryGetValue(lambda.Function, out var function))
                 {
                     return new LoweredLambdaExpression(lambda, function.Id);
                 }

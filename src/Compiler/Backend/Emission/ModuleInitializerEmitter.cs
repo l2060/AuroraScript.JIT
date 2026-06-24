@@ -2,9 +2,8 @@ using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Compiler.Backend.Binding;
+using AuroraScript.Compiler.Backend.Builders;
 using AuroraScript.Compiler.Backend.Plans;
-using AuroraScript.Compiler.Emits;
-using AuroraScript.Compiler.Emits.Builders;
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Types;
 using AuroraScript.Tokens;
@@ -20,6 +19,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         private readonly EmissionSession _session;
         private readonly ModulePlan _module;
         private Dictionary<FunctionDeclaration, FunctionPlan> _functionsByDeclaration;
+        private Dictionary<string, FunctionPlan> _directFunctionsByName;
         private MethodInfo _initializer;
         private ILGenerator _il;
         private bool _defined;
@@ -60,6 +60,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 var import = _module.Declaration.Imports[i];
                 if (!import.Include)
                 {
+                    MarkSequencePoint(import);
                     EmitImportAlias(import);
                 }
             }
@@ -85,6 +86,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 var import = _module.Declaration.Imports[i];
                 if (import.Include)
                 {
+                    MarkSequencePoint(import);
                     EmitInclude(import);
                 }
             }
@@ -162,18 +164,31 @@ namespace AuroraScript.Compiler.Backend.Emission
                 case ImportDeclaration:
                     return;
                 case VariableDeclaration variable:
+                    MarkSequencePoint(variable);
                     EmitVariableDeclaration(variable);
                     return;
                 case EnumDeclaration enumDeclaration:
+                    MarkSequencePoint(enumDeclaration);
                     EmitEnum(enumDeclaration);
                     return;
                 case ExpressionStatement expressionStatement:
+                    MarkSequencePoint(expressionStatement);
                     EmitExpressionOrNull(expressionStatement.Expression);
                     _il.Emit(OpCodes.Pop);
                     return;
                 default:
                     throw new NotSupportedException("Module initializer statement " + node.GetType().Name);
             }
+        }
+
+        private void MarkSequencePoint(AstNode node)
+        {
+            if (node == null)
+            {
+                return;
+            }
+
+            _session.Builder.MarkSequencePoint(node.Range, _il);
         }
 
         private void EmitVariableDeclaration(VariableDeclaration variable)
@@ -383,10 +398,63 @@ namespace AuroraScript.Compiler.Backend.Emission
                 EmitLogical(expression, branchWhenTrue: true);
                 return;
             }
+            if (TryEmitStringAddition(expression))
+            {
+                return;
+            }
 
             EmitExpression(expression.Left);
             EmitExpression(expression.Right);
             _il.Emit(OpCodes.Call, GetBinaryMethod(expression.Operator));
+        }
+
+        private bool TryEmitStringAddition(BinaryExpression expression)
+        {
+            if (expression.Operator != Operator.Add)
+            {
+                return false;
+            }
+
+            if (expression.Left is BinaryExpression leftBinary &&
+                leftBinary.Operator == Operator.Add &&
+                TryGetStringLiteral(leftBinary.Right, out var middle))
+            {
+                EmitExpression(leftBinary.Left);
+                _session.Builder.LoadStringConstant(_il, middle);
+                EmitExpression(expression.Right);
+                _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_AddStringMiddle);
+                return true;
+            }
+
+            if (TryGetStringLiteral(expression.Right, out var right))
+            {
+                EmitExpression(expression.Left);
+                _session.Builder.LoadStringConstant(_il, right);
+                _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_AddStringRight);
+                return true;
+            }
+
+            if (TryGetStringLiteral(expression.Left, out var left))
+            {
+                _session.Builder.LoadStringConstant(_il, left);
+                EmitExpression(expression.Right);
+                _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_AddStringLeft);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryGetStringLiteral(Expression expression, out string value)
+        {
+            if (expression is LiteralExpression { Token: StringToken token })
+            {
+                value = token.Value;
+                return true;
+            }
+
+            value = null;
+            return false;
         }
 
         private void EmitLogical(BinaryExpression expression, bool branchWhenTrue)
@@ -675,6 +743,11 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitCall(FunctionCallExpression call)
         {
+            if (TryEmitDirectCall(call))
+            {
+                return;
+            }
+
             if (call.Target is GetPropertyExpression property && TryGetStaticPropertyName(property, out var name))
             {
                 EmitPropertyCall(call, property, name);
@@ -695,6 +768,125 @@ namespace AuroraScript.Compiler.Backend.Emission
                 EmitExpression(call.Arguments[i]);
             }
             _il.Emit(OpCodes.Call, GetInvokeMethod(call.Arguments.Count));
+        }
+
+        private bool TryEmitDirectCall(FunctionCallExpression call)
+        {
+            if (call.Target is not NameExpression target ||
+                HasSpread(call.Arguments) ||
+                !TryResolveDirectCallTarget(target, out var function))
+            {
+                return false;
+            }
+
+            EmitDirectCall(call, function);
+            return true;
+        }
+
+        private bool TryResolveDirectCallTarget(NameExpression target, out FunctionPlan function)
+        {
+            function = null;
+            var name = target.Identifier?.Value;
+            if (string.IsNullOrEmpty(name) ||
+                !_session.CompileSession.Capabilities.CanUseModuleDirectCall)
+            {
+                return false;
+            }
+
+            var functions = GetDirectFunctionsByName();
+            return functions.TryGetValue(name, out function) &&
+                CanUseFastDirectSignature(function);
+        }
+
+        private Dictionary<string, FunctionPlan> GetDirectFunctionsByName()
+        {
+            if (_directFunctionsByName != null)
+            {
+                return _directFunctionsByName;
+            }
+
+            var map = new Dictionary<string, FunctionPlan>(StringComparer.Ordinal);
+            for (var i = 0; i < _module.Functions.Count; i++)
+            {
+                var function = _module.Functions[i];
+                if (!string.IsNullOrEmpty(function.Name) &&
+                    function.IsDirectCallCandidate)
+                {
+                    map[function.Name] = function;
+                }
+            }
+
+            _directFunctionsByName = map;
+            return map;
+        }
+
+        private void EmitDirectCall(FunctionCallExpression call, FunctionPlan target)
+        {
+            var arity = GetFastArity(target.CallConvention);
+            var argumentLocals = EmitDirectCallArguments(call.Arguments, arity);
+            var directContext = _il.DeclareLocal(typeof(ScriptContext));
+            _il.Emit(OpCodes.Ldarg_0);
+            _session.Builder.LoadStringConstant(_il, target.Name);
+            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_EnterDirect);
+            _il.Emit(OpCodes.Stloc, directContext);
+
+            _il.Emit(OpCodes.Ldloc, directContext);
+            for (var i = 0; i < arity; i++)
+            {
+                if (i < argumentLocals.Length)
+                {
+                    _il.Emit(OpCodes.Ldloc, argumentLocals[i]);
+                }
+                else
+                {
+                    _session.Builder.LoadNull(_il);
+                }
+            }
+
+            _il.Emit(OpCodes.Call, target.Method);
+            EmitLeaveDirect(directContext);
+        }
+
+        private LocalBuilder[] EmitDirectCallArguments(IReadOnlyList<Expression> arguments, int arity)
+        {
+            if (arguments.Count == 0 || arity == 0)
+            {
+                for (var i = 0; i < arguments.Count; i++)
+                {
+                    EmitExpression(arguments[i]);
+                    _il.Emit(OpCodes.Pop);
+                }
+
+                return Array.Empty<LocalBuilder>();
+            }
+
+            var count = Math.Min(arguments.Count, arity);
+            var locals = new LocalBuilder[count];
+            for (var i = 0; i < arguments.Count; i++)
+            {
+                EmitExpression(arguments[i]);
+                if (i < count)
+                {
+                    var local = DeclareTemp();
+                    _il.Emit(OpCodes.Stloc, local);
+                    locals[i] = local;
+                }
+                else
+                {
+                    _il.Emit(OpCodes.Pop);
+                }
+            }
+
+            return locals;
+        }
+
+        private void EmitLeaveDirect(LocalBuilder directContext)
+        {
+            var result = DeclareTemp();
+            _il.Emit(OpCodes.Stloc, result);
+            _il.Emit(OpCodes.Ldloc, directContext);
+            _il.Emit(OpCodes.Ldloc, result);
+            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_LeaveDirect);
         }
 
         private void EmitPropertyCall(FunctionCallExpression call, GetPropertyExpression property, string name)
@@ -978,6 +1170,46 @@ namespace AuroraScript.Compiler.Backend.Emission
                 1 => RuntimeMetadata.CILHelper_New1,
                 2 => RuntimeMetadata.CILHelper_New2,
                 _ => throw new NotSupportedException("Constructor arity " + argumentCount)
+            };
+        }
+
+        private static bool CanUseFastDirectSignature(FunctionPlan function)
+        {
+            return function != null &&
+                function.Method != null &&
+                function.IsDirectCallCandidate &&
+                !function.HasDefaultParameters &&
+                !function.UsesArgumentsObject &&
+                GetParameterCount(function) <= 7;
+        }
+
+        private static int GetParameterCount(FunctionPlan function)
+        {
+            var count = 0;
+            for (var i = 0; i < function.LocalSlots.Length; i++)
+            {
+                if (function.LocalSlots[i].IsParameter)
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        private static int GetFastArity(FunctionCallConvention convention)
+        {
+            return convention switch
+            {
+                FunctionCallConvention.Fast0 => 0,
+                FunctionCallConvention.Fast1 => 1,
+                FunctionCallConvention.Fast2 => 2,
+                FunctionCallConvention.Fast3 => 3,
+                FunctionCallConvention.Fast4 => 4,
+                FunctionCallConvention.Fast5 => 5,
+                FunctionCallConvention.Fast6 => 6,
+                FunctionCallConvention.Fast7 => 7,
+                _ => -1
             };
         }
     }

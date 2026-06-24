@@ -1,6 +1,4 @@
 ﻿using System;
-using System.Collections.Concurrent;
-using System.Linq;
 
 namespace AuroraScript.Runtime.Types
 {
@@ -80,7 +78,7 @@ namespace AuroraScript.Runtime.Types
         {
             if (thisObject is ScriptHashMap hashMap)
             {
-                ScriptDatum.WriteAsArray(ref result, new ScriptArray(hashMap.Keys()));
+                ScriptDatum.WriteAsArray(ref result, hashMap.KeysArray());
             }
         }
 
@@ -89,7 +87,7 @@ namespace AuroraScript.Runtime.Types
         {
             if (thisObject is ScriptHashMap hashMap)
             {
-                ScriptDatum.WriteAsArray(ref result, new ScriptArray(hashMap.Values()));
+                ScriptDatum.WriteAsArray(ref result, hashMap.ValuesArray());
             }
         }
 

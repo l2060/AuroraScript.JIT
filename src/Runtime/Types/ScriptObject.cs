@@ -525,6 +525,13 @@ namespace AuroraScript.Runtime.Types
         {
             if (Immutable) return new List<string>();
             var list = new List<string>(8);
+            CollectEnumerationKeys(list);
+            return list;
+        }
+
+        private void CollectEnumerationKeys(List<string> list)
+        {
+            if (Immutable) return;
             foreach (var item in hiddenClass.Properties)
             {
                 if (item.Meta.Enumerable)
@@ -534,10 +541,8 @@ namespace AuroraScript.Runtime.Types
             }
             if (prototype != null)
             {
-                var result = prototype.EnumerationKeys();
-                if (result.Count > 0) list.AddRange(result);
+                prototype.CollectEnumerationKeys(list);
             }
-            return list;
         }
 
         /// <summary>
@@ -608,7 +613,7 @@ namespace AuroraScript.Runtime.Types
                     return this;
                 case ScriptArray array:
                     {
-                        var newArray = new ScriptArray(array.Length);
+                        var newArray = ScriptArray.CreateWithCapacity(array.Length);
                         for (int i = 0; i < array.Length; i++)
                         {
                             newArray.SetElement(i, ScriptDatum.Clone(array.GetElement(i), true));

@@ -6,7 +6,7 @@ using AuroraScript.Compiler.Backend.Emission;
 using AuroraScript.Compiler.Backend.Lowering;
 using AuroraScript.Compiler.Backend.Plans;
 using AuroraScript.Compiler.Backend.Traversal;
-using AuroraScript.Compiler.Emits.Builders;
+using AuroraScript.Compiler.Backend.Builders;
 using AuroraScript.Core;
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Types;
@@ -17,7 +17,7 @@ using System.IO;
 using System.Linq;
 using Xunit;
 
-namespace AuroraScript.CompilerBackend.Tests;
+namespace AuroraScript.Tests;
 
 public sealed class CompilerBackendPlanTests
 {
@@ -29,7 +29,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var module = Parse(
             """
             @module(TEST);
@@ -54,16 +54,17 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
-    public void HotReloadDisablesModuleDirectCallCapability()
+    public void HotReloadDoesNotDisableModuleDirectCallCapability()
     {
         var options = EngineOptions.Default
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(true)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
 
         var capabilities = CompilationModeCapabilities.FromOptions(options);
 
-        Assert.False(capabilities.CanUseModuleDirectCall);
+        Assert.True(capabilities.CanUseModuleDirectCall);
+        Assert.True(capabilities.CanInferAutoModuleDirectCall);
     }
 
     [Fact]
@@ -143,7 +144,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(false);
+            .WithEnableAutoModuleDirectCall(false);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
 
         var session = backend.CreateModulePlans([module]);
@@ -151,6 +152,166 @@ public sealed class CompilerBackendPlanTests
 
         Assert.Equal(FunctionVisibility.ModuleVisible, helper.Visibility);
         Assert.False(helper.IsDirectCallCandidate);
+    }
+
+    [Fact]
+    public void FunctionAnnotationDirectCallPreservesModuleFunctionObject()
+    {
+        var root = Path.GetTempPath();
+        var module = Parse(
+            """
+            @module(TEST);
+            @directCall
+            func helper(value) { return value + 1; }
+            export const exposed = helper;
+            export func run(value) { return helper(value); }
+            """,
+            root);
+        var options = EngineOptions.Default
+            .WithBaseDirectory(root)
+            .WithCompilationMode(CompilationMode.Dynamic)
+            .WithEnableHotReload(false)
+            .WithEnableAutoModuleDirectCall(false);
+        var builder = new DynamicBuilder(options);
+        var backend = new BackendCompiler(builder, options);
+
+        var session = backend.CreateModulePlans([module]);
+        var modulePlan = Assert.Single(session.Modules);
+        var helper = Assert.Single(modulePlan.Functions, function => function.Name == "helper");
+        var runPlan = Assert.Single(modulePlan.Functions, function => function.Name == "run");
+        var runReturn = Assert.IsType<LoweredReturnStatement>(Assert.Single(runPlan.Body.Statements));
+        var call = Assert.IsType<LoweredCallExpression>(runReturn.Expression);
+        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var moduleResult = Assert.Single(report.Modules);
+        var initialize = (ModuleInitializerDelegate)moduleResult.Initializer.CreateDelegate(typeof(ModuleInitializerDelegate));
+        var run = Assert.Single(moduleResult.Functions, function => function.Name == "run");
+        var engine = new AuroraEngine(options);
+        var domain = engine.CreateEmptyDomain(null);
+        var runtimeModule = new ScriptModule("TEST", root);
+        var ctx = new ScriptContext(domain) { Module = runtimeModule };
+
+        Assert.Equal(DirectCallDirective.PreserveClosure, helper.DirectCallDirective);
+        Assert.True(helper.IsDirectCallCandidate);
+        Assert.True(helper.RequiresClosureObject);
+        Assert.True(call.DirectFunction.Equals(helper.Id));
+
+        initialize(ctx, Span<ScriptDatum>.Empty);
+        Assert.IsType<ClosureFunction>(runtimeModule.GetPropertyValue("helper"));
+
+        var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
+        var result = runDel(ctx, new[] { ScriptDatum.FromNumber(41) });
+        Assert.Equal(42, result.Number);
+    }
+
+    [Fact]
+    public void FunctionAnnotationDirectCallFalseDisablesModuleDirectCall()
+    {
+        var root = Path.GetTempPath();
+        var module = Parse(
+            """
+            @module(TEST);
+            @directCall(false)
+            func helper(value) { return value + 1; }
+            export func run(value) { return helper(value); }
+            """,
+            root);
+        var options = EngineOptions.Default
+            .WithBaseDirectory(root)
+            .WithCompilationMode(CompilationMode.Dynamic)
+            .WithEnableHotReload(false)
+            .WithEnableAutoModuleDirectCall(true);
+        var backend = new BackendCompiler(new DynamicBuilder(options), options);
+
+        var session = backend.CreateModulePlans([module]);
+        var helper = Assert.Single(Assert.Single(session.Modules).Functions, function => function.Name == "helper");
+
+        Assert.Equal(DirectCallDirective.Disabled, helper.DirectCallDirective);
+        Assert.False(helper.IsDirectCallCandidate);
+        Assert.True(helper.RequiresClosureObject);
+    }
+
+    [Fact]
+    public void FunctionAnnotationDirectCallCanTargetExportedFunction()
+    {
+        var root = Path.GetTempPath();
+        var module = Parse(
+            """
+            @module(TEST);
+            @directCall
+            export func helper(value) { return value + 1; }
+            export func run(value) { return helper(value); }
+            """,
+            root);
+        var options = EngineOptions.Default
+            .WithBaseDirectory(root)
+            .WithCompilationMode(CompilationMode.Dynamic)
+            .WithEnableHotReload(false)
+            .WithEnableAutoModuleDirectCall(true);
+        var backend = new BackendCompiler(new DynamicBuilder(options), options);
+
+        var session = backend.CreateModulePlans([module]);
+        var modulePlan = Assert.Single(session.Modules);
+        var helper = Assert.Single(modulePlan.Functions, function => function.Name == "helper");
+        var run = Assert.Single(modulePlan.Functions, function => function.Name == "run");
+        var returnStatement = Assert.IsType<LoweredReturnStatement>(Assert.Single(run.Body.Statements));
+        var call = Assert.IsType<LoweredCallExpression>(returnStatement.Expression);
+
+        Assert.Equal(FunctionVisibility.Exported, helper.Visibility);
+        Assert.True(helper.IsDirectCallCandidate);
+        Assert.True(helper.RequiresClosureObject);
+        Assert.True(call.DirectFunction.Equals(helper.Id));
+    }
+
+    [Fact]
+    public void FunctionAnnotationDirectCallWorksWhenHotReloadIsEnabled()
+    {
+        var root = Path.GetTempPath();
+        var module = Parse(
+            """
+            @module(TEST);
+            @directCall
+            func helper(value) { return value + 1; }
+            export func run(value) { return helper(value); }
+            """,
+            root);
+        var options = EngineOptions.Default
+            .WithBaseDirectory(root)
+            .WithCompilationMode(CompilationMode.Dynamic)
+            .WithEnableHotReload(true)
+            .WithEnableAutoModuleDirectCall(false);
+        var backend = new BackendCompiler(new DynamicBuilder(options), options);
+
+        var session = backend.CreateModulePlans([module]);
+        var modulePlan = Assert.Single(session.Modules);
+        var helper = Assert.Single(modulePlan.Functions, function => function.Name == "helper");
+        var run = Assert.Single(modulePlan.Functions, function => function.Name == "run");
+        var returnStatement = Assert.IsType<LoweredReturnStatement>(Assert.Single(run.Body.Statements));
+        var call = Assert.IsType<LoweredCallExpression>(returnStatement.Expression);
+
+        Assert.True(session.Capabilities.CanUseModuleDirectCall);
+        Assert.True(helper.IsDirectCallCandidate);
+        Assert.True(call.DirectFunction.Equals(helper.Id));
+    }
+
+    [Fact]
+    public void UnsupportedFunctionAnnotationIsRejectedByBackendBinding()
+    {
+        var root = Path.GetTempPath();
+        var module = Parse(
+            """
+            @module(TEST);
+            @unknown(false)
+            func helper() { return 1; }
+            """,
+            root);
+        var options = EngineOptions.Default
+            .WithBaseDirectory(root)
+            .WithCompilationMode(CompilationMode.Dynamic);
+        var backend = new BackendCompiler(new DynamicBuilder(options), options);
+
+        var error = Assert.Throws<AuroraEmitException>(() => backend.CreateModulePlans([module]));
+
+        Assert.Contains("Unsupported function annotation '@unknown'", error.Message);
     }
 
     [Fact]
@@ -175,7 +336,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
 
         var session = backend.CreateModulePlans([first, second]);
@@ -486,7 +647,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
 
         var session = backend.CreateModulePlans([module]);
@@ -776,7 +937,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -1064,7 +1225,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -1100,7 +1261,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -1321,7 +1482,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -1349,6 +1510,52 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
+    public void ModuleInitializerExecutesPrunedModuleDirectCall()
+    {
+        var root = Path.GetTempPath();
+        var module = Parse(
+            """
+            @module(TEST);
+            var total = helper(40);
+            func helper(value) {
+                return value + 2;
+            }
+            export func run() {
+                return total;
+            }
+            """,
+            root);
+        var options = EngineOptions.Default
+            .WithBaseDirectory(root)
+            .WithCompilationMode(CompilationMode.Dynamic)
+            .WithEnableHotReload(false)
+            .WithEnableAutoModuleDirectCall(true);
+        var builder = new DynamicBuilder(options);
+        var backend = new BackendCompiler(builder, options);
+
+        var session = backend.CreateModulePlans([module]);
+        var modulePlan = Assert.Single(session.Modules);
+        var helperPlan = Assert.Single(modulePlan.Functions, function => function.Name == "helper");
+        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var moduleResult = Assert.Single(report.Modules);
+        var initialize = (ModuleInitializerDelegate)moduleResult.Initializer.CreateDelegate(typeof(ModuleInitializerDelegate));
+        var run = Assert.Single(moduleResult.Functions, function => function.Name == "run");
+        var engine = new AuroraEngine(options);
+        var domain = engine.CreateEmptyDomain(null);
+        var runtimeModule = new ScriptModule("TEST", root);
+        var ctx = new ScriptContext(domain) { Module = runtimeModule };
+
+        Assert.True(helperPlan.IsDirectCallCandidate);
+        Assert.False(helperPlan.RequiresClosureObject);
+        initialize(ctx, Span<ScriptDatum>.Empty);
+        Assert.Same(ScriptObject.Null, runtimeModule.GetPropertyValue("helper"));
+
+        var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
+        var result = runDel(ctx, Span<ScriptDatum>.Empty);
+        Assert.Equal(42, result.Number);
+    }
+
+    [Fact]
     public void EmissionSkeletonHoistsUncapturedLocalFunctionDeclarations()
     {
         var root = Path.GetTempPath();
@@ -1368,7 +1575,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -1411,7 +1618,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -1445,7 +1652,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -1486,7 +1693,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -1519,7 +1726,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -1550,7 +1757,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -1592,7 +1799,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -1641,7 +1848,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -1687,7 +1894,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -1734,7 +1941,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
         var receiver = new ScriptObject();
@@ -1766,7 +1973,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -1797,7 +2004,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
         var receiver = new ScriptObject();
@@ -1831,7 +2038,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -1865,7 +2072,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -1897,7 +2104,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -1931,7 +2138,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -1963,7 +2170,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -1993,7 +2200,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -2024,7 +2231,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -2056,7 +2263,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -2087,7 +2294,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -2120,7 +2327,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -2153,7 +2360,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -2192,7 +2399,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -2228,7 +2435,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -2265,7 +2472,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -2296,7 +2503,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -2385,7 +2592,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(false);
+            .WithEnableAutoModuleDirectCall(false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -2437,7 +2644,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
 
         var session = backend.CreateModulePlans([module]);
@@ -2463,7 +2670,33 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
+        var backend = new BackendCompiler(new DynamicBuilder(options), options);
+
+        var session = backend.CreateModulePlans([module]);
+        var helper = Assert.Single(Assert.Single(session.Modules).Functions, function => function.Name == "helper");
+
+        Assert.Equal(FunctionVisibility.ModuleVisible, helper.Visibility);
+        Assert.False(helper.IsDirectCallCandidate);
+    }
+
+    [Fact]
+    public void ModuleDirectCallRejectsSpreadFunctionCall()
+    {
+        var root = Path.GetTempPath();
+        var module = Parse(
+            """
+            @module(TEST);
+            var values = [41];
+            func helper(value) { return value + 1; }
+            export func run() { return helper(...values); }
+            """,
+            root);
+        var options = EngineOptions.Default
+            .WithBaseDirectory(root)
+            .WithCompilationMode(CompilationMode.Dynamic)
+            .WithEnableHotReload(false)
+            .WithEnableAutoModuleDirectCall(true);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
 
         var session = backend.CreateModulePlans([module]);
@@ -2488,7 +2721,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
 
         var session = backend.CreateModulePlans([module]);
@@ -2516,7 +2749,7 @@ public sealed class CompilerBackendPlanTests
             .WithBaseDirectory(root)
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithEnableHotReload(false)
-            .WithEnableModuleDirectCall(true);
+            .WithEnableAutoModuleDirectCall(true);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
 
         var session = backend.CreateModulePlans([module]);
