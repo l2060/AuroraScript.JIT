@@ -23,9 +23,9 @@ namespace Examples
             .WithDateTimeFormat("yyyy-MM-dd HH:mm:ss")
             .WithAssemblyOut("123.dll")
             .WithEnableConfused(false)
-            .WithEnableHotReload(false)
-            .WithEnableAutoModuleDirectCall(false)
-            .WithCompilationMode(CompilationMode.OnlyRun)
+            .WithEnableHotReload(true)
+            .WithEnableAutoModuleDirectCall(true)
+            .WithCompilationMode(CompilationMode.Dynamic)
             .WithOptimizeOption(OptimizeOptions.Release);
 
         private static readonly AuroraEngine engine = new AuroraEngine(engineOptions);
@@ -57,7 +57,13 @@ namespace Examples
             {
                 var sources = engine.SearchAllFileSource(Encoding.UTF8);
                 var s1 = engine.MemorySource("mmmmm1.as", "console.log('qwertyuiop');");
+
+
+                var time = Stopwatch.StartNew();
                 await engine.BuildAsync([s1, .. sources]);
+                var elapsed = time.ElapsedMilliseconds;
+                Console.WriteLine($"BuildAsync {elapsed}ms");
+
                 Test();
             }
             catch (AuroraCompileReportException ex)

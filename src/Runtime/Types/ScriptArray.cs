@@ -159,6 +159,11 @@ namespace AuroraScript.Runtime.Types
             return array;
         }
 
+        internal static ScriptArray CreateEmptyWithCapacity(int capacity)
+        {
+            return CreateWithCapacity(capacity);
+        }
+
         /// <summary> Gets the element at the specified index. </summary>
         public ScriptDatum GetElement(int index)
         {
@@ -291,6 +296,18 @@ namespace AuroraScript.Runtime.Types
         public void Push(ScriptDatum datum)
         {
             SetElement(_count, in datum);
+        }
+
+        internal void AddRange(Span<ScriptDatum> items)
+        {
+            if (items.Length == 0)
+            {
+                return;
+            }
+
+            EnsureCapacity(_count + items.Length);
+            items.CopyTo(_items.AsSpan(_count));
+            _count += items.Length;
         }
 
         /// <summary> Removes the reference at the specified index by setting it to default. </summary>

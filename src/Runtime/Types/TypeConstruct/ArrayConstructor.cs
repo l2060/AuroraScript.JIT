@@ -16,6 +16,7 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
             Define("from", new BondingFunction(FROM), writeable: false, enumerable: false);
             Define("isArray", new BondingFunction(IS_ARRAY), writeable: false, enumerable: false);
             Define("of", new BondingFunction(OF), writeable: false, enumerable: false);
+            Define("withCapacity", new BondingFunction(WITH_CAPACITY), writeable: false, enumerable: false);
             Frozen();
         }
 
@@ -80,6 +81,17 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
                 array.SetElement(i, args[i]);
             }
             ScriptDatum.WriteAsArray(ref result, array);
+        }
+
+        /// <summary> Native implementation for Array.withCapacity(). Creates an empty array with reserved storage. </summary>
+        internal static void WITH_CAPACITY(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            var capacity = 0;
+            if (args.TryGetInteger(0, out var value) && value > 0)
+            {
+                capacity = value > int.MaxValue ? int.MaxValue : (int)value;
+            }
+            ScriptDatum.WriteAsArray(ref result, ScriptArray.CreateEmptyWithCapacity(capacity));
         }
 
         /// <summary> Native implementation for Array.isArray(). Checks if the provided value is an array. </summary>

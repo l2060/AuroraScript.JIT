@@ -449,7 +449,7 @@ export func testHotPatch() {
     }
 
     export func benchmarkArrays(iterations = 200000) {
-        var arr = [];
+        var arr = Array.withCapacity(iterations);
         for (var i = 0; i < iterations; i++) {
             arr.push(i);
         }

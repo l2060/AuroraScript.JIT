@@ -16,12 +16,15 @@ public sealed class AdvancedRuntimeTypeTests
             export func run() {
                 var generated = Array.of(1, 2, 3);
                 var mapped = Array.from('abc', (value) => value.toUpperCase());
-                return [Array.isArray(generated), generated.length, mapped.join(''), String.fromCharCode(65), String.valueOf(42), Number.parseInt('12.9'), Number.parseFloat('2.5'), Number.isInteger(2), Number.isNaN(Number.NaN), Number.isInfinity(Number.POSITIVE_INFINITY), new Boolean(1).toString()];
+                var reserved = Array.withCapacity(16);
+                var reservedLength = reserved.length;
+                reserved.push(9);
+                return [Array.isArray(generated), generated.length, mapped.join(''), reservedLength, reserved.length, reserved[0], String.fromCharCode(65), String.valueOf(42), Number.parseInt('12.9'), Number.parseFloat('2.5'), Number.isInteger(2), Number.isNaN(Number.NaN), Number.isInfinity(Number.POSITIVE_INFINITY), new Boolean(1).toString()];
             }
             """);
 
         ScriptAssert.Equal(
-            new object?[] { true, 3, "ABC", "A", "42", 12, 2.5, true, true, true, "true" },
+            new object?[] { true, 3, "ABC", 0, 1, 9, "A", "42", 12, 2.5, true, true, true, "true" },
             TestWorkspace.Execute(domain, "run"));
     }
 

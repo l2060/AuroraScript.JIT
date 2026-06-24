@@ -31,7 +31,7 @@ namespace AuroraScript.Runtime
             {
                 return ScriptDatum.FromString(string.Concat(ToStringForConcat(a), ToStringForConcat(b)));
             }
-            if (ScriptDatum.TryToNumber(a, out var na) && ScriptDatum.TryToNumber(b, out var nb))
+            if (TryToNumberForAdd(a, out var na) && TryToNumberForAdd(b, out var nb))
             {
                 return ScriptDatum.FromNumber(na + nb);
             }
@@ -39,6 +39,18 @@ namespace AuroraScript.Runtime
             {
                 return ScriptDatum.FromString(string.Concat(ToStringForConcat(a), ToStringForConcat(b)));
             }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool TryToNumberForAdd(ScriptDatum value, out double number)
+        {
+            if (value.Kind == ValueKind.Null)
+            {
+                number = 0;
+                return true;
+            }
+
+            return ScriptDatum.TryToNumber(value, out number);
         }
 
         /// <summary>Concatenates a script value with a literal string on the right.</summary>

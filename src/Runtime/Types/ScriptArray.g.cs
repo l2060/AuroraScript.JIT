@@ -30,11 +30,8 @@ namespace AuroraScript.Runtime.Types
         {
             if (thisObject is ScriptArray array && args != null)
             {
-                var len = args.Length;
-                for (int i = 0; i < len; i++)
-                {
-                    array.Push(args[i]);
-                }
+                array.AddRange(args);
+                ScriptDatum.WriteAsNumber(ref result, array._count);
             }
         }
 
