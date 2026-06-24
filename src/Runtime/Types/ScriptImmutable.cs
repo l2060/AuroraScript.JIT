@@ -37,5 +37,11 @@
         {
             // Immutable objects do not allow property definitions.
         }
+
+        /// <summary> Prevents defining datum properties on immutable objects. </summary>
+        public sealed override void Define(string key, ScriptDatum value, bool writeable = true, bool enumerable = true)
+        {
+            // Immutable objects do not allow property definitions.
+        }
     }
 }

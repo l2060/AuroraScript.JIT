@@ -55,6 +55,30 @@ public sealed class ClrInteropTests
     }
 
     [Fact]
+    public async Task GlobalDefineAcceptsScriptDatumValuesDirectly()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func run() {
+                return [HOST_NUMBER, HOST_TEXT, HOST_BOOL, HOST_NULL];
+            }
+            """,
+            configureGlobal: global =>
+            {
+                global.Define("HOST_NUMBER", ScriptDatum.FromNumber(13));
+                global.Define("HOST_TEXT", ScriptDatum.FromString("datum"));
+                global.Define("HOST_BOOL", ScriptDatum.FromBoolean(true));
+                global.Define("HOST_NULL", ScriptDatum.Null);
+            });
+
+        ScriptAssert.Equal(
+            new object?[] { 13, "datum", true, null },
+            TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
     public async Task OverloadResolutionSupportsNumericStringOptionalAndVariadicArguments()
     {
         using var workspace = new TestWorkspace();

@@ -315,6 +315,19 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary>
+        /// Defines a datum property with specific attributes.
+        /// Typically called from host (C#) code when the value is already in script representation.
+        /// </summary>
+        /// <param name="key">The property name.</param>
+        /// <param name="value">The property value.</param>
+        /// <param name="writeable">Indicates if the property can be modified after definition.</param>
+        /// <param name="enumerable">Indicates if the property appears in enumerations (e.g., for-in loops).</param>
+        public virtual void Define(string key, ScriptDatum value, bool writeable = true, bool enumerable = true)
+        {
+            InternalDefine(key, value, writeable, enumerable, false);
+        }
+
+        /// <summary>
         /// Directly updates or defines a property, potentially bypassing some safety checks.
         /// </summary>
         internal void Patch(string key, ScriptObject value, bool writeable = true, bool enumerable = true)

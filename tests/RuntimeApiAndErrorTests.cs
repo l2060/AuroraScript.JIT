@@ -86,15 +86,40 @@ public sealed class RuntimeApiAndErrorTests
             "@module(TEST); export func read() { return $state.Value; }"));
 
         var firstState = new ScriptObject();
-        firstState.Define("Value", NumberValue.Of(10));
+        firstState.Define("Value", ScriptDatum.FromNumber(10));
         var secondState = new ScriptObject();
-        secondState.Define("Value", NumberValue.Of(20));
+        secondState.Define("Value", ScriptDatum.FromNumber(20));
 
         var first = engine.CreateDomain(userState: firstState);
         var second = engine.CreateDomain(userState: secondState);
 
         ScriptAssert.Equal(10, first.Execute("TEST", "read"));
         ScriptAssert.Equal(20, second.Execute("TEST", "read"));
+    }
+
+    [Fact]
+    public async Task UserStateCanDefineScriptDatumPropertiesDirectly()
+    {
+        using var workspace = new TestWorkspace();
+        var engine = workspace.CreateEngine();
+        await engine.BuildAsync(engine.MemorySource(
+            "main.as",
+            """
+            @module(TEST);
+            export func run() {
+                return [$state.Name, $state.Count, $state.Enabled, $state.Empty];
+            }
+            """));
+
+        var userState = new ScriptObject();
+        userState.Define("Name", ScriptDatum.FromString("datum"));
+        userState.Define("Count", ScriptDatum.FromNumber(3));
+        userState.Define("Enabled", ScriptDatum.FromBoolean(true));
+        userState.Define("Empty", ScriptDatum.Null);
+
+        var domain = engine.CreateDomain(userState: userState);
+
+        ScriptAssert.Equal(new object?[] { "datum", 3, true, null }, domain.Execute("TEST", "run"));
     }
 
     [Fact]

@@ -7,35 +7,35 @@ namespace AuroraScript.Runtime.Extensions
     {
         public MathSupport()
         {
-            Define("PI", new NumberValue(Math.PI), writeable: false, enumerable: false);
-            Define("E", new NumberValue(Math.E), writeable: false, enumerable: false);
-            Define("Tau", new NumberValue(Math.Tau), writeable: false, enumerable: false);
-            Define("DEG_PER_RAD", new NumberValue(Math.PI / 180D), writeable: false, enumerable: false);
+            Define("PI", ScriptDatum.FromNumber(Math.PI), writeable: false, enumerable: false);
+            Define("E", ScriptDatum.FromNumber(Math.E), writeable: false, enumerable: false);
+            Define("Tau", ScriptDatum.FromNumber(Math.Tau), writeable: false, enumerable: false);
+            Define("DEG_PER_RAD", ScriptDatum.FromNumber(Math.PI / 180D), writeable: false, enumerable: false);
 
 
 
 
 
-            Define("abs", new BondingFunction(ABS), writeable: false, enumerable: false);
-            Define("max", new BondingFunction(MAX), writeable: false, enumerable: false);
-            Define("min", new BondingFunction(MIN), writeable: false, enumerable: false);
+            Define("abs", ScriptDatum.FromBonding(ABS), writeable: false, enumerable: false);
+            Define("max", ScriptDatum.FromBonding(MAX), writeable: false, enumerable: false);
+            Define("min", ScriptDatum.FromBonding(MIN), writeable: false, enumerable: false);
 
-            Define("random", new BondingFunction(RANDOM), writeable: false, enumerable: false);
-            Define("log", new BondingFunction(LOG), writeable: false, enumerable: false);
-            Define("pow", new BondingFunction(POW), writeable: false, enumerable: false);
-            Define("exp", new BondingFunction(EXP), writeable: false, enumerable: false);
+            Define("random", ScriptDatum.FromBonding(RANDOM), writeable: false, enumerable: false);
+            Define("log", ScriptDatum.FromBonding(LOG), writeable: false, enumerable: false);
+            Define("pow", ScriptDatum.FromBonding(POW), writeable: false, enumerable: false);
+            Define("exp", ScriptDatum.FromBonding(EXP), writeable: false, enumerable: false);
 
-            Define("cos", new BondingFunction(COS), writeable: false, enumerable: false);
-            Define("sin", new BondingFunction(SIN), writeable: false, enumerable: false);
-            Define("tan", new BondingFunction(TAN), writeable: false, enumerable: false);
-            Define("acos", new BondingFunction(ACOS), writeable: false, enumerable: false);
-            Define("asin", new BondingFunction(ASIN), writeable: false, enumerable: false);
-            Define("atan", new BondingFunction(ATAN), writeable: false, enumerable: false);
+            Define("cos", ScriptDatum.FromBonding(COS), writeable: false, enumerable: false);
+            Define("sin", ScriptDatum.FromBonding(SIN), writeable: false, enumerable: false);
+            Define("tan", ScriptDatum.FromBonding(TAN), writeable: false, enumerable: false);
+            Define("acos", ScriptDatum.FromBonding(ACOS), writeable: false, enumerable: false);
+            Define("asin", ScriptDatum.FromBonding(ASIN), writeable: false, enumerable: false);
+            Define("atan", ScriptDatum.FromBonding(ATAN), writeable: false, enumerable: false);
 
 
 
-            Define("floor", new BondingFunction(FLOOR), writeable: false, enumerable: false);
-            Define("round", new BondingFunction(ROUND), writeable: false, enumerable: false);
+            Define("floor", ScriptDatum.FromBonding(FLOOR), writeable: false, enumerable: false);
+            Define("round", ScriptDatum.FromBonding(ROUND), writeable: false, enumerable: false);
 
         }
 

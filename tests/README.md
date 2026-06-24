@@ -8,7 +8,7 @@ This project is the executable specification for AuroraScript compiler and runti
 |---|---|---|
 | Lexer | `LexerTests.cs` | Keywords, identifiers, Unicode, every operator, numbers, strings, regex/division disambiguation, comments, CRLF locations, snapshots, long payloads, malformed tokens |
 | Parser | `ParserSyntaxTests.cs` | Module metadata, imports/includes/exports, declarations, expressions, lambdas, destructuring, control flow, exceptions, templates, regex, malformed and truncated syntax, diagnostics |
-| CompileBlock | `CompileBlockTests.cs` | Parameter validation, local functions, domain/no-domain invocation, module-only rejection, source names, null API input |
+| CompileBlock | `CompileBlockTests.cs` | Parameter validation, local functions, domain/no-domain invocation, module-only rejection, source names, null API input, dynamic delegate cleanup |
 | Expressions | `ExpressionExecutionTests.cs` | Precedence, arithmetic, shifts, bitwise, comparison, equality, logical, unary, `typeof`, `in`, member/index access, templates, spread, assignment, increment/decrement, delete |
 | Statements | `StatementExecutionTests.cs` | `if/else`, `for`, `for-in`, `while`, break/continue, closures, recursion, defaults, `$args`, high arity, spread calls, destructuring, try/catch/finally, domain isolation |
 | Language behavior | `LanguageFeatureExecutionTests.cs` | Enums, expression/block lambdas, sparse arrays, object shorthand/spread, short circuit, truthiness, declared host functions, nested templates, right-associative assignment, null returns |

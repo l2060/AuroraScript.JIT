@@ -26,12 +26,12 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
             Define("POSITIVE_INFINITY", NumberValue.POSITIVE_INFINITY, writeable: false, enumerable: false);
             Define("NEGATIVE_INFINITY", NumberValue.NEGATIVE_INFINITY, writeable: false, enumerable: false);
 
-            Define("isNaN", new BondingFunction(IS_NAN), writeable: false, enumerable: false);
-            Define("isInteger", new BondingFunction(IS_INTEGER), writeable: false, enumerable: false);
-            Define("isInfinity", new BondingFunction(IS_INFINITY), writeable: false, enumerable: false);
+            Define("isNaN", ScriptDatum.FromBonding(IS_NAN), writeable: false, enumerable: false);
+            Define("isInteger", ScriptDatum.FromBonding(IS_INTEGER), writeable: false, enumerable: false);
+            Define("isInfinity", ScriptDatum.FromBonding(IS_INFINITY), writeable: false, enumerable: false);
 
-            Define("parseFloat", new BondingFunction(PARSE_FLOAT), writeable: false, enumerable: false);
-            Define("parseInt", new BondingFunction(PARSE_INTEGER), writeable: false, enumerable: false);
+            Define("parseFloat", ScriptDatum.FromBonding(PARSE_FLOAT), writeable: false, enumerable: false);
+            Define("parseInt", ScriptDatum.FromBonding(PARSE_INTEGER), writeable: false, enumerable: false);
 
             Frozen();
         }

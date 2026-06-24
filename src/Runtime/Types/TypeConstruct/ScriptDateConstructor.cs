@@ -14,9 +14,9 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
 
         internal ScriptDateConstructor() : base("Date", true)
         {
-            Define("now", new BondingFunction(NOW), writeable: false, enumerable: false);
-            Define("utcNow", new BondingFunction(UTC_NOW), writeable: false, enumerable: false);
-            Define("parse", new BondingFunction(PARSE), writeable: false, enumerable: false);
+            Define("now", ScriptDatum.FromBonding(NOW), writeable: false, enumerable: false);
+            Define("utcNow", ScriptDatum.FromBonding(UTC_NOW), writeable: false, enumerable: false);
+            Define("parse", ScriptDatum.FromBonding(PARSE), writeable: false, enumerable: false);
             Frozen();
         }
 

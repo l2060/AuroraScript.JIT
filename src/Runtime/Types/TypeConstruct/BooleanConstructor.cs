@@ -13,9 +13,9 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
 
         internal BooleanConstructor() : base("Boolean", true)
         {
-            Define("true", BooleanValue.True, writeable: false, enumerable: false);
-            Define("false", BooleanValue.False, writeable: false, enumerable: false);
-            Define("valueOf", new BondingFunction(PARSE), writeable: false, enumerable: false);
+            Define("true", ScriptDatum.FromBoolean(true), writeable: false, enumerable: false);
+            Define("false", ScriptDatum.FromBoolean(false), writeable: false, enumerable: false);
+            Define("valueOf", ScriptDatum.FromBonding(PARSE), writeable: false, enumerable: false);
             Frozen();
         }
 

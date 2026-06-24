@@ -242,6 +242,14 @@ namespace AuroraScript.Runtime
             return new ScriptDatum { Kind = ValueKind.ClrBonding, Object = new BondingFunction(value) };
         }
 
+
+        /// <summary> Creates a new datum from a native getter delegate. </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum FromBondingGetter(ClrGetterDelegate callback)
+        {
+            return new ScriptDatum { Kind = ValueKind.ClrBonding, Object = new BondingGetter(callback) };
+        }
+
         /// <summary> Writes a generic script object into the destination datum. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void WriteAsObject(ref ScriptDatum dst, ScriptObject value)

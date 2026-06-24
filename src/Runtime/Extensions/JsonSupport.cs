@@ -8,8 +8,8 @@ namespace AuroraScript.Runtime.Extensions
     {
         public JsonSupport()
         {
-            Define("parse", new BondingFunction(PARSE), writeable: false, enumerable: false);
-            Define("stringify", new BondingFunction(STRINGIFY), writeable: false, enumerable: false);
+            Define("parse", ScriptDatum.FromBonding(PARSE), writeable: false, enumerable: false);
+            Define("stringify", ScriptDatum.FromBonding(STRINGIFY), writeable: false, enumerable: false);
         }
 
         public static void PARSE(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)

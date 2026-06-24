@@ -9,8 +9,8 @@ namespace AuroraScript.Runtime.Extensions
         internal static HotPatchSupport INSTANCE = new HotPatchSupport();
         public HotPatchSupport()
         {
-            Define("replace", new BondingFunction(REPLACE), writeable: false, enumerable: false);
-            Define("incremental", new BondingFunction(INCREMENTAL), writeable: false, enumerable: false);
+            Define("replace", ScriptDatum.FromBonding(REPLACE), writeable: false, enumerable: false);
+            Define("incremental", ScriptDatum.FromBonding(INCREMENTAL), writeable: false, enumerable: false);
             Frozen();
         }
 

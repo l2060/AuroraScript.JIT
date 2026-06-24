@@ -12,6 +12,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         private readonly int _dynamicDelegateCapacity;
         private PendingDynamicDelegate[] _pendingDynamicDelegates;
         private int _pendingDynamicDelegateCount;
+        private int[] _registeredDynamicDelegateIds = Array.Empty<int>();
 
         public EmissionSession(
             CompileSession compileSession,
@@ -34,6 +35,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         public bool ForceModuleDefinitions { get; }
         public bool CollectDiagnostics { get; }
         public EngineOptions Options => CompileSession.Options;
+        internal int[] RegisteredDynamicDelegateIds => _registeredDynamicDelegateIds;
 
         public EmissionReport Emit()
         {
@@ -103,6 +105,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return;
             }
 
+            var registeredIds = new int[_pendingDynamicDelegateCount];
             for (var i = 0; i < _pendingDynamicDelegateCount; i++)
             {
                 var pending = _pendingDynamicDelegates[i];
@@ -110,8 +113,10 @@ namespace AuroraScript.Compiler.Backend.Emission
                     pending.Id,
                     pending.Method,
                     pending.Convention);
+                registeredIds[i] = pending.Id;
             }
 
+            _registeredDynamicDelegateIds = registeredIds;
             ArrayPool<PendingDynamicDelegate>.Shared.Return(_pendingDynamicDelegates, clearArray: true);
             _pendingDynamicDelegates = null;
             _pendingDynamicDelegateCount = 0;

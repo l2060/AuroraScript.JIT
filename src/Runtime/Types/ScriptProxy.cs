@@ -136,5 +136,18 @@ namespace AuroraScript.Runtime.Types
             SetPropertyValue(null, key, value);
         }
 
+        /// <summary>
+        /// Defines or modifies a datum property on the proxied object.
+        /// This operation is intercepted by the proxy's setter handler if defined.
+        /// </summary>
+        /// <param name="key">The name of the property to define.</param>
+        /// <param name="value">The value to assign to the property.</param>
+        /// <param name="writeable">Whether the property is writeable.</param>
+        /// <param name="enumerable">Whether the property is enumerable.</param>
+        public sealed override void Define(String key, ScriptDatum value, bool writeable = true, bool enumerable = true)
+        {
+            SetPropertyDatum(null, key, value);
+        }
+
     }
 }

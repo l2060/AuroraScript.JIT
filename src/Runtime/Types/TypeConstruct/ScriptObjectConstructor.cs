@@ -15,17 +15,17 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
         internal ScriptObjectConstructor() : base("Object", true)
         {
             // strict equal
-            Define("equal$", new BondingFunction(STRICT_EQUAL), writeable: false, enumerable: false);
+            Define("equal$", ScriptDatum.FromBonding(STRICT_EQUAL), writeable: false, enumerable: false);
             // content equal  
-            Define("equal", new BondingFunction(VALUE_EQUAL), writeable: false, enumerable: false);
+            Define("equal", ScriptDatum.FromBonding(VALUE_EQUAL), writeable: false, enumerable: false);
             // deep content equal 
-            Define("deepEqual", new BondingFunction(DEEP_EQUAL), writeable: false, enumerable: false);
-            Define("assign", new BondingFunction(ASSIGN), writeable: false, enumerable: false);
-            Define("keys", new BondingFunction(KEYS), writeable: false, enumerable: false);
-            Define("clone", new BondingFunction(CLONE), writeable: false, enumerable: false);
-            Define("deepClone", new BondingFunction(DEEP_CLONE), writeable: false, enumerable: false);
-            Define("extends", new BondingFunction(EXTENDS), writeable: false, enumerable: false);
-            Define("freeze", new BondingFunction(FREEZE), writeable: false, enumerable: false);
+            Define("deepEqual", ScriptDatum.FromBonding(DEEP_EQUAL), writeable: false, enumerable: false);
+            Define("assign", ScriptDatum.FromBonding(ASSIGN), writeable: false, enumerable: false);
+            Define("keys", ScriptDatum.FromBonding(KEYS), writeable: false, enumerable: false);
+            Define("clone", ScriptDatum.FromBonding(CLONE), writeable: false, enumerable: false);
+            Define("deepClone", ScriptDatum.FromBonding(DEEP_CLONE), writeable: false, enumerable: false);
+            Define("extends", ScriptDatum.FromBonding(EXTENDS), writeable: false, enumerable: false);
+            Define("freeze", ScriptDatum.FromBonding(FREEZE), writeable: false, enumerable: false);
             Frozen();
         }
 

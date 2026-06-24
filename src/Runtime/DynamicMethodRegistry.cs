@@ -13,6 +13,8 @@ namespace AuroraScript.Runtime
         private static int _nextId = 0;
         private static readonly ConcurrentDictionary<int, Delegate> _registry = new();
 
+        internal static int Count => _registry.Count;
+
         public static int Reserve()
         {
             return Interlocked.Increment(ref _nextId);
@@ -168,6 +170,11 @@ namespace AuroraScript.Runtime
         public static void Unregister(int id)
         {
             _registry.TryRemove(id, out _);
+        }
+
+        internal static bool Contains(int id)
+        {
+            return _registry.ContainsKey(id);
         }
     }
 }

@@ -103,6 +103,12 @@ namespace AuroraScript.Runtime.Types
             throw new AuroraRuntimeException(string.Format("Cannot read properties of undefined (reading '{0}')", key));
         }
 
+        /// <summary> Throws Exception: Cannot define datum properties on null. </summary>
+        public override void Define(string key, ScriptDatum value, bool writeable = true, bool enumerable = true)
+        {
+            throw new AuroraRuntimeException(string.Format("Cannot read properties of undefined (reading '{0}')", key));
+        }
+
         /// <summary> Throws Exception: Cannot delete properties of null. </summary>
         internal sealed override bool DeletePropertyValue(ScriptContext ctx, string key)
         {

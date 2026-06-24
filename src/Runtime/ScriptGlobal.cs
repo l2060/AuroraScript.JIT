@@ -62,7 +62,9 @@ namespace AuroraScript.Runtime
         /// <param name="value">The value to set.</param>
         public void SetPropertyValue(string key, object value)
         {
-            base.Define(key, ClrMarshaller.ToScript(value), true, true);
+            ScriptDatum datum = default;
+            ClrMarshaller.WriteToDatum(ref datum, value);
+            base.Define(key, datum, true, true);
         }
 
         /// <summary>
@@ -74,7 +76,21 @@ namespace AuroraScript.Runtime
         /// <param name="enumerable">Whether the property shows up in enumeration.</param>
         public void Define(string key, object value, bool writeable = true, bool enumerable = true)
         {
-            base.Define(key, ClrMarshaller.ToScript(value), writeable, enumerable);
+            ScriptDatum datum = default;
+            ClrMarshaller.WriteToDatum(ref datum, value);
+            base.Define(key, datum, writeable, enumerable);
+        }
+
+        /// <summary>
+        /// Defines a global property when the value is already represented as a <see cref="ScriptDatum"/>.
+        /// </summary>
+        /// <param name="key">The property name.</param>
+        /// <param name="value">The value to associate with the property.</param>
+        /// <param name="writeable">Whether the property value can be changed.</param>
+        /// <param name="enumerable">Whether the property shows up in enumeration.</param>
+        public sealed override void Define(string key, ScriptDatum value, bool writeable = true, bool enumerable = true)
+        {
+            base.Define(key, value, writeable, enumerable);
         }
 
         /// <summary>

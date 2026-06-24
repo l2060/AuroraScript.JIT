@@ -13,10 +13,10 @@ namespace AuroraScript.Runtime.Extensions
 
         public ConsoleSupport()
         {
-            Define("log", new BondingFunction(LOG), writeable: false, enumerable: false);
-            Define("error", new BondingFunction(ERROR), writeable: false, enumerable: false);
-            Define("time", new BondingFunction(TIME), writeable: false, enumerable: false);
-            Define("timeEnd", new BondingFunction(TIMEEND), writeable: false, enumerable: false);
+            Define("log", ScriptDatum.FromBonding(LOG), writeable: false, enumerable: false);
+            Define("error", ScriptDatum.FromBonding(ERROR), writeable: false, enumerable: false);
+            Define("time", ScriptDatum.FromBonding(TIME), writeable: false, enumerable: false);
+            Define("timeEnd", ScriptDatum.FromBonding(TIMEEND), writeable: false, enumerable: false);
         }
 
         public static void LOG(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)

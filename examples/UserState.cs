@@ -7,11 +7,11 @@ namespace Examples
     {
         public UserState()
         {
-            Define("Name", StringValue.Of("Hanks"));
-            Define("Identity", ScriptObject.Null);
-            Define("Nick", StringValue.Of("Bpp"));
-            Define("Age", NumberValue.Of(18));
-            Define("Context", ScriptObject.Null);
+            Define("Name", ScriptDatum.FromString("Hanks"));
+            Define("Identity", ScriptDatum.Null);
+            Define("Nick", ScriptDatum.FromString("Bpp"));
+            Define("Age", ScriptDatum.FromNumber(18));
+            Define("Context", ScriptDatum.Null);
         }
 
         public void Test(double offset, string str)

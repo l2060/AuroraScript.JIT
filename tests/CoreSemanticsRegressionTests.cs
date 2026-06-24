@@ -18,9 +18,13 @@ public sealed class CoreSemanticsRegressionTests
                 true + 2,
                 false + 2,
                 true * 3,
+                false * 7,
                 '8' - '3',
+                '8' - true,
                 '8' / '2',
+                true / '2',
                 '7' % '4',
+                '9' % true,
                 '6' + 2,
                 6 + '2',
                 'x' + true
@@ -28,7 +32,7 @@ public sealed class CoreSemanticsRegressionTests
             """);
 
         ScriptAssert.Equal(
-            new object?[] { 3, 2, 3, 5, 4, 3, "62", "62", "xTrue" },
+            new object?[] { 3, 2, 3, 0, 5, 7, 4, 0.5, 3, 0, "62", "62", "xTrue" },
             block.Invoke(Array.Empty<ScriptDatum>()));
     }
 
@@ -54,6 +58,55 @@ public sealed class CoreSemanticsRegressionTests
 
         ScriptAssert.Equal(
             new object?[] { 0, 1, 1, 1, 1, 1, "xnull", "nullx", "0" },
+            block.Invoke(Array.Empty<ScriptDatum>()));
+    }
+
+    [Fact]
+    public void NumericOperatorsTreatNullAsZeroOutsideStringConcatenation()
+    {
+        using var workspace = new TestWorkspace();
+        var engine = workspace.CreateEngine();
+        var block = engine.CompileBlock(
+            """
+            return [
+                null - null,
+                5 - null,
+                null - 5,
+                null * 5,
+                5 * null,
+                null / 5,
+                null % 5,
+                -null,
+                Number.isInfinity(5 / null),
+                Number.isNaN(null / null),
+                Number.isNaN(5 % null)
+            ];
+            """);
+
+        ScriptAssert.Equal(
+            new object?[] { 0, 5, -5, 0, 0, 0, 0, 0, true, true, true },
+            block.Invoke(Array.Empty<ScriptDatum>()));
+    }
+
+    [Fact]
+    public void NumericOperatorsReturnNaNWhenStringNumericCoercionFails()
+    {
+        using var workspace = new TestWorkspace();
+        var engine = workspace.CreateEngine();
+        var block = engine.CompileBlock(
+            """
+            return [
+                Number.isNaN('x' - 1),
+                Number.isNaN(1 - 'x'),
+                Number.isNaN('x' * true),
+                Number.isNaN(false / 'x'),
+                Number.isNaN('x' % 2),
+                Number.isNaN(-'x')
+            ];
+            """);
+
+        ScriptAssert.Equal(
+            new object?[] { true, true, true, true, true, true },
             block.Invoke(Array.Empty<ScriptDatum>()));
     }
 

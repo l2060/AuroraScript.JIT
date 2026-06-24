@@ -13,9 +13,9 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
 
         internal StringConstructor() : base("String", true)
         {
-            Define("fromCharCode", new BondingFunction(FROMCHARCODE), writeable: false, enumerable: false);
-            Define("valueOf", new BondingFunction(CONSTRUCTOR), writeable: false, enumerable: false);
-            Define("compare", new BondingFunction(COMPARE), writeable: false, enumerable: false);
+            Define("fromCharCode", ScriptDatum.FromBonding(FROMCHARCODE), writeable: false, enumerable: false);
+            Define("valueOf", ScriptDatum.FromBonding(CONSTRUCTOR), writeable: false, enumerable: false);
+            Define("compare", ScriptDatum.FromBonding(COMPARE), writeable: false, enumerable: false);
             Frozen();
         }
 

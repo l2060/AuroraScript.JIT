@@ -1,6 +1,7 @@
 using AuroraScript.Runtime;
 using AuroraScript.Tests.Infrastructure;
 using System;
+using System.Runtime.CompilerServices;
 using Xunit;
 
 namespace AuroraScript.Tests;
@@ -40,6 +41,42 @@ public sealed class CompileBlockTests
         var domain = engine.CreateEmptyDomain(null);
 
         ScriptAssert.Equal(42, block.Invoke(domain, ScriptDatum.FromNumber(21)));
+    }
+
+    [Fact]
+    public void DisposeUnregistersCompileBlockDynamicDelegates()
+    {
+        using var workspace = new TestWorkspace();
+        var engine = workspace.CreateEngine();
+        var before = DynamicMethodRegistry.Count;
+        var block = CompileBlockWithLocalFunction(engine);
+        var ids = block.GetDynamicDelegateIdsSnapshot();
+
+        Assert.NotEmpty(ids);
+        Assert.Equal(before + ids.Length, DynamicMethodRegistry.Count);
+        Assert.All(ids, id => Assert.True(DynamicMethodRegistry.Contains(id)));
+
+        block.Dispose();
+
+        Assert.All(ids, id => Assert.False(DynamicMethodRegistry.Contains(id)));
+        Assert.Equal(before, DynamicMethodRegistry.Count);
+        Assert.Throws<ObjectDisposedException>(() => block.Invoke(Array.Empty<ScriptDatum>()));
+    }
+
+    [Fact]
+    public void UnreferencedCompileBlockFinalizerUnregistersDynamicDelegates()
+    {
+        using var workspace = new TestWorkspace();
+        var engine = workspace.CreateEngine();
+        var (weakBlock, ids) = CreateUnreferencedCompileBlock(engine);
+
+        Assert.NotEmpty(ids);
+        Assert.All(ids, id => Assert.True(DynamicMethodRegistry.Contains(id)));
+
+        ForceFullCollection();
+
+        Assert.False(weakBlock.IsAlive);
+        Assert.All(ids, id => Assert.False(DynamicMethodRegistry.Contains(id)));
     }
 
     [Theory]
@@ -118,5 +155,33 @@ public sealed class CompileBlockTests
 
         Assert.IsAssignableFrom<AuroraException>(
             Record.Exception(() => engine.CompileBlock(source)));
+    }
+
+    private static CompiledBlock CompileBlockWithLocalFunction(AuroraEngine engine)
+    {
+        return engine.CompileBlock(
+            """
+            function local(value) {
+                return value + 1;
+            }
+            return local(1);
+            """);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static (WeakReference WeakBlock, int[] Ids) CreateUnreferencedCompileBlock(AuroraEngine engine)
+    {
+        var block = CompileBlockWithLocalFunction(engine);
+        var ids = block.GetDynamicDelegateIdsSnapshot();
+        var weakBlock = new WeakReference(block);
+        GC.KeepAlive(block);
+        return (weakBlock, ids);
+    }
+
+    private static void ForceFullCollection()
+    {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
     }
 }

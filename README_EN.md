@@ -122,6 +122,8 @@ var domain = engine.CreateDomain(userState: userState);
 
 `userState` must inherit from `ScriptObject`. Scripts can access it through `$state`:
 
+When the value is already in runtime representation, call `Define(string, ScriptDatum, ...)` directly to avoid boxing it as a `ScriptObject` and converting it back to `ScriptDatum`.
+
 ```javascript
 @module(MAIN);
 
@@ -137,6 +139,7 @@ var domain = engine.CreateDomain(global =>
 {
     global.Define("HOST_ADD", (Func<int, int, int>)((a, b) => a + b));
     global.Define("HOST_NAME", "Aurora");
+    global.Define("HOST_COUNT", ScriptDatum.FromNumber(3));
 });
 ```
 
@@ -175,6 +178,8 @@ var result = block.Invoke(ScriptDatum.FromNumber(125));
 ```
 
 Parameter names are declared through `CompileBlockOptions.Parameters`; runtime values are passed positionally. Parameter names cannot be empty, duplicated, or equal to `global`, `$args`, or `$state`.
+
+After a `CompiledBlock` becomes unreachable, its GC finalizer automatically releases dynamic delegates registered during compilation. Call `Dispose()` only when deterministic release is needed.
 
 ## Compilation Modes
 
@@ -342,6 +347,9 @@ Static members:
 - `Array.from(iterable, [mapCallback])`
 - `Array.isArray(value)`
 - `Array.of(...items)`
+- `Array.withCapacity(capacity)`
+
+`Array.withCapacity(capacity)` creates an empty array with reserved backing storage. Unlike `new Array(n)`, it does not create `n` null slots, so it is intended for known-size push-heavy paths.
 
 Instance members:
 
@@ -534,22 +542,23 @@ Tested capabilities:
 
 Test project: `tests/AuroraScript.Tests`
 
-Current `net10.0` test discovery finds **295** test cases. Breakdown by test class:
+Current `net10.0` test discovery finds **395** test cases. Breakdown by test class:
 
 | Test class | Cases | Focus |
 |---|---:|---|
 | `LexerTests` | 37 | Lexing, numbers/strings/regex, comments, malformed tokens |
 | `ParserSyntaxTests` | 85 | Grammar branches, modules, import/include/export, function annotations, syntax diagnostics |
-| `ExpressionExecutionTests` | 35 | Expressions, operators, member/index access, spread, assignment |
+| `ExpressionExecutionTests` | 38 | Expressions, operators, member/index access, spread, assignment |
 | `StatementExecutionTests` | 7 | Control flow, loops, closures, recursion, exceptions, domain isolation |
 | `LanguageFeatureExecutionTests` | 16 | enum, lambdas, sparse arrays, truthiness, templates, assignment semantics |
 | `ModuleCompilationTests` | 12 | Dependencies, parallel compile, cycles, error aggregation, cancellation |
-| `CompileBlockTests` | 21 | CompileBlock parameters, invocation modes, invalid inputs, diagnostics |
-| `CompilationModeTests` | 5 | Dynamic/OnlyRun/Persistence behavior and hot-reload settings |
-| `RuntimeApiAndErrorTests` | 10 | Runtime APIs, error paths, `$state`, disposed domains |
-| `BuiltInLibraryTests` | 11 | Math, String, Array, JSON, HashMap, Regex, StringBuffer, Console |
+| `CompilerBackendPlanTests` | 80 | Backend plans, direct call, closures/upvalues, slots/lowering, control flow and constant folding plans |
+| `CompileBlockTests` | 23 | CompileBlock parameters, invocation modes, invalid inputs, diagnostics, dynamic delegate lifetime |
+| `CompilationModeTests` | 6 | Dynamic/OnlyRun/Persistence behavior and hot-reload settings |
+| `RuntimeApiAndErrorTests` | 11 | Runtime APIs, error paths, `$state`, disposed domains |
+| `BuiltInLibraryTests` | 12 | Math, String, Array, JSON, HashMap, Regex, StringBuffer, Console |
 | `AdvancedRuntimeTypeTests` | 6 | Constructors, Object, freeze, Date, Proxy |
-| `ClrInteropTests` | 8 | CLR constructors/properties/fields/methods/overloads/access restrictions |
+| `ClrInteropTests` | 9 | CLR constructors/properties/fields/methods/overloads/access restrictions |
 | `SerializationTests` | 9 | JSON serialization/deserialization, circular references, malformed JSON |
 | `ScriptDatumTests` | 4 | Datum payloads, equality, CLR collection conversion, Span helpers |
 | `HotReloadTests` | 4 | Disabled hot reload, incremental patch, replacement patch, domain isolation |
@@ -557,14 +566,17 @@ Current `net10.0` test discovery finds **295** test cases. Breakdown by test cla
 | `ReleaseRegressionTests` | 9 | Release direct calls, closure slots, stack balance, confusion, empty modules |
 | `ClosureFunctionContextTests` | 3 | Context pool lifetime and detached invocation |
 | `EngineOptionsAndSourceTests` | 10 | EngineOptions, source paths, extensions, parallelism, null input |
+| `CoreSemanticsRegressionTests` | 11 | Core semantics, null addition, coercion, short-circuit logic, array capacity/indexing, object properties, closures/loops |
 
 Coverage summary:
 
 - Lexer: keywords, identifiers, Unicode, operators, numbers, strings, regex, comments, CRLF locations, malformed tokens.
 - Parser: module metadata, import/include/export, declarations, expressions, lambdas, destructuring, control flow, exceptions, templates, regex, diagnostics.
-- CompileBlock: parameter validation, local functions, domain/no-domain invocation, module-only rejection, source names, null input.
+- CompileBlock: parameter validation, local functions, domain/no-domain invocation, module-only rejection, source names, null input, dynamic delegate release.
 - Expressions/statements: precedence, arithmetic, bitwise operations, comparison, logical operators, member access, spread, assignment, loops, exceptions, closures, recursion.
+- Core semantic regressions: null numeric addition, string-participating addition, truthiness, short-circuit return values, array capacity versus `new Array(n)` semantics, object properties, closure loops.
 - Module compilation: relative paths, diamond dependencies, duplicate roots, wide dependency graphs, cycles, error aggregation, cancellation, concurrent builds.
+- Compiler backend plans: direct call, function annotations, slot/upvalue binding, lowering, control flow, constant folding, and runtime helper call plans.
 - Compilation modes: Dynamic, OnlyRun, Persistence parity; net8 Persistence limitation.
 - Runtime APIs and errors: pre-build use, missing modules/methods, script stack traces, const writes, `$state`, disposal.
 - Built-ins: Math, String, Array, JSON, HashMap, Regex, StringBuffer, Console, Date, Proxy.

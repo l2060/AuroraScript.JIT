@@ -1,7 +1,6 @@
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Serialization;
 using AuroraScript.Runtime.Types;
-using AuroraScript.Tests.Infrastructure;
 using System;
 using Xunit;
 
@@ -24,7 +23,7 @@ public sealed class SerializationTests
     public void SerializesNestedArraysAndObjectsAndSupportsIndentation()
     {
         var value = new ScriptObject();
-        value.Define("name", StringValue.Of("Aurora"));
+        value.Define("name", ScriptDatum.FromString("Aurora"));
         value.Define("items", new ScriptArray([ScriptDatum.FromNumber(1), ScriptDatum.FromBoolean(true), ScriptDatum.Null]));
 
         var compact = ScriptJsonSerializer.Default.Serialize(ScriptDatum.FromObject(value));

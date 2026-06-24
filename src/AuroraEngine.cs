@@ -264,15 +264,16 @@ namespace AuroraScript
             var builder = new DynamicBuilder(builderOptions);
             var backend = new BackendCompiler(builder, builderOptions);
             var blockPlan = backend.CreateCompileBlockPlan(block, options.Parameters, sourceName);
+            var emissionSession = new EmissionSession(blockPlan.Session, builder, emitExecutableSkeletons: true);
             var method = new CompileBlockEmitter(
-                new EmissionSession(blockPlan.Session, builder, emitExecutableSkeletons: true),
+                emissionSession,
                 blockPlan).Emit();
             if (method == null)
             {
                 throw new AuroraException("The compiler did not produce a compiled block entry point.");
             }
             var target = method.CreateDelegate<ScriptFunctionDelegate>();
-            return new CompiledBlock(this, target);
+            return new CompiledBlock(this, target, emissionSession.RegisteredDynamicDelegateIds);
         }
 
         private static void ValidateCompileBlockParameters(IReadOnlyList<string> parameters)

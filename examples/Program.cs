@@ -34,12 +34,12 @@ namespace Examples
 
         private static void GlobalConfiguration(ScriptGlobal g)
         {
-            g.Define("PI", new NumberValue(Math.PI), writeable: false, enumerable: true);
-            g.Define("ENABLE_HOT_RELOAD", engineOptions.EnableHotReload ? BooleanValue.True : BooleanValue.False, writeable: false, enumerable: true);
-            g.Define("GIVE", new BondingFunction(Functions.GIVE), false, true);
-            g.Define("CREATE_TIMER", new BondingFunction(Functions.CREATE_TIMER));
-            g.Define("INPUT_NUMBER", new BondingFunction(Functions.CLIENT_INPUT_NUMBER), false, true);
-            g.Define("md5_native", new BondingFunction(Functions.MD5_NATIVE), false, true);
+            g.Define("PI", ScriptDatum.FromNumber(Math.PI), writeable: false, enumerable: true);
+            g.Define("ENABLE_HOT_RELOAD", ScriptDatum.FromBoolean(engineOptions.EnableHotReload), writeable: false, enumerable: true);
+            g.Define("GIVE", ScriptDatum.FromBonding(Functions.GIVE), false, true);
+            g.Define("CREATE_TIMER", ScriptDatum.FromBonding(Functions.CREATE_TIMER));
+            g.Define("INPUT_NUMBER", ScriptDatum.FromBonding(Functions.CLIENT_INPUT_NUMBER), false, true);
+            g.Define("md5_native", ScriptDatum.FromBonding(Functions.MD5_NATIVE), false, true);
             var fo = new TestObject();
             g.SetPropertyValue("fo", fo);
         }

@@ -13,10 +13,10 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
 
         internal ArrayConstructor() : base("Array", true)
         {
-            Define("from", new BondingFunction(FROM), writeable: false, enumerable: false);
-            Define("isArray", new BondingFunction(IS_ARRAY), writeable: false, enumerable: false);
-            Define("of", new BondingFunction(OF), writeable: false, enumerable: false);
-            Define("withCapacity", new BondingFunction(WITH_CAPACITY), writeable: false, enumerable: false);
+            Define("from", ScriptDatum.FromBonding(FROM), writeable: false, enumerable: false);
+            Define("isArray", ScriptDatum.FromBonding(IS_ARRAY), writeable: false, enumerable: false);
+            Define("of", ScriptDatum.FromBonding(OF), writeable: false, enumerable: false);
+            Define("withCapacity", ScriptDatum.FromBonding(WITH_CAPACITY), writeable: false, enumerable: false);
             Frozen();
         }
 

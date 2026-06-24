@@ -40,118 +40,118 @@ namespace AuroraScript.Runtime.Types
         static Prototypes()
         {
             // --- ScriptObject ---
-            ObjectPrototype.Define("toString", new BondingFunction(ScriptObject.TOSTRING), writeable: false, enumerable: false);
-            ObjectPrototype.Define("length", new BondingGetter(ScriptObject.LENGTH), writeable: false, enumerable: false);
+            ObjectPrototype.Define("toString", ScriptDatum.FromBonding(ScriptObject.TOSTRING), writeable: false, enumerable: false);
+            ObjectPrototype.Define("length", ScriptDatum.FromBondingGetter(ScriptObject.LENGTH), writeable: false, enumerable: false);
             ObjectPrototype.Frozen();
 
             // --- Boolean ---
-            BooleanValuePrototype.Define("toString", new BondingFunction(BooleanValue.TOSTRING), writeable: false, enumerable: false);
+            BooleanValuePrototype.Define("toString", ScriptDatum.FromBonding(BooleanValue.TOSTRING), writeable: false, enumerable: false);
             BooleanValuePrototype.Frozen();
 
             // --- Regex ---
-            RegexPrototype.Define("test", new BondingFunction(ScriptRegex.TEST), writeable: false, enumerable: false);
+            RegexPrototype.Define("test", ScriptDatum.FromBonding(ScriptRegex.TEST), writeable: false, enumerable: false);
             RegexPrototype.Frozen();
 
             // --- HashMap ---
-            HashMapPrototype.Define("has", new BondingFunction(ScriptHashMap.HAS), writeable: false, enumerable: false);
-            HashMapPrototype.Define("set", new BondingFunction(ScriptHashMap.SET), writeable: false, enumerable: false);
-            HashMapPrototype.Define("get", new BondingFunction(ScriptHashMap.GET), writeable: false, enumerable: false);
-            HashMapPrototype.Define("getOrInsert", new BondingFunction(ScriptHashMap.OGETORINSERT), writeable: false, enumerable: false);
-            HashMapPrototype.Define("delete", new BondingFunction(ScriptHashMap.DELETE), writeable: false, enumerable: false);
-            HashMapPrototype.Define("clear", new BondingFunction(ScriptHashMap.CLEAR), writeable: false, enumerable: false);
-            HashMapPrototype.Define("keys", new BondingGetter(ScriptHashMap.KEYS), writeable: false, enumerable: false);
-            HashMapPrototype.Define("values", new BondingGetter(ScriptHashMap.VALUES), writeable: false, enumerable: false);
-            HashMapPrototype.Define("size", new BondingGetter(ScriptHashMap.SIZE), writeable: false, enumerable: false);
+            HashMapPrototype.Define("has", ScriptDatum.FromBonding(ScriptHashMap.HAS), writeable: false, enumerable: false);
+            HashMapPrototype.Define("set", ScriptDatum.FromBonding(ScriptHashMap.SET), writeable: false, enumerable: false);
+            HashMapPrototype.Define("get", ScriptDatum.FromBonding(ScriptHashMap.GET), writeable: false, enumerable: false);
+            HashMapPrototype.Define("getOrInsert", ScriptDatum.FromBonding(ScriptHashMap.OGETORINSERT), writeable: false, enumerable: false);
+            HashMapPrototype.Define("delete", ScriptDatum.FromBonding(ScriptHashMap.DELETE), writeable: false, enumerable: false);
+            HashMapPrototype.Define("clear", ScriptDatum.FromBonding(ScriptHashMap.CLEAR), writeable: false, enumerable: false);
+            HashMapPrototype.Define("keys", ScriptDatum.FromBondingGetter(ScriptHashMap.KEYS), writeable: false, enumerable: false);
+            HashMapPrototype.Define("values", ScriptDatum.FromBondingGetter(ScriptHashMap.VALUES), writeable: false, enumerable: false);
+            HashMapPrototype.Define("size", ScriptDatum.FromBondingGetter(ScriptHashMap.SIZE), writeable: false, enumerable: false);
             HashMapPrototype.Frozen();
 
             // --- DATE ---
-            DatePrototype.Define("year", new BondingGetter(ScriptDate.YEAR), writeable: false, enumerable: false);
-            DatePrototype.Define("month", new BondingGetter(ScriptDate.MONTH), writeable: false, enumerable: false);
-            DatePrototype.Define("day", new BondingGetter(ScriptDate.DAY), writeable: false, enumerable: false);
-            DatePrototype.Define("hour", new BondingGetter(ScriptDate.HOUR), writeable: false, enumerable: false);
-            DatePrototype.Define("minute", new BondingGetter(ScriptDate.MINUTE), writeable: false, enumerable: false);
-            DatePrototype.Define("second", new BondingGetter(ScriptDate.SECOND), writeable: false, enumerable: false);
-            DatePrototype.Define("millisecond", new BondingGetter(ScriptDate.MILLISECCOND), writeable: false, enumerable: false);
-            DatePrototype.Define("dayOfWeek", new BondingGetter(ScriptDate.DAYOFWEEK), writeable: false, enumerable: false);
-            DatePrototype.Define("dayOfYear", new BondingGetter(ScriptDate.DAYOFYEAR), writeable: false, enumerable: false);
-            DatePrototype.Define("ticks", new BondingGetter(ScriptDate.TICKS), writeable: false, enumerable: false);
-            DatePrototype.Define("toString", new BondingFunction(ScriptDateConstructor.TOSTRING), writeable: false, enumerable: false);
+            DatePrototype.Define("year", ScriptDatum.FromBondingGetter(ScriptDate.YEAR), writeable: false, enumerable: false);
+            DatePrototype.Define("month", ScriptDatum.FromBondingGetter(ScriptDate.MONTH), writeable: false, enumerable: false);
+            DatePrototype.Define("day", ScriptDatum.FromBondingGetter(ScriptDate.DAY), writeable: false, enumerable: false);
+            DatePrototype.Define("hour", ScriptDatum.FromBondingGetter(ScriptDate.HOUR), writeable: false, enumerable: false);
+            DatePrototype.Define("minute", ScriptDatum.FromBondingGetter(ScriptDate.MINUTE), writeable: false, enumerable: false);
+            DatePrototype.Define("second", ScriptDatum.FromBondingGetter(ScriptDate.SECOND), writeable: false, enumerable: false);
+            DatePrototype.Define("millisecond", ScriptDatum.FromBondingGetter(ScriptDate.MILLISECCOND), writeable: false, enumerable: false);
+            DatePrototype.Define("dayOfWeek", ScriptDatum.FromBondingGetter(ScriptDate.DAYOFWEEK), writeable: false, enumerable: false);
+            DatePrototype.Define("dayOfYear", ScriptDatum.FromBondingGetter(ScriptDate.DAYOFYEAR), writeable: false, enumerable: false);
+            DatePrototype.Define("ticks", ScriptDatum.FromBondingGetter(ScriptDate.TICKS), writeable: false, enumerable: false);
+            DatePrototype.Define("toString", ScriptDatum.FromBonding(ScriptDateConstructor.TOSTRING), writeable: false, enumerable: false);
             DatePrototype.Frozen();
 
             // --- Callable ---
             CallablePrototype.Frozen();
 
             // --- Null ---
-            NullValuePrototype.Define("toString", new BondingFunction(NullValue.TOSTRING), writeable: false, enumerable: false);
+            NullValuePrototype.Define("toString", ScriptDatum.FromBonding(NullValue.TOSTRING), writeable: false, enumerable: false);
             NullValuePrototype.Frozen();
 
             // --- Number ---
-            NumberValuePrototype.Define("toString", new BondingFunction(NumberValue.TOSTRING), writeable: false, enumerable: false);
+            NumberValuePrototype.Define("toString", ScriptDatum.FromBonding(NumberValue.TOSTRING), writeable: false, enumerable: false);
             NumberValuePrototype.Frozen();
 
             // --- Array ---
-            ScriptArrayPrototype.Define("has", new BondingFunction(ScriptArray.HAS), writeable: false, enumerable: false);
-            ScriptArrayPrototype.Define("indexOf", new BondingFunction(ScriptArray.INDEXOF), writeable: false, enumerable: false);
-            ScriptArrayPrototype.Define("lastIndexOf", new BondingFunction(ScriptArray.LASTINDEXOF), writeable: false, enumerable: false);
-            ScriptArrayPrototype.Define("length", new BondingGetter(ScriptArray.LENGTH), writeable: false, enumerable: false);
-            ScriptArrayPrototype.Define("push", new BondingFunction(ScriptArray.PUSH), writeable: false, enumerable: false);
-            ScriptArrayPrototype.Define("pop", new BondingFunction(ScriptArray.POP), writeable: false, enumerable: false);
-            ScriptArrayPrototype.Define("sort", new BondingFunction(ScriptArray.SORT), writeable: false, enumerable: false);
-            ScriptArrayPrototype.Define("join", new BondingFunction(ScriptArray.JOIN), writeable: false, enumerable: false);
-            ScriptArrayPrototype.Define("slice", new BondingFunction(ScriptArray.SLICE), writeable: false, enumerable: false);
-            ScriptArrayPrototype.Define("reverse", new BondingFunction(ScriptArray.REVERSE), writeable: false, enumerable: false);
-            ScriptArrayPrototype.Define("unshift", new BondingFunction(ScriptArray.UNSHIFT), writeable: false, enumerable: false);
-            ScriptArrayPrototype.Define("shift", new BondingFunction(ScriptArray.SHIFT), writeable: false, enumerable: false);
-            ScriptArrayPrototype.Define("concat", new BondingFunction(ScriptArray.CONCAT), writeable: false, enumerable: false);
-            ScriptArrayPrototype.Define("find", new BondingFunction(ScriptArray.FIND), writeable: false, enumerable: false);
-            ScriptArrayPrototype.Define("findIndex", new BondingFunction(ScriptArray.FINDINDEX), writeable: false, enumerable: false);
-            ScriptArrayPrototype.Define("findLast", new BondingFunction(ScriptArray.FINDLAST), writeable: false, enumerable: false);
-            ScriptArrayPrototype.Define("findLastIndex", new BondingFunction(ScriptArray.FINDLASTINDEX), writeable: false, enumerable: false);
-            ScriptArrayPrototype.Define("map", new BondingFunction(ScriptArray.MAP), writeable: false, enumerable: false);
-            ScriptArrayPrototype.Define("filter", new BondingFunction(ScriptArray.FILTER), writeable: false, enumerable: false);
-            ScriptArrayPrototype.Define("some", new BondingFunction(ScriptArray.SOME), writeable: false, enumerable: false);
-            ScriptArrayPrototype.Define("every", new BondingFunction(ScriptArray.EVERY), writeable: false, enumerable: false);
-            ScriptArrayPrototype.Define("flat", new BondingFunction(ScriptArray.FLAT), writeable: false, enumerable: false);
-            ScriptArrayPrototype.Define("reduce", new BondingFunction(ScriptArray.REDUCE), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("has", ScriptDatum.FromBonding(ScriptArray.HAS), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("indexOf", ScriptDatum.FromBonding(ScriptArray.INDEXOF), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("lastIndexOf", ScriptDatum.FromBonding(ScriptArray.LASTINDEXOF), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("length", ScriptDatum.FromBondingGetter(ScriptArray.LENGTH), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("push", ScriptDatum.FromBonding(ScriptArray.PUSH), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("pop", ScriptDatum.FromBonding(ScriptArray.POP), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("sort", ScriptDatum.FromBonding(ScriptArray.SORT), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("join", ScriptDatum.FromBonding(ScriptArray.JOIN), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("slice", ScriptDatum.FromBonding(ScriptArray.SLICE), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("reverse", ScriptDatum.FromBonding(ScriptArray.REVERSE), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("unshift", ScriptDatum.FromBonding(ScriptArray.UNSHIFT), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("shift", ScriptDatum.FromBonding(ScriptArray.SHIFT), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("concat", ScriptDatum.FromBonding(ScriptArray.CONCAT), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("find", ScriptDatum.FromBonding(ScriptArray.FIND), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("findIndex", ScriptDatum.FromBonding(ScriptArray.FINDINDEX), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("findLast", ScriptDatum.FromBonding(ScriptArray.FINDLAST), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("findLastIndex", ScriptDatum.FromBonding(ScriptArray.FINDLASTINDEX), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("map", ScriptDatum.FromBonding(ScriptArray.MAP), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("filter", ScriptDatum.FromBonding(ScriptArray.FILTER), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("some", ScriptDatum.FromBonding(ScriptArray.SOME), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("every", ScriptDatum.FromBonding(ScriptArray.EVERY), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("flat", ScriptDatum.FromBonding(ScriptArray.FLAT), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("reduce", ScriptDatum.FromBonding(ScriptArray.REDUCE), writeable: false, enumerable: false);
             ScriptArrayPrototype.Frozen();
 
 
 
             // --- String ---
-            StringValuePrototype.Define("length", new BondingGetter(StringValue.LENGTH), writeable: false, enumerable: false);
-            StringValuePrototype.Define("contains", new BondingFunction(StringValue.CONTANINS), writeable: false, enumerable: false);
-            StringValuePrototype.Define("indexOf", new BondingFunction(StringValue.INDEXOF), writeable: false, enumerable: false);
-            StringValuePrototype.Define("lastIndexOf", new BondingFunction(StringValue.LASTINDEXOF), writeable: false, enumerable: false);
-            StringValuePrototype.Define("startsWith", new BondingFunction(StringValue.STARTSWITH), writeable: false, enumerable: false);
-            StringValuePrototype.Define("endsWith", new BondingFunction(StringValue.ENDSWITH), writeable: false, enumerable: false);
-            StringValuePrototype.Define("substring", new BondingFunction(StringValue.SUBSTRING), writeable: false, enumerable: false);
-            StringValuePrototype.Define("split", new BondingFunction(StringValue.SPLIT), writeable: false, enumerable: false);
-            StringValuePrototype.Define("match", new BondingFunction(StringValue.MATCH), writeable: false, enumerable: false);
-            StringValuePrototype.Define("matchAll", new BondingFunction(StringValue.MATCHALL), writeable: false, enumerable: false);
-            StringValuePrototype.Define("replace", new BondingFunction(StringValue.REPLACE), writeable: false, enumerable: false);
-            StringValuePrototype.Define("padLeft", new BondingFunction(StringValue.PADLEFT), writeable: false, enumerable: false);
-            StringValuePrototype.Define("padRight", new BondingFunction(StringValue.PADRIGHT), writeable: false, enumerable: false);
-            StringValuePrototype.Define("trim", new BondingFunction(StringValue.TRIM), writeable: false, enumerable: false);
-            StringValuePrototype.Define("trimLeft", new BondingFunction(StringValue.TRIMLEFT), writeable: false, enumerable: false);
-            StringValuePrototype.Define("trimRight", new BondingFunction(StringValue.TRIMRIGHT), writeable: false, enumerable: false);
-            StringValuePrototype.Define("slice", new BondingFunction(StringValue.SUBSTRING), writeable: false, enumerable: false);
-            StringValuePrototype.Define("toString", new BondingFunction(StringValue.TOSTRING), writeable: false, enumerable: false);
-            StringValuePrototype.Define("charCodeAt", new BondingFunction(StringValue.CHARCODEAT), writeable: false, enumerable: false);
-            StringValuePrototype.Define("toLowerCase", new BondingFunction(StringValue.TOLOWERCASE), writeable: false, enumerable: false);
-            StringValuePrototype.Define("toUpperCase", new BondingFunction(StringValue.TOUPPERCASE), writeable: false, enumerable: false);
+            StringValuePrototype.Define("length", ScriptDatum.FromBondingGetter(StringValue.LENGTH), writeable: false, enumerable: false);
+            StringValuePrototype.Define("contains", ScriptDatum.FromBonding(StringValue.CONTANINS), writeable: false, enumerable: false);
+            StringValuePrototype.Define("indexOf", ScriptDatum.FromBonding(StringValue.INDEXOF), writeable: false, enumerable: false);
+            StringValuePrototype.Define("lastIndexOf", ScriptDatum.FromBonding(StringValue.LASTINDEXOF), writeable: false, enumerable: false);
+            StringValuePrototype.Define("startsWith", ScriptDatum.FromBonding(StringValue.STARTSWITH), writeable: false, enumerable: false);
+            StringValuePrototype.Define("endsWith", ScriptDatum.FromBonding(StringValue.ENDSWITH), writeable: false, enumerable: false);
+            StringValuePrototype.Define("substring", ScriptDatum.FromBonding(StringValue.SUBSTRING), writeable: false, enumerable: false);
+            StringValuePrototype.Define("split", ScriptDatum.FromBonding(StringValue.SPLIT), writeable: false, enumerable: false);
+            StringValuePrototype.Define("match", ScriptDatum.FromBonding(StringValue.MATCH), writeable: false, enumerable: false);
+            StringValuePrototype.Define("matchAll", ScriptDatum.FromBonding(StringValue.MATCHALL), writeable: false, enumerable: false);
+            StringValuePrototype.Define("replace", ScriptDatum.FromBonding(StringValue.REPLACE), writeable: false, enumerable: false);
+            StringValuePrototype.Define("padLeft", ScriptDatum.FromBonding(StringValue.PADLEFT), writeable: false, enumerable: false);
+            StringValuePrototype.Define("padRight", ScriptDatum.FromBonding(StringValue.PADRIGHT), writeable: false, enumerable: false);
+            StringValuePrototype.Define("trim", ScriptDatum.FromBonding(StringValue.TRIM), writeable: false, enumerable: false);
+            StringValuePrototype.Define("trimLeft", ScriptDatum.FromBonding(StringValue.TRIMLEFT), writeable: false, enumerable: false);
+            StringValuePrototype.Define("trimRight", ScriptDatum.FromBonding(StringValue.TRIMRIGHT), writeable: false, enumerable: false);
+            StringValuePrototype.Define("slice", ScriptDatum.FromBonding(StringValue.SUBSTRING), writeable: false, enumerable: false);
+            StringValuePrototype.Define("toString", ScriptDatum.FromBonding(StringValue.TOSTRING), writeable: false, enumerable: false);
+            StringValuePrototype.Define("charCodeAt", ScriptDatum.FromBonding(StringValue.CHARCODEAT), writeable: false, enumerable: false);
+            StringValuePrototype.Define("toLowerCase", ScriptDatum.FromBonding(StringValue.TOLOWERCASE), writeable: false, enumerable: false);
+            StringValuePrototype.Define("toUpperCase", ScriptDatum.FromBonding(StringValue.TOUPPERCASE), writeable: false, enumerable: false);
             StringValuePrototype.Frozen();
 
 
 
 
             // --- StringBuffer ---
-            StringBufferPrototype.Define("toString", new BondingFunction(StringBuffer.TO_STRING), writeable: false, enumerable: false);
-            StringBufferPrototype.Define("append", new BondingFunction(StringBuffer.APPEND), writeable: false, enumerable: false);
-            StringBufferPrototype.Define("insert", new BondingFunction(StringBuffer.INSERT), writeable: false, enumerable: false);
-            StringBufferPrototype.Define("appendLine", new BondingFunction(StringBuffer.APPEND_LINE), writeable: false, enumerable: false);
-            StringBufferPrototype.Define("clear", new BondingFunction(StringBuffer.CLEAR), writeable: false, enumerable: false);
-            StringBufferPrototype.Define("release", new BondingFunction(StringBuffer.RELEASE), writeable: false, enumerable: false);
-            StringBufferPrototype.Define("stringAndRelease", new BondingFunction(StringBuffer.STRINGANDRELEASE), writeable: false, enumerable: false);
+            StringBufferPrototype.Define("toString", ScriptDatum.FromBonding(StringBuffer.TO_STRING), writeable: false, enumerable: false);
+            StringBufferPrototype.Define("append", ScriptDatum.FromBonding(StringBuffer.APPEND), writeable: false, enumerable: false);
+            StringBufferPrototype.Define("insert", ScriptDatum.FromBonding(StringBuffer.INSERT), writeable: false, enumerable: false);
+            StringBufferPrototype.Define("appendLine", ScriptDatum.FromBonding(StringBuffer.APPEND_LINE), writeable: false, enumerable: false);
+            StringBufferPrototype.Define("clear", ScriptDatum.FromBonding(StringBuffer.CLEAR), writeable: false, enumerable: false);
+            StringBufferPrototype.Define("release", ScriptDatum.FromBonding(StringBuffer.RELEASE), writeable: false, enumerable: false);
+            StringBufferPrototype.Define("stringAndRelease", ScriptDatum.FromBonding(StringBuffer.STRINGANDRELEASE), writeable: false, enumerable: false);
             StringBufferPrototype.Frozen();
         }
     }

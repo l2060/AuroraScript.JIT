@@ -122,6 +122,8 @@ var domain = engine.CreateDomain(userState: userState);
 
 `userState` 必须继承 `ScriptObject`。脚本中可通过 `$state` 访问该对象：
 
+如果值已经是运行时表示，可直接调用 `Define(string, ScriptDatum, ...)`，避免先装箱成 `ScriptObject` 再转换回 `ScriptDatum`。
+
 ```javascript
 @module(MAIN);
 
@@ -137,6 +139,7 @@ var domain = engine.CreateDomain(global =>
 {
     global.Define("HOST_ADD", (Func<int, int, int>)((a, b) => a + b));
     global.Define("HOST_NAME", "Aurora");
+    global.Define("HOST_COUNT", ScriptDatum.FromNumber(3));
 });
 ```
 
@@ -175,6 +178,8 @@ var result = block.Invoke(ScriptDatum.FromNumber(125));
 ```
 
 参数名通过 `CompileBlockOptions.Parameters` 声明，运行时按位置传入。参数名不能为空、不能重复，且不能使用 `global`、`$args`、`$state`。
+
+`CompiledBlock` 无引用后会通过 GC finalizer 自动释放编译期间注册的动态 delegate；需要确定性释放时也可以显式调用 `Dispose()`。
 
 ## 编译模式
 
@@ -342,6 +347,9 @@ func normalCall(value) {
 - `Array.from(iterable, [mapCallback])`
 - `Array.isArray(value)`
 - `Array.of(...items)`
+- `Array.withCapacity(capacity)`
+
+`Array.withCapacity(capacity)` 创建 `length` 为 0 的数组并预留底层容量；不同于 `new Array(n)`，它不会创建 `n` 个空/null 槽位，适合已知追加规模的 `push` 场景。
 
 实例成员：
 
@@ -534,22 +542,23 @@ export func run() {
 
 测试项目：`tests/AuroraScript.Tests`
 
-当前 `net10.0` test discovery 共发现 **295** 个测试用例。按测试类统计：
+当前 `net10.0` test discovery 共发现 **395** 个测试用例。按测试类统计：
 
 | 测试类 | 用例数 | 覆盖重点 |
 |---|---:|---|
 | `LexerTests` | 37 | 词法、数字/字符串/正则、注释、错误 token |
 | `ParserSyntaxTests` | 85 | 语法分支、模块声明、import/include/export、函数注解、错误语法诊断 |
-| `ExpressionExecutionTests` | 35 | 表达式、运算符、成员/索引访问、spread、赋值 |
+| `ExpressionExecutionTests` | 38 | 表达式、运算符、成员/索引访问、spread、赋值 |
 | `StatementExecutionTests` | 7 | 控制流、循环、闭包、递归、异常、Domain 隔离 |
 | `LanguageFeatureExecutionTests` | 16 | enum、Lambda、稀疏数组、truthiness、模板、赋值语义 |
 | `ModuleCompilationTests` | 12 | 模块依赖、并行编译、循环依赖、错误聚合、取消 |
-| `CompileBlockTests` | 21 | CompileBlock 参数、调用方式、错误输入和诊断 |
-| `CompilationModeTests` | 5 | Dynamic/OnlyRun/Persistence 行为和热重载开关 |
-| `RuntimeApiAndErrorTests` | 10 | 运行时 API、错误路径、`$state`、释放后行为 |
-| `BuiltInLibraryTests` | 11 | Math、String、Array、JSON、HashMap、Regex、StringBuffer、Console |
+| `CompilerBackendPlanTests` | 80 | backend plan、direct call、闭包/upvalue、slot/lowering、控制流和常量折叠计划 |
+| `CompileBlockTests` | 23 | CompileBlock 参数、调用方式、错误输入、诊断和动态 delegate 生命周期 |
+| `CompilationModeTests` | 6 | Dynamic/OnlyRun/Persistence 行为和热重载开关 |
+| `RuntimeApiAndErrorTests` | 11 | 运行时 API、错误路径、`$state`、释放后行为 |
+| `BuiltInLibraryTests` | 12 | Math、String、Array、JSON、HashMap、Regex、StringBuffer、Console |
 | `AdvancedRuntimeTypeTests` | 6 | 构造器、Object、freeze、Date、Proxy |
-| `ClrInteropTests` | 8 | CLR 构造/属性/字段/方法/重载/访问限制 |
+| `ClrInteropTests` | 9 | CLR 构造/属性/字段/方法/重载/访问限制 |
 | `SerializationTests` | 9 | JSON 序列化/反序列化、循环引用、异常 JSON |
 | `ScriptDatumTests` | 4 | Datum payload、相等性、CLR 集合转换、Span helper |
 | `HotReloadTests` | 4 | 热重载禁用、增量补丁、替换补丁、Domain 隔离 |
@@ -557,14 +566,17 @@ export func run() {
 | `ReleaseRegressionTests` | 9 | Release 直连调用、闭包槽位、栈平衡、混淆、空模块 |
 | `ClosureFunctionContextTests` | 3 | 上下文池生命周期和 detached 调用 |
 | `EngineOptionsAndSourceTests` | 10 | EngineOptions、Source 路径、扩展名、并行度、空输入 |
+| `CoreSemanticsRegressionTests` | 11 | 基础语义、null 加法、coercion、短路逻辑、数组容量/索引、对象属性、闭包/循环 |
 
 覆盖范围摘要：
 
 - Lexer：关键字、标识符、Unicode、运算符、数字、字符串、正则、注释、CRLF 位置、错误 token。
 - Parser：模块元数据、import/include/export、声明、表达式、Lambda、解构、控制流、异常、模板、正则、错误诊断。
-- CompileBlock：参数校验、局部函数、domain/no-domain 调用、模块语法拒绝、source name、空输入。
+- CompileBlock：参数校验、局部函数、domain/no-domain 调用、模块语法拒绝、source name、空输入、动态 delegate 释放。
 - 表达式/语句：优先级、算术、位运算、比较、逻辑、成员访问、spread、赋值、循环、异常、闭包、递归。
+- 基础语义回归：null 数值加法、字符串参与加法、truthiness、短路返回值、数组容量与 `new Array(n)` 语义、对象属性和闭包循环。
 - 模块编译：相对路径、菱形依赖、重复根、并行依赖图、循环依赖、错误聚合、取消、并发 build。
+- 编译后端计划：direct call、函数注解、slot/upvalue 绑定、lowering、控制流、常量折叠和 runtime helper 调用计划。
 - 编译模式：Dynamic、OnlyRun、Persistence 的行为一致性；net8 下 Persistence 限制。
 - 运行时 API 和错误：未 Build 使用、缺失模块/方法、脚本堆栈、const 写入、`$state`、释放。
 - 内置库：Math、String、Array、JSON、HashMap、Regex、StringBuffer、Console、Date、Proxy。

@@ -31,7 +31,7 @@ namespace AuroraScript.Runtime
             {
                 return ScriptDatum.FromString(string.Concat(ToStringForConcat(a), ToStringForConcat(b)));
             }
-            if (TryToNumberForAdd(a, out var na) && TryToNumberForAdd(b, out var nb))
+            if (TryToNumberForArithmetic(a, out var na) && TryToNumberForArithmetic(b, out var nb))
             {
                 return ScriptDatum.FromNumber(na + nb);
             }
@@ -42,7 +42,7 @@ namespace AuroraScript.Runtime
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool TryToNumberForAdd(ScriptDatum value, out double number)
+        private static bool TryToNumberForArithmetic(ScriptDatum value, out double number)
         {
             if (value.Kind == ValueKind.Null)
             {
@@ -98,7 +98,7 @@ namespace AuroraScript.Runtime
             {
                 return ScriptDatum.FromNumber(a.Number - b.Number);
             }
-            else if (ScriptDatum.TryToNumber(a, out var na) && ScriptDatum.TryToNumber(b, out var nb))
+            else if (TryToNumberForArithmetic(a, out var na) && TryToNumberForArithmetic(b, out var nb))
             {
                 return ScriptDatum.FromNumber(na - nb);
             }
@@ -119,7 +119,7 @@ namespace AuroraScript.Runtime
             {
                 return ScriptDatum.FromNumber(a.Number * b.Number);
             }
-            else if (ScriptDatum.TryToNumber(a, out var na) && ScriptDatum.TryToNumber(b, out var nb))
+            else if (TryToNumberForArithmetic(a, out var na) && TryToNumberForArithmetic(b, out var nb))
             {
                 return ScriptDatum.FromNumber(na * nb);
             }
@@ -140,7 +140,7 @@ namespace AuroraScript.Runtime
             {
                 return ScriptDatum.FromNumber(a.Number / b.Number);
             }
-            else if (ScriptDatum.TryToNumber(a, out var na) && ScriptDatum.TryToNumber(b, out var nb))
+            else if (TryToNumberForArithmetic(a, out var na) && TryToNumberForArithmetic(b, out var nb))
             {
                 return ScriptDatum.FromNumber(na / nb);
             }
@@ -161,7 +161,7 @@ namespace AuroraScript.Runtime
             {
                 return ScriptDatum.FromNumber(a.Number % b.Number);
             }
-            else if (ScriptDatum.TryToNumber(a, out var na) && ScriptDatum.TryToNumber(b, out var nb))
+            else if (TryToNumberForArithmetic(a, out var na) && TryToNumberForArithmetic(b, out var nb))
             {
                 return ScriptDatum.FromNumber(na % nb);
             }
@@ -388,7 +388,7 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum Negate(ScriptDatum a)
         {
-            if (ScriptDatum.TryToNumber(in a, out var value))
+            if (TryToNumberForArithmetic(a, out var value))
             {
                 return ScriptDatum.FromNumber(-value);
             }
