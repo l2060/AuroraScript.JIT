@@ -35,18 +35,26 @@ namespace AuroraScript.Compiler.Ast
     internal class FunctionDeclaration : Statement, INamedStatement
     {
 
-        internal FunctionDeclaration(MemberAccess access, Token identifier, IReadOnlyList<ParameterDeclaration> parameters, Statement body, FunctionFlags flags)
+        internal FunctionDeclaration(
+            MemberAccess access,
+            Token identifier,
+            IReadOnlyList<ParameterDeclaration> parameters,
+            Statement body,
+            FunctionFlags flags,
+            IReadOnlyList<FunctionAnnotation> annotations = null)
         {
             Access = access;
             Name = identifier;
             Parameters = parameters ?? Array.Empty<ParameterDeclaration>();
             Body = body;
             Flags = flags;
+            Annotations = annotations ?? Array.Empty<FunctionAnnotation>();
             if (Parameters.Count > 0)
             {
                 for (int i = 0; i < Parameters.Count; i++) Parameters[i].Parent = this;
             }
             if (body != null) body.Parent = this;
+            for (var i = 0; i < Annotations.Count; i++) Annotations[i].Parent = this;
         }
 
 
@@ -79,11 +87,17 @@ namespace AuroraScript.Compiler.Ast
 
         public FunctionFlags Flags { get; private set; }
 
+        public IReadOnlyList<FunctionAnnotation> Annotations { get; private set; }
+
 
         public override IEnumerable<AstNode> ChildNodes
         {
             get
             {
+                if (Annotations.Count > 0)
+                {
+                    foreach (var annotation in Annotations) yield return annotation;
+                }
                 if (Parameters.Count > 0)
                 {
                     foreach (var param in Parameters) yield return param;

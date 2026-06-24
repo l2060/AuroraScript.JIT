@@ -88,6 +88,8 @@ namespace AuroraScript.Runtime
         /// <summary> The closure function that is the target of this execution context. </summary>
         public ClosureFunction Target;
 
+        internal string DirectName;
+
         /// <summary> The next context in a linked list or stack of execution contexts (e.g., for call frames). </summary>
         public ScriptContext Next;
 
@@ -143,6 +145,14 @@ namespace AuroraScript.Runtime
             return next;
         }
 
+        internal ScriptContext WithDirect(ScriptModule module, string name)
+        {
+            var next = Domain.ContextPool.Rent(Domain, UserState, module, null);
+            next.DirectName = name;
+            LinkNext(next);
+            return next;
+        }
+
         /// <summary>
         /// Creates a new child execution context with a specific module, closure, and user state.
         /// </summary>
@@ -179,6 +189,7 @@ namespace AuroraScript.Runtime
             UserState = userState;
             Module = module;
             Target = closure;
+            DirectName = null;
             Upvalues = closure?.Upvalues;
             Next = null;
             Previous = null;
@@ -235,7 +246,7 @@ namespace AuroraScript.Runtime
             {
                 UnionNumber m = new UnionNumber(c.Location);
                 var moduleMeta = Global.modulePathHash[m.Int32ValueH];
-                stackTraces.Add(new AuroraStackTrace(moduleMeta.ModulePath, c.Target?.FuncName, m.Int32ValueL));
+                stackTraces.Add(new AuroraStackTrace(moduleMeta.ModulePath, c.Target?.FuncName ?? c.DirectName, m.Int32ValueL));
                 c = c.Previous;
             }
             return stackTraces.ToArray();
@@ -258,7 +269,7 @@ namespace AuroraScript.Runtime
                     UnionNumber m = new UnionNumber(c.Location);
                     if (Global.modulePathHash.TryGetValue(m.Int32ValueH, out var moduleMeta))
                     {
-                        stackTraces.Add(new AuroraStackTrace(moduleMeta.ModulePath, c.Target?.FuncName, m.Int32ValueL));
+                        stackTraces.Add(new AuroraStackTrace(moduleMeta.ModulePath, c.Target?.FuncName ?? c.DirectName, m.Int32ValueL));
                     }
                 }
                 c = c.Next;

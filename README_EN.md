@@ -40,6 +40,7 @@ The project is built as `AnyCPU`. The runtime has no native dependency, so `Dyna
 - **Three compilation modes**: Choose between dynamic methods, in-memory assemblies, and persisted DLL/PDB output.
 - **CLR interop**: Register CLR types and call constructors, properties, fields, instance methods, static methods, overloads, optional parameters, and `params` arguments from scripts.
 - **Runtime hot patching**: Apply patches from the host with `DynamicPatch` or from scripts with `HotPatch.replace` / `HotPatch.incremental`.
+- **Explicit performance annotations**: Mark hot module functions with `@directCall` so eligible call sites can use a more direct execution path.
 - **Modules and domain isolation**: Supports `@module`, `import`, and `include`. Each `ScriptDomain` has its own global object and module instances.
 - **CompileBlock**: Compile small script blocks outside the module system for formulas, filters, and high-frequency rules.
 - **Built-in standard objects**: `Object`, `Array`, `String`, `Date`, `Regex`, `HashMap`, `StringBuffer`, `JSON`, `Math`, `console`, `Proxy`, and `HotPatch`.
@@ -190,7 +191,7 @@ Limitations:
 
 ## Hot Patching
 
-Hot patching is controlled by `EngineOptions.EnableHotReload` and is enabled by default. Disabling it blocks host-side `DynamicPatch` and script-side `HotPatch`, and allows the compiler to use more aggressive module-local direct-call optimizations.
+Hot patching is controlled by `EngineOptions.EnableHotReload` and is enabled by default. Disabling it blocks host-side `DynamicPatch` and script-side `HotPatch`.
 
 Host side:
 
@@ -211,13 +212,73 @@ Notes:
 
 - `Replace` clears existing members of the target module before applying new code.
 - `Incremental` preserves existing members and adds or updates members declared in the patch.
+- The host or script author chooses between `Replace` and `Incremental` based on the patch scope. When a patch changes a group of functions that call each other, `Replace` is usually a better fit for keeping the module contents consistent.
 - Top-level code in the patch source is executed when the patch is applied.
+
+## Module and Function Annotations
+
+Declare a module name with `@module(NAME);`. `@module` must be the first effective statement in a module; only whitespace or comments may appear before it.
+
+```javascript
+// module metadata must be first
+@module(MAIN);
+
+export func run() {
+    return 42;
+}
+```
+
+Function annotations are written before function declarations. The currently supported function annotation is `@directCall`.
+
+```javascript
+@module(MAIN);
+
+@directCall
+func addOne(value) {
+    return value + 1;
+}
+
+export func run(value) {
+    return addOne(value);
+}
+```
+
+`@directCall` and `@directCall()` are equivalent. They explicitly enable module-local direct-call optimization for the function while preserving the function object on the module, so the function can still be exported, read, or invoked from the host.
+
+```javascript
+@module(MAIN);
+
+@directCall()
+export func checksum(value) {
+    return value + 100;
+}
+```
+
+When automatic module direct-call inference is enabled, use `@directCall(false)` to disable the optimization for one function:
+
+```javascript
+@module(MAIN);
+
+@directCall(false)
+func normalCall(value) {
+    return value;
+}
+```
+
+Hosts can enable automatic inference with `EngineOptions.WithEnableAutoModuleDirectCall(true)`. Explicit `@directCall` does not depend on that option; marked functions are still considered for direct calls when automatic inference is disabled.
+
+Usage guidance:
+
+- `@directCall` is intended for stable, frequently called module-level functions with fixed parameters.
+- Functions that use default parameters, `$args`, captured outer variables, or other dynamic call shapes continue to use the normal function-call path.
+- Do not reassign the name of a function marked with `@directCall` inside the module.
 
 ## Language Features
 
 The current test suite and examples cover:
 
 - `var` / `const` / `func` / `function` / `return`
+- `@module`, `@directCall`
 - `if` / `else` / `for` / `for-in` / `while` / `break` / `continue`
 - `try` / `catch` / `finally` / `throw`
 - `enum`
@@ -473,19 +534,19 @@ Tested capabilities:
 
 Test project: `tests/AuroraScript.Tests`
 
-Current `net10.0` test discovery finds **288** test cases. Breakdown by test class:
+Current `net10.0` test discovery finds **295** test cases. Breakdown by test class:
 
 | Test class | Cases | Focus |
 |---|---:|---|
 | `LexerTests` | 37 | Lexing, numbers/strings/regex, comments, malformed tokens |
-| `ParserSyntaxTests` | 79 | Grammar branches, modules, import/include/export, syntax diagnostics |
+| `ParserSyntaxTests` | 85 | Grammar branches, modules, import/include/export, function annotations, syntax diagnostics |
 | `ExpressionExecutionTests` | 35 | Expressions, operators, member/index access, spread, assignment |
 | `StatementExecutionTests` | 7 | Control flow, loops, closures, recursion, exceptions, domain isolation |
 | `LanguageFeatureExecutionTests` | 16 | enum, lambdas, sparse arrays, truthiness, templates, assignment semantics |
 | `ModuleCompilationTests` | 12 | Dependencies, parallel compile, cycles, error aggregation, cancellation |
 | `CompileBlockTests` | 21 | CompileBlock parameters, invocation modes, invalid inputs, diagnostics |
 | `CompilationModeTests` | 5 | Dynamic/OnlyRun/Persistence behavior and hot-reload settings |
-| `RuntimeApiAndErrorTests` | 9 | Runtime APIs, error paths, `$state`, disposed domains |
+| `RuntimeApiAndErrorTests` | 10 | Runtime APIs, error paths, `$state`, disposed domains |
 | `BuiltInLibraryTests` | 11 | Math, String, Array, JSON, HashMap, Regex, StringBuffer, Console |
 | `AdvancedRuntimeTypeTests` | 6 | Constructors, Object, freeze, Date, Proxy |
 | `ClrInteropTests` | 8 | CLR constructors/properties/fields/methods/overloads/access restrictions |

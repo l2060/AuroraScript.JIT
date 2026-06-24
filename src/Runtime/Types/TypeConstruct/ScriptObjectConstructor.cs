@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace AuroraScript.Runtime.Types.TypeConstruct
 {
@@ -47,8 +46,12 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
         {
             if (args.TryGetObject(0, out var scriptObject))
             {
-                var keys = scriptObject.EnumerationKeys().Select(StringValue.Of).ToArray();
-                var array = new ScriptArray(keys);
+                var keys = scriptObject.EnumerationKeys();
+                var array = ScriptArray.CreateWithCapacity(keys.Count);
+                for (var i = 0; i < keys.Count; i++)
+                {
+                    array.SetElement(i, ScriptDatum.FromString(keys[i]));
+                }
                 ScriptDatum.WriteAsArray(ref result, array);
             }
             else

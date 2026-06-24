@@ -121,6 +121,17 @@ namespace AuroraScript.Runtime.Types
             return values;
         }
 
+        internal ScriptArray ValuesArray()
+        {
+            var array = ScriptArray.CreateWithCapacity(keyValues.Count);
+            var index = 0;
+            foreach (var value in keyValues.Values)
+            {
+                array.SetElement(index++, value);
+            }
+            return array;
+        }
+
         /// <summary> Returns an array of all keys in the hash map. </summary>
         public ScriptDatum[] Keys()
         {
@@ -132,6 +143,17 @@ namespace AuroraScript.Runtime.Types
                 keys[index++] = key;
             }
             return keys;
+        }
+
+        internal ScriptArray KeysArray()
+        {
+            var array = ScriptArray.CreateWithCapacity(keyValues.Count);
+            var index = 0;
+            foreach (var key in keyValues.Keys)
+            {
+                array.SetElement(index++, key);
+            }
+            return array;
         }
 
         /// <summary> Returns the number of elements in the hash map. </summary>

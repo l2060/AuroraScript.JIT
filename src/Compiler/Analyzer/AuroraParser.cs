@@ -128,18 +128,32 @@ namespace AuroraScript.Compiler.Analyzer
         {
             using (scopeStack.Scope(ScopeType.MODULE))
             {
+                var seenModuleSyntax = false;
                 while (true)
                 {
                     if (this.Lexer.TestNext(Symbols.KW_EOF)) break;
+                    var statementSymbol = this.Lexer.PeekSymbol();
                     // Use recursion for statements
                     var node = ParseStatement();
 
-                    if (node == null) continue;
+                    if (node == null)
+                    {
+                        if (statementSymbol == Symbols.PT_SEMICOLON)
+                        {
+                            seenModuleSyntax = true;
+                        }
+                        continue;
+                    }
 
                     node.IsIndependent = true;
 
                     if (node is ModuleMetaStatement meta)
                     {
+                        if (meta.Name.Value == "module" && seenModuleSyntax)
+                        {
+                            throw new AuroraParseException(this.Lexer.FullPath, meta.Name, "@module metadata must be the first effective statement in a module.");
+                        }
+
                         this.Root.MetaInfos[meta.Name.Value] = meta.Value?.Value;
                         if (meta.Name.Value == "module")
                         {
@@ -160,6 +174,8 @@ namespace AuroraScript.Compiler.Analyzer
                     {
                         this.Root.AddNode(node);
                     }
+
+                    seenModuleSyntax = true;
                 }
                 SetSourceRecursive(this.Root);
             }
@@ -230,7 +246,7 @@ namespace AuroraScript.Compiler.Analyzer
                 return null;
             }
 
-            if (symbol == Symbols.PT_METAINFO) { var res = ParseMetaInfo(); if (res != null) res.IsIndependent = true; return res; }
+            if (symbol == Symbols.PT_METAINFO) { var res = ParseMetaInfoOrAnnotatedFunction(); if (res != null) res.IsIndependent = true; return res; }
             if (symbol == Symbols.PT_LEFTBRACE) { var res = ParseBlock(); if (res != null) res.IsIndependent = true; return res; }
             if (symbol == Symbols.KW_IMPORT) { var res = ParseImport(); if (res != null) res.IsIndependent = true; return res; }
             if (symbol == Symbols.KW_INCLUDE) { var res = ParseInclude(); if (res != null) res.IsIndependent = true; return res; }
@@ -856,20 +872,83 @@ namespace AuroraScript.Compiler.Analyzer
             return IsIdentifierStart(c) || (c >= '0' && c <= '9');
         }
 
-        private Statement ParseMetaInfo()
+        private Statement ParseMetaInfoOrAnnotatedFunction()
+        {
+            var annotations = new List<FunctionAnnotation>();
+            var annotation = ParseAnnotation();
+            if (this.Lexer.TestNext(Symbols.PT_SEMICOLON))
+            {
+                if (annotation.Arguments.Count != 1 || annotation.Arguments[0] is not IdentifierToken)
+                {
+                    throw new AuroraParseException(this.Lexer.FullPath, annotation.Name, "Module metadata requires exactly one identifier value.");
+                }
+
+                var statement = SetDebug(new ModuleMetaStatement((IdentifierToken)annotation.Name, annotation.Arguments[0]), annotation.Name);
+                return statement;
+            }
+
+            annotations.Add(annotation);
+            while (this.Lexer.PeekSymbol() == Symbols.PT_METAINFO)
+            {
+                annotations.Add(ParseAnnotation());
+                if (this.Lexer.TestNext(Symbols.PT_SEMICOLON))
+                {
+                    throw new AuroraParseException(this.Lexer.FullPath, annotations[^1].Name, "Function annotations must not end with semicolon.");
+                }
+            }
+
+            var symbol = this.Lexer.PeekSymbol();
+            if (symbol == Symbols.KW_FUNCTION || symbol == Symbols.KW_FUNC)
+            {
+                return ParseFunctionDeclaration(MemberAccess.Internal, annotations);
+            }
+
+            if (symbol == Symbols.KW_EXPORT)
+            {
+                return ParseExportStatement(annotations);
+            }
+
+            var token = this.Lexer.LookAtHead();
+            throw new AuroraParseException(this.Lexer.FullPath, token, "Function annotations must be followed by a function declaration.");
+        }
+
+        private FunctionAnnotation ParseAnnotation()
         {
             this.Lexer.Expect(Symbols.PT_METAINFO);
-            var metaName = this.Lexer.NextOfKind<IdentifierToken>();
-            this.Lexer.Expect(Symbols.PT_LEFTPARENTHESIS);
-            var token = this.Lexer.TestNextOfKind<IdentifierToken>();
+            var name = this.Lexer.NextOfKind<IdentifierToken>();
+            var arguments = new List<Token>();
+            if (this.Lexer.TestNext(Symbols.PT_LEFTPARENTHESIS) &&
+                !this.Lexer.TestNext(Symbols.PT_RIGHTPARENTHESIS))
+            {
+                while (true)
+                {
+                    arguments.Add(ParseAnnotationArgument());
+                    if (this.Lexer.TestNext(Symbols.PT_RIGHTPARENTHESIS))
+                    {
+                        break;
+                    }
+
+                    this.Lexer.Expect(Symbols.PT_COMMA);
+                }
+            }
+
+            var result = new FunctionAnnotation(name, arguments);
+            return SetRange(result, name.Range, this.Lexer.PreviousRange(1));
+        }
+
+        private Token ParseAnnotationArgument()
+        {
+            Token token = this.Lexer.TestNextOfKind<IdentifierToken>();
+            token ??= this.Lexer.TestNextOfKind<StringToken>();
+            token ??= this.Lexer.TestNextOfKind<NumberToken>();
+            token ??= this.Lexer.TestNextOfKind<BooleanToken>();
+
             if (token == null)
             {
-                throw new AuroraParseException(this.Lexer.FullPath, metaName, "Metadata requires a value.");
+                throw new AuroraParseException(this.Lexer.FullPath, this.Lexer.LookAtHead(), "Annotation argument must be an identifier, string, number, or boolean literal.");
             }
-            this.Lexer.Expect(Symbols.PT_RIGHTPARENTHESIS);
-            this.Lexer.Expect(Symbols.PT_SEMICOLON);
-            var statement = SetDebug(new ModuleMetaStatement(metaName, token), metaName);
-            return statement;
+
+            return token;
         }
 
         private Statement ParseBlock(bool isFunction = false)
@@ -948,7 +1027,7 @@ namespace AuroraScript.Compiler.Analyzer
             return SetRange(import, importRange, closed);
         }
 
-        private Statement ParseExportStatement()
+        private Statement ParseExportStatement(IReadOnlyList<FunctionAnnotation> annotations = null)
         {
             var exportRange = this.Lexer.NextRangeOfKind(Symbols.KW_EXPORT);
 
@@ -960,7 +1039,11 @@ namespace AuroraScript.Compiler.Analyzer
             var symbol = this.Lexer.PeekSymbol();
             if (symbol == Symbols.KW_FUNCTION || symbol == Symbols.KW_FUNC)
             {
-                return ParseFunctionDeclaration(MemberAccess.Export);
+                return ParseFunctionDeclaration(MemberAccess.Export, annotations);
+            }
+            if (annotations != null && annotations.Count > 0)
+            {
+                throw new AuroraParseException(this.Lexer.FullPath, exportRange, "Function annotations can only be applied to function declarations.");
             }
             else if (symbol == Symbols.KW_VAR)
             {
@@ -983,15 +1066,19 @@ namespace AuroraScript.Compiler.Analyzer
             throw new AuroraParseException(this.Lexer.FullPath, token, "Invalid keywords appear in export declaration.");
         }
 
-        private Statement ParseFunctionDeclaration(MemberAccess access = MemberAccess.Internal)
+        private Statement ParseFunctionDeclaration(MemberAccess access = MemberAccess.Internal, IReadOnlyList<FunctionAnnotation> annotations = null)
         {
             var start = this.Lexer.NextRangeOfKind(Symbols.KW_FUNCTION, Symbols.KW_FUNC);
             var functionName = this.Lexer.NextOfKind<IdentifierToken>();
-            var func = this.ParseFunction(functionName, access, FunctionFlags.General);
+            var func = this.ParseFunction(functionName, access, FunctionFlags.General, annotations);
             return SetRange(func, start, func.Range);
         }
 
-        private FunctionDeclaration ParseFunction(IdentifierToken functionName, MemberAccess access = MemberAccess.Internal, FunctionFlags flags = FunctionFlags.General)
+        private FunctionDeclaration ParseFunction(
+            IdentifierToken functionName,
+            MemberAccess access = MemberAccess.Internal,
+            FunctionFlags flags = FunctionFlags.General,
+            IReadOnlyList<FunctionAnnotation> annotations = null)
         {
             var leftParenRange = this.Lexer.NextRangeOfKind(Symbols.PT_LEFTPARENTHESIS);
             var arguments = this.ParseFunctionArguments();
@@ -1012,7 +1099,7 @@ namespace AuroraScript.Compiler.Analyzer
                     body = newBody;
                 }
                 ((BlockStatement)body).IsFunction = true;
-                var declaration = new FunctionDeclaration(access, functionName, arguments, body, flags);
+                var declaration = new FunctionDeclaration(access, functionName, arguments, body, flags, annotations);
                 return SetRange(declaration, (functionName?.Range ?? leftParenRange), body.Range);
             }
         }
@@ -1395,11 +1482,6 @@ namespace AuroraScript.Compiler.Analyzer
             {
                 this.Lexer.Expect(Symbols.KW_FINALLY);
                 finallyBody = this.ParseBlock();
-            }
-
-            if (catchBody == null && finallyBody == null)
-            {
-                throw new AuroraParseException(this.Lexer.FullPath, range, "try statement requires catch or finally.");
             }
 
             return SetRange(new TryStatement(body, catchVar, catchBody, finallyBody), range, (finallyBody ?? catchBody ?? body).Range);

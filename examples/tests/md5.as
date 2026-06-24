@@ -6,18 +6,18 @@
 *  http://www.webtoolkit.info/
 *
 **/
-
+@directCall()
 function throwMethod() {
     console.log("Start testError");
     var ax = xxxx.c(1);
     console.log("End testError");
 }
 
-
+@directCall()
 function RotateLeft(lValue, iShiftBits) {
     return (lValue << iShiftBits) | (lValue >>> (32 - iShiftBits));
 }
-
+@directCall()
 function AddUnsigned(lX, lY) {
     // debugger;
     var lX4;

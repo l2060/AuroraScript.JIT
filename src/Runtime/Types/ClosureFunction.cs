@@ -149,7 +149,7 @@ namespace AuroraScript.Runtime.Types
                 5 => ((ScriptFunctionDelegate5)targetDelegate).Invoke(context, arg0, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
                 6 => ((ScriptFunctionDelegate6)targetDelegate).Invoke(context, arg0, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
                 7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(context, arg0, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
-                _ => ((ScriptFunctionDelegate)targetDelegate).Invoke(context, [arg0])
+                _ => InvokeGeneric(context, arg0)
             };
             return ReturnAndRelease(context, result);
         }
@@ -167,7 +167,7 @@ namespace AuroraScript.Runtime.Types
                 5 => ((ScriptFunctionDelegate5)targetDelegate).Invoke(context, arg0, arg1, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
                 6 => ((ScriptFunctionDelegate6)targetDelegate).Invoke(context, arg0, arg1, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
                 7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(context, arg0, arg1, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
-                _ => ((ScriptFunctionDelegate)targetDelegate).Invoke(context, [arg0, arg1])
+                _ => InvokeGeneric(context, arg0, arg1)
             };
             return ReturnAndRelease(context, result);
         }
@@ -185,7 +185,7 @@ namespace AuroraScript.Runtime.Types
                 5 => ((ScriptFunctionDelegate5)targetDelegate).Invoke(context, arg0, arg1, arg2, ScriptDatum.Null, ScriptDatum.Null),
                 6 => ((ScriptFunctionDelegate6)targetDelegate).Invoke(context, arg0, arg1, arg2, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
                 7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(context, arg0, arg1, arg2, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
-                _ => ((ScriptFunctionDelegate)targetDelegate).Invoke(context, [arg0, arg1, arg2])
+                _ => InvokeGeneric(context, arg0, arg1, arg2)
             };
             return ReturnAndRelease(context, result);
         }
@@ -203,7 +203,7 @@ namespace AuroraScript.Runtime.Types
                 5 => ((ScriptFunctionDelegate5)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3, ScriptDatum.Null),
                 6 => ((ScriptFunctionDelegate6)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3, ScriptDatum.Null, ScriptDatum.Null),
                 7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
-                _ => ((ScriptFunctionDelegate)targetDelegate).Invoke(context, [arg0, arg1, arg2, arg3])
+                _ => InvokeGeneric(context, arg0, arg1, arg2, arg3)
             };
             return ReturnAndRelease(context, result);
         }
@@ -221,7 +221,7 @@ namespace AuroraScript.Runtime.Types
                 5 => ((ScriptFunctionDelegate5)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3, arg4),
                 6 => ((ScriptFunctionDelegate6)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3, arg4, ScriptDatum.Null),
                 7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3, arg4, ScriptDatum.Null, ScriptDatum.Null),
-                _ => ((ScriptFunctionDelegate)targetDelegate).Invoke(context, [arg0, arg1, arg2, arg3, arg4])
+                _ => InvokeGeneric(context, arg0, arg1, arg2, arg3, arg4)
             };
             return ReturnAndRelease(context, result);
         }
@@ -239,7 +239,7 @@ namespace AuroraScript.Runtime.Types
                 5 => ((ScriptFunctionDelegate5)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3, arg4),
                 6 => ((ScriptFunctionDelegate6)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3, arg4, arg5),
                 7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3, arg4, arg5, ScriptDatum.Null),
-                _ => ((ScriptFunctionDelegate)targetDelegate).Invoke(context, [arg0, arg1, arg2, arg3, arg4, arg5])
+                _ => InvokeGeneric(context, arg0, arg1, arg2, arg3, arg4, arg5)
             };
             return ReturnAndRelease(context, result);
         }
@@ -257,7 +257,7 @@ namespace AuroraScript.Runtime.Types
                 5 => ((ScriptFunctionDelegate5)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3, arg4),
                 6 => ((ScriptFunctionDelegate6)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3, arg4, arg5),
                 7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3, arg4, arg5, arg6),
-                _ => ((ScriptFunctionDelegate)targetDelegate).Invoke(context, [arg0, arg1, arg2, arg3, arg4, arg5, arg6])
+                _ => InvokeGeneric(context, arg0, arg1, arg2, arg3, arg4, arg5, arg6)
             };
             return ReturnAndRelease(context, result);
         }
@@ -325,6 +325,76 @@ namespace AuroraScript.Runtime.Types
                 _ => ((ScriptFunctionDelegate)targetDelegate).Invoke(context, args)
             };
             return ReturnAndRelease(context, result);
+        }
+
+        private ScriptDatum InvokeGeneric(ScriptContext context, ScriptDatum arg0)
+        {
+            DatumBuffer1 args = default;
+            args[0] = arg0;
+            return ((ScriptFunctionDelegate)targetDelegate).Invoke(context, args);
+        }
+
+        private ScriptDatum InvokeGeneric(ScriptContext context, ScriptDatum arg0, ScriptDatum arg1)
+        {
+            DatumBuffer2 args = default;
+            args[0] = arg0;
+            args[1] = arg1;
+            return ((ScriptFunctionDelegate)targetDelegate).Invoke(context, args);
+        }
+
+        private ScriptDatum InvokeGeneric(ScriptContext context, ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2)
+        {
+            DatumBuffer3 args = default;
+            args[0] = arg0;
+            args[1] = arg1;
+            args[2] = arg2;
+            return ((ScriptFunctionDelegate)targetDelegate).Invoke(context, args);
+        }
+
+        private ScriptDatum InvokeGeneric(ScriptContext context, ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3)
+        {
+            DatumBuffer4 args = default;
+            args[0] = arg0;
+            args[1] = arg1;
+            args[2] = arg2;
+            args[3] = arg3;
+            return ((ScriptFunctionDelegate)targetDelegate).Invoke(context, args);
+        }
+
+        private ScriptDatum InvokeGeneric(ScriptContext context, ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4)
+        {
+            DatumBuffer5 args = default;
+            args[0] = arg0;
+            args[1] = arg1;
+            args[2] = arg2;
+            args[3] = arg3;
+            args[4] = arg4;
+            return ((ScriptFunctionDelegate)targetDelegate).Invoke(context, args);
+        }
+
+        private ScriptDatum InvokeGeneric(ScriptContext context, ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5)
+        {
+            DatumBuffer6 args = default;
+            args[0] = arg0;
+            args[1] = arg1;
+            args[2] = arg2;
+            args[3] = arg3;
+            args[4] = arg4;
+            args[5] = arg5;
+            return ((ScriptFunctionDelegate)targetDelegate).Invoke(context, args);
+        }
+
+        private ScriptDatum InvokeGeneric(ScriptContext context, ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6)
+        {
+            DatumBuffer7 args = default;
+            args[0] = arg0;
+            args[1] = arg1;
+            args[2] = arg2;
+            args[3] = arg3;
+            args[4] = arg4;
+            args[5] = arg5;
+            args[6] = arg6;
+            return ((ScriptFunctionDelegate)targetDelegate).Invoke(context, args);
         }
 
         private static ScriptDatum ReturnAndRelease(ScriptContext context, ScriptDatum result)

@@ -2,7 +2,6 @@ using AuroraScript.Runtime.Types;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Text;
 
 namespace AuroraScript.Runtime.Extensions
@@ -24,7 +23,7 @@ namespace AuroraScript.Runtime.Extensions
         {
             if (args.Length > 0)
             {
-                ctx.Domain.Engine.Options.ConsoleStdOut?.WriteLine(String.Join(", ", args.ToArray().Select(e => DatumToString(ctx, e))));
+                ctx.Domain.Engine.Options.ConsoleStdOut?.WriteLine(FormatArguments(ctx, args));
             }
         }
 
@@ -33,10 +32,28 @@ namespace AuroraScript.Runtime.Extensions
         {
             if (args.Length > 0)
             {
-                ctx.Engine.Options.ConsoleErrorOut?.WriteLine(String.Join(", ", args.ToArray().Select(e => DatumToString(ctx, e))));
+                ctx.Engine.Options.ConsoleErrorOut?.WriteLine(FormatArguments(ctx, args));
             }
         }
 
+        private static string FormatArguments(ScriptContext ctx, Span<ScriptDatum> args)
+        {
+            if (args.Length == 1)
+            {
+                return DatumToString(ctx, args[0]);
+            }
+
+            var builder = new StringBuilder();
+            for (var i = 0; i < args.Length; i++)
+            {
+                if (i > 0)
+                {
+                    builder.Append(", ");
+                }
+                builder.Append(DatumToString(ctx, args[i]));
+            }
+            return builder.ToString();
+        }
 
         private static String DatumToString(ScriptContext ctx, ScriptDatum datum)
         {

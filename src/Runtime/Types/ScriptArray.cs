@@ -149,6 +149,16 @@ namespace AuroraScript.Runtime.Types
             this._count = 0;
         }
 
+        internal static ScriptArray CreateWithCapacity(int capacity)
+        {
+            var array = new ScriptArray();
+            if (capacity > 0)
+            {
+                array._items = new ScriptDatum[Math.Max(4, capacity)];
+            }
+            return array;
+        }
+
         /// <summary> Gets the element at the specified index. </summary>
         public ScriptDatum GetElement(int index)
         {
@@ -195,7 +205,7 @@ namespace AuroraScript.Runtime.Types
                 return;
             }
 
-            var result = new ScriptArray(len);
+            var result = CreateWithCapacity(len);
             var dst = result._items;
             var src = _items;
             // High speed copy
@@ -309,12 +319,18 @@ namespace AuroraScript.Runtime.Types
         public override string ToString()
         {
             if (_count == 0) return "[]";
-            var parts = new string[_count];
+            var builder = new System.Text.StringBuilder();
+            builder.Append('[');
             for (int i = 0; i < _count; i++)
             {
-                parts[i] = ScriptDatum.ToString(_items[i]);
+                if (i > 0)
+                {
+                    builder.Append(", ");
+                }
+                builder.Append(ScriptDatum.ToString(_items[i]));
             }
-            return "[" + string.Join(", ", parts) + "]";
+            builder.Append(']');
+            return builder.ToString();
         }
 
         /// <summary> Returns an enumerator capable of iterating over the array. </summary>
@@ -345,13 +361,14 @@ namespace AuroraScript.Runtime.Types
         internal ScriptArray MapInternal(ScriptContext ctx, ClosureFunction callback)
         {
             var count = _count;
-            var newArray = new ScriptArray(count);
+            var newArray = CreateWithCapacity(count);
             var srcItems = _items;
             var destItems = newArray._items;
             for (int i = 0; i < count; i++)
             {
                 destItems[i] = callback.Invoke(ctx, srcItems[i], i);
             }
+            newArray._count = count;
             return newArray;
         }
 

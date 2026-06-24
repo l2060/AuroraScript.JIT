@@ -11,6 +11,7 @@ namespace AuroraScript.Runtime.Types
     {
         private readonly Regex _regex;
         private readonly string _flags;
+        private readonly string[] _groupNames;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ScriptRegex"/> class.
@@ -21,6 +22,7 @@ namespace AuroraScript.Runtime.Types
         {
             _regex = regex;
             _flags = flags;
+            _groupNames = regex.GetGroupNames();
         }
 
         /// <summary>
@@ -77,7 +79,7 @@ namespace AuroraScript.Runtime.Types
             {
                 return ScriptObject.Null;
             }
-            var result = new ScriptArray(matches.Count);
+            var result = ScriptArray.CreateWithCapacity(matches.Count);
             for (int i = 0; i < matches.Count; i++)
             {
                 result.SetElement(i, ScriptDatum.FromString(StringValue.Of(matches[i].Value)));
@@ -97,16 +99,17 @@ namespace AuroraScript.Runtime.Types
                 return null;
             }
 
-            var matches = _regex.Matches(str.Value ?? string.Empty);
+            var input = str.Value ?? string.Empty;
+            var matches = _regex.Matches(input);
             if (matches.Count == 0)
             {
                 return null;
             }
 
-            var outer = new ScriptArray(matches.Count);
+            var outer = ScriptArray.CreateWithCapacity(matches.Count);
             for (int i = 0; i < matches.Count; i++)
             {
-                var matchResult = CreateMatchResult(matches[i], str.Value ?? string.Empty);
+                var matchResult = CreateMatchResult(matches[i], input);
                 outer.SetElement(i, ScriptDatum.FromObject(matchResult));
             }
             return outer;
@@ -115,7 +118,7 @@ namespace AuroraScript.Runtime.Types
         /// <summary> Checks if the specified flag is set for this regular expression. </summary>
         public bool HasFlag(string flag)
         {
-            return _flags.IndexOf(flag) > -1;
+            return _flags.IndexOf(flag, StringComparison.Ordinal) > -1;
         }
 
         /// <summary> Internal helper for string replacement using this regex. </summary>
@@ -164,7 +167,7 @@ namespace AuroraScript.Runtime.Types
         private ScriptArray CreateMatchResult(Match match, string input)
         {
             var groupCount = match.Groups.Count;
-            var result = new ScriptArray(groupCount);
+            var result = ScriptArray.CreateWithCapacity(groupCount);
             for (int i = 0; i < groupCount; i++)
             {
                 result.SetElement(i, ScriptDatum.FromString(StringValue.Of(match.Groups[i].Value)));
@@ -173,11 +176,10 @@ namespace AuroraScript.Runtime.Types
             result.SetPropertyValue("index", NumberValue.Of(match.Index));
             result.SetPropertyValue("input", StringValue.Of(input ?? string.Empty));
 
-            var groupNames = _regex.GetGroupNames();
             ScriptObject namedGroups = null;
-            for (int i = 0; i < groupNames.Length; i++)
+            for (int i = 0; i < _groupNames.Length; i++)
             {
-                var name = groupNames[i];
+                var name = _groupNames[i];
                 if (string.IsNullOrEmpty(name) || int.TryParse(name, out _))
                 {
                     continue;

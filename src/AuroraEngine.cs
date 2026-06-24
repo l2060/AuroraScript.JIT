@@ -1,7 +1,8 @@
 ﻿using AuroraScript.Compiler;
 using AuroraScript.Compiler.Analyzer;
-using AuroraScript.Compiler.Emits;
-using AuroraScript.Compiler.Emits.Builders;
+using AuroraScript.Compiler.Backend;
+using AuroraScript.Compiler.Backend.Builders;
+using AuroraScript.Compiler.Backend.Emission;
 using AuroraScript.Core;
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Extensions;
@@ -189,13 +190,16 @@ namespace AuroraScript
                 AbstractCILBuilder builder = Options.CompilationMode switch
                 {
                     CompilationMode.Persistence => new PersistedBuilder(Options),
-                    CompilationMode.OnlyRun => new DebuggableBuilder(Options),
+                    CompilationMode.OnlyRun => new OnlyRunBuilder(Options),
                     CompilationMode.Dynamic => new DynamicBuilder(Options),
                     _ => throw new NotImplementedException()
                 };
-                var emitter = new CILEmitter(builder, Options);
-                var compiler = new ScriptCompiler(Options, emitter);
-                await compiler.BuildAsync(sources, cancellationToken).ConfigureAwait(false);
+                var compiler = new ScriptCompiler(Options);
+                var modules = await compiler.BuildModuleGraphAsync(sources, cancellationToken).ConfigureAwait(false);
+
+                var backend = new BackendCompiler(builder, Options);
+                var compileSession = backend.CreateModulePlans(modules, cancellationToken);
+                new BackendBuildEmitter(new EmissionSession(compileSession, builder, emitExecutableSkeletons: true)).Emit();
 
                 Assembly scriptAssembly = null;
                 MethodInfo entryPoint;
@@ -258,8 +262,15 @@ namespace AuroraScript
                 OptimizeOption = OptimizeOptions.Release
             };
             var builder = new DynamicBuilder(builderOptions);
-            var emitter = new CILEmitter(builder, builderOptions);
-            var method = emitter.CompileBlock(block, options.Parameters, sourceName);
+            var backend = new BackendCompiler(builder, builderOptions);
+            var blockPlan = backend.CreateCompileBlockPlan(block, options.Parameters, sourceName);
+            var method = new CompileBlockEmitter(
+                new EmissionSession(blockPlan.Session, builder, emitExecutableSkeletons: true),
+                blockPlan).Emit();
+            if (method == null)
+            {
+                throw new AuroraException("The compiler did not produce a compiled block entry point.");
+            }
             var target = method.CreateDelegate<ScriptFunctionDelegate>();
             return new CompiledBlock(this, target);
         }

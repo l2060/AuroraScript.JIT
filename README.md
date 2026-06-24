@@ -40,6 +40,7 @@ NuGet 包名：`AuroraScript.JIT`
 - **三种编译模式**：可在动态执行、可检查内存程序集、持久化 DLL/PDB 之间取舍。
 - **CLR 互操作**：支持注册 CLR 类型，脚本可调用构造函数、属性、字段、实例方法、静态方法、重载、可选参数和 `params` 参数。
 - **运行时热更新**：支持宿主侧 `DynamicPatch` 和脚本侧 `HotPatch.replace` / `HotPatch.incremental`。
+- **显式性能注解**：支持 `@directCall` 标记模块内热点函数，让可优化的调用点走更直接的执行路径。
 - **模块与作用域隔离**：支持 `@module`、`import`、`include`，每个 `ScriptDomain` 拥有独立 global 和模块实例。
 - **CompileBlock**：可编译不进入模块系统的小段脚本，适合公式、过滤器、规则判断等高频小逻辑。
 - **内置标准对象**：包含 `Object`、`Array`、`String`、`Date`、`Regex`、`HashMap`、`StringBuffer`、`JSON`、`Math`、`console`、`Proxy`、`HotPatch`。
@@ -190,7 +191,7 @@ var result = block.Invoke(ScriptDatum.FromNumber(125));
 
 ## 热修复
 
-热修复由 `EngineOptions.EnableHotReload` 控制，默认启用。关闭后会禁用 `DynamicPatch` 和脚本侧 `HotPatch`，并允许编译器使用更激进的模块内直接调用优化。
+热修复由 `EngineOptions.EnableHotReload` 控制，默认启用。关闭后会禁用宿主侧 `DynamicPatch` 和脚本侧 `HotPatch`。
 
 宿主侧：
 
@@ -211,13 +212,73 @@ HotPatch.incremental("main.as", "export func added() { return 1; }");
 
 - `Replace` 会清空目标模块现有成员后应用新代码。
 - `Incremental` 会保留现有成员，并添加或更新补丁中声明的成员。
+- 是否使用 `Replace` 或 `Incremental` 由宿主或脚本作者根据补丁范围决定；修改一组互相调用的函数时，通常更适合使用 `Replace` 保持模块内容一致。
 - 补丁源码中的顶层代码会在应用补丁时执行。
+
+## 模块与函数注解
+
+模块名通过 `@module(NAME);` 声明。`@module` 必须出现在模块的第一条有效语句位置；它前面只能有空白或注释。
+
+```javascript
+// 模块声明必须放在第一条有效语句
+@module(MAIN);
+
+export func run() {
+    return 42;
+}
+```
+
+函数注解写在函数声明前。当前支持的函数注解是 `@directCall`。
+
+```javascript
+@module(MAIN);
+
+@directCall
+func addOne(value) {
+    return value + 1;
+}
+
+export func run(value) {
+    return addOne(value);
+}
+```
+
+`@directCall` 和 `@directCall()` 等价，用于显式启用该函数的模块内直接调用优化，同时保留模块上的函数对象。因此函数仍可被导出、读取或传给宿主侧调用。
+
+```javascript
+@module(MAIN);
+
+@directCall()
+export func checksum(value) {
+    return value + 100;
+}
+```
+
+如果启用了自动模块内直接调用推断，可以用 `@directCall(false)` 为单个函数关闭该优化：
+
+```javascript
+@module(MAIN);
+
+@directCall(false)
+func normalCall(value) {
+    return value;
+}
+```
+
+宿主侧可以通过 `EngineOptions.WithEnableAutoModuleDirectCall(true)` 开启自动推断。显式 `@directCall` 不依赖该选项；即使没有开启自动推断，被标记的函数仍会按可优化规则尝试使用直接调用。
+
+适用建议：
+
+- `@directCall` 适合参数固定、逻辑稳定、被模块内高频调用的普通函数。
+- 使用默认参数、`$args`、捕获外部变量等动态调用形态时，编译器会继续使用普通函数调用路径。
+- 被 `@directCall` 标记的函数名不应在模块内被重新赋值。
 
 ## 语言能力
 
 当前测试覆盖和示例中使用的语法包括：
 
 - `var` / `const` / `func` / `function` / `return`
+- `@module`、`@directCall`
 - `if` / `else` / `for` / `for-in` / `while` / `break` / `continue`
 - `try` / `catch` / `finally` / `throw`
 - `enum`
@@ -473,19 +534,19 @@ export func run() {
 
 测试项目：`tests/AuroraScript.Tests`
 
-当前 `net10.0` test discovery 共发现 **288** 个测试用例。按测试类统计：
+当前 `net10.0` test discovery 共发现 **295** 个测试用例。按测试类统计：
 
 | 测试类 | 用例数 | 覆盖重点 |
 |---|---:|---|
 | `LexerTests` | 37 | 词法、数字/字符串/正则、注释、错误 token |
-| `ParserSyntaxTests` | 79 | 语法分支、模块声明、import/include/export、错误语法诊断 |
+| `ParserSyntaxTests` | 85 | 语法分支、模块声明、import/include/export、函数注解、错误语法诊断 |
 | `ExpressionExecutionTests` | 35 | 表达式、运算符、成员/索引访问、spread、赋值 |
 | `StatementExecutionTests` | 7 | 控制流、循环、闭包、递归、异常、Domain 隔离 |
 | `LanguageFeatureExecutionTests` | 16 | enum、Lambda、稀疏数组、truthiness、模板、赋值语义 |
 | `ModuleCompilationTests` | 12 | 模块依赖、并行编译、循环依赖、错误聚合、取消 |
 | `CompileBlockTests` | 21 | CompileBlock 参数、调用方式、错误输入和诊断 |
 | `CompilationModeTests` | 5 | Dynamic/OnlyRun/Persistence 行为和热重载开关 |
-| `RuntimeApiAndErrorTests` | 9 | 运行时 API、错误路径、`$state`、释放后行为 |
+| `RuntimeApiAndErrorTests` | 10 | 运行时 API、错误路径、`$state`、释放后行为 |
 | `BuiltInLibraryTests` | 11 | Math、String、Array、JSON、HashMap、Regex、StringBuffer、Console |
 | `AdvancedRuntimeTypeTests` | 6 | 构造器、Object、freeze、Date、Proxy |
 | `ClrInteropTests` | 8 | CLR 构造/属性/字段/方法/重载/访问限制 |

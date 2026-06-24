@@ -1,7 +1,8 @@
 using AuroraScript;
 using AuroraScript.Compiler.Analyzer;
 using AuroraScript.Compiler.Ast;
-using AuroraScript.Compiler.Emits;
+using AuroraScript.Compiler.Backend;
+using AuroraScript.Compiler.Backend.Emission;
 using AuroraScript.Compiler.Emits.Builders;
 using AuroraScript.Core;
 using BenchmarkDotNet.Attributes;
@@ -129,8 +130,9 @@ namespace AuroraBenchmark
         public void EmitOnly_ParsedLargeModule()
         {
             var builder = new DynamicBuilder(benchmarkOptions);
-            var emitter = new CILEmitter(builder, benchmarkOptions);
-            emitter.Visit(parsedLargeModules);
+            var backend = new BackendCompiler(builder, benchmarkOptions);
+            var compileSession = backend.CreateModulePlans(parsedLargeModules);
+            new BackendBuildEmitter(new EmissionSession(compileSession, builder, emitExecutableSkeletons: true)).Emit();
         }
 
         [BenchmarkCategory("compile")]

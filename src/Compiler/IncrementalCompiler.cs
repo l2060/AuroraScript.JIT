@@ -1,6 +1,8 @@
 ﻿using AuroraScript.Compiler.Analyzer;
 using AuroraScript.Compiler.Ast;
-using AuroraScript.Compiler.Emits;
+using AuroraScript.Compiler.Backend;
+using AuroraScript.Compiler.Backend.Builders;
+using AuroraScript.Compiler.Backend.Emission;
 using AuroraScript.Core;
 using AuroraScript.Runtime;
 using System;
@@ -11,11 +13,11 @@ using System.Text;
 namespace AuroraScript.Compiler
 {
     internal delegate ScriptDatum DynamicCallMethod(ScriptContext ctx, Span<ScriptDatum> args);
-    internal class IncrementalCompiler(ScriptDomain _domain, EngineOptions _options, CILEmitter _codeGenerator)
+    internal class IncrementalCompiler(ScriptDomain _domain, EngineOptions _options, DynamicBuilder _builder)
     {
         public readonly ScriptDomain Domain = _domain;
         public readonly EngineOptions Options = _options;
-        public readonly CILEmitter CodeGenerator = _codeGenerator;
+        public readonly DynamicBuilder Builder = _builder;
 
 
 
@@ -44,7 +46,12 @@ namespace AuroraScript.Compiler
                 keys = existingModule.EnumerationKeys().ToArray();
             }
             LinkModules(mainModule, dependencies, moduleMap);
-            return CodeGenerator.VisitHotPatch(mainModule, dependencies, patchType, keys);
+            var backend = new BackendCompiler(Builder, Options);
+            var session = backend.CreateHotPatchPlans(mainModule, dependencies, keys, out var mainModulePlan);
+            var emitter = new HotPatchEmitter(
+                new EmissionSession(session, Builder, emitExecutableSkeletons: true, forceModuleDefinitions: true),
+                patchType);
+            return emitter.Emit(mainModulePlan);
         }
 
 

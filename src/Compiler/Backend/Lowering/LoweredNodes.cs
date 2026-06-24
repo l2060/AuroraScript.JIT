@@ -1,0 +1,553 @@
+using AuroraScript.Compiler.Ast;
+using AuroraScript.Compiler.Ast.Expressions;
+using AuroraScript.Tokens;
+using System;
+
+namespace AuroraScript.Compiler.Backend.Lowering
+{
+    internal abstract class LoweredNode
+    {
+        protected LoweredNode(AstNode source)
+        {
+            Source = source;
+        }
+
+        public AstNode Source { get; }
+        public SourceSpan Range => Source?.Range ?? SourceSpan.None;
+    }
+
+    internal abstract class LoweredStatement : LoweredNode
+    {
+        protected LoweredStatement(AstNode source) : base(source)
+        {
+        }
+    }
+
+    internal abstract class LoweredExpression : LoweredNode
+    {
+        protected LoweredExpression(Expression source) : base(source)
+        {
+        }
+    }
+
+    internal sealed class LoweredBlockStatement : LoweredStatement
+    {
+        public LoweredBlockStatement(AstNode source, LoweredStatement[] statements) : base(source)
+        {
+            Statements = statements ?? Array.Empty<LoweredStatement>();
+        }
+
+        public LoweredStatement[] Statements { get; }
+    }
+
+    internal sealed class LoweredExpressionStatement : LoweredStatement
+    {
+        public LoweredExpressionStatement(AstNode source, LoweredExpression expression) : base(source)
+        {
+            Expression = expression;
+        }
+
+        public LoweredExpression Expression { get; }
+    }
+
+    internal sealed class LoweredReturnStatement : LoweredStatement
+    {
+        public LoweredReturnStatement(AstNode source, LoweredExpression expression) : base(source)
+        {
+            Expression = expression;
+        }
+
+        public LoweredExpression Expression { get; }
+    }
+
+    internal sealed class LoweredVariableDeclarationStatement : LoweredStatement
+    {
+        public LoweredVariableDeclarationStatement(AstNode source, LocalSlotId slot, LoweredExpression initializer)
+            : base(source)
+        {
+            Slot = slot;
+            Initializer = initializer;
+        }
+
+        public LocalSlotId Slot { get; }
+        public LoweredExpression Initializer { get; }
+    }
+
+    internal readonly struct LoweredObjectDestructuringBinding
+    {
+        public LoweredObjectDestructuringBinding(Token property, LocalSlotId slot)
+        {
+            Property = property;
+            Slot = slot;
+        }
+
+        public Token Property { get; }
+        public LocalSlotId Slot { get; }
+    }
+
+    internal sealed class LoweredObjectDestructuringDeclarationStatement : LoweredStatement
+    {
+        public LoweredObjectDestructuringDeclarationStatement(
+            AstNode source,
+            LoweredExpression initializer,
+            LoweredObjectDestructuringBinding[] bindings)
+            : base(source)
+        {
+            Initializer = initializer;
+            Bindings = bindings ?? Array.Empty<LoweredObjectDestructuringBinding>();
+        }
+
+        public LoweredExpression Initializer { get; }
+        public LoweredObjectDestructuringBinding[] Bindings { get; }
+    }
+
+    internal readonly struct LoweredArrayDestructuringBinding
+    {
+        public LoweredArrayDestructuringBinding(LocalSlotId slot, int index, bool isRest, int trailingCount)
+        {
+            Slot = slot;
+            Index = index;
+            IsRest = isRest;
+            TrailingCount = trailingCount;
+        }
+
+        public LocalSlotId Slot { get; }
+        public int Index { get; }
+        public bool IsRest { get; }
+        public int TrailingCount { get; }
+    }
+
+    internal sealed class LoweredArrayDestructuringDeclarationStatement : LoweredStatement
+    {
+        public LoweredArrayDestructuringDeclarationStatement(
+            AstNode source,
+            LoweredExpression initializer,
+            LoweredArrayDestructuringBinding[] bindings)
+            : base(source)
+        {
+            Initializer = initializer;
+            Bindings = bindings ?? Array.Empty<LoweredArrayDestructuringBinding>();
+        }
+
+        public LoweredExpression Initializer { get; }
+        public LoweredArrayDestructuringBinding[] Bindings { get; }
+    }
+
+    internal sealed class LoweredFunctionDeclarationStatement : LoweredStatement
+    {
+        public LoweredFunctionDeclarationStatement(AstNode source, FunctionId function, LocalSlotId localSlot)
+            : base(source)
+        {
+            Function = function;
+            LocalSlot = localSlot;
+        }
+
+        public FunctionId Function { get; }
+        public LocalSlotId LocalSlot { get; }
+    }
+
+    internal sealed class LoweredIfStatement : LoweredStatement
+    {
+        public LoweredIfStatement(AstNode source, LoweredExpression condition, LoweredStatement body, LoweredStatement @else)
+            : base(source)
+        {
+            Condition = condition;
+            Body = body;
+            Else = @else;
+        }
+
+        public LoweredExpression Condition { get; }
+        public LoweredStatement Body { get; }
+        public LoweredStatement Else { get; }
+    }
+
+    internal sealed class LoweredWhileStatement : LoweredStatement
+    {
+        public LoweredWhileStatement(AstNode source, LoweredExpression condition, LoweredStatement body)
+            : base(source)
+        {
+            Condition = condition;
+            Body = body;
+        }
+
+        public LoweredExpression Condition { get; }
+        public LoweredStatement Body { get; }
+    }
+
+    internal sealed class LoweredForStatement : LoweredStatement
+    {
+        public LoweredForStatement(
+            AstNode source,
+            LoweredStatement initializer,
+            LoweredExpression condition,
+            LoweredExpression incrementor,
+            LoweredStatement body)
+            : base(source)
+        {
+            Initializer = initializer;
+            Condition = condition;
+            Incrementor = incrementor;
+            Body = body;
+        }
+
+        public LoweredStatement Initializer { get; }
+        public LoweredExpression Condition { get; }
+        public LoweredExpression Incrementor { get; }
+        public LoweredStatement Body { get; }
+    }
+
+    internal sealed class LoweredForInStatement : LoweredStatement
+    {
+        public LoweredForInStatement(
+            AstNode source,
+            LoweredStatement initializer,
+            LoweredInExpression iterator,
+            LoweredStatement body)
+            : base(source)
+        {
+            Initializer = initializer;
+            Iterator = iterator;
+            Body = body;
+        }
+
+        public LoweredStatement Initializer { get; }
+        public LoweredInExpression Iterator { get; }
+        public LoweredStatement Body { get; }
+    }
+
+    internal sealed class LoweredTryStatement : LoweredStatement
+    {
+        public LoweredTryStatement(
+            AstNode source,
+            LoweredStatement body,
+            string catchVariable,
+            LocalSlotId catchSlot,
+            LoweredStatement catchBody,
+            LoweredStatement finallyBody)
+            : base(source)
+        {
+            Body = body;
+            CatchVariable = catchVariable;
+            CatchSlot = catchSlot;
+            CatchBody = catchBody;
+            FinallyBody = finallyBody;
+        }
+
+        public LoweredStatement Body { get; }
+        public string CatchVariable { get; }
+        public LocalSlotId CatchSlot { get; }
+        public LoweredStatement CatchBody { get; }
+        public LoweredStatement FinallyBody { get; }
+    }
+
+    internal sealed class LoweredThrowStatement : LoweredStatement
+    {
+        public LoweredThrowStatement(AstNode source, LoweredExpression expression)
+            : base(source)
+        {
+            Expression = expression;
+        }
+
+        public LoweredExpression Expression { get; }
+    }
+
+    internal sealed class LoweredDeleteStatement : LoweredStatement
+    {
+        public LoweredDeleteStatement(AstNode source, LoweredExpression expression)
+            : base(source)
+        {
+            Expression = expression;
+        }
+
+        public LoweredExpression Expression { get; }
+    }
+
+    internal sealed class LoweredDebuggerStatement : LoweredStatement
+    {
+        public LoweredDebuggerStatement(AstNode source) : base(source)
+        {
+        }
+    }
+
+    internal sealed class LoweredBreakStatement : LoweredStatement
+    {
+        public LoweredBreakStatement(AstNode source) : base(source)
+        {
+        }
+    }
+
+    internal sealed class LoweredContinueStatement : LoweredStatement
+    {
+        public LoweredContinueStatement(AstNode source) : base(source)
+        {
+        }
+    }
+
+    internal sealed class LoweredUnsupportedStatement : LoweredStatement
+    {
+        public LoweredUnsupportedStatement(AstNode source) : base(source)
+        {
+        }
+    }
+
+    internal readonly struct LoweredUnsupportedNode
+    {
+        public LoweredUnsupportedNode(string nodeType, SourceSpan range, bool isExpression)
+        {
+            NodeType = nodeType;
+            Range = range;
+            IsExpression = isExpression;
+        }
+
+        public string NodeType { get; }
+        public SourceSpan Range { get; }
+        public bool IsExpression { get; }
+    }
+
+    internal sealed class LoweredLiteralExpression : LoweredExpression
+    {
+        public LoweredLiteralExpression(LiteralExpression source) : base(source)
+        {
+            Token = source.Token;
+        }
+
+        public Token Token { get; }
+    }
+
+    internal sealed class LoweredNameExpression : LoweredExpression
+    {
+        public LoweredNameExpression(NameExpression source, LocalSlotId localSlot, UpvalueSlotId upvalueSlot, SymbolId moduleSymbol)
+            : base(source)
+        {
+            Name = source.Identifier?.Value;
+            LocalSlot = localSlot;
+            UpvalueSlot = upvalueSlot;
+            ModuleSymbol = moduleSymbol;
+        }
+
+        public string Name { get; }
+        public LocalSlotId LocalSlot { get; }
+        public UpvalueSlotId UpvalueSlot { get; }
+        public SymbolId ModuleSymbol { get; }
+    }
+
+    internal sealed class LoweredBinaryExpression : LoweredExpression
+    {
+        public LoweredBinaryExpression(BinaryExpression source, LoweredExpression left, LoweredExpression right)
+            : base(source)
+        {
+            Operator = source.Operator;
+            Left = left;
+            Right = right;
+        }
+
+        public Operator Operator { get; }
+        public LoweredExpression Left { get; }
+        public LoweredExpression Right { get; }
+    }
+
+    internal sealed class LoweredCallExpression : LoweredExpression
+    {
+        public LoweredCallExpression(FunctionCallExpression source, LoweredExpression target, LoweredExpression[] arguments, FunctionId directFunction)
+            : base(source)
+        {
+            Target = target;
+            Arguments = arguments ?? Array.Empty<LoweredExpression>();
+            DirectFunction = directFunction;
+        }
+
+        public LoweredExpression Target { get; }
+        public LoweredExpression[] Arguments { get; }
+        public FunctionId DirectFunction { get; }
+    }
+
+    internal sealed class LoweredAssignmentExpression : LoweredExpression
+    {
+        public LoweredAssignmentExpression(AssignmentExpression source, LoweredExpression left, LoweredExpression right)
+            : base(source)
+        {
+            Operator = source.Operator;
+            Left = left;
+            Right = right;
+        }
+
+        public Operator Operator { get; }
+        public LoweredExpression Left { get; }
+        public LoweredExpression Right { get; }
+    }
+
+    internal sealed class LoweredCompoundExpression : LoweredExpression
+    {
+        public LoweredCompoundExpression(CompoundExpression source, LoweredExpression left, LoweredExpression right)
+            : base(source)
+        {
+            Operator = source.Operator;
+            Left = left;
+            Right = right;
+        }
+
+        public Operator Operator { get; }
+        public LoweredExpression Left { get; }
+        public LoweredExpression Right { get; }
+    }
+
+    internal sealed class LoweredUnaryExpression : LoweredExpression
+    {
+        public LoweredUnaryExpression(UnaryExpression source, LoweredExpression expression)
+            : base(source)
+        {
+            Operator = source.Operator;
+            Type = source.Type;
+            Expression = expression;
+        }
+
+        public Operator Operator { get; }
+        public UnaryType Type { get; }
+        public LoweredExpression Expression { get; }
+    }
+
+    internal sealed class LoweredInExpression : LoweredExpression
+    {
+        public LoweredInExpression(Expression source, LoweredExpression left, LoweredExpression right)
+            : base(source)
+        {
+            Left = left;
+            Right = right;
+        }
+
+        public LoweredExpression Left { get; }
+        public LoweredExpression Right { get; }
+    }
+
+    internal sealed class LoweredGetPropertyExpression : LoweredExpression
+    {
+        public LoweredGetPropertyExpression(GetPropertyExpression source, LoweredExpression instance, LoweredExpression property)
+            : base(source)
+        {
+            Instance = instance;
+            Property = property;
+        }
+
+        public LoweredExpression Instance { get; }
+        public LoweredExpression Property { get; }
+    }
+
+    internal sealed class LoweredGetElementExpression : LoweredExpression
+    {
+        public LoweredGetElementExpression(GetElementExpression source, LoweredExpression instance, LoweredExpression index)
+            : base(source)
+        {
+            Instance = instance;
+            Index = index;
+        }
+
+        public LoweredExpression Instance { get; }
+        public LoweredExpression Index { get; }
+    }
+
+    internal sealed class LoweredSetPropertyExpression : LoweredExpression
+    {
+        public LoweredSetPropertyExpression(SetPropertyExpression source, LoweredExpression instance, LoweredExpression property, LoweredExpression value)
+            : base(source)
+        {
+            Instance = instance;
+            Property = property;
+            Value = value;
+        }
+
+        public LoweredExpression Instance { get; }
+        public LoweredExpression Property { get; }
+        public LoweredExpression Value { get; }
+    }
+
+    internal sealed class LoweredSetElementExpression : LoweredExpression
+    {
+        public LoweredSetElementExpression(SetElementExpression source, LoweredExpression instance, LoweredExpression index, LoweredExpression value)
+            : base(source)
+        {
+            Instance = instance;
+            Index = index;
+            Value = value;
+        }
+
+        public LoweredExpression Instance { get; }
+        public LoweredExpression Index { get; }
+        public LoweredExpression Value { get; }
+    }
+
+    internal sealed class LoweredArrayLiteralExpression : LoweredExpression
+    {
+        public LoweredArrayLiteralExpression(ArrayLiteralExpression source, LoweredExpression[] elements)
+            : base(source)
+        {
+            Elements = elements ?? Array.Empty<LoweredExpression>();
+        }
+
+        public LoweredExpression[] Elements { get; }
+    }
+
+    internal readonly struct LoweredMapEntry
+    {
+        public LoweredMapEntry(Token key, LoweredExpression value, SourceSpan range)
+        {
+            Key = key;
+            Value = value;
+            Range = range;
+        }
+
+        public Token Key { get; }
+        public LoweredExpression Value { get; }
+        public SourceSpan Range { get; }
+    }
+
+    internal sealed class LoweredMapExpression : LoweredExpression
+    {
+        public LoweredMapExpression(MapExpression source, LoweredMapEntry[] entries)
+            : base(source)
+        {
+            Entries = entries ?? Array.Empty<LoweredMapEntry>();
+        }
+
+        public LoweredMapEntry[] Entries { get; }
+    }
+
+    internal sealed class LoweredSpreadExpression : LoweredExpression
+    {
+        public LoweredSpreadExpression(SpreadExpression source, LoweredExpression expression)
+            : base(source)
+        {
+            Expression = expression;
+        }
+
+        public LoweredExpression Expression { get; }
+    }
+
+    internal sealed class LoweredNewExpression : LoweredExpression
+    {
+        public LoweredNewExpression(NewExpression source, LoweredCallExpression expression)
+            : base(source)
+        {
+            Expression = expression;
+        }
+
+        public LoweredCallExpression Expression { get; }
+    }
+
+    internal sealed class LoweredLambdaExpression : LoweredExpression
+    {
+        public LoweredLambdaExpression(LambdaExpression source, FunctionId function)
+            : base(source)
+        {
+            Function = function;
+        }
+
+        public FunctionId Function { get; }
+    }
+
+    internal sealed class LoweredUnsupportedExpression : LoweredExpression
+    {
+        public LoweredUnsupportedExpression(Expression source) : base(source)
+        {
+        }
+    }
+}

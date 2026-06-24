@@ -4,7 +4,6 @@ using AuroraScript.Runtime.Types;
 using Microsoft.VisualBasic;
 using System;
 using System.Globalization;
-using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 
@@ -225,12 +224,19 @@ namespace AuroraScript.Runtime.Types
             }
             if (args.TryGetString(0, out var separator))
             {
-                var segments = str.Value.Split(new[] { separator }, StringSplitOptions.None).Select(StringValue.Of).Cast<ScriptObject>().ToArray();
-                ScriptDatum.WriteAsArray(ref result, new ScriptArray(segments));
+                var segments = str.Value.Split(separator, StringSplitOptions.None);
+                var array = ScriptArray.CreateWithCapacity(segments.Length);
+                for (var i = 0; i < segments.Length; i++)
+                {
+                    array.SetElement(i, ScriptDatum.FromString(segments[i]));
+                }
+                ScriptDatum.WriteAsArray(ref result, array);
             }
             else
             {
-                ScriptDatum.WriteAsArray(ref result, new ScriptArray(new ScriptObject[] { thisObject }));
+                var array = ScriptArray.CreateWithCapacity(1);
+                array.SetElement(0, ScriptDatum.FromString(str));
+                ScriptDatum.WriteAsArray(ref result, array);
             }
         }
 
@@ -316,20 +322,50 @@ namespace AuroraScript.Runtime.Types
 
                     target = regex.Replace(input, match =>
                     {
-                        var groupCount = match.Groups.Count;
-                        var callbackArgs = new ScriptDatum[groupCount + 2];
-                        ScriptDatum.WriteAsString(ref callbackArgs[0], match.Value);
-                        for (var i = 1; i < groupCount; i++)
+                        var argumentCount = match.Groups.Count + 2;
+                        switch (argumentCount)
                         {
-                            if (match.Groups[i].Success)
-                            {
-                                ScriptDatum.WriteAsString(ref callbackArgs[i], match.Groups[i].Value);
-                            }
+                            case 3:
+                                {
+                                    DatumBuffer3 callbackArgs = default;
+                                    return InvokeReplaceCallback(ctx, callback, originalValue, match, callbackArgs);
+                                }
+                            case 4:
+                                {
+                                    DatumBuffer4 callbackArgs = default;
+                                    return InvokeReplaceCallback(ctx, callback, originalValue, match, callbackArgs);
+                                }
+                            case 5:
+                                {
+                                    DatumBuffer5 callbackArgs = default;
+                                    return InvokeReplaceCallback(ctx, callback, originalValue, match, callbackArgs);
+                                }
+                            case 6:
+                                {
+                                    DatumBuffer6 callbackArgs = default;
+                                    return InvokeReplaceCallback(ctx, callback, originalValue, match, callbackArgs);
+                                }
+                            case 7:
+                                {
+                                    DatumBuffer7 callbackArgs = default;
+                                    return InvokeReplaceCallback(ctx, callback, originalValue, match, callbackArgs);
+                                }
+                            case 8:
+                                {
+                                    DatumBuffer8 callbackArgs = default;
+                                    return InvokeReplaceCallback(ctx, callback, originalValue, match, callbackArgs);
+                                }
+                            default:
+                                var rentedArgs = CILHelper.RentArguments(argumentCount);
+                                try
+                                {
+                                    return InvokeReplaceCallback(ctx, callback, originalValue, match, rentedArgs.AsSpan(0, argumentCount));
+                                }
+                                finally
+                                {
+                                    CILHelper.ReturnArguments(rentedArgs, argumentCount);
+                                }
                         }
-                        ScriptDatum.WriteAsNumber(ref callbackArgs[groupCount], match.Index);
-                        ScriptDatum.WriteAsString(ref callbackArgs[groupCount + 1], originalValue);
-
-                        return InvokeReplaceCallback(ctx, callback, callbackArgs);
                     }, replaceAll);
                 }
                 else
@@ -463,8 +499,20 @@ namespace AuroraScript.Runtime.Types
             ScriptDatum.WriteAsNumber(ref result, str.Value[(int)index]);
         }
 
-        private static string InvokeReplaceCallback(ScriptContext ctx, ClosureFunction callback, Span<ScriptDatum> parameters)
+        private static string InvokeReplaceCallback(ScriptContext ctx, ClosureFunction callback, StringValue originalValue, Match match, Span<ScriptDatum> parameters)
         {
+            var groupCount = match.Groups.Count;
+            ScriptDatum.WriteAsString(ref parameters[0], match.Value);
+            for (var i = 1; i < groupCount; i++)
+            {
+                if (match.Groups[i].Success)
+                {
+                    ScriptDatum.WriteAsString(ref parameters[i], match.Groups[i].Value);
+                }
+            }
+            ScriptDatum.WriteAsNumber(ref parameters[groupCount], match.Index);
+            ScriptDatum.WriteAsString(ref parameters[groupCount + 1], originalValue);
+
             return ScriptDatum.ToString(callback.Invoke(ctx, parameters));
         }
 

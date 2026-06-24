@@ -57,7 +57,7 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
                 int i = 0;
                 while (enumerator.NextValue(out var data))
                 {
-                    array.Push(callback.Invoke(ctx, [data, i]));
+                    array.Push(callback.Invoke(ctx, data, i));
                     i++;
                 }
             }
@@ -74,7 +74,7 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
         /// <summary> Native implementation for Array.of(). Creates an array from its arguments. </summary>
         internal static void OF(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
-            var array = new ScriptArray(args.Length);
+            var array = ScriptArray.CreateWithCapacity(args.Length);
             for (int i = 0; i < args.Length; i++)
             {
                 array.SetElement(i, args[i]);

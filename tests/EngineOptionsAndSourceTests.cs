@@ -28,6 +28,7 @@ public sealed class EngineOptionsAndSourceTests
             .WithCompilationMode(CompilationMode.Dynamic)
             .WithOptimizeOption(OptimizeOptions.Release)
             .WithEnableHotReload(false)
+            .WithEnableAutoModuleDirectCall(true)
             .WithEnableConfused(true)
             .WithDateTimeFormat("O")
             .WithExtName("aurora")
@@ -39,6 +40,8 @@ public sealed class EngineOptionsAndSourceTests
         Assert.Equal(CompilationMode.Dynamic, configured.CompilationMode);
         Assert.Equal(OptimizeOptions.Release, configured.OptimizeOption);
         Assert.False(configured.EnableHotReload);
+        Assert.True(configured.EnableAutoModuleDirectCall);
+        Assert.False(original.EnableAutoModuleDirectCall);
         Assert.True(configured.EnableConfused);
         Assert.Equal("O", configured.DateTimeFormat);
         Assert.Equal(".aurora", configured.ExtName);
