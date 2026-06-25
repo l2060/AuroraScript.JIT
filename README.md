@@ -9,7 +9,7 @@
 # AuroraScript
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-2.0.0-orange.svg)](src/AuroraScript.csproj)
+[![Version](https://img.shields.io/badge/version-2.1.1-orange.svg)](src/AuroraScript.csproj)
 [![Target](https://img.shields.io/badge/.NET-8.0%20%7C%209.0%20%7C%2010.0-blueviolet.svg)](src/AuroraScript.csproj)
 
 AuroraScript 是一个面向 .NET 宿主程序的轻量脚本引擎。脚本会被编译为 CIL，并通过 .NET 运行时执行，适合把规则、业务逻辑、配置化流程、热修复逻辑和小型表达式嵌入到 C# 应用中。
@@ -23,7 +23,7 @@ AuroraScript 的语法借鉴了 JavaScript 的表达式、对象、数组、闭�
 
 NuGet 包名：`AuroraScript.JIT`
 
-当前 `2.0.0` 包发布为多目标框架：
+当前 `2.1.1` 包发布为多目标框架：
 
 | 目标框架 | 支持情况 |
 |---|---|

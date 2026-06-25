@@ -265,6 +265,7 @@ namespace Examples
             BenchmarkScript(domain, "UNIT_LIB", "testFor", new NumberValue(10000_0000));
             BenchmarkScript(domain, "UNIT_LIB", "testMD5_1000");
             BenchmarkScript(domain, "UNIT_LIB", "testDraw");
+            BenchmarkScript(domain, "UNIT_LIB", "testFor", new NumberValue(10000_0000));
             Console.WriteLine("Verification complete!");
 
 
