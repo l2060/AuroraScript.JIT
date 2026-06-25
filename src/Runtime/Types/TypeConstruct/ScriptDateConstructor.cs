@@ -73,7 +73,7 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
             {
                 if (!args.TryGetString(0, out var value))
                 {
-                    value = ctx.Engine.Options.DateTimeFormat;
+                    value = ctx.Engine.Options.Runtime.DateTimeFormat;
                 }
                 ScriptDatum.WriteAsString(ref result, date.Format(value));
             }

@@ -60,16 +60,16 @@ namespace AuroraScript.Compiler.Backend.Builders
         public abstract void MarkSequencePoint(AstNode node, ILGenerator il);
         public abstract void MarkSequencePoint(SourceSpan range, ILGenerator il);
 
-        protected bool IsDebugMode => _options.OptimizeOption == OptimizeOptions.Debug;
-        protected bool IsReleaseMode => _options.OptimizeOption == OptimizeOptions.Release;
-        protected bool IsConfused => _options.EnableConfused;
+        protected bool IsDebugMode => _options.Optimization.Level == OptimizeOptions.Debug;
+        protected bool IsReleaseMode => _options.Optimization.Level == OptimizeOptions.Release;
+        protected bool IsConfused => _options.Output.EnableConfused;
 
         public abstract MethodInfo GetRuntimeEntryPoint();
 
         protected String ConfuseTypeName(String typeName, ConfuseTarget target)
         {
             String name = typeName;
-            if (_options.EnableConfused)
+            if (_options.Output.EnableConfused)
             {
                 //if (target == ConfuseTarget.Method) return "ToString";
                 //if (target == ConfuseTarget.Class) return "record";

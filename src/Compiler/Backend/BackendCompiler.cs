@@ -46,6 +46,7 @@ namespace AuroraScript.Compiler.Backend
                 PredefineModule(session, modulePlan);
             }
             session.Modules = plans;
+            AnalyzeModuleConstants(session, plans, cancellationToken);
             var functionMaps = RegisterNestedFunctions(session, plans, cancellationToken);
             AnalyzeModules(session, plans, functionMaps, cancellationToken);
             return session;
@@ -132,10 +133,28 @@ namespace AuroraScript.Compiler.Backend
             mainModulePlan = plans[^1];
             AddExistingModuleSymbols(session, mainModulePlan, existingMainModuleSymbols);
             session.Modules = plans;
+            AnalyzeModuleConstants(session, plans, cancellationToken);
 
             var functionMaps = RegisterNestedFunctions(session, plans, cancellationToken);
             AnalyzeModules(session, plans, functionMaps, cancellationToken);
             return session;
+        }
+
+        private static void AnalyzeModuleConstants(
+            CompileSession session,
+            ModulePlan[] plans,
+            CancellationToken cancellationToken)
+        {
+            if (!session.Options.Optimization.EnableModuleConstInlining)
+            {
+                return;
+            }
+
+            for (var i = 0; i < plans.Length; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                ModuleConstInliningAnalyzer.Apply(session, plans[i]);
+            }
         }
 
         private static FunctionBinder.FunctionPlanRegistry[] RegisterNestedFunctions(

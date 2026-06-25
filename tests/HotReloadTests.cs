@@ -43,6 +43,25 @@ public sealed class HotReloadTests
     }
 
     [Fact]
+    public async Task IncrementalPatchCanCreateNewModuleWithNonExportedFunctionWhenConstInliningIsEnabled()
+    {
+        using var workspace = new TestWorkspace();
+        var engine = workspace.CreateEngine(enableHotReload: true, enableModuleConstInlining: true);
+        var dependency = workspace.WriteSource("l123.as", "@module(l123); export const value = 1;");
+        await engine.BuildAsync(engine.FileSource(dependency, System.Text.Encoding.UTF8));
+        var domain = engine.CreateDomain();
+
+        domain.DynamicPatch(
+            engine.MemorySource(
+                "test.as",
+                "@module(test); import l123 from 'l123'; func hello() { return 'v1'; } var x = 10;"),
+            HotPatchType.Incremental | HotPatchType.IgnoreDepends);
+
+        ScriptAssert.Equal("v1", domain.Execute("test", "hello"));
+        ScriptAssert.Equal(10, domain.GetModule("test").GetPropertyDatum(null, "x"));
+    }
+
+    [Fact]
     public async Task ReplacePatchRemovesMembersMissingFromReplacement()
     {
         using var workspace = new TestWorkspace();

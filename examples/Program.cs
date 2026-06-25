@@ -1,6 +1,7 @@
 using AuroraScript;
 using AuroraScript.Core;
 using AuroraScript.Runtime;
+using AuroraScript.Runtime.Serialization;
 using AuroraScript.Runtime.Types;
 using System;
 using System.Diagnostics;
@@ -16,17 +17,39 @@ namespace Examples
 
     public class Program
     {
+
         private static readonly EngineOptions engineOptions = EngineOptions.Default
-            .WithBaseDirectory(Path.Combine(AppContext.BaseDirectory, "tests"))
-            .WithConsoleStdOut(Console.Out)
-            .WithConsoleErrorOut(Console.Error)
-            .WithDateTimeFormat("yyyy-MM-dd HH:mm:ss")
-            .WithAssemblyOut("123.dll")
-            .WithEnableConfused(false)
-            .WithEnableHotReload(true)
-            .WithEnableAutoModuleDirectCall(true)
-            .WithCompilationMode(CompilationMode.Dynamic)
-            .WithOptimizeOption(OptimizeOptions.Release);
+        .WithCompiler(compiler =>
+        {
+            compiler.Directory = Path.Combine(AppContext.BaseDirectory, "tests");
+            compiler.MaxDegreeOfParallelism = 0;
+            compiler.ExtName = "as";
+            compiler.Mode = CompilationMode.Dynamic;
+        })
+        .WithOutput(output =>
+        {
+            output.AssemblyFile = "123.dll";
+            output.Confused = false;
+        })
+        .WithRuntime(runtime =>
+        {
+            runtime.ConsoleStdOut = Console.Out;
+            runtime.ConsoleErrorOut = Console.Error;
+            runtime.JsonSerializer = ScriptJsonSerializer.Default;
+            runtime.DateTimeFormat = "yyyy-MM-dd HH:mm:ss";
+            runtime.HotReload = true;
+            runtime.StringPooling = StringPoolingStrategy.None;
+        })
+
+        .WithOptimization(optimization =>
+        {
+            optimization.ModuleConstInlining = true;
+            optimization.AutoModuleDirectCall = true;
+            optimization.Level = OptimizeOptions.Release;
+        });
+
+
+
 
         private static readonly AuroraEngine engine = new AuroraEngine(engineOptions);
         private static readonly UserState userState = new UserState();
@@ -35,7 +58,7 @@ namespace Examples
         private static void GlobalConfiguration(ScriptGlobal g)
         {
             g.Define("PI", ScriptDatum.FromNumber(Math.PI), writeable: false, enumerable: true);
-            g.Define("ENABLE_HOT_RELOAD", ScriptDatum.FromBoolean(engineOptions.EnableHotReload), writeable: false, enumerable: true);
+            g.Define("ENABLE_HOT_RELOAD", ScriptDatum.FromBoolean(engineOptions.Runtime.EnableHotReload), writeable: false, enumerable: true);
             g.Define("GIVE", ScriptDatum.FromBonding(Functions.GIVE), false, true);
             g.Define("CREATE_TIMER", ScriptDatum.FromBonding(Functions.CREATE_TIMER));
             g.Define("INPUT_NUMBER", ScriptDatum.FromBonding(Functions.CLIENT_INPUT_NUMBER), false, true);
@@ -102,9 +125,9 @@ namespace Examples
         private static void TestHotPatch(ScriptDomain domain)
         {
             //  domain = engine.CreateEmptyDomain(null);
-            if (!engineOptions.EnableHotReload)
+            if (!engineOptions.Runtime.EnableHotReload)
             {
-                Console.WriteLine("Engine Options EnableHotReload = false : Skip HotPatch Test Unit.");
+                Console.WriteLine("Engine Options HotReload = false : Skip HotPatch Test Unit.");
                 return;
             }
             // version 1
@@ -175,13 +198,13 @@ namespace Examples
             TestHotPatch(domain);
             TestCompileBlock(domain);
 
-            if (engineOptions.EnableHotReload)
+            if (engineOptions.Runtime.EnableHotReload)
             {
                 BenchmarkScript(domain, "UNIT_LIB", "testHotPatch");
             }
             else
             {
-                Console.WriteLine("Engine Options EnableHotReload = false : Skip Script HotPatch Test Unit.");
+                Console.WriteLine("Engine Options HotReload = false : Skip Script HotPatch Test Unit.");
             }
 
             var context = domain.Execute("MD5_LIB", "MD5", null, StringValue.Of("12345"));

@@ -23,7 +23,7 @@ namespace AuroraScript.Runtime.Extensions
         {
             if (args.Length > 0)
             {
-                ctx.Domain.Engine.Options.ConsoleStdOut?.WriteLine(FormatArguments(ctx, args));
+                ctx.Domain.Engine.Options.Runtime.ConsoleStdOut?.WriteLine(FormatArguments(ctx, args));
             }
         }
 
@@ -32,7 +32,7 @@ namespace AuroraScript.Runtime.Extensions
         {
             if (args.Length > 0)
             {
-                ctx.Engine.Options.ConsoleErrorOut?.WriteLine(FormatArguments(ctx, args));
+                ctx.Engine.Options.Runtime.ConsoleErrorOut?.WriteLine(FormatArguments(ctx, args));
             }
         }
 
@@ -71,7 +71,7 @@ namespace AuroraScript.Runtime.Extensions
 
             if (datum.Kind.Include(ValueKind.Object))
             {
-                var jsonDocument = ctx.Engine.Options.JsonSerializer.Serialize(datum, ctx.Engine.Options, false);
+                var jsonDocument = ctx.Engine.Options.Runtime.JsonSerializer.Serialize(datum, ctx.Engine.Options, false);
                 return jsonDocument;
             }
             return ScriptDatum.ToString(datum);
@@ -95,9 +95,8 @@ namespace AuroraScript.Runtime.Extensions
 
                 var elapsed = console._stopwatch.ElapsedMilliseconds - start;
                 console._times.Remove(label);
-                ctx.Engine.Options.ConsoleStdOut?.WriteLine($"{label} Used {elapsed}ms");
+                ctx.Engine.Options.Runtime.ConsoleStdOut?.WriteLine($"{label} Used {elapsed}ms");
             }
         }
     }
 }
-

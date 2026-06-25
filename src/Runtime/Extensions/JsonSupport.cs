@@ -18,7 +18,7 @@ namespace AuroraScript.Runtime.Extensions
             {
                 if (args.TryGetString(0, out var jsonText))
                 {
-                    var serializer = ctx.Engine.Options.JsonSerializer;
+                    var serializer = ctx.Engine.Options.Runtime.JsonSerializer;
                     ScriptDatum.WriteAsObject(ref result, serializer.Deserialize(jsonText));
                 }
             }
@@ -30,7 +30,7 @@ namespace AuroraScript.Runtime.Extensions
 
         public static void STRINGIFY(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
-            var serializer = ctx.Engine.Options.JsonSerializer;
+            var serializer = ctx.Engine.Options.Runtime.JsonSerializer;
             args.TryGetBoolean(1, out var indented);
             if (args.TryGetRef(0, ref result))
             {

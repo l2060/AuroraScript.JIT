@@ -2,6 +2,7 @@ using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Compiler.Backend.Binding;
 using AuroraScript.Compiler.Backend.Lowering;
+using AuroraScript.Runtime;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
@@ -154,6 +155,7 @@ namespace AuroraScript.Compiler.Backend.Plans
     {
         private readonly List<FunctionPlan> _functions;
         private readonly Dictionary<string, SymbolId> _symbolsByName;
+        private Dictionary<SymbolId, ScriptDatum> _inlineConstants;
 
         public ModulePlan(ModuleId id, ModuleDeclaration declaration)
         {
@@ -179,6 +181,7 @@ namespace AuroraScript.Compiler.Backend.Plans
         public ScopeId ModuleScope { get; set; }
         public MethodInfo Initializer { get; set; }
         public List<FunctionPlan> Functions => _functions;
+        public bool HasInlineConstants => _inlineConstants != null && _inlineConstants.Count != 0;
 
         public bool TryDeclareSymbol(string name, SymbolId symbol)
         {
@@ -188,6 +191,23 @@ namespace AuroraScript.Compiler.Backend.Plans
         public bool TryGetSymbol(string name, out SymbolId symbol)
         {
             return _symbolsByName.TryGetValue(name, out symbol);
+        }
+
+        public void SetInlineConstant(SymbolId symbol, ScriptDatum value)
+        {
+            _inlineConstants ??= new Dictionary<SymbolId, ScriptDatum>();
+            _inlineConstants[symbol] = value;
+        }
+
+        public bool TryGetInlineConstant(SymbolId symbol, out ScriptDatum value)
+        {
+            if (_inlineConstants != null)
+            {
+                return _inlineConstants.TryGetValue(symbol, out value);
+            }
+
+            value = default;
+            return false;
         }
 
         public void AddFunction(FunctionPlan function)

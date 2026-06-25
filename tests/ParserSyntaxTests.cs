@@ -248,7 +248,7 @@ public sealed class ParserSyntaxTests
     {
         root ??= Path.GetTempPath();
         using var lexer = new AuroraLexer(root, new TextSource(root, Path.Combine(root, "parser-test.as"), source));
-        var parser = new AuroraParser(lexer, EngineOptions.Default.WithBaseDirectory(root));
+        var parser = new AuroraParser(lexer, EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(root)));
         return parser.Parse();
     }
 }

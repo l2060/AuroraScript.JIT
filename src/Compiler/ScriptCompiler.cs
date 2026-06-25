@@ -42,7 +42,7 @@ namespace AuroraScript.Compiler
         public ScriptCompiler(EngineOptions options)
         {
             _options = options;
-            _baseDirectory = Path.GetFullPath(_options.BaseDirectory);
+            _baseDirectory = Path.GetFullPath(_options.Compiler.BaseDirectory);
         }
 
         public async Task<ModuleDeclaration[]> BuildModuleGraphAsync(ScriptSource[] sources, CancellationToken cancellationToken = default)
@@ -104,7 +104,7 @@ namespace AuroraScript.Compiler
 
         private int ResolveWorkerCount()
         {
-            var configured = _options.MaxDegreeOfParallelism;
+            var configured = _options.Compiler.MaxDegreeOfParallelism;
             return configured > 0 ? configured : Math.Max(1, Environment.ProcessorCount);
         }
 

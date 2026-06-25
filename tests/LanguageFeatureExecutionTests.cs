@@ -79,6 +79,52 @@ public sealed class LanguageFeatureExecutionTests
         ScriptAssert.Equal(2, TestWorkspace.Execute(domain, "run"));
     }
 
+    [Fact]
+    public async Task ModuleConstInliningPreservesRuntimeResultsWhenEnabled()
+    {
+        using var workspace = new TestWorkspace();
+        var engine = workspace.CreateEngine(enableModuleConstInlining: true);
+        await engine.BuildAsync(engine.MemorySource(
+            "main.as",
+            """
+            @module(TEST);
+            export const a1 = 1;
+            export const a5 = a1 + 4;
+            export const boolNumber = true + 1;
+            export const nullNumber = null + 1;
+            export const NUM = 3.141592678987654321;
+            export const STR = 'this is string';
+            export const BOOL = true;
+            export const BASE = 10;
+            export const COMPLEX = BASE * NUM + 5;
+            export const TAG = BASE + '_' + 1;
+            export const TEMPLATE = STR + BASE + '_' + TAG;
+            func make() { return 9; }
+            export const fv = make();
+            export func run() {
+                return [a5, boolNumber, nullNumber, fv, NUM, STR, BOOL, COMPLEX, TAG, TEMPLATE];
+            }
+            """));
+        var domain = engine.CreateDomain();
+        var expectedNum = 3.141592678987654321d;
+
+        ScriptAssert.Equal(
+            new object?[]
+            {
+                5,
+                2,
+                1,
+                9,
+                expectedNum,
+                "this is string",
+                true,
+                10 * expectedNum + 5,
+                "10_1",
+                "this is string10_10_1"
+            },
+            TestWorkspace.Execute(domain, "run"));
+    }
+
     [Theory]
     [InlineData("null", false)]
     [InlineData("false", false)]

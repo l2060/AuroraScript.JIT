@@ -70,9 +70,12 @@ using AuroraScript.Runtime;
 using System.Text;
 
 var options = EngineOptions.Default
-    .WithBaseDirectory("./scripts")
-    .WithCompilationMode(CompilationMode.Dynamic)
-    .WithOptimizeOption(OptimizeOptions.Release);
+    .WithCompiler(compiler =>
+    {
+        compiler.BaseDirectory = "./scripts";
+        compiler.Mode = CompilationMode.Dynamic;
+    })
+    .WithOptimization(optimization => optimization.Level = OptimizeOptions.Release);
 
 var engine = new AuroraEngine(options);
 engine.RegisterType(typeof(Math), "Math2");
@@ -83,6 +86,8 @@ var domain = engine.CreateDomain();
 var result = domain.Execute("MAIN", "main", ScriptDatum.FromNumber(20));
 Console.WriteLine(result);
 ```
+
+> Compatibility: the former flat configuration API, such as `WithBaseDirectory`, `WithCompilationMode`, `WithEnableHotReload`, and `EnableHotReload`, remains as a forwarding layer and is marked `[Obsolete]`. Existing code can still compile and run; new code should use the grouped `WithRuntime`, `WithCompiler`, `WithOptimization`, and `WithOutput` APIs.
 
 ### Script Code
 
@@ -158,7 +163,8 @@ export func run() {
 `CompileBlock` treats source text as an anonymous function body. It does not create a module and does not participate in hot reload. It is intended for formulas, rules, filters, and small snippets that are invoked frequently.
 
 ```csharp
-var engine = new AuroraEngine(EngineOptions.Default.WithBaseDirectory("."));
+var engine = new AuroraEngine(
+    EngineOptions.Default.WithCompiler(compiler => compiler.BaseDirectory = "."));
 
 var block = engine.CompileBlock("""
 func clamp(v, min, max) {
@@ -196,7 +202,7 @@ Limitations:
 
 ## Hot Patching
 
-Hot patching is controlled by `EngineOptions.EnableHotReload` and is enabled by default. Disabling it blocks host-side `DynamicPatch` and script-side `HotPatch`.
+Hot patching is controlled by `EngineOptions.Runtime.EnableHotReload` and is enabled by default. Disabling it blocks host-side `DynamicPatch` and script-side `HotPatch`.
 
 Host side:
 
@@ -270,13 +276,141 @@ func normalCall(value) {
 }
 ```
 
-Hosts can enable automatic inference with `EngineOptions.WithEnableAutoModuleDirectCall(true)`. Explicit `@directCall` does not depend on that option; marked functions are still considered for direct calls when automatic inference is disabled.
+Hosts can enable automatic inference with `EngineOptions.WithOptimization(optimization => optimization.EnableAutoModuleDirectCall = true)`. Explicit `@directCall` does not depend on that option; marked functions are still considered for direct calls when automatic inference is disabled.
 
 Usage guidance:
 
 - `@directCall` is intended for stable, frequently called module-level functions with fixed parameters.
 - Functions that use default parameters, `$args`, captured outer variables, or other dynamic call shapes continue to use the normal function-call path.
 - Do not reassign the name of a function marked with `@directCall` inside the module.
+
+### directCall Call Path Optimization
+
+`@directCall` optimizes the path for calling a known module function. It is not function inlining. The target function remains a separate function, AuroraScript still creates a script call context, and return values and exception stack behavior remain observable; the optimization is that the call site no longer treats the target as a dynamic function object.
+
+A normal module function call roughly follows this path:
+
+1. Read the module member for the function name. For example, `addOne` is read from the current `ScriptContext.Module` by string key.
+2. The module read enters `ScriptObject.GetPropertyDatum`: hidden class/property metadata lookup, property descriptor checks, and any getter, CLR binding, prototype chain, or CLR fallback handling.
+3. Convert the read value to a callable object.
+4. Enter the generic call helper, such as `CILHelper.Invoke0..Invoke7` or `InvokeMany`.
+5. The helper checks whether the target is a `ClosureFunction`, then enters `ClosureFunction.Invoke*`.
+6. `ClosureFunction` creates a new script context, selects a fast delegate or span/generic delegate by arity, invokes it, then releases the context.
+
+With direct call, an eligible call site takes a shorter path:
+
+1. At compile time, AuroraScript proves that `addOne(value)` targets a specific function in the same module and binds the call site to that function's `FunctionId` / IL method.
+2. At runtime, arguments are still evaluated in source order; fixed arguments are stored in temporary locals, missing arguments become `null`, and extra arguments are evaluated then discarded.
+3. AuroraScript creates only a direct-call context for stack traces and error locations.
+4. The emitted IL directly `call`s the target method, for example `OpCodes.Call target.Method`, then releases the direct-call context.
+
+Direct call mainly removes module property lookup, function-object conversion, `CILHelper.Invoke*` dispatch, `ClosureFunction.Invoke*` dispatch, delegate arity switching, and many branches on the dynamic call path. It keeps the required `ScriptContext`, so it is not a zero-cost call; the win is most visible when a small function is called repeatedly in a loop.
+
+An eligible direct-call site must satisfy these rules:
+
+- The call must be a static same-module name call, such as `addOne(x)`. Calls like `obj.addOne(x)`, `module.addOne(x)`, `var f = addOne; f(x)`, and cross-module import calls do not use this path.
+- The call cannot use spread arguments. `addOne(...items)` falls back to the normal call path.
+- The target function currently needs no more than 7 parameters and cannot use default parameters, `$args`, closure captures, or locals captured by nested functions.
+- Explicit `@directCall` preserves the function object on the module, so the function can still be exported, read, or invoked from the host. It only lets proven module-local call sites use the direct path.
+- Automatic inference only runs when `EngineOptions.WithOptimization(optimization => optimization.EnableAutoModuleDirectCall = true)` is enabled, and only for module functions that are not assigned, not read as values, and appear only as direct call targets.
+- direct call is never applied across modules, and marking a function does not force every call site to optimize. Ineligible call sites keep the normal path.
+
+### Local Variables vs Module Members
+
+Function parameters, `var` / `const` inside a function body, and local function declarations inside a function are bound to local slots by the backend. Reading or writing a normal local is essentially CLR IL `ldloc` / `stloc` over a `ScriptDatum`. That path has no string key, no object property lookup, no getter/setter, no prototype chain, and no module-object property descriptor lookup.
+
+Module-level declarations are different. Top-level `var`, `const`, `func`, `enum`, and import/export symbols are members of the module object. When a function accesses a module member, the compiler cannot treat it as a plain local because the module object is observable at runtime: the host can call `GetModule` / `Execute`, scripts can import/export it, hot patches can replace module members, and properties may have getter/setter behavior or be redefined. Therefore module member access usually starts from `ScriptContext.Module` and calls `ScriptObject.GetPropertyDatum` or `SetPropertyDatum` by name.
+
+This is why locals are much faster:
+
+- A local is a compile-time slot number and is read or written directly.
+- A module member is a runtime property and must resolve property metadata by string name.
+- Module reads must preserve property descriptors, getters, binding functions, prototype chains, and CLR fallback behavior.
+- Module writes must check setters, writability, and hidden class/property slot updates.
+- Repeated module access inside a loop repeats those dynamic checks; local access does not.
+
+For performance-sensitive code, keep loop counters, accumulators, and repeatedly used module constants in method-local variables:
+
+```javascript
+@module(MAIN);
+
+const scale = 3;
+
+export func fastSum(items) {
+    var localScale = scale;
+    var total = 0;
+
+    for (var item in items) {
+        total = total + item * localScale;
+    }
+
+    return total;
+}
+```
+
+If module state must be updated, read it into a local before the loop and write it back after the loop. That pays the module read/write cost only once:
+
+```javascript
+@module(MAIN);
+
+var counter = 0;
+
+export func addMany(items) {
+    var value = counter;
+
+    for (var item in items) {
+        value = value + item;
+    }
+
+    counter = value;
+    return value;
+}
+```
+
+Captured variables sit between the two: they are no longer plain `ldloc` / `stloc`, because they are stored through an upvalue object, but they still avoid string-based module property lookup. In hot paths, prefer parameters and ordinary locals first, necessary captured variables second, and use module members for cross-function state, exported APIs, or host-observable data.
+
+### Module-Level Const Inlining
+
+Module-level `const` declarations are still treated as module members by default. Compile-time inlining is enabled explicitly with `EngineOptions.WithOptimization(optimization => optimization.EnableModuleConstInlining = true)`. This switch is independent from `Runtime.EnableHotReload`: hot reload being enabled does not automatically disable or enable this optimization; the compile option decides it.
+
+When enabled, the compiler scans top-level `const` / `export const` declarations in source order inside the same module. If the initializer can be proven to be a side-effect-free primitive value at compile time, later reads in same-module function bodies are replaced with literals, and the constant's own module initialization writes the folded value directly:
+
+```javascript
+@module(TEST);
+
+export const a1 = 1;
+export const a5 = a1 + 4; // compiled as a5 = 5
+
+export func test() {
+    console.log(a5); // compiled as console.log(5)
+}
+```
+
+More complex primitive expressions are folded in declaration order as well:
+
+```javascript
+export const NUM = 3.141592678987654321;
+export const STR = 'this is string';
+export const BOOL = true;
+export const BASE = 10;
+export const COMPLEX = BASE * NUM + 5;       // 36.41592678987654
+export const TAG = BASE + '_' + 1;           // '10_1'
+export const TEMPLATE = STR + BASE + '_' + TAG; // 'this is string10_10_1'
+```
+
+When the option is enabled, module initialization should write the folded values directly. For example, `COMPLEX` should emit something like `ScriptDatum.FromNumber(36.41592678987654)`, not re-run `GetPropertyDatum("BASE") * GetPropertyDatum("NUM") + 5`.
+
+Currently eligible values and expressions are `null`, booleans, numbers, strings, and `+`, `-`, `*`, `/`, `%`, `!`, `&&`, `||`, or grouped expressions made from earlier same-module inlineable consts. Folding follows the runtime helpers where applicable: string operands in `+` concatenate, `null` is `0` for numeric arithmetic, and logical operators preserve short-circuit result semantics.
+
+These cases are not inlined:
+
+- Initializers containing function calls, constructors, property reads, index reads, array/object literals, lambdas, assignments, or other expressions that may have side effects.
+- `export const fv = func();` is not inlined, because the result of `func()` is only known at runtime and the call may have side effects.
+- Forward references are not inlined. In `export const a5 = a1 + 4; export const a1 = 1;`, `a5` is not folded.
+- Imported or included module members are not inlined across module boundaries.
+- If a local variable, parameter, or upvalue shadows the module const name, that local binding wins and is not replaced with the module constant.
+
+This optimization only changes reads that are proven constant. It does not remove the module member itself: `export const` is still defined on the module object and remains visible to hosts and other modules with the original module semantics. Reads already inlined into same-module function bodies no longer perform a module property lookup, so they will not observe later host-side or hot-patch replacement of that const member; leave this option off when that dynamic observability matters.
 
 ## Language Features
 
@@ -492,7 +626,7 @@ Commonly used members covered by the runtime and tests include:
 - `console.time(label)`
 - `console.timeEnd(label)`
 
-Output writers can be configured with `EngineOptions.WithConsoleStdOut` and `WithConsoleErrorOut`.
+Output writers can be configured with `EngineOptions.WithRuntime(runtime => { runtime.ConsoleStdOut = ...; runtime.ConsoleErrorOut = ...; })`.
 
 ### Proxy
 

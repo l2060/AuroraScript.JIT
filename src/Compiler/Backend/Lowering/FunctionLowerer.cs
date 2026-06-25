@@ -1,6 +1,7 @@
 using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Ast.Statements;
+using AuroraScript.Compiler.Backend.Analysis;
 using AuroraScript.Compiler.Backend.Binding;
 using AuroraScript.Compiler.Backend.Plans;
 using System;
@@ -327,9 +328,9 @@ namespace AuroraScript.Compiler.Backend.Lowering
                     LiteralExpression literal => new LoweredLiteralExpression(literal),
                     NameExpression name => LowerName(name),
                     BinaryExpression binary => new LoweredBinaryExpression(binary, LowerExpression(binary.Left), LowerExpression(binary.Right)),
-                    AssignmentExpression assignment => new LoweredAssignmentExpression(assignment, LowerExpression(assignment.Left), LowerExpression(assignment.Right)),
-                    CompoundExpression compound => new LoweredCompoundExpression(compound, LowerExpression(compound.Left), LowerExpression(compound.Right)),
-                    UnaryExpression unary => new LoweredUnaryExpression(unary, LowerExpression(unary.Expression)),
+                    AssignmentExpression assignment => new LoweredAssignmentExpression(assignment, LowerAssignmentTarget(assignment.Left), LowerExpression(assignment.Right)),
+                    CompoundExpression compound => new LoweredCompoundExpression(compound, LowerAssignmentTarget(compound.Left), LowerExpression(compound.Right)),
+                    UnaryExpression unary => new LoweredUnaryExpression(unary, LowerUnaryOperand(unary)),
                     InExpression inExpression => LowerIn(inExpression),
                     IncludedExpression included => LowerIncluded(included),
                     GetPropertyExpression property => new LoweredGetPropertyExpression(property, LowerExpression(property.Object), LowerExpression(property.Property)),
@@ -344,6 +345,23 @@ namespace AuroraScript.Compiler.Backend.Lowering
                     LambdaExpression lambda => LowerLambda(lambda),
                     _ => UnsupportedExpression(expression)
                 };
+            }
+
+            private LoweredExpression LowerAssignmentTarget(Expression expression)
+            {
+                return expression is NameExpression name
+                    ? LowerName(name, allowInline: false)
+                    : LowerExpression(expression);
+            }
+
+            private LoweredExpression LowerUnaryOperand(UnaryExpression unary)
+            {
+                if (IsIncrementOrDecrement(unary.Operator) && unary.Expression is NameExpression name)
+                {
+                    return LowerName(name, allowInline: false);
+                }
+
+                return LowerExpression(unary.Expression);
             }
 
             private LoweredCallExpression LowerCall(FunctionCallExpression call)
@@ -440,7 +458,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
                 return UnsupportedExpression(lambda);
             }
 
-            private LoweredNameExpression LowerName(NameExpression name)
+            private LoweredExpression LowerName(NameExpression name, bool allowInline = true)
             {
                 if (name == null)
                 {
@@ -458,7 +476,23 @@ namespace AuroraScript.Compiler.Backend.Lowering
                 var moduleSymbol = local.IsValid || upvalue.IsValid || !_modulePlan.TryGetSymbol(value, out var symbol)
                     ? SymbolId.Invalid
                     : symbol;
+                if (allowInline &&
+                    moduleSymbol.IsValid &&
+                    _modulePlan.TryGetInlineConstant(moduleSymbol, out var constant))
+                {
+                    var literal = ModuleConstInliningAnalyzer.CreateLiteralExpression(constant, name.Range);
+                    return new LoweredLiteralExpression(literal);
+                }
+
                 return new LoweredNameExpression(name, local, upvalue, moduleSymbol);
+            }
+
+            private static bool IsIncrementOrDecrement(Operator op)
+            {
+                return op == Operator.PreIncrement ||
+                    op == Operator.PostIncrement ||
+                    op == Operator.PreDecrement ||
+                    op == Operator.PostDecrement;
             }
 
             private LocalSlotId ResolveLocal(string name)

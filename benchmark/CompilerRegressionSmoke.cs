@@ -113,12 +113,12 @@ namespace AuroraBenchmark
         private static AuroraEngine CreateEngine(string directory, int maxDegreeOfParallelism)
         {
             var options = EngineOptions.Default
-                .WithBaseDirectory(directory)
-                .WithCompilationMode(CompilationMode.Dynamic)
-                .WithEnableHotReload(false)
-                .WithMaxDegreeOfParallelism(maxDegreeOfParallelism)
-                .WithConsoleStdOut(TextWriter.Null)
-                .WithConsoleErrorOut(TextWriter.Null);
+                .WithCompiler(compiler => compiler.WithDirectory(directory))
+                .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
+                .WithRuntime(runtime => runtime.HotReload = false)
+                .WithCompiler(compiler => compiler.MaxDegreeOfParallelism = maxDegreeOfParallelism)
+                .WithRuntime(runtime => runtime.ConsoleStdOut = TextWriter.Null)
+                .WithRuntime(runtime => runtime.ConsoleErrorOut = TextWriter.Null);
             return new AuroraEngine(options);
         }
 

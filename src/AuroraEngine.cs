@@ -62,7 +62,7 @@ namespace AuroraScript
         public AuroraEngine(EngineOptions options)
         {
             Options = options ?? throw new AuroraException("the parameter \"options\" cannot be empty");
-            StringValue.ConfigurePooling(Options.StringPooling);
+            StringValue.ConfigurePooling(Options.Runtime.StringPooling);
             Global = new ScriptGlobal(this);
 
             // register standard types
@@ -121,9 +121,9 @@ namespace AuroraScript
         {
             if (!Path.IsPathRooted(file))
             {
-                file = Path.Join(Options.BaseDirectory, file);
+                file = Path.Join(Options.Compiler.BaseDirectory, file);
             }
-            return new TextSource(Options.BaseDirectory, file, code);
+            return new TextSource(Options.Compiler.BaseDirectory, file, code);
         }
 
         /// <summary>
@@ -136,9 +136,9 @@ namespace AuroraScript
         {
             if (!Path.IsPathRooted(file))
             {
-                file = Path.Join(Options.BaseDirectory, file);
+                file = Path.Join(Options.Compiler.BaseDirectory, file);
             }
-            return new FileSource(Options.BaseDirectory, file, encoding);
+            return new FileSource(Options.Compiler.BaseDirectory, file, encoding);
         }
 
         /// <summary>
@@ -149,13 +149,13 @@ namespace AuroraScript
         /// <exception cref="AuroraException">Thrown if the base directory is invalid.</exception>
         public ScriptSource[] SearchAllFileSource(Encoding encoding)
         {
-            if (string.IsNullOrEmpty(Options.BaseDirectory) || !Directory.Exists(Options.BaseDirectory))
+            if (string.IsNullOrEmpty(Options.Compiler.BaseDirectory) || !Directory.Exists(Options.Compiler.BaseDirectory))
             {
-                throw new AuroraException($"The BaseDirectory “{Options.BaseDirectory}” field of the parameter options is not a valid directory");
+                throw new AuroraException($"The Directory “{Options.Compiler.BaseDirectory}” field of the parameter options is not a valid directory");
             }
-            var files = Directory.GetFiles(Options.BaseDirectory, "*" + Options.ExtName, SearchOption.AllDirectories);
+            var files = Directory.GetFiles(Options.Compiler.BaseDirectory, "*" + Options.Compiler.ExtName, SearchOption.AllDirectories);
             return files
-                .Select(file => new FileSource(Options.BaseDirectory, file, encoding))
+                .Select(file => new FileSource(Options.Compiler.BaseDirectory, file, encoding))
                 .OfType<ScriptSource>().ToArray();
         }
 
@@ -182,12 +182,12 @@ namespace AuroraScript
             await _buildLock.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                var baseDirectory = Path.GetFullPath(Options.BaseDirectory);
+                var baseDirectory = Path.GetFullPath(Options.Compiler.BaseDirectory);
                 if (string.IsNullOrEmpty(baseDirectory) || !Directory.Exists(baseDirectory))
                 {
-                    throw new AuroraException($"The BaseDirectory “{baseDirectory}” field of the parameter options is not a valid directory");
+                    throw new AuroraException($"The Directory “{baseDirectory}” field of the parameter options is not a valid directory");
                 }
-                AbstractCILBuilder builder = Options.CompilationMode switch
+                AbstractCILBuilder builder = Options.Compiler.Mode switch
                 {
                     CompilationMode.Persistence => new PersistedBuilder(Options),
                     CompilationMode.OnlyRun => new OnlyRunBuilder(Options),
@@ -206,9 +206,9 @@ namespace AuroraScript
                 if (builder is PersistedBuilder persisted)
                 {
                     var peImage = persisted.Serialize();
-                    if (!string.IsNullOrEmpty(Options.AssemblyOut))
+                    if (!string.IsNullOrEmpty(Options.Output.AssemblyFile))
                     {
-                        await File.WriteAllBytesAsync(Options.AssemblyOut, peImage, cancellationToken).ConfigureAwait(false);
+                        await File.WriteAllBytesAsync(Options.Output.AssemblyFile, peImage, cancellationToken).ConfigureAwait(false);
                     }
                     scriptAssembly = Assembly.Load(peImage);
                     var type = scriptAssembly.GetType(AbstractCILBuilder.EntryPointTypeName);
@@ -251,16 +251,14 @@ namespace AuroraScript
             ValidateCompileBlockParameters(options.Parameters);
             var sourceName = string.IsNullOrWhiteSpace(options.SourceName) ? "__compile_block__.as" : options.SourceName;
             var scriptSource = MemorySource(sourceName, source);
-            var lexer = new AuroraLexer(Options.BaseDirectory, scriptSource);
+            var lexer = new AuroraLexer(Options.Compiler.BaseDirectory, scriptSource);
             var parser = new AuroraParser(lexer, Options);
             var block = parser.ParseBlockBody();
 
-            var builderOptions = Options with
-            {
-                CompilationMode = CompilationMode.Dynamic,
-                EnableHotReload = false,
-                OptimizeOption = OptimizeOptions.Release
-            };
+            var builderOptions = Options
+                .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
+                .WithRuntime(runtime => runtime.HotReload = false)
+                .WithOptimization(optimization => optimization.Level = OptimizeOptions.Release);
             var builder = new DynamicBuilder(builderOptions);
             var backend = new BackendCompiler(builder, builderOptions);
             var blockPlan = backend.CreateCompileBlockPlan(block, options.Parameters, sourceName);

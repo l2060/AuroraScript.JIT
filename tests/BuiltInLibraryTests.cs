@@ -163,13 +163,13 @@ public sealed class BuiltInLibraryTests
     {
         using var workspace = new TestWorkspace();
         var engine = new AuroraEngine(EngineOptions.Default
-            .WithBaseDirectory(workspace.Root)
-            .WithCompilationMode(CompilationMode.Dynamic)
-            .WithOptimizeOption(OptimizeOptions.Release)
-            .WithEnableHotReload(false)
-            .WithConsoleStdOut(TextWriter.Null)
-            .WithConsoleErrorOut(TextWriter.Null)
-            .WithStringPooling(StringPoolingStrategy.None));
+            .WithCompiler(compiler => compiler.WithDirectory(workspace.Root))
+            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
+            .WithOptimization(optimization => optimization.Level = OptimizeOptions.Release)
+            .WithRuntime(runtime => runtime.HotReload = false)
+            .WithRuntime(runtime => runtime.ConsoleStdOut = TextWriter.Null)
+            .WithRuntime(runtime => runtime.ConsoleErrorOut = TextWriter.Null)
+            .WithRuntime(runtime => runtime.StringPooling = StringPoolingStrategy.None));
         var sourcePath = workspace.WriteSource(
             "main.as",
             """

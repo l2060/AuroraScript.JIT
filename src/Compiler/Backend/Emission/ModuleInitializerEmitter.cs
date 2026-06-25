@@ -1,6 +1,7 @@
 using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Ast.Statements;
+using AuroraScript.Compiler.Backend.Analysis;
 using AuroraScript.Compiler.Backend.Binding;
 using AuroraScript.Compiler.Backend.Builders;
 using AuroraScript.Compiler.Backend.Plans;
@@ -195,19 +196,28 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             if (variable.Name != null)
             {
-                EmitDefineDatum(variable.Name.Value, variable.Initializer, writable: !variable.IsConst);
+                EmitDefineDatum(variable, variable.Name.Value, variable.Initializer, writable: !variable.IsConst);
                 return;
             }
 
             throw new NotSupportedException("Module destructuring declaration");
         }
 
-        private void EmitDefineDatum(string name, Expression initializer, bool writable)
+        private void EmitDefineDatum(VariableDeclaration declaration, string name, Expression initializer, bool writable)
         {
             _il.Emit(OpCodes.Ldarg_0);
             _il.Emit(OpCodes.Ldfld, RuntimeMetadata.CILContext_Module);
             _session.Builder.LoadStringConstant(_il, name);
-            EmitExpressionOrNull(initializer);
+            if (_module.TryGetSymbol(name, out var symbolId) &&
+                ReferenceEquals(_session.CompileSession.Symbols[symbolId].Declaration, declaration) &&
+                _module.TryGetInlineConstant(symbolId, out var constant))
+            {
+                EmitLiteral(ModuleConstInliningAnalyzer.CreateLiteralExpression(constant, SourceSpan.None));
+            }
+            else
+            {
+                EmitExpressionOrNull(initializer);
+            }
             _il.Emit(writable ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
             _il.Emit(OpCodes.Ldc_I4_1);
             _il.Emit(_session.ForceModuleDefinitions ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);

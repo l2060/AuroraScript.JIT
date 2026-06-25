@@ -24,29 +24,141 @@ public sealed class EngineOptionsAndSourceTests
         using var workspace = new TestWorkspace();
         var original = EngineOptions.Default;
         var configured = original
+            .WithCompiler(compiler => compiler.WithDirectory(workspace.Root))
+            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
+            .WithOptimization(optimization => optimization.Level = OptimizeOptions.Release)
+            .WithRuntime(runtime => runtime.HotReload = false)
+            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true)
+            .WithOptimization(optimization => optimization.ModuleConstInlining = true)
+            .WithOutput(output => output.Confused = true)
+            .WithRuntime(runtime => runtime.DateTimeFormat = "O")
+            .WithCompiler(compiler => compiler.ExtName = "aurora")
+            .WithRuntime(runtime => runtime.StringPooling = StringPoolingStrategy.None)
+            .WithCompiler(compiler => compiler.MaxDegreeOfParallelism = 3);
+
+        Assert.NotSame(original, configured);
+        Assert.Equal(Path.GetFullPath(workspace.Root), configured.Compiler.BaseDirectory);
+        Assert.Equal(CompilationMode.Dynamic, configured.Compiler.Mode);
+        Assert.Equal(OptimizeOptions.Release, configured.Optimization.Level);
+        Assert.False(configured.Runtime.EnableHotReload);
+        Assert.True(configured.Optimization.EnableAutoModuleDirectCall);
+        Assert.False(original.Optimization.EnableAutoModuleDirectCall);
+        Assert.True(configured.Optimization.EnableModuleConstInlining);
+        Assert.False(original.Optimization.EnableModuleConstInlining);
+        Assert.True(configured.Output.EnableConfused);
+        Assert.Equal("O", configured.Runtime.DateTimeFormat);
+        Assert.Equal(".aurora", configured.Compiler.ExtName);
+        Assert.Equal(StringPoolingStrategy.None, configured.Runtime.StringPooling);
+        Assert.Equal(3, configured.Compiler.MaxDegreeOfParallelism);
+    }
+
+    [Fact]
+    public void LegacyFluentOptionsRemainCompatible()
+    {
+        using var workspace = new TestWorkspace();
+        using var stdOut = new StringWriter();
+        using var errorOut = new StringWriter();
+        var original = EngineOptions.Default;
+
+#pragma warning disable CS0618
+        var configured = original
             .WithBaseDirectory(workspace.Root)
             .WithCompilationMode(CompilationMode.Dynamic)
-            .WithOptimizeOption(OptimizeOptions.Release)
+            .WithOptimizeOption(OptimizeOptions.Debug)
             .WithEnableHotReload(false)
             .WithEnableAutoModuleDirectCall(true)
+            .WithEnableModuleConstInlining(true)
             .WithEnableConfused(true)
+            .WithJsonSerializer(ScriptJsonSerializer.Default)
             .WithDateTimeFormat("O")
+            .WithConsoleStdOut(stdOut)
+            .WithConsoleErrorOut(errorOut)
+            .WithAssemblyOut("legacy.dll")
             .WithExtName("aurora")
             .WithStringPooling(StringPoolingStrategy.None)
-            .WithMaxDegreeOfParallelism(3);
+            .WithMaxDegreeOfParallelism(4);
 
         Assert.NotSame(original, configured);
         Assert.Equal(Path.GetFullPath(workspace.Root), configured.BaseDirectory);
+        Assert.Equal(Path.GetFullPath(workspace.Root), configured.Compiler.BaseDirectory);
         Assert.Equal(CompilationMode.Dynamic, configured.CompilationMode);
-        Assert.Equal(OptimizeOptions.Release, configured.OptimizeOption);
+        Assert.Equal(CompilationMode.Dynamic, configured.Compiler.Mode);
+        Assert.Equal(OptimizeOptions.Debug, configured.OptimizeOption);
+        Assert.Equal(OptimizeOptions.Debug, configured.Optimization.Level);
         Assert.False(configured.EnableHotReload);
+        Assert.False(configured.Runtime.EnableHotReload);
         Assert.True(configured.EnableAutoModuleDirectCall);
-        Assert.False(original.EnableAutoModuleDirectCall);
+        Assert.True(configured.Optimization.EnableAutoModuleDirectCall);
+        Assert.True(configured.EnableModuleConstInlining);
+        Assert.True(configured.Optimization.EnableModuleConstInlining);
         Assert.True(configured.EnableConfused);
+        Assert.True(configured.Output.EnableConfused);
+        Assert.Same(ScriptJsonSerializer.Default, configured.JsonSerializer);
+        Assert.Same(ScriptJsonSerializer.Default, configured.Runtime.JsonSerializer);
         Assert.Equal("O", configured.DateTimeFormat);
+        Assert.Equal("O", configured.Runtime.DateTimeFormat);
+        Assert.Same(stdOut, configured.ConsoleStdOut);
+        Assert.Same(stdOut, configured.Runtime.ConsoleStdOut);
+        Assert.Same(errorOut, configured.ConsoleErrorOut);
+        Assert.Same(errorOut, configured.Runtime.ConsoleErrorOut);
+        Assert.Equal("legacy.dll", configured.AssemblyOut);
+        Assert.Equal("legacy.dll", configured.Output.AssemblyFile);
         Assert.Equal(".aurora", configured.ExtName);
+        Assert.Equal(".aurora", configured.Compiler.ExtName);
         Assert.Equal(StringPoolingStrategy.None, configured.StringPooling);
-        Assert.Equal(3, configured.MaxDegreeOfParallelism);
+        Assert.Equal(StringPoolingStrategy.None, configured.Runtime.StringPooling);
+        Assert.Equal(4, configured.MaxDegreeOfParallelism);
+        Assert.Equal(4, configured.Compiler.MaxDegreeOfParallelism);
+        Assert.False(original.Optimization.EnableModuleConstInlining);
+#pragma warning restore CS0618
+    }
+
+    [Fact]
+    public void LegacyInitPropertiesUpdateGroupedOptions()
+    {
+        using var workspace = new TestWorkspace();
+        using var stdOut = new StringWriter();
+        using var errorOut = new StringWriter();
+
+#pragma warning disable CS0618
+        var configured = EngineOptions.Default with
+        {
+            BaseDirectory = workspace.Root,
+            CompilationMode = CompilationMode.Dynamic,
+            OptimizeOption = OptimizeOptions.Debug,
+            EnableHotReload = false,
+            EnableAutoModuleDirectCall = true,
+            EnableModuleConstInlining = true,
+            EnableConfused = true,
+            JsonSerializer = ScriptJsonSerializer.Default,
+            DateTimeFormat = "O",
+            ConsoleStdOut = stdOut,
+            ConsoleErrorOut = errorOut,
+            AssemblyOut = "legacy-init.dll",
+            ExtName = "legacy",
+            StringPooling = StringPoolingStrategy.None,
+            MaxDegreeOfParallelism = 2
+        };
+
+        configured.ExtName = "changed";
+
+        Assert.Equal(Path.GetFullPath(workspace.Root), configured.Compiler.BaseDirectory);
+        Assert.Equal(CompilationMode.Dynamic, configured.Compiler.Mode);
+        Assert.Equal(OptimizeOptions.Debug, configured.Optimization.Level);
+        Assert.False(configured.Runtime.EnableHotReload);
+        Assert.True(configured.Optimization.EnableAutoModuleDirectCall);
+        Assert.True(configured.Optimization.EnableModuleConstInlining);
+        Assert.True(configured.Output.EnableConfused);
+        Assert.Same(ScriptJsonSerializer.Default, configured.Runtime.JsonSerializer);
+        Assert.Equal("O", configured.Runtime.DateTimeFormat);
+        Assert.Same(stdOut, configured.Runtime.ConsoleStdOut);
+        Assert.Same(errorOut, configured.Runtime.ConsoleErrorOut);
+        Assert.Equal("legacy-init.dll", configured.Output.AssemblyFile);
+        Assert.Equal(".changed", configured.Compiler.ExtName);
+        Assert.Equal(".changed", configured.ExtName);
+        Assert.Equal(StringPoolingStrategy.None, configured.Runtime.StringPooling);
+        Assert.Equal(2, configured.Compiler.MaxDegreeOfParallelism);
+#pragma warning restore CS0618
     }
 
     [Theory]
@@ -54,14 +166,14 @@ public sealed class EngineOptionsAndSourceTests
     [InlineData("a.b.c")]
     public void RejectsInvalidExtensions(string extension)
     {
-        Assert.Throws<ArgumentException>(() => EngineOptions.Default.WithExtName(extension));
+        Assert.Throws<ArgumentException>(() => EngineOptions.Default.WithCompiler(compiler => compiler.ExtName = extension));
     }
 
     [Fact]
     public void RejectsNegativeParallelismAndNullSerializer()
     {
-        Assert.Throws<ArgumentOutOfRangeException>(() => EngineOptions.Default.WithMaxDegreeOfParallelism(-1));
-        Assert.Throws<AuroraException>(() => EngineOptions.Default.WithJsonSerializer(null!));
+        Assert.Throws<ArgumentOutOfRangeException>(() => EngineOptions.Default.WithCompiler(compiler => compiler.MaxDegreeOfParallelism = -1));
+        Assert.Throws<AuroraException>(() => EngineOptions.Default.WithRuntime(runtime => runtime.JsonSerializer = null!));
     }
 
     [Fact]
@@ -96,7 +208,7 @@ public sealed class EngineOptionsAndSourceTests
     public void SearchAllFileSourceRejectsMissingBaseDirectory()
     {
         var missing = Path.Combine(Path.GetTempPath(), "aurora-missing-" + Guid.NewGuid().ToString("N"));
-        var engine = new AuroraEngine(EngineOptions.Default.WithBaseDirectory(missing));
+        var engine = new AuroraEngine(EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(missing)));
 
         Assert.Throws<AuroraException>(() => engine.SearchAllFileSource(Encoding.UTF8));
     }
@@ -105,7 +217,7 @@ public sealed class EngineOptionsAndSourceTests
     public async Task BuildRejectsMissingBaseDirectoryAndMissingRootFile()
     {
         var missing = Path.Combine(Path.GetTempPath(), "aurora-missing-" + Guid.NewGuid().ToString("N"));
-        var engine = new AuroraEngine(EngineOptions.Default.WithBaseDirectory(missing));
+        var engine = new AuroraEngine(EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(missing)));
 
         await Assert.ThrowsAsync<AuroraException>(() => engine.BuildAsync(engine.MemorySource("main.as", "@module(TEST);")));
 

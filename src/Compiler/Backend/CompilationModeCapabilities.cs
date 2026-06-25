@@ -40,12 +40,12 @@ namespace AuroraScript.Compiler.Backend
             var canUseModuleDirectCall = true;
             var canInferAutoModuleDirectCall =
                 canUseModuleDirectCall &&
-                options.EnableAutoModuleDirectCall;
+                options.Optimization.EnableAutoModuleDirectCall;
 
-            return options.CompilationMode switch
+            return options.Compiler.Mode switch
             {
                 CompilationMode.Dynamic => new CompilationModeCapabilities(
-                    options.CompilationMode,
+                    options.Compiler.Mode,
                     canAnalyzeModulesInParallel: true,
                     canLowerModulesInParallel: true,
                     canEmitModulesInParallel: false,
@@ -55,7 +55,7 @@ namespace AuroraScript.Compiler.Backend
                     canInferAutoModuleDirectCall),
 
                 CompilationMode.OnlyRun => new CompilationModeCapabilities(
-                    options.CompilationMode,
+                    options.Compiler.Mode,
                     canAnalyzeModulesInParallel: true,
                     canLowerModulesInParallel: true,
                     canEmitModulesInParallel: false,
@@ -65,16 +65,16 @@ namespace AuroraScript.Compiler.Backend
                     canInferAutoModuleDirectCall),
 
                 CompilationMode.Persistence => new CompilationModeCapabilities(
-                    options.CompilationMode,
+                    options.Compiler.Mode,
                     canAnalyzeModulesInParallel: true,
                     canLowerModulesInParallel: true,
                     canEmitModulesInParallel: false,
                     requiresSerializedMetadata: true,
-                    requiresDeterministicPdb: options.OptimizeOption == OptimizeOptions.Debug,
+                    requiresDeterministicPdb: options.Optimization.Level == OptimizeOptions.Debug,
                     canUseModuleDirectCall,
                     canInferAutoModuleDirectCall),
 
-                _ => throw new NotImplementedException($"Unsupported compilation mode '{options.CompilationMode}'.")
+                _ => throw new NotImplementedException($"Unsupported compilation mode '{options.Compiler.Mode}'.")
             };
         }
 

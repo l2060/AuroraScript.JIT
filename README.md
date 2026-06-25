@@ -70,9 +70,12 @@ using AuroraScript.Runtime;
 using System.Text;
 
 var options = EngineOptions.Default
-    .WithBaseDirectory("./scripts")
-    .WithCompilationMode(CompilationMode.Dynamic)
-    .WithOptimizeOption(OptimizeOptions.Release);
+    .WithCompiler(compiler =>
+    {
+        compiler.Directory = "./scripts";
+        compiler.Mode = CompilationMode.Dynamic;
+    })
+    .WithOptimization(optimization => optimization.Level = OptimizeOptions.Release);
 
 var engine = new AuroraEngine(options);
 engine.RegisterType(typeof(Math), "Math2");
@@ -83,6 +86,8 @@ var domain = engine.CreateDomain();
 var result = domain.Execute("MAIN", "main", ScriptDatum.FromNumber(20));
 Console.WriteLine(result);
 ```
+
+> 兼容性：旧的扁平配置 API（例如 `WithBaseDirectory`、`WithCompilationMode`、`WithEnableHotReload`、`EnableHotReload`）仍保留为转发层，并已标记为 `[Obsolete]`。旧代码可以继续编译运行；新代码建议使用 `WithRuntime`、`WithCompiler`、`WithOptimization`、`WithOutput` 分组 API。
 
 ### 脚本代码
 
@@ -158,7 +163,8 @@ export func run() {
 `CompileBlock` 会把源码当作匿名函数体编译，不创建模块，也不参与热重载。它适合公式、规则、过滤器和需要频繁调用的小段逻辑。
 
 ```csharp
-var engine = new AuroraEngine(EngineOptions.Default.WithBaseDirectory("."));
+var engine = new AuroraEngine(
+    EngineOptions.Default.WithCompiler(compiler => compiler.BaseDirectory = "."));
 
 var block = engine.CompileBlock("""
 func clamp(v, min, max) {
@@ -196,7 +202,7 @@ var result = block.Invoke(ScriptDatum.FromNumber(125));
 
 ## 热修复
 
-热修复由 `EngineOptions.EnableHotReload` 控制，默认启用。关闭后会禁用宿主侧 `DynamicPatch` 和脚本侧 `HotPatch`。
+热修复由 `EngineOptions.Runtime.EnableHotReload` 控制，默认启用。关闭后会禁用宿主侧 `DynamicPatch` 和脚本侧 `HotPatch`。
 
 宿主侧：
 
@@ -270,13 +276,141 @@ func normalCall(value) {
 }
 ```
 
-宿主侧可以通过 `EngineOptions.WithEnableAutoModuleDirectCall(true)` 开启自动推断。显式 `@directCall` 不依赖该选项；即使没有开启自动推断，被标记的函数仍会按可优化规则尝试使用直接调用。
+宿主侧可以通过 `EngineOptions.WithOptimization(optimization => optimization.EnableAutoModuleDirectCall = true)` 开启自动推断。显式 `@directCall` 不依赖该选项；即使没有开启自动推断，被标记的函数仍会按可优化规则尝试使用直接调用。
 
 适用建议：
 
 - `@directCall` 适合参数固定、逻辑稳定、被模块内高频调用的普通函数。
 - 使用默认参数、`$args`、捕获外部变量等动态调用形态时，编译器会继续使用普通函数调用路径。
 - 被 `@directCall` 标记的函数名不应在模块内被重新赋值。
+
+### directCall 的调用路径优化
+
+`@directCall` 优化的是“调用一个已知模块函数”的路径，不是函数内联。被调用函数仍然是一个独立函数，仍会建立脚本调用上下文，异常堆栈和返回值语义保持不变；优化点在于编译器不再把这次调用当成动态函数对象调用。
+
+普通的模块函数调用大致会走下面的路径：
+
+1. 读取函数名对应的模块成员，例如 `addOne` 会从当前 `ScriptContext.Module` 上按字符串 key 读取 `addOne`。
+2. 模块成员读取会进入 `ScriptObject.GetPropertyDatum`：查 hidden class/property meta、检查属性描述符、必要时处理 getter、CLR 绑定函数、原型链或 CLR fallback。
+3. 调用点把读取到的值转换成可调用对象。
+4. 通过 `CILHelper.Invoke0..Invoke7` 或 `InvokeMany` 进入通用调用 helper。
+5. helper 判断目标是不是 `ClosureFunction`，再进入 `ClosureFunction.Invoke*`。
+6. `ClosureFunction` 创建新的脚本上下文，按参数个数选择 fast delegate 或 span/generic delegate，最后释放上下文。
+
+开启 direct call 后，符合条件的调用点会改成更短的路径：
+
+1. 编译期确认 `addOne(value)` 的目标就是同一模块里的某个函数，并把调用点绑定到该函数的 `FunctionId` / IL method。
+2. 调用时仍按源码顺序计算参数；固定参数会放进临时 local，缺失参数补 `null`，多余参数会被求值后丢弃。
+3. 运行时只创建 direct-call 上下文用于调用栈和异常定位。
+4. 发射的 IL 直接 `call` 目标函数方法，例如 `OpCodes.Call target.Method`，返回后释放 direct-call 上下文。
+
+因此 direct call 主要省掉了：模块属性读取、函数对象转换、`CILHelper.Invoke*` 分发、`ClosureFunction.Invoke*` 分发、delegate arity switch，以及很多动态调用路径上的分支。它保留必要的 `ScriptContext`，所以它不是“零成本调用”；但在循环里反复调用小函数时，省掉的动态分发会很明显。
+
+能够走 direct call 的调用点需要满足这些条件：
+
+- 调用形式必须是同模块内的静态名字调用，例如 `addOne(x)`；`obj.addOne(x)`、`module.addOne(x)`、`var f = addOne; f(x)`、跨模块 import 调用都不会走这条路径。
+- 调用参数不能使用 spread，例如 `addOne(...items)` 会回退到普通调用。
+- 目标函数当前要求参数个数不超过 7 个，且不能使用默认参数、`$args`、闭包捕获或被内部子函数捕获的局部变量。
+- 显式 `@directCall` 会保留模块上的函数对象，因此函数仍可被导出、读取或由宿主调用；它只是让模块内可证明的调用点使用直接路径。
+- 自动推断只在 `EngineOptions.WithOptimization(optimization => optimization.EnableAutoModuleDirectCall = true)` 开启后生效，并且只会优化没有被赋值、没有被当作值读取、只作为直接调用目标出现的模块内函数。
+- direct call 不会跨模块优化，也不会因为一个函数被标记就强制所有调用点都优化；不符合条件的调用点仍走普通路径。
+
+### local 变量和 module 成员的访问成本
+
+函数参数、函数体内 `var` / `const`、函数体内声明的局部函数都会被后端绑定到 local slot。读取和写入普通 local 基本就是 CLR IL 的 `ldloc` / `stloc`，值的载体是 `ScriptDatum`。这条路径没有字符串 key、没有对象属性查找、没有 getter/setter、没有原型链，也不需要从模块对象上取属性描述符。
+
+模块顶层声明则不同。顶层 `var`、`const`、`func`、`enum` 和 import/export 相关符号都属于模块对象的成员。函数里访问一个模块成员时，编译器不能把它简单当作 local，因为模块对象是可观察的运行时对象：宿主可以 `GetModule` / `Execute`，脚本可以 import/export，热补丁可以替换模块成员，属性也可能带 getter/setter 或被重新定义。因此访问模块成员时通常要从 `ScriptContext.Module` 出发，按名字调用 `ScriptObject.GetPropertyDatum` 或 `SetPropertyDatum`。
+
+这就是 local 明显更快的原因：
+
+- local 是编译期确定的槽位编号，运行时直接按 slot 读写。
+- module 成员是运行时属性，必须按字符串名字解析 property meta。
+- module 读取需要处理属性描述符、getter、绑定函数、原型链和 CLR fallback 等动态语义。
+- module 写入需要检查 setter、可写性和 hidden class/property slot 更新。
+- 在循环中重复访问 module 成员会重复承担这些动态检查；local 不会。
+
+性能敏感代码建议把循环计数器、累加器和重复读取的模块常量放进方法内 local：
+
+```javascript
+@module(MAIN);
+
+const scale = 3;
+
+export func fastSum(items) {
+    var localScale = scale;
+    var total = 0;
+
+    for (var item in items) {
+        total = total + item * localScale;
+    }
+
+    return total;
+}
+```
+
+如果需要更新模块状态，可以在循环前读入 local，循环结束后再写回模块成员。这样只承担一次模块读写成本：
+
+```javascript
+@module(MAIN);
+
+var counter = 0;
+
+export func addMany(items) {
+    var value = counter;
+
+    for (var item in items) {
+        value = value + item;
+    }
+
+    counter = value;
+    return value;
+}
+```
+
+闭包捕获的变量介于两者之间：它不再是单纯 `ldloc` / `stloc`，而是通过 upvalue 对象保存，但仍然避免了模块对象的字符串属性查找。热路径里优先使用参数和普通 local，其次是必要的闭包变量；模块成员更适合作为跨函数共享状态、导出 API 或宿主可观察数据。
+
+### 模块级 const 的编译期内联
+
+模块级 `const` 默认仍按模块成员处理；编译期内联需要显式开启 `EngineOptions.WithOptimization(optimization => optimization.EnableModuleConstInlining = true)`。这个开关独立于 `Runtime.EnableHotReload`：热更新是否开启不会自动禁止或启用该优化，最终只由这个编译参数决定。
+
+开启后，编译器会在同一个模块内按源码顺序分析顶层 `const` / `export const`。如果初始化表达式能在编译期证明为无副作用的 primitive 值，后续同模块函数体里的读取会被替换成 literal，常量自身的模块初始化也会直接写入折叠后的值：
+
+```javascript
+@module(TEST);
+
+export const a1 = 1;
+export const a5 = a1 + 4; // 编译为 a5 = 5
+
+export func test() {
+    console.log(a5); // 编译为 console.log(5)
+}
+```
+
+更复杂的 primitive 表达式也会按顺序折叠：
+
+```javascript
+export const NUM = 3.141592678987654321;
+export const STR = 'this is string';
+export const BOOL = true;
+export const BASE = 10;
+export const COMPLEX = BASE * NUM + 5;       // 36.41592678987654
+export const TAG = BASE + '_' + 1;           // '10_1'
+export const TEMPLATE = STR + BASE + '_' + TAG; // 'this is string10_10_1'
+```
+
+开启该参数后，模块初始化代码也应该直接写入折叠值，例如 `COMPLEX` 应发射为类似 `ScriptDatum.FromNumber(36.41592678987654)`，而不是重新执行 `GetPropertyDatum("BASE") * GetPropertyDatum("NUM") + 5`。
+
+当前可内联的值和表达式包括：`null`、boolean、number、string，以及由更早声明的同模块可内联 const 组成的 `+`、`-`、`*`、`/`、`%`、`!`、`&&`、`||` 和括号表达式。折叠时会尽量沿用运行时 helper 的语义，例如字符串参与 `+` 时做拼接，`null` 在数值运算里按 `0` 处理，逻辑表达式保留短路返回值语义。
+
+下面这些情况不会内联：
+
+- 初始化表达式包含函数调用、构造、属性读取、下标读取、数组/对象字面量、lambda、赋值或其它可能有副作用的表达式。
+- `export const fv = func();` 不会内联，因为 `func()` 的结果只能在运行时知道，而且调用本身可能有副作用。
+- 前向引用不会内联，例如 `export const a5 = a1 + 4; export const a1 = 1;` 中的 `a5` 不会被折叠。
+- import/include 得到的外部模块成员不会跨模块内联。
+- 局部变量、参数或 upvalue 与模块 const 同名时，局部绑定优先，不会替换成模块常量。
+
+这个优化只改变可证明常量的读取路径，不会删除模块成员本身。`export const` 仍会定义在模块对象上，宿主和其它模块仍可按原语义访问。但已经内联到同模块函数体里的读取不再走模块属性查询，因此不会观察到后续由宿主或热补丁强行替换该 const 成员后的值；需要这种动态可观察性时不要开启该优化。
 
 ## 语言能力
 
@@ -492,7 +626,7 @@ JSON 支持脚本基础值、对象、数组、HashMap 等类型；循环引用�
 - `console.time(label)`
 - `console.timeEnd(label)`
 
-输出目标可通过 `EngineOptions.WithConsoleStdOut` 和 `WithConsoleErrorOut` 配置。
+输出目标可通过 `EngineOptions.WithRuntime(runtime => { runtime.ConsoleStdOut = ...; runtime.ConsoleErrorOut = ...; })` 配置。
 
 ### Proxy
 

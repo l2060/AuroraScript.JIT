@@ -35,14 +35,14 @@ namespace AuroraBenchmark
         {
             var scriptDirectory = Path.Combine(AppContext.BaseDirectory, "scripts");
             var options = EngineOptions.Default
-                .WithBaseDirectory(scriptDirectory)
-                .WithConsoleStdOut(TextWriter.Null)
-                .WithConsoleErrorOut(TextWriter.Null)
-                .WithDateTimeFormat("yyyy-MM-dd HH:mm:ss")
-                .WithAssemblyOut(Path.Combine(AppContext.BaseDirectory, "runtime-benchmark.dll"))
-                .WithEnableConfused(false)
-                .WithCompilationMode(CompilationMode.Dynamic)
-                .WithOptimizeOption(OptimizeOptions.Release);
+                .WithCompiler(compiler => compiler.WithDirectory(scriptDirectory))
+                .WithRuntime(runtime => runtime.ConsoleStdOut = TextWriter.Null)
+                .WithRuntime(runtime => runtime.ConsoleErrorOut = TextWriter.Null)
+                .WithRuntime(runtime => runtime.DateTimeFormat = "yyyy-MM-dd HH:mm:ss")
+                .WithOutput(output => output.AssemblyFile = Path.Combine(AppContext.BaseDirectory, "runtime-benchmark.dll"))
+                .WithOutput(output => output.Confused = false)
+                .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
+                .WithOptimization(optimization => optimization.Level = OptimizeOptions.Release);
 
             engine = new AuroraEngine(options);
             engine.RegisterType<HostObject>();

@@ -2,8 +2,8 @@ using AuroraScript;
 using AuroraScript.Compiler.Analyzer;
 using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Backend;
+using AuroraScript.Compiler.Backend.Builders;
 using AuroraScript.Compiler.Backend.Emission;
-using AuroraScript.Compiler.Emits.Builders;
 using AuroraScript.Core;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
@@ -188,11 +188,11 @@ namespace AuroraBenchmark
         private EngineOptions CreateOptions()
         {
             return EngineOptions.Default
-                .WithBaseDirectory(baseDirectory)
-                .WithCompilationMode(CompilationMode.Dynamic)
-                .WithOptimizeOption(OptimizeOptions.Release)
-                .WithConsoleStdOut(TextWriter.Null)
-                .WithConsoleErrorOut(TextWriter.Null);
+                .WithCompiler(compiler => compiler.WithDirectory(baseDirectory))
+                .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
+                .WithOptimization(optimization => optimization.Level = OptimizeOptions.Release)
+                .WithRuntime(runtime => runtime.ConsoleStdOut = TextWriter.Null)
+                .WithRuntime(runtime => runtime.ConsoleErrorOut = TextWriter.Null);
         }
 
         private void CreateMultiModuleScripts()

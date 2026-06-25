@@ -438,7 +438,7 @@ namespace AuroraScript.Runtime.Serialization
         /// <summary> Writes a date value to the JSON stream using the configured format. </summary>
         protected virtual void WriteDate(Utf8JsonWriter writer, ScriptDate date, in ScriptSerializationContext context)
         {
-            writer.WriteStringValue(date.Format(context.Options.DateTimeFormat));
+            writer.WriteStringValue(date.Format(context.Options.Runtime.DateTimeFormat));
         }
 
         /// <summary> Writes a regular expression to the JSON stream. </summary>

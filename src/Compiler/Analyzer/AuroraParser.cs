@@ -116,7 +116,7 @@ namespace AuroraScript.Compiler.Analyzer
             }
             // Set default module name
             var moduleDefaultName = this.Root.ModulePath;
-            if (moduleDefaultName.EndsWith(_options.ExtName))
+            if (moduleDefaultName.EndsWith(_options.Compiler.ExtName))
             {
                 moduleDefaultName = moduleDefaultName.Substring(0, moduleDefaultName.Length - 3);
             }
@@ -1281,9 +1281,9 @@ namespace AuroraScript.Compiler.Analyzer
         {
             var fullPath = Path.GetFullPath(Path.Combine(this.Lexer.Directory, path));
             var extension = Path.GetExtension(fullPath).ToLower();
-            if (extension != _options.ExtName)
+            if (extension != _options.Compiler.ExtName)
             {
-                fullPath = Path.ChangeExtension(fullPath, _options.ExtName);
+                fullPath = Path.ChangeExtension(fullPath, _options.Compiler.ExtName);
             }
             var modulePath = Path.GetRelativePath(this.Lexer.BaseDirectory, fullPath).Replace("\\", "/");
             return (fullPath, modulePath);

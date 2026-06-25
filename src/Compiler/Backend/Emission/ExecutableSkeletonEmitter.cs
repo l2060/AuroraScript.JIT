@@ -828,7 +828,7 @@ namespace AuroraScript.Compiler.Backend.Emission
 #if NET9_0_OR_GREATER
                 _session.Builder is PersistedBuilder &&
 #endif
-                _session.Options.OptimizeOption == OptimizeOptions.Debug)
+                _session.Options.Optimization.Level == OptimizeOptions.Debug)
             {
                 _il.Emit(OpCodes.Break);
             }

@@ -56,12 +56,12 @@ public sealed class CompilationModeTests
             }
             """);
         var options = EngineOptions.Default
-            .WithBaseDirectory(workspace.Root)
-            .WithCompilationMode(CompilationMode.Persistence)
-            .WithOptimizeOption(OptimizeOptions.Debug)
-            .WithAssemblyOut(assemblyPath)
-            .WithConsoleStdOut(TextWriter.Null)
-            .WithConsoleErrorOut(TextWriter.Null);
+            .WithCompiler(compiler => compiler.WithDirectory(workspace.Root))
+            .WithCompiler(compiler => compiler.Mode = CompilationMode.Persistence)
+            .WithOptimization(optimization => optimization.Level = OptimizeOptions.Debug)
+            .WithOutput(output => output.AssemblyFile = assemblyPath)
+            .WithRuntime(runtime => runtime.ConsoleStdOut = TextWriter.Null)
+            .WithRuntime(runtime => runtime.ConsoleErrorOut = TextWriter.Null);
         var engine = new AuroraEngine(options);
 
         await engine.BuildAsync(engine.FileSource(sourcePath, Encoding.UTF8));

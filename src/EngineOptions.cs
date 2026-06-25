@@ -23,7 +23,7 @@ namespace AuroraScript
         OnlyRun,
 
         /// <summary>
-        /// Compiled into a dynamic method. The generated code is invisible in memory 
+        /// Compiled into a dynamic method. The generated code is invisible in memory
         /// and undebuggable, offering the best performance and highest level of concealment.
         /// </summary>
         Dynamic
@@ -63,30 +63,425 @@ namespace AuroraScript
     }
 
     /// <summary>
-    /// Represents the configuration settings for an <see cref="AuroraEngine"/>.
-    /// This record provides a fluent interface for configuring compilation, optimization, and environment behavior.
+    /// Represents all configuration for an <see cref="AuroraEngine"/>.
+    /// Options are grouped by responsibility so runtime behavior, compiler behavior,
+    /// optimization switches, and output settings do not share one flat namespace.
     /// </summary>
     public record EngineOptions
     {
+        private const string LegacyApiMessage = "Use the grouped EngineOptions API: WithRuntime, WithCompiler, WithOptimization, or WithOutput.";
+
+        private RuntimeOptions _runtime = RuntimeOptions.Default;
+        private CompilerOptions _compiler = CompilerOptions.Default;
+        private OptimizationOptions _optimization = OptimizationOptions.Default;
+        private OutputOptions _output = OutputOptions.Default;
+
         /// <summary>
         /// Provides a default set of options for the engine.
         /// </summary>
         public static readonly EngineOptions Default = new();
 
         /// <summary>
-        /// Gets the base directory path used for resolving relative script file or resource locations.
+        /// Runtime behavior used while scripts execute.
         /// </summary>
-        public string BaseDirectory { get; init; }
+        public RuntimeOptions Runtime
+        {
+            get => _runtime;
+            init => _runtime = value ?? throw new ArgumentNullException(nameof(value));
+        }
+
+        /// <summary>
+        /// Compiler input and compilation mode settings.
+        /// </summary>
+        public CompilerOptions Compiler
+        {
+            get => _compiler;
+            init => _compiler = value ?? throw new ArgumentNullException(nameof(value));
+        }
+
+        /// <summary>
+        /// Compile-time optimization switches.
+        /// </summary>
+        public OptimizationOptions Optimization
+        {
+            get => _optimization;
+            init => _optimization = value ?? throw new ArgumentNullException(nameof(value));
+        }
+
+        /// <summary>
+        /// Generated output and emission settings.
+        /// </summary>
+        public OutputOptions Output
+        {
+            get => _output;
+            init => _output = value ?? throw new ArgumentNullException(nameof(value));
+        }
+
+        /// <summary>
+        /// Gets the base directory path used for resolving relative script files.
+        /// </summary>
+        [Obsolete(LegacyApiMessage)]
+        public string BaseDirectory
+        {
+            get => Compiler.BaseDirectory;
+            init => _compiler = ConfigureCompiler(Compiler, compiler => compiler.Directory = value);
+        }
 
         /// <summary>
         /// Gets the compilation mode, determining how the engine processes script sources.
         /// </summary>
-        public CompilationMode CompilationMode { get; init; } = CompilationMode.OnlyRun;
+        [Obsolete(LegacyApiMessage)]
+        public CompilationMode CompilationMode
+        {
+            get => Compiler.Mode;
+            init => _compiler = Compiler with { Mode = value };
+        }
 
         /// <summary>
         /// Gets the optimization level used during code generation.
         /// </summary>
-        public OptimizeOptions OptimizeOption { get; init; } = OptimizeOptions.Release;
+        [Obsolete(LegacyApiMessage)]
+        public OptimizeOptions OptimizeOption
+        {
+            get => Optimization.Level;
+            init => _optimization = Optimization with { Level = value };
+        }
+
+        /// <summary>
+        /// Gets a value indicating whether runtime hot reload and dynamic patching are enabled.
+        /// </summary>
+        [Obsolete(LegacyApiMessage)]
+        public bool EnableHotReload
+        {
+            get => Runtime.EnableHotReload;
+            init => _runtime = Runtime with { EnableHotReload = value };
+        }
+
+        /// <summary>
+        /// Gets a value indicating whether same-module direct-call inference is enabled.
+        /// </summary>
+        [Obsolete(LegacyApiMessage)]
+        public bool EnableAutoModuleDirectCall
+        {
+            get => Optimization.EnableAutoModuleDirectCall;
+            init => _optimization = Optimization with { EnableAutoModuleDirectCall = value };
+        }
+
+        /// <summary>
+        /// Gets a value indicating whether eligible module-level const reads may be inlined.
+        /// </summary>
+        [Obsolete(LegacyApiMessage)]
+        public bool EnableModuleConstInlining
+        {
+            get => Optimization.EnableModuleConstInlining;
+            init => _optimization = Optimization with { EnableModuleConstInlining = value };
+        }
+
+        /// <summary>
+        /// Gets a value indicating whether obfuscation (confusion) is enabled.
+        /// </summary>
+        [Obsolete(LegacyApiMessage)]
+        public bool EnableConfused
+        {
+            get => Output.EnableConfused;
+            init => _output = Output with { EnableConfused = value };
+        }
+
+        /// <summary>
+        /// Gets the JSON serializer used for script data serialization.
+        /// </summary>
+        [Obsolete(LegacyApiMessage)]
+        public ScriptJsonSerializer JsonSerializer
+        {
+            get => Runtime.JsonSerializer;
+            init => _runtime = ConfigureRuntime(Runtime, runtime => runtime.JsonSerializer = value);
+        }
+
+        /// <summary>
+        /// Gets the standard date and time format string used within the engine.
+        /// </summary>
+        [Obsolete(LegacyApiMessage)]
+        public string DateTimeFormat
+        {
+            get => Runtime.DateTimeFormat;
+            init => _runtime = ConfigureRuntime(Runtime, runtime => runtime.DateTimeFormat = value);
+        }
+
+        /// <summary>
+        /// Gets the writer used for standard console output.
+        /// </summary>
+        [Obsolete(LegacyApiMessage)]
+        public TextWriter ConsoleStdOut
+        {
+            get => Runtime.ConsoleStdOut;
+            init => _runtime = ConfigureRuntime(Runtime, runtime => runtime.ConsoleStdOut = value);
+        }
+
+        /// <summary>
+        /// Gets the writer used for error console output.
+        /// </summary>
+        [Obsolete(LegacyApiMessage)]
+        public TextWriter ConsoleErrorOut
+        {
+            get => Runtime.ConsoleErrorOut;
+            init => _runtime = ConfigureRuntime(Runtime, runtime => runtime.ConsoleErrorOut = value);
+        }
+
+        /// <summary>
+        /// Gets the target path for the generated script assembly when using Persistence mode.
+        /// </summary>
+        [Obsolete(LegacyApiMessage)]
+        public string AssemblyOut
+        {
+            get => Output.AssemblyFile;
+            init => _output = ConfigureOutput(Output, output => output.AssemblyFile = value);
+        }
+
+        /// <summary>
+        /// Gets or sets the script file extension. Defaults to ".as".
+        /// </summary>
+        [Obsolete(LegacyApiMessage)]
+        public string ExtName
+        {
+            get => Compiler.ExtName;
+            set => _compiler = ConfigureCompiler(Compiler, compiler => compiler.ExtName = value);
+        }
+
+        /// <summary>
+        /// Gets the strategy for allocating script string wrapper objects.
+        /// </summary>
+        [Obsolete(LegacyApiMessage)]
+        public StringPoolingStrategy StringPooling
+        {
+            get => Runtime.StringPooling;
+            init => _runtime = Runtime with { StringPooling = value };
+        }
+
+        /// <summary>
+        /// Gets the maximum number of modules that may be parsed concurrently.
+        /// </summary>
+        [Obsolete(LegacyApiMessage)]
+        public int MaxDegreeOfParallelism
+        {
+            get => Compiler.MaxDegreeOfParallelism;
+            init => _compiler = ConfigureCompiler(Compiler, compiler => compiler.MaxDegreeOfParallelism = value);
+        }
+
+        /// <summary>
+        /// Configures runtime behavior and returns a new immutable options instance.
+        /// </summary>
+        public EngineOptions WithRuntime(Action<RuntimeOptionsBuilder> configure)
+        {
+            return this with { Runtime = ConfigureRuntime(Runtime, configure) };
+        }
+
+        /// <summary>
+        /// Configures compiler behavior and returns a new immutable options instance.
+        /// </summary>
+        public EngineOptions WithCompiler(Action<CompilerOptionsBuilder> configure)
+        {
+            return this with { Compiler = ConfigureCompiler(Compiler, configure) };
+        }
+
+        /// <summary>
+        /// Configures compile-time optimizations and returns a new immutable options instance.
+        /// </summary>
+        public EngineOptions WithOptimization(Action<OptimizationOptionsBuilder> configure)
+        {
+            return this with { Optimization = ConfigureOptimization(Optimization, configure) };
+        }
+
+        /// <summary>
+        /// Configures generated output behavior and returns a new immutable options instance.
+        /// </summary>
+        public EngineOptions WithOutput(Action<OutputOptionsBuilder> configure)
+        {
+            if (configure == null) throw new ArgumentNullException(nameof(configure));
+
+            return this with { Output = ConfigureOutput(Output, configure) };
+        }
+
+        /// <summary>
+        /// Configures the base directory and returns a new options instance.
+        /// </summary>
+        [Obsolete(LegacyApiMessage)]
+        public EngineOptions WithBaseDirectory(string value)
+        {
+            return WithCompiler(compiler => compiler.Directory = value);
+        }
+
+        /// <summary>
+        /// Configures the compilation mode and returns a new options instance.
+        /// </summary>
+        [Obsolete(LegacyApiMessage)]
+        public EngineOptions WithCompilationMode(CompilationMode value)
+        {
+            return WithCompiler(compiler => compiler.Mode = value);
+        }
+
+        /// <summary>
+        /// Configures the optimization level and returns a new options instance.
+        /// </summary>
+        [Obsolete(LegacyApiMessage)]
+        public EngineOptions WithOptimizeOption(OptimizeOptions value)
+        {
+            return WithOptimization(optimization => optimization.Level = value);
+        }
+
+        /// <summary>
+        /// Sets whether runtime hot reload and dynamic patching are enabled and returns a new options instance.
+        /// </summary>
+        [Obsolete(LegacyApiMessage)]
+        public EngineOptions WithEnableHotReload(bool value)
+        {
+            return WithRuntime(runtime => runtime.HotReload = value);
+        }
+
+        /// <summary>
+        /// Sets whether same-module direct-call inference is enabled and returns a new options instance.
+        /// </summary>
+        [Obsolete(LegacyApiMessage)]
+        public EngineOptions WithEnableAutoModuleDirectCall(bool value)
+        {
+            return WithOptimization(optimization => optimization.AutoModuleDirectCall = value);
+        }
+
+        /// <summary>
+        /// Sets whether eligible module-level const reads may be inlined and returns a new options instance.
+        /// </summary>
+        [Obsolete(LegacyApiMessage)]
+        public EngineOptions WithEnableModuleConstInlining(bool value)
+        {
+            return WithOptimization(optimization => optimization.ModuleConstInlining = value);
+        }
+
+        /// <summary>
+        /// Configures the JSON serializer and returns a new options instance.
+        /// </summary>
+        [Obsolete(LegacyApiMessage)]
+        public EngineOptions WithJsonSerializer(ScriptJsonSerializer value)
+        {
+            return WithRuntime(runtime => runtime.JsonSerializer = value);
+        }
+
+        /// <summary>
+        /// Configures the date time format and returns a new options instance.
+        /// </summary>
+        [Obsolete(LegacyApiMessage)]
+        public EngineOptions WithDateTimeFormat(string value)
+        {
+            return WithRuntime(runtime => runtime.DateTimeFormat = value);
+        }
+
+        /// <summary>
+        /// Configures the standard output writer and returns a new options instance.
+        /// </summary>
+        [Obsolete(LegacyApiMessage)]
+        public EngineOptions WithConsoleStdOut(TextWriter value)
+        {
+            return WithRuntime(runtime => runtime.ConsoleStdOut = value);
+        }
+
+        /// <summary>
+        /// Configures the error output writer and returns a new options instance.
+        /// </summary>
+        [Obsolete(LegacyApiMessage)]
+        public EngineOptions WithConsoleErrorOut(TextWriter value)
+        {
+            return WithRuntime(runtime => runtime.ConsoleErrorOut = value);
+        }
+
+        /// <summary>
+        /// Configures the assembly output path and returns a new options instance.
+        /// </summary>
+        [Obsolete(LegacyApiMessage)]
+        public EngineOptions WithAssemblyOut(string value)
+        {
+            return WithOutput(output => output.AssemblyFile = value);
+        }
+
+        /// <summary>
+        /// Sets whether obfuscation/confusion is enabled and returns a new options instance.
+        /// </summary>
+        [Obsolete(LegacyApiMessage)]
+        public EngineOptions WithEnableConfused(bool value)
+        {
+            return WithOutput(output => output.Confused = value);
+        }
+
+        /// <summary>
+        /// Configures the script file extension and returns a new options instance.
+        /// </summary>
+        [Obsolete(LegacyApiMessage)]
+        public EngineOptions WithExtName(string value)
+        {
+            return WithCompiler(compiler => compiler.ExtName = value);
+        }
+
+        /// <summary>
+        /// Configures the string pooling strategy and returns a new options instance.
+        /// </summary>
+        [Obsolete(LegacyApiMessage)]
+        public EngineOptions WithStringPooling(StringPoolingStrategy value)
+        {
+            return WithRuntime(runtime => runtime.StringPooling = value);
+        }
+
+        /// <summary>
+        /// Configures the maximum number of concurrently parsed modules.
+        /// </summary>
+        [Obsolete(LegacyApiMessage)]
+        public EngineOptions WithMaxDegreeOfParallelism(int value)
+        {
+            return WithCompiler(compiler => compiler.MaxDegreeOfParallelism = value);
+        }
+
+        private static RuntimeOptions ConfigureRuntime(RuntimeOptions options, Action<RuntimeOptionsBuilder> configure)
+        {
+            if (configure == null) throw new ArgumentNullException(nameof(configure));
+
+            var builder = new RuntimeOptionsBuilder(options);
+            configure(builder);
+            return builder.ToOptions();
+        }
+
+        private static CompilerOptions ConfigureCompiler(CompilerOptions options, Action<CompilerOptionsBuilder> configure)
+        {
+            if (configure == null) throw new ArgumentNullException(nameof(configure));
+
+            var builder = new CompilerOptionsBuilder(options);
+            configure(builder);
+            return builder.ToOptions();
+        }
+
+        private static OptimizationOptions ConfigureOptimization(OptimizationOptions options, Action<OptimizationOptionsBuilder> configure)
+        {
+            if (configure == null) throw new ArgumentNullException(nameof(configure));
+
+            var builder = new OptimizationOptionsBuilder(options);
+            configure(builder);
+            return builder.ToOptions();
+        }
+
+        private static OutputOptions ConfigureOutput(OutputOptions options, Action<OutputOptionsBuilder> configure)
+        {
+            if (configure == null) throw new ArgumentNullException(nameof(configure));
+
+            var builder = new OutputOptionsBuilder(options);
+            configure(builder);
+            return builder.ToOptions();
+        }
+    }
+
+    /// <summary>
+    /// Runtime behavior used while scripts execute.
+    /// </summary>
+    public sealed record RuntimeOptions
+    {
+        /// <summary>
+        /// Provides default runtime behavior.
+        /// </summary>
+        public static readonly RuntimeOptions Default = new();
 
         /// <summary>
         /// Gets a value indicating whether runtime hot reload and dynamic patching are enabled.
@@ -94,33 +489,17 @@ namespace AuroraScript
         public bool EnableHotReload { get; init; } = true;
 
         /// <summary>
-        /// Gets a value indicating whether the compiler may automatically infer direct calls
-        /// for proven same-module internal functions without an explicit script annotation.
-        /// Explicit @directCall annotations are not controlled by this option.
-        /// </summary>
-        public bool EnableAutoModuleDirectCall { get; init; }
-
-        /// <summary>
-        /// Gets a value indicating whether obfuscation (confusion) is enabled.
-        /// When enabled:
-        /// 1. Null, Number, and Boolean constants are hidden.
-        /// 2. Type, method, and variable names are obfuscated to prevent reverse engineering.
-        /// 3. Structural transformations are applied to hamper decompilation.
-        /// </summary>
-        public bool EnableConfused { get; init; } = false;
-
-        /// <summary>
         /// Gets the JSON serializer used for script data serialization.
         /// </summary>
         public ScriptJsonSerializer JsonSerializer { get; init; } = ScriptJsonSerializer.Default;
 
         /// <summary>
-        /// Gets or sets the standard date and time format string used within the engine.
+        /// Gets the standard date and time format string used within the engine.
         /// </summary>
         public string DateTimeFormat { get; init; } = "yyyy-MM-dd HH:mm:ss";
 
         /// <summary>
-        /// Gets the <see cref="TextWriter"/> used for standard console output (e.g., from script console.log).
+        /// Gets the <see cref="TextWriter"/> used for standard console output.
         /// </summary>
         public TextWriter ConsoleStdOut { get; init; } = Console.Out;
 
@@ -130,185 +509,477 @@ namespace AuroraScript
         public TextWriter ConsoleErrorOut { get; init; } = Console.Error;
 
         /// <summary>
-        /// Gets the target path for the generated script assembly when using Persistence mode.
-        /// </summary>
-        public string AssemblyOut { get; init; } = string.Empty;
-
-        /// <summary>
-        /// Gets or sets the script file extension. Defaults to ".as".
-        /// </summary>
-        public string ExtName { get; set; } = ".as";
-
-        /// <summary>
         /// Gets the strategy for allocating script string wrapper objects.
         /// </summary>
         public StringPoolingStrategy StringPooling { get; init; } = StringPoolingStrategy.Intern;
+    }
+
+    /// <summary>
+    /// Mutable builder used by <see cref="EngineOptions.WithRuntime"/>.
+    /// </summary>
+    public sealed class RuntimeOptionsBuilder
+    {
+        private ScriptJsonSerializer _jsonSerializer;
+        private string _dateTimeFormat;
+        private TextWriter _consoleStdOut;
+        private TextWriter _consoleErrorOut;
+
+        /// <summary>
+        /// Creates a mutable runtime-options builder from an immutable options snapshot.
+        /// </summary>
+        public RuntimeOptionsBuilder(RuntimeOptions options)
+        {
+            if (options == null) throw new ArgumentNullException(nameof(options));
+
+            HotReload = options.EnableHotReload;
+            _jsonSerializer = options.JsonSerializer;
+            _dateTimeFormat = options.DateTimeFormat;
+            _consoleStdOut = options.ConsoleStdOut;
+            _consoleErrorOut = options.ConsoleErrorOut;
+            StringPooling = options.StringPooling;
+        }
+
+        /// <summary>
+        /// Gets or sets whether runtime hot reload and dynamic patching are enabled.
+        /// </summary>
+        public bool HotReload { get; set; }
+
+        /// <summary>
+        /// Gets or sets the JSON serializer used for script data serialization.
+        /// </summary>
+        public ScriptJsonSerializer JsonSerializer
+        {
+            get => _jsonSerializer;
+            set => _jsonSerializer = value ?? throw new AuroraException("Parameter value is not allowed to be empty");
+        }
+
+        /// <summary>
+        /// Gets or sets the standard date and time format string used within the engine.
+        /// </summary>
+        public string DateTimeFormat
+        {
+            get => _dateTimeFormat;
+            set => _dateTimeFormat = value ?? throw new ArgumentNullException(nameof(value));
+        }
+
+        /// <summary>
+        /// Gets or sets the writer used for standard console output.
+        /// </summary>
+        public TextWriter ConsoleStdOut
+        {
+            get => _consoleStdOut;
+            set => _consoleStdOut = value ?? throw new ArgumentNullException(nameof(value));
+        }
+
+        /// <summary>
+        /// Gets or sets the writer used for error console output.
+        /// </summary>
+        public TextWriter ConsoleErrorOut
+        {
+            get => _consoleErrorOut;
+            set => _consoleErrorOut = value ?? throw new ArgumentNullException(nameof(value));
+        }
+
+        /// <summary>
+        /// Gets or sets the strategy for allocating script string wrapper objects.
+        /// </summary>
+        public StringPoolingStrategy StringPooling { get; set; }
+
+        /// <summary>
+        /// Sets whether runtime hot reload and dynamic patching are enabled.
+        /// </summary>
+        public RuntimeOptionsBuilder WithHotReload(bool value)
+        {
+            HotReload = value;
+            return this;
+        }
+
+        /// <summary>
+        /// Sets the JSON serializer used for script data serialization.
+        /// </summary>
+        public RuntimeOptionsBuilder WithJsonSerializer(ScriptJsonSerializer value)
+        {
+            JsonSerializer = value;
+            return this;
+        }
+
+        /// <summary>
+        /// Sets the standard date and time format string used within the engine.
+        /// </summary>
+        public RuntimeOptionsBuilder WithDateTimeFormat(string value)
+        {
+            DateTimeFormat = value;
+            return this;
+        }
+
+        /// <summary>
+        /// Sets the writer used for standard console output.
+        /// </summary>
+        public RuntimeOptionsBuilder WithConsoleStdOut(TextWriter value)
+        {
+            ConsoleStdOut = value;
+            return this;
+        }
+
+        /// <summary>
+        /// Sets the writer used for error console output.
+        /// </summary>
+        public RuntimeOptionsBuilder WithConsoleErrorOut(TextWriter value)
+        {
+            ConsoleErrorOut = value;
+            return this;
+        }
+
+        /// <summary>
+        /// Sets the strategy for allocating script string wrapper objects.
+        /// </summary>
+        public RuntimeOptionsBuilder WithStringPooling(StringPoolingStrategy value)
+        {
+            StringPooling = value;
+            return this;
+        }
+
+        internal RuntimeOptions ToOptions()
+        {
+            return new RuntimeOptions
+            {
+                EnableHotReload = HotReload,
+                JsonSerializer = JsonSerializer,
+                DateTimeFormat = DateTimeFormat,
+                ConsoleStdOut = ConsoleStdOut,
+                ConsoleErrorOut = ConsoleErrorOut,
+                StringPooling = StringPooling
+            };
+        }
+    }
+
+    /// <summary>
+    /// Compiler input and compilation mode settings.
+    /// </summary>
+    public sealed record CompilerOptions
+    {
+        /// <summary>
+        /// Provides default compiler behavior.
+        /// </summary>
+        public static readonly CompilerOptions Default = new();
+
+        /// <summary>
+        /// Gets the base directory path used for resolving relative script file or resource locations.
+        /// </summary>
+        public string BaseDirectory { get; init; } = string.Empty;
+
+        /// <summary>
+        /// Gets the compilation mode, determining how the engine processes script sources.
+        /// </summary>
+        public CompilationMode Mode { get; init; } = CompilationMode.OnlyRun;
+
+        /// <summary>
+        /// Gets the script file extension. Defaults to ".as".
+        /// </summary>
+        public string ExtName { get; init; } = ".as";
 
         /// <summary>
         /// Gets the maximum number of modules that may be parsed concurrently.
         /// A value of zero selects <see cref="Environment.ProcessorCount"/>.
         /// </summary>
         public int MaxDegreeOfParallelism { get; init; }
+    }
+
+    /// <summary>
+    /// Mutable builder used by <see cref="EngineOptions.WithCompiler"/>.
+    /// </summary>
+    public sealed class CompilerOptionsBuilder
+    {
+        private string _baseDirectory;
+        private string _extName;
+        private int _maxDegreeOfParallelism;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="EngineOptions"/> record.
+        /// Creates a mutable compiler-options builder from an immutable options snapshot.
         /// </summary>
-        public EngineOptions()
+        public CompilerOptionsBuilder(CompilerOptions options)
         {
+            if (options == null) throw new ArgumentNullException(nameof(options));
+
+            _baseDirectory = options.BaseDirectory;
+            Mode = options.Mode;
+            _extName = options.ExtName;
+            _maxDegreeOfParallelism = options.MaxDegreeOfParallelism;
         }
 
         /// <summary>
-        /// Configures the base directory and returns a new options instance.
+        /// Gets or sets the base directory path used for resolving relative script files.
         /// </summary>
-        /// <param name="value">The base directory path.</param>
-        /// <returns>A new <see cref="EngineOptions"/> instance with the updated base directory.</returns>
-        public EngineOptions WithBaseDirectory(string value)
+        public string Directory
         {
-            var _baseDirectory = Path.GetFullPath(value);
-            return this with { BaseDirectory = _baseDirectory };
+            get => _baseDirectory;
+            set => _baseDirectory = Path.GetFullPath(value);
         }
 
         /// <summary>
-        /// Configures the compilation mode and returns a new options instance.
+        /// Gets or sets the compilation mode.
         /// </summary>
-        /// <param name="value">The compilation mode to use.</param>
-        /// <returns>A new <see cref="EngineOptions"/> instance with the updated compilation mode.</returns>
-        public EngineOptions WithCompilationMode(CompilationMode value)
+        public CompilationMode Mode { get; set; }
+
+        /// <summary>
+        /// Gets or sets the script file extension.
+        /// </summary>
+        public string ExtName
         {
-            return this with { CompilationMode = value };
+            get => _extName;
+            set
+            {
+                if (value == null) throw new ArgumentNullException(nameof(value));
+                if (!value.StartsWith('.')) value = "." + value;
+                if (value.LastIndexOf('.') > 0)
+                {
+                    throw new ArgumentException("Extensions can only start with \".\" or provide a sense of an extension", nameof(value));
+                }
+                _extName = value;
+            }
         }
 
         /// <summary>
-        /// Configures the optimization options and returns a new options instance.
+        /// Gets or sets the maximum number of modules that may be parsed concurrently.
         /// </summary>
-        /// <param name="value">The optimization option to use.</param>
-        /// <returns>A new <see cref="EngineOptions"/> instance with the updated optimization option.</returns>
-        public EngineOptions WithOptimizeOption(OptimizeOptions value)
+        public int MaxDegreeOfParallelism
         {
-            return this with { OptimizeOption = value };
+            get => _maxDegreeOfParallelism;
+            set
+            {
+                if (value < 0)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(value), "The maximum degree of parallelism cannot be negative.");
+                }
+                _maxDegreeOfParallelism = value;
+            }
         }
 
         /// <summary>
-        /// Sets whether runtime hot reload and dynamic patching are enabled and returns a new options instance.
+        /// Sets the base directory path used for resolving relative script files.
         /// </summary>
-        /// <param name="value">True to allow runtime hot patching; false to reject dynamic patches.</param>
-        /// <returns>A new <see cref="EngineOptions"/> instance with the updated hot reload setting.</returns>
-        public EngineOptions WithEnableHotReload(bool value)
+        public CompilerOptionsBuilder WithDirectory(string value)
         {
-            return this with { EnableHotReload = value };
+            Directory = value;
+            return this;
         }
 
         /// <summary>
-        /// Sets whether same-module internal direct-call inference is enabled and returns a new options instance.
+        /// Sets the compilation mode.
+        /// </summary>
+        public CompilerOptionsBuilder WithMode(CompilationMode value)
+        {
+            Mode = value;
+            return this;
+        }
+
+        /// <summary>
+        /// Sets the script file extension.
+        /// </summary>
+        public CompilerOptionsBuilder WithExtName(string value)
+        {
+            ExtName = value;
+            return this;
+        }
+
+        /// <summary>
+        /// Sets the maximum number of modules that may be parsed concurrently.
+        /// </summary>
+        public CompilerOptionsBuilder WithMaxDegreeOfParallelism(int value)
+        {
+            MaxDegreeOfParallelism = value;
+            return this;
+        }
+
+        internal CompilerOptions ToOptions()
+        {
+            return new CompilerOptions
+            {
+                BaseDirectory = Directory,
+                Mode = Mode,
+                ExtName = ExtName,
+                MaxDegreeOfParallelism = MaxDegreeOfParallelism
+            };
+        }
+    }
+
+    /// <summary>
+    /// Compile-time optimization switches.
+    /// </summary>
+    public sealed record OptimizationOptions
+    {
+        /// <summary>
+        /// Provides default compile-time optimization settings.
+        /// </summary>
+        public static readonly OptimizationOptions Default = new();
+
+        /// <summary>
+        /// Gets the optimization level used during code generation.
+        /// </summary>
+        public OptimizeOptions Level { get; init; } = OptimizeOptions.Release;
+
+        /// <summary>
+        /// Gets a value indicating whether the compiler may automatically infer direct calls
+        /// for proven same-module internal functions without an explicit script annotation.
         /// Explicit @directCall annotations are not controlled by this option.
         /// </summary>
-        public EngineOptions WithEnableAutoModuleDirectCall(bool value)
+        public bool EnableAutoModuleDirectCall { get; init; }
+
+        /// <summary>
+        /// Gets a value indicating whether the compiler may inline proven module-level
+        /// const values at same-module use sites. Only side-effect-free literal expressions are eligible.
+        /// </summary>
+        public bool EnableModuleConstInlining { get; init; }
+    }
+
+    /// <summary>
+    /// Mutable builder used by <see cref="EngineOptions.WithOptimization"/>.
+    /// </summary>
+    public sealed class OptimizationOptionsBuilder
+    {
+        /// <summary>
+        /// Creates a mutable optimization-options builder from an immutable options snapshot.
+        /// </summary>
+        public OptimizationOptionsBuilder(OptimizationOptions options)
         {
-            return this with { EnableAutoModuleDirectCall = value };
+            if (options == null) throw new ArgumentNullException(nameof(options));
+
+            Level = options.Level;
+            AutoModuleDirectCall = options.EnableAutoModuleDirectCall;
+            ModuleConstInlining = options.EnableModuleConstInlining;
         }
 
         /// <summary>
-        /// Configures the JSON serializer and returns a new options instance.
+        /// Gets or sets the optimization level used during code generation.
         /// </summary>
-        /// <param name="value">The script JSON serializer to use.</param>
-        /// <returns>A new <see cref="EngineOptions"/> instance with the updated serializer.</returns>
-        /// <exception cref="AuroraException">Thrown if the <paramref name="value"/> is null.</exception>
-        public EngineOptions WithJsonSerializer(ScriptJsonSerializer value)
+        public OptimizeOptions Level { get; set; }
+
+        /// <summary>
+        /// Gets or sets whether same-module direct-call inference is enabled.
+        /// </summary>
+        public bool AutoModuleDirectCall { get; set; }
+
+        /// <summary>
+        /// Gets or sets whether eligible module-level const reads may be inlined.
+        /// </summary>
+        public bool ModuleConstInlining { get; set; }
+
+        /// <summary>
+        /// Sets the optimization level used during code generation.
+        /// </summary>
+        public OptimizationOptionsBuilder WithLevel(OptimizeOptions value)
         {
-            if (value == null)
+            Level = value;
+            return this;
+        }
+
+        /// <summary>
+        /// Sets whether same-module direct-call inference is enabled.
+        /// </summary>
+        public OptimizationOptionsBuilder WithAutoModuleDirectCall(bool value)
+        {
+            AutoModuleDirectCall = value;
+            return this;
+        }
+
+        /// <summary>
+        /// Sets whether eligible module-level const reads may be inlined.
+        /// </summary>
+        public OptimizationOptionsBuilder WithModuleConstInlining(bool value)
+        {
+            ModuleConstInlining = value;
+            return this;
+        }
+
+        internal OptimizationOptions ToOptions()
+        {
+            return new OptimizationOptions
             {
-                throw new AuroraException("Parameter value is not allowed to be empty");
-            }
-            return this with { JsonSerializer = value };
+                Level = Level,
+                EnableAutoModuleDirectCall = AutoModuleDirectCall,
+                EnableModuleConstInlining = ModuleConstInlining
+            };
+        }
+    }
+
+    /// <summary>
+    /// Generated output and emission settings.
+    /// </summary>
+    public sealed record OutputOptions
+    {
+        /// <summary>
+        /// Provides default output and emission settings.
+        /// </summary>
+        public static readonly OutputOptions Default = new();
+
+        /// <summary>
+        /// Gets the target path for the generated script assembly when using Persistence mode.
+        /// </summary>
+        public string AssemblyFile { get; init; } = string.Empty;
+
+        /// <summary>
+        /// Gets a value indicating whether obfuscation (confusion) is enabled.
+        /// </summary>
+        public bool EnableConfused { get; init; }
+    }
+
+    /// <summary>
+    /// Mutable builder used by <see cref="EngineOptions.WithOutput"/>.
+    /// </summary>
+    public sealed class OutputOptionsBuilder
+    {
+        private string _assemblyOut;
+
+        /// <summary>
+        /// Creates a mutable output-options builder from an immutable options snapshot.
+        /// </summary>
+        public OutputOptionsBuilder(OutputOptions options)
+        {
+            if (options == null) throw new ArgumentNullException(nameof(options));
+
+            _assemblyOut = options.AssemblyFile;
+            Confused = options.EnableConfused;
         }
 
         /// <summary>
-        /// Configures the date time format and returns a new options instance.
+        /// Gets or sets the target path for the generated script assembly when using Persistence mode.
         /// </summary>
-        /// <param name="value">The date and time format string.</param>
-        /// <returns>A new <see cref="EngineOptions"/> instance with the updated date format.</returns>
-        public EngineOptions WithDateTimeFormat(string value)
+        public string AssemblyFile
         {
-            return this with { DateTimeFormat = value };
+            get => _assemblyOut;
+            set => _assemblyOut = value ?? throw new ArgumentNullException(nameof(value));
         }
 
         /// <summary>
-        /// Configures the standard output writer and returns a new options instance.
+        /// Gets or sets whether obfuscation is enabled for generated output.
         /// </summary>
-        /// <param name="value">The text writer for standard output.</param>
-        /// <returns>A new <see cref="EngineOptions"/> instance with the updated output writer.</returns>
-        public EngineOptions WithConsoleStdOut(TextWriter value)
+        public bool Confused { get; set; }
+
+        /// <summary>
+        /// Sets the target path for the generated script assembly when using Persistence mode.
+        /// </summary>
+        public OutputOptionsBuilder WithAssemblyFile(string value)
         {
-            return this with { ConsoleStdOut = value };
+            AssemblyFile = value;
+            return this;
         }
 
         /// <summary>
-        /// Configures the error output writer and returns a new options instance.
+        /// Sets whether obfuscation is enabled for generated output.
         /// </summary>
-        /// <param name="value">The text writer for error output.</param>
-        /// <returns>A new <see cref="EngineOptions"/> instance with the updated error writer.</returns>
-        public EngineOptions WithConsoleErrorOut(TextWriter value)
+        public OutputOptionsBuilder WithConfused(bool value)
         {
-            return this with { ConsoleErrorOut = value };
+            Confused = value;
+            return this;
         }
 
-        /// <summary>
-        /// Configures the assembly output path and returns a new options instance.
-        /// </summary>
-        /// <param name="value">The path where the persistent assembly will be saved.</param>
-        /// <returns>A new <see cref="EngineOptions"/> instance with the updated assembly path.</returns>
-        public EngineOptions WithAssemblyOut(string value)
+        internal OutputOptions ToOptions()
         {
-            return this with { AssemblyOut = value };
-        }
-
-        /// <summary>
-        /// Sets whether obfuscation/confusion is enabled and returns a new options instance.
-        /// </summary>
-        /// <param name="value">True to enable obfuscation; otherwise, false.</param>
-        /// <returns>A new <see cref="EngineOptions"/> instance with the updated confusion setting.</returns>
-        public EngineOptions WithEnableConfused(bool value)
-        {
-            return this with { EnableConfused = value };
-        }
-
-        /// <summary>
-        /// Configures the script file extension and returns a new options instance.
-        /// </summary>
-        /// <param name="value">The file extension (e.g., ".as").</param>
-        /// <returns>A new <see cref="EngineOptions"/> instance with the updated extension.</returns>
-        /// <exception cref="ArgumentException">Thrown if the extension is invalid.</exception>
-        public EngineOptions WithExtName(string value)
-        {
-            if (!value.StartsWith('.')) value = "." + value;
-            if (value.LastIndexOf('.') > 0)
+            return new OutputOptions
             {
-                throw new ArgumentException("Extensions can only start with \".\" or provide a sense of an extension", nameof(value));
-            }
-            return this with { ExtName = value };
-        }
-
-        /// <summary>
-        /// Configures the string pooling strategy and returns a new options instance.
-        /// </summary>
-        /// <param name="value">The string pooling strategy.</param>
-        /// <returns>A new <see cref="EngineOptions"/> instance with the updated setting.</returns>
-        public EngineOptions WithStringPooling(StringPoolingStrategy value)
-        {
-            return this with { StringPooling = value };
-        }
-
-        /// <summary>
-        /// Configures the maximum number of concurrently parsed modules.
-        /// Use zero to select the processor count automatically.
-        /// </summary>
-        public EngineOptions WithMaxDegreeOfParallelism(int value)
-        {
-            if (value < 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(value), "The maximum degree of parallelism cannot be negative.");
-            }
-            return this with { MaxDegreeOfParallelism = value };
+                AssemblyFile = AssemblyFile,
+                EnableConfused = Confused
+            };
         }
     }
 }

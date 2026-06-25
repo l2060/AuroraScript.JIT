@@ -36,21 +36,23 @@ internal sealed class TestWorkspace : IDisposable
         bool enableConfused = false,
         int maxDegreeOfParallelism = 4,
         string? assemblyOut = null,
-        TextWriter? output = null)
+        TextWriter? output = null,
+        bool enableModuleConstInlining = false)
     {
         var options = EngineOptions.Default
-            .WithBaseDirectory(Root)
-            .WithCompilationMode(mode)
-            .WithOptimizeOption(OptimizeOptions.Release)
-            .WithEnableHotReload(enableHotReload)
-            .WithEnableConfused(enableConfused)
-            .WithMaxDegreeOfParallelism(maxDegreeOfParallelism)
-            .WithConsoleStdOut(output ?? TextWriter.Null)
-            .WithConsoleErrorOut(output ?? TextWriter.Null);
+            .WithCompiler(compiler => compiler.WithDirectory(Root))
+            .WithCompiler(compiler => compiler.Mode = mode)
+            .WithOptimization(optimization => optimization.Level = OptimizeOptions.Release)
+            .WithRuntime(runtime => runtime.HotReload = enableHotReload)
+            .WithOptimization(optimization => optimization.ModuleConstInlining = enableModuleConstInlining)
+            .WithOutput(output => output.Confused = enableConfused)
+            .WithCompiler(compiler => compiler.MaxDegreeOfParallelism = maxDegreeOfParallelism)
+            .WithRuntime(runtime => runtime.ConsoleStdOut = output ?? TextWriter.Null)
+            .WithRuntime(runtime => runtime.ConsoleErrorOut = output ?? TextWriter.Null);
 
         if (!string.IsNullOrEmpty(assemblyOut))
         {
-            options = options.WithAssemblyOut(assemblyOut);
+            options = options.WithOutput(output => output.AssemblyFile = assemblyOut);
         }
         return new AuroraEngine(options);
     }
