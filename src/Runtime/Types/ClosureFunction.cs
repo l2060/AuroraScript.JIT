@@ -279,6 +279,11 @@ namespace AuroraScript.Runtime.Types
                 {
                     ctx.Next.ReleaseLinked();
                 }
+                if (ex is AuroraRuntimeException auroraRuntimeException)
+                {
+                    auroraRuntimeException.StackTrace ??= stackTrace;
+                    throw;
+                }
                 throw new AuroraRuntimeException(ex, stackTrace);
             }
         }

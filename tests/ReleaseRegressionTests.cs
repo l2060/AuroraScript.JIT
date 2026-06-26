@@ -36,6 +36,56 @@ public sealed class ReleaseRegressionTests
     }
 
     [Fact]
+    public async Task ScriptCatchReleasesDirectCallContextBeforeContinuing()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            func fail() {
+                throw new Error("boom");
+            }
+            export func run() {
+                try {
+                    fail();
+                } catch (error) {
+                }
+                throw new Error("after");
+            }
+            """);
+
+        var error = Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, "run"));
+
+        Assert.Contains("after", error.Message, StringComparison.Ordinal);
+        Assert.NotNull(error.StackTrace);
+        Assert.Contains(error.StackTrace, frame => frame.Method.Contains("run", StringComparison.Ordinal));
+        Assert.DoesNotContain(error.StackTrace, frame => frame.Method.Contains("fail", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task DirectCallArgumentOptimizationPreservesEvaluationOrder()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            func pair(a, b, c) {
+                return [a, b, c];
+            }
+            export func run() {
+                var value = 1;
+                func mutate() {
+                    value = 2;
+                    return 9;
+                }
+                return pair(value, mutate(), value);
+            }
+            """);
+
+        ScriptAssert.Equal(new object?[] { 1, 9, 2 }, TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
     public async Task ClosureCapturesLoopAndNestedBlockVariablesWithoutSharingSlots()
     {
         using var workspace = new TestWorkspace();

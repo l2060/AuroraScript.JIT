@@ -248,6 +248,7 @@ namespace AuroraScript.Runtime
 
         // ClrMarshaller
         public static readonly MethodInfo CILHelper_ExceptionToError = typeof(CILHelper).GetMethod(nameof(CILHelper.ExceptionToError), [typeof(Exception)]);
+        public static readonly MethodInfo CILHelper_ExceptionToErrorWithContext = typeof(CILHelper).GetMethod(nameof(CILHelper.ExceptionToError), [typeof(Exception), typeof(ScriptContext)]);
 
         // RegexManager
         public static readonly MethodInfo RegexManager_LoadRegex = typeof(RegexManager).GetMethod(nameof(RegexManager.Resolve), BindingFlags.Static | BindingFlags.Public, [typeof(String), typeof(String)]);

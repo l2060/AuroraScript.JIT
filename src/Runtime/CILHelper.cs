@@ -1976,5 +1976,32 @@ namespace AuroraScript.Runtime
             return ScriptDatum.FromError(error);
         }
 
+        /// <summary>
+        /// Converts an exception for a script catch block and releases any child contexts left by the throwing call.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum ExceptionToError(Exception exception, ScriptContext ctx)
+        {
+            if (exception is AuroraRuntimeException auroraRuntimeException && auroraRuntimeException.internalError != null)
+            {
+                ReleaseChildContexts(ctx);
+                return ScriptDatum.FromError(auroraRuntimeException.internalError);
+            }
+
+            var stackTrace = ctx?.StackTrace()?.ToArray() ?? [];
+            ReleaseChildContexts(ctx);
+            var error = new ScriptError(exception.Message, stackTrace);
+            return ScriptDatum.FromError(error);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void ReleaseChildContexts(ScriptContext ctx)
+        {
+            while (ctx?.Next != null)
+            {
+                ctx.Next.ReleaseLinked();
+            }
+        }
+
     }
 }

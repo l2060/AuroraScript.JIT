@@ -1055,7 +1055,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         private void EmitDirectCall(FunctionCallExpression call, FunctionPlan target)
         {
             var arity = GetFastArity(target.CallConvention);
-            var argumentLocals = EmitDirectCallArguments(call.Arguments, arity);
+            var argumentLocals = EmitDirectCallArguments(call.Arguments, arity, out var deferredArguments);
             var directContext = _il.DeclareLocal(typeof(ScriptContext));
             _il.Emit(OpCodes.Ldarg_0);
             _session.Builder.LoadStringConstant(_il, target.Name);
@@ -1063,23 +1063,28 @@ namespace AuroraScript.Compiler.Backend.Emission
             _il.Emit(OpCodes.Stloc, directContext);
 
             _il.Emit(OpCodes.Ldloc, directContext);
+            _il.Emit(OpCodes.Ldloc, directContext);
             for (var i = 0; i < arity; i++)
             {
-                if (i < argumentLocals.Length)
+                if (i >= argumentLocals.Length)
                 {
-                    _il.Emit(OpCodes.Ldloc, argumentLocals[i]);
+                    _session.Builder.LoadNull(_il);
+                }
+                else if (deferredArguments[i])
+                {
+                    EmitExpression(call.Arguments[i]);
                 }
                 else
                 {
-                    _session.Builder.LoadNull(_il);
+                    _il.Emit(OpCodes.Ldloc, argumentLocals[i]);
                 }
             }
 
             _il.Emit(OpCodes.Call, target.Method);
-            EmitLeaveDirect(directContext);
+            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_LeaveDirect);
         }
 
-        private LocalBuilder[] EmitDirectCallArguments(IReadOnlyList<Expression> arguments, int arity)
+        private LocalBuilder[] EmitDirectCallArguments(IReadOnlyList<Expression> arguments, int arity, out bool[] deferredArguments)
         {
             if (arguments.Count == 0 || arity == 0)
             {
@@ -1088,15 +1093,24 @@ namespace AuroraScript.Compiler.Backend.Emission
                     EmitExpressionDiscarded(arguments[i]);
                 }
 
+                deferredArguments = Array.Empty<bool>();
                 return Array.Empty<LocalBuilder>();
             }
 
             var count = Math.Min(arguments.Count, arity);
             var locals = new LocalBuilder[count];
+            deferredArguments = new bool[count];
+            var lastPreEvaluated = GetLastDirectCallPreEvaluationIndex(arguments, arity);
             for (var i = 0; i < arguments.Count; i++)
             {
                 if (i < count)
                 {
+                    if (i > lastPreEvaluated && CanDeferDirectCallArgument(arguments[i]))
+                    {
+                        deferredArguments[i] = true;
+                        continue;
+                    }
+
                     EmitExpression(arguments[i]);
                     var local = DeclareTemp();
                     _il.Emit(OpCodes.Stloc, local);
@@ -1111,13 +1125,28 @@ namespace AuroraScript.Compiler.Backend.Emission
             return locals;
         }
 
-        private void EmitLeaveDirect(LocalBuilder directContext)
+        private static int GetLastDirectCallPreEvaluationIndex(IReadOnlyList<Expression> arguments, int arity)
         {
-            var result = DeclareTemp();
-            _il.Emit(OpCodes.Stloc, result);
-            _il.Emit(OpCodes.Ldloc, directContext);
-            _il.Emit(OpCodes.Ldloc, result);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_LeaveDirect);
+            var last = -1;
+            for (var i = 0; i < arguments.Count; i++)
+            {
+                if (i >= arity || !CanDeferDirectCallArgument(arguments[i]))
+                {
+                    last = i;
+                }
+            }
+
+            return last;
+        }
+
+        private static bool CanDeferDirectCallArgument(Expression expression)
+        {
+            return expression switch
+            {
+                GroupExpression group => CanDeferDirectCallArgument(group.Expression),
+                LiteralExpression literal => literal.Token is NumberToken or BooleanToken or NullToken,
+                _ => false
+            };
         }
 
         private void EmitPropertyCall(FunctionCallExpression call, GetPropertyExpression property, string name)

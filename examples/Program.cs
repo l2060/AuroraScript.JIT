@@ -45,7 +45,7 @@ namespace Examples
         {
             optimization.StackTrace = true;
             optimization.ModuleConstInlining = true;
-            optimization.AutoModuleDirectCall = true;
+            optimization.AutoModuleDirectCall = false;
             optimization.Level = OptimizeOptions.Release;
         });
 

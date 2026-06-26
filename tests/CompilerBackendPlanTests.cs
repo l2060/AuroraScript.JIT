@@ -1864,7 +1864,7 @@ public sealed class CompilerBackendPlanTests
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
         Assert.True(run.HasExecutableSkeleton);
-        Assert.Equal(4, run.CilLocalCount);
+        Assert.Equal(3, run.CilLocalCount);
         var engine = new AuroraEngine(options);
         var domain = engine.CreateEmptyDomain(null);
         var ctx = new ScriptContext(domain) { Module = new ScriptModule("TEST", root) };
