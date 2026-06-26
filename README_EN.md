@@ -9,7 +9,7 @@
 # AuroraScript
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-2.0.0-orange.svg)](src/AuroraScript.csproj)
+[![Version](https://img.shields.io/badge/version-2.1.1-orange.svg)](src/AuroraScript.csproj)
 [![Target](https://img.shields.io/badge/.NET-8.0%20%7C%209.0%20%7C%2010.0-blueviolet.svg)](src/AuroraScript.csproj)
 
 AuroraScript is a lightweight scripting engine for .NET host applications. Scripts are compiled to CIL and executed by the .NET runtime, making the engine suitable for embedded rules, business logic, configurable workflows, hot fixes, and small expressions.
@@ -23,7 +23,7 @@ AuroraScript borrows familiar syntax from JavaScript, including expressions, obj
 
 NuGet package: `AuroraScript.JIT`
 
-The current `2.0.0` package targets:
+The current `2.1.1` package targets:
 
 | Target framework | Support |
 |---|---|
