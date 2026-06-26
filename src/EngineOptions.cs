@@ -830,6 +830,13 @@ namespace AuroraScript
         /// const values at same-module use sites. Only side-effect-free literal expressions are eligible.
         /// </summary>
         public bool EnableModuleConstInlining { get; init; }
+
+        /// <summary>
+        /// Gets a value indicating whether generated code records source line locations
+        /// used to build script stack traces. Disabling this in release builds removes
+        /// those runtime location writes. Debug builds always keep stack trace locations.
+        /// </summary>
+        public bool StackTrace { get; init; } = true;
     }
 
     /// <summary>
@@ -847,6 +854,7 @@ namespace AuroraScript
             Level = options.Level;
             AutoModuleDirectCall = options.EnableAutoModuleDirectCall;
             ModuleConstInlining = options.EnableModuleConstInlining;
+            StackTrace = options.StackTrace;
         }
 
         /// <summary>
@@ -863,6 +871,12 @@ namespace AuroraScript
         /// Gets or sets whether eligible module-level const reads may be inlined.
         /// </summary>
         public bool ModuleConstInlining { get; set; }
+
+        /// <summary>
+        /// Gets or sets whether generated code records source line locations used to build script stack traces.
+        /// Debug builds always keep stack trace locations even when this value is false.
+        /// </summary>
+        public bool StackTrace { get; set; } = true;
 
         /// <summary>
         /// Sets the optimization level used during code generation.
@@ -891,13 +905,23 @@ namespace AuroraScript
             return this;
         }
 
+        /// <summary>
+        /// Sets whether generated code records source line locations used to build script stack traces.
+        /// </summary>
+        public OptimizationOptionsBuilder WithStackTrace(bool value)
+        {
+            StackTrace = value;
+            return this;
+        }
+
         internal OptimizationOptions ToOptions()
         {
             return new OptimizationOptions
             {
                 Level = Level,
                 EnableAutoModuleDirectCall = AutoModuleDirectCall,
-                EnableModuleConstInlining = ModuleConstInlining
+                EnableModuleConstInlining = ModuleConstInlining,
+                StackTrace = StackTrace
             };
         }
     }

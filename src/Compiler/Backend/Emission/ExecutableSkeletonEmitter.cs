@@ -44,6 +44,8 @@ namespace AuroraScript.Compiler.Backend.Emission
         private LocalBuilder _contextUpvalues;
         private Dictionary<int, int> _capturedLocalByLocalSlot;
         private int _cilLocalCount;
+        private long _lastLocation;
+        private int _lastLocationEndOffset;
 
         public ExecutableSkeletonEmitter(EmissionSession session, ModulePlan module)
         {
@@ -464,8 +466,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     EmitFunctionDeclaration(function);
                     return;
                 case LoweredExpressionStatement expressionStatement:
-                    EmitExpressionOrNull(expressionStatement.Expression);
-                    _il.Emit(OpCodes.Pop);
+                    EmitExpressionDiscarded(expressionStatement.Expression);
                     return;
                 case LoweredIfStatement ifStatement:
                     EmitIf(ifStatement);
@@ -689,8 +690,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             _il.MarkLabel(incrementLabel);
             if (statement.Incrementor != null)
             {
-                EmitExpression(statement.Incrementor);
-                _il.Emit(OpCodes.Pop);
+                EmitExpressionDiscarded(statement.Incrementor);
             }
             _il.Emit(OpCodes.Br, conditionLabel);
             _il.MarkLabel(endLabel);
@@ -836,6 +836,11 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitCondition(LoweredExpression expression)
         {
+            if (TryEmitCondition(expression))
+            {
+                return;
+            }
+
             EmitExpressionOrNull(expression);
             _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_ToBoolean);
         }
@@ -849,6 +854,24 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
 
             EmitExpression(expression);
+        }
+
+        private void EmitExpressionDiscarded(LoweredExpression expression)
+        {
+            if (expression == null)
+            {
+                return;
+            }
+
+            if (expression is LoweredUnaryExpression unary &&
+                GetMutationVoidMethod(unary.Operator) != null)
+            {
+                EmitMutationUnaryDiscarded(unary);
+                return;
+            }
+
+            EmitExpression(expression);
+            _il.Emit(OpCodes.Pop);
         }
 
         private void EmitExpression(LoweredExpression expression)
@@ -936,6 +959,98 @@ namespace AuroraScript.Compiler.Backend.Emission
             EmitExpression(expression.Left);
             EmitExpression(expression.Right);
             _il.Emit(OpCodes.Call, GetBinaryMethod(expression.Operator));
+        }
+
+        private bool TryEmitCondition(LoweredExpression expression)
+        {
+            switch (expression)
+            {
+                case null:
+                    _il.Emit(OpCodes.Ldc_I4_0);
+                    return true;
+                case LoweredLiteralExpression literal:
+                    return TryEmitLiteralCondition(literal);
+                case LoweredBinaryExpression binary:
+                    return TryEmitBinaryCondition(binary);
+                case LoweredUnaryExpression unary when unary.Operator == Operator.LogicalNot:
+                    EmitCondition(unary.Expression);
+                    _il.Emit(OpCodes.Ldc_I4_0);
+                    _il.Emit(OpCodes.Ceq);
+                    return true;
+                case LoweredInExpression inExpression:
+                    EmitExpression(inExpression.Right);
+                    _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
+                    EmitExpression(inExpression.Left);
+                    _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_IncludedBool);
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private bool TryEmitLiteralCondition(LoweredLiteralExpression expression)
+        {
+            switch (expression.Token)
+            {
+                case BooleanToken boolean:
+                    _il.Emit(boolean.BoolValue ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
+                    return true;
+                case NullToken:
+                    _il.Emit(OpCodes.Ldc_I4_0);
+                    return true;
+                case NumberToken number:
+                    _il.Emit(number.NumberValue != 0 && !double.IsNaN(number.NumberValue) ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
+                    return true;
+                case StringToken stringToken:
+                    _il.Emit(string.IsNullOrEmpty(stringToken.Value) ? OpCodes.Ldc_I4_0 : OpCodes.Ldc_I4_1);
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private bool TryEmitBinaryCondition(LoweredBinaryExpression expression)
+        {
+            if (expression.Operator == Operator.LogicalAnd)
+            {
+                var falseLabel = _il.DefineLabel();
+                var endLabel = _il.DefineLabel();
+
+                EmitCondition(expression.Left);
+                _il.Emit(OpCodes.Brfalse, falseLabel);
+                EmitCondition(expression.Right);
+                _il.Emit(OpCodes.Br, endLabel);
+                _il.MarkLabel(falseLabel);
+                _il.Emit(OpCodes.Ldc_I4_0);
+                _il.MarkLabel(endLabel);
+                return true;
+            }
+
+            if (expression.Operator == Operator.LogicalOr)
+            {
+                var trueLabel = _il.DefineLabel();
+                var endLabel = _il.DefineLabel();
+
+                EmitCondition(expression.Left);
+                _il.Emit(OpCodes.Brtrue, trueLabel);
+                EmitCondition(expression.Right);
+                _il.Emit(OpCodes.Br, endLabel);
+                _il.MarkLabel(trueLabel);
+                _il.Emit(OpCodes.Ldc_I4_1);
+                _il.MarkLabel(endLabel);
+                return true;
+            }
+
+            var conditionMethod = GetBinaryConditionMethod(expression.Operator);
+            if (conditionMethod == null)
+            {
+                return false;
+            }
+
+            EmitExpression(expression.Left);
+            EmitExpression(expression.Right);
+            _il.Emit(OpCodes.Call, conditionMethod);
+            return true;
         }
 
         private bool TryEmitStringAddition(LoweredBinaryExpression expression)
@@ -1084,6 +1199,43 @@ namespace AuroraScript.Compiler.Backend.Emission
             _il.Emit(OpCodes.Call, GetPropertyMutationMethod(expression.Operator));
         }
 
+        private void EmitMutationUnaryDiscarded(LoweredUnaryExpression expression)
+        {
+            if (expression.Expression is LoweredNameExpression name)
+            {
+                if ((name.LocalSlot.IsValid || name.UpvalueSlot.IsValid) && !name.ModuleSymbol.IsValid)
+                {
+                    EmitLoadNameAddress(name);
+                    _il.Emit(OpCodes.Call, GetMutationVoidMethod(expression.Operator));
+                    return;
+                }
+
+                EmitStoreTargetObject(name);
+                _session.Builder.LoadStringConstant(_il, name.Name);
+                _il.Emit(OpCodes.Call, GetPropertyMutationVoidMethod(expression.Operator));
+                return;
+            }
+
+            if (expression.Expression is LoweredGetElementExpression element)
+            {
+                EmitExpression(element.Instance);
+                _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
+                EmitExpression(element.Index);
+                _il.Emit(OpCodes.Call, GetElementMutationVoidMethod(expression.Operator));
+                return;
+            }
+
+            var property = (LoweredGetPropertyExpression)expression.Expression;
+            if (!TryGetStaticPropertyName(property, out var propertyName))
+            {
+                throw new NotSupportedException("Dynamic property mutation");
+            }
+            EmitExpression(property.Instance);
+            _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
+            _session.Builder.LoadStringConstant(_il, propertyName);
+            _il.Emit(OpCodes.Call, GetPropertyMutationVoidMethod(expression.Operator));
+        }
+
         private void EmitIn(LoweredInExpression expression)
         {
             EmitExpression(expression.Right);
@@ -1133,9 +1285,66 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitGetElement(LoweredGetElementExpression expression)
         {
+            if (TryEmitGetElementFastPath(expression))
+            {
+                return;
+            }
+
             EmitExpression(expression.Instance);
             EmitExpression(expression.Index);
             _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_GetElementDatum);
+        }
+
+        private bool TryEmitGetElementFastPath(LoweredGetElementExpression expression)
+        {
+            if (TryGetNumberLiteral(expression.Index, out var index))
+            {
+                EmitExpression(expression.Instance);
+                EmitRawNumber(index);
+                _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_GetElementNumber);
+                return true;
+            }
+
+            if (expression.Index is LoweredBinaryExpression binary &&
+                binary.Operator == Operator.Add)
+            {
+                if (TryGetNumberLiteral(binary.Right, out var right))
+                {
+                    EmitExpression(expression.Instance);
+                    EmitExpression(binary.Left);
+                    EmitRawNumber(right);
+                    _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_GetElementAddNumberRight);
+                    return true;
+                }
+
+                if (TryGetNumberLiteral(binary.Left, out var left))
+                {
+                    EmitExpression(expression.Instance);
+                    EmitRawNumber(left);
+                    EmitExpression(binary.Right);
+                    _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_GetElementAddNumberLeft);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryGetNumberLiteral(LoweredExpression expression, out double value)
+        {
+            if (expression is LoweredLiteralExpression { Token: NumberToken token })
+            {
+                value = token.NumberValue;
+                return true;
+            }
+
+            value = default;
+            return false;
+        }
+
+        private void EmitRawNumber(double value)
+        {
+            _il.Emit(OpCodes.Ldc_R8, value);
         }
 
         private void EmitSetElement(LoweredSetElementExpression expression)
@@ -1316,8 +1525,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 for (var i = 0; i < arguments.Length; i++)
                 {
-                    EmitExpression(arguments[i]);
-                    _il.Emit(OpCodes.Pop);
+                    EmitExpressionDiscarded(arguments[i]);
                 }
 
                 return Array.Empty<LocalBuilder>();
@@ -1327,16 +1535,16 @@ namespace AuroraScript.Compiler.Backend.Emission
             var locals = new LocalBuilder[count];
             for (var i = 0; i < arguments.Length; i++)
             {
-                EmitExpression(arguments[i]);
                 if (i < count)
                 {
+                    EmitExpression(arguments[i]);
                     var local = DeclareTemp();
                     _il.Emit(OpCodes.Stloc, local);
                     locals[i] = local;
                 }
                 else
                 {
-                    _il.Emit(OpCodes.Pop);
+                    EmitExpressionDiscarded(arguments[i]);
                 }
             }
 
@@ -1642,16 +1850,29 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitLocation(LoweredNode node)
         {
-            if (node == null || node.Range.StartLine <= 0)
+            if (!ShouldEmitLocation() || node == null || node.Range.StartLine <= 0)
+            {
+                return;
+            }
+
+            var location = ((long)_module.PathHash & 0xffffffffL) |
+                ((long)node.Range.StartLine << 32);
+            if (_lastLocation == location && _lastLocationEndOffset == _il.ILOffset)
             {
                 return;
             }
 
             _il.Emit(OpCodes.Ldarg_0);
-            var location = ((long)_module.PathHash & 0xffffffffL) |
-                ((long)node.Range.StartLine << 32);
             _il.Emit(OpCodes.Ldc_I8, location);
             _il.Emit(OpCodes.Stfld, RuntimeMetadata.CILContext_Location);
+            _lastLocation = location;
+            _lastLocationEndOffset = _il.ILOffset;
+        }
+
+        private bool ShouldEmitLocation()
+        {
+            return _session.Options.Optimization.StackTrace ||
+                _session.Options.Optimization.Level == OptimizeOptions.Debug;
         }
 
         private bool CanEmitStatement(LoweredStatement statement, IReadOnlySet<FunctionId> executableFunctions)
@@ -2372,6 +2593,28 @@ namespace AuroraScript.Compiler.Backend.Emission
             return null;
         }
 
+        private static MethodInfo GetBinaryConditionMethod(Operator op)
+        {
+            if (op == Operator.Add) return RuntimeMetadata.CILHelper_AddBool;
+            if (op == Operator.Subtract) return RuntimeMetadata.CILHelper_SubtractBool;
+            if (op == Operator.Multiply) return RuntimeMetadata.CILHelper_MultiplyBool;
+            if (op == Operator.Divide) return RuntimeMetadata.CILHelper_DivideBool;
+            if (op == Operator.Modulo) return RuntimeMetadata.CILHelper_ModuloBool;
+            if (op == Operator.Equal) return RuntimeMetadata.CILHelper_EqualBool;
+            if (op == Operator.NotEqual) return RuntimeMetadata.CILHelper_NotEqualBool;
+            if (op == Operator.LessThan) return RuntimeMetadata.CILHelper_LessBool;
+            if (op == Operator.LessThanOrEqual) return RuntimeMetadata.CILHelper_LessEqualBool;
+            if (op == Operator.GreaterThan) return RuntimeMetadata.CILHelper_GreaterBool;
+            if (op == Operator.GreaterThanOrEqual) return RuntimeMetadata.CILHelper_GreaterEqualBool;
+            if (op == Operator.BitwiseAnd) return RuntimeMetadata.CILHelper_BitwiseAndBool;
+            if (op == Operator.BitwiseOr) return RuntimeMetadata.CILHelper_BitwiseOrBool;
+            if (op == Operator.BitwiseXor) return RuntimeMetadata.CILHelper_BitwiseXorBool;
+            if (op == Operator.LeftShift) return RuntimeMetadata.CILHelper_LeftShiftBool;
+            if (op == Operator.SignedRightShift) return RuntimeMetadata.CILHelper_RightShiftBool;
+            if (op == Operator.UnSignedRightShift) return RuntimeMetadata.CILHelper_UnsignedRightShiftBool;
+            return null;
+        }
+
         private static MethodInfo GetUnaryMethod(Operator op)
         {
             if (op == Operator.LogicalNot) return RuntimeMetadata.CILHelper_Not;
@@ -2390,6 +2633,13 @@ namespace AuroraScript.Compiler.Backend.Emission
             return null;
         }
 
+        private static MethodInfo GetMutationVoidMethod(Operator op)
+        {
+            if (op == Operator.PreIncrement || op == Operator.PostIncrement) return RuntimeMetadata.CILHelper_IncrementVoid;
+            if (op == Operator.PreDecrement || op == Operator.PostDecrement) return RuntimeMetadata.CILHelper_DecrementVoid;
+            return null;
+        }
+
         private static MethodInfo GetElementMutationMethod(Operator op)
         {
             if (op == Operator.PreIncrement) return RuntimeMetadata.CILHelper_IncrementElementPrefix;
@@ -2399,12 +2649,26 @@ namespace AuroraScript.Compiler.Backend.Emission
             return null;
         }
 
+        private static MethodInfo GetElementMutationVoidMethod(Operator op)
+        {
+            if (op == Operator.PreIncrement || op == Operator.PostIncrement) return RuntimeMetadata.CILHelper_IncrementElementVoid;
+            if (op == Operator.PreDecrement || op == Operator.PostDecrement) return RuntimeMetadata.CILHelper_DecrementElementVoid;
+            return null;
+        }
+
         private static MethodInfo GetPropertyMutationMethod(Operator op)
         {
             if (op == Operator.PreIncrement) return RuntimeMetadata.CILHelper_IncrementPropertyPrefix;
             if (op == Operator.PostIncrement) return RuntimeMetadata.CILHelper_IncrementPropertyPostfix;
             if (op == Operator.PreDecrement) return RuntimeMetadata.CILHelper_DecrementPropertyPrefix;
             if (op == Operator.PostDecrement) return RuntimeMetadata.CILHelper_DecrementPropertyPostfix;
+            return null;
+        }
+
+        private static MethodInfo GetPropertyMutationVoidMethod(Operator op)
+        {
+            if (op == Operator.PreIncrement || op == Operator.PostIncrement) return RuntimeMetadata.CILHelper_IncrementPropertyVoid;
+            if (op == Operator.PreDecrement || op == Operator.PostDecrement) return RuntimeMetadata.CILHelper_DecrementPropertyVoid;
             return null;
         }
 

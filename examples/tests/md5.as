@@ -118,8 +118,8 @@ function WordToHex(lValue) {
 function Utf8Encode(string) {
     string = string.replace(/\r\n/g, "\n");
     var utfText = '';
-
-    for (var n = 0; n < string.length; n++) {
+    var stringLen = string.length;
+    for (var n = 0; n < stringLen; n++) {
         var c = string.charCodeAt(n);
 
         if (c < 128) {
@@ -155,8 +155,8 @@ function WordToHex_str(lValue) {
 function Utf8Encode_str(string) {
     string = string.replace(/\r\n/g, "\n");
     var utfText = "";
-
-    for (var n = 0; n < string.length; n++) {
+    var stringLen = string.length;
+    for (var n = 0; n < stringLen; n++) {
         var c = string.charCodeAt(n);
 
         if (c < 128) {
@@ -188,7 +188,8 @@ export function MD5(string) {
     var S41 = 6; var S42 = 10; var S43 = 15; var S44 = 21;
     string = Utf8Encode(string);
     var x = ConvertToWordArray(string);
-    for (var k = 0; k < x.length; k += 16) {
+    var xLen = x.length;
+    for (var k = 0; k < xLen; k += 16) {
         var AA = a;
         var BB = b;
         var CC = c;

@@ -37,7 +37,8 @@ internal sealed class TestWorkspace : IDisposable
         int maxDegreeOfParallelism = 4,
         string? assemblyOut = null,
         TextWriter? output = null,
-        bool enableModuleConstInlining = false)
+        bool enableModuleConstInlining = false,
+        bool stackTrace = true)
     {
         var options = EngineOptions.Default
             .WithCompiler(compiler => compiler.WithDirectory(Root))
@@ -45,6 +46,7 @@ internal sealed class TestWorkspace : IDisposable
             .WithOptimization(optimization => optimization.Level = OptimizeOptions.Release)
             .WithRuntime(runtime => runtime.HotReload = enableHotReload)
             .WithOptimization(optimization => optimization.ModuleConstInlining = enableModuleConstInlining)
+            .WithOptimization(optimization => optimization.StackTrace = stackTrace)
             .WithOutput(output => output.Confused = enableConfused)
             .WithCompiler(compiler => compiler.MaxDegreeOfParallelism = maxDegreeOfParallelism)
             .WithRuntime(runtime => runtime.ConsoleStdOut = output ?? TextWriter.Null)

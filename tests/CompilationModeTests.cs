@@ -85,6 +85,28 @@ public sealed class CompilationModeTests
         Assert.Contains(4, lines);
         Assert.Contains(5, lines);
     }
+
+    [Fact]
+    public async Task PersistenceReleaseCanOmitStackTraceLocationWrites()
+    {
+        using var workspace = new TestWorkspace();
+        var assemblyPath = Path.Combine(workspace.Root, "trace-disabled.dll");
+
+        await BuildPersistenceStackTraceAssemblyAsync(workspace, assemblyPath, OptimizeOptions.Release, stackTrace: false);
+
+        Assert.False(ReferencesScriptContextLocation(assemblyPath));
+    }
+
+    [Fact]
+    public async Task PersistenceDebugKeepsStackTraceLocationWritesWhenDisabled()
+    {
+        using var workspace = new TestWorkspace();
+        var assemblyPath = Path.Combine(workspace.Root, "debug-trace-disabled.dll");
+
+        await BuildPersistenceStackTraceAssemblyAsync(workspace, assemblyPath, OptimizeOptions.Debug, stackTrace: false);
+
+        Assert.True(ReferencesScriptContextLocation(assemblyPath));
+    }
 #endif
 
 #if NET8_0
@@ -113,7 +135,77 @@ public sealed class CompilationModeTests
         ScriptAssert.Equal(42, TestWorkspace.Execute(domain, "run"));
     }
 
+    [Fact]
+    public void StackTraceOptionDefaultsToEnabledAndCanBeDisabled()
+    {
+        Assert.True(EngineOptions.Default.Optimization.StackTrace);
+
+        var options = EngineOptions.Default.WithOptimization(optimization => optimization.StackTrace = false);
+
+        Assert.False(options.Optimization.StackTrace);
+    }
+
 #if NET9_0_OR_GREATER
+    private static async Task BuildPersistenceStackTraceAssemblyAsync(
+        TestWorkspace workspace,
+        string assemblyPath,
+        OptimizeOptions level,
+        bool stackTrace)
+    {
+        var sourcePath = workspace.WriteSource("main.as",
+            """
+            @module(TEST);
+            export func run(value) {
+                var local = value + 1;
+                if (local > 10) {
+                    return local;
+                }
+                return local + 1;
+            }
+            """);
+        var options = EngineOptions.Default
+            .WithCompiler(compiler => compiler.WithDirectory(workspace.Root))
+            .WithCompiler(compiler => compiler.Mode = CompilationMode.Persistence)
+            .WithOptimization(optimization => optimization.Level = level)
+            .WithOptimization(optimization => optimization.StackTrace = stackTrace)
+            .WithOutput(output => output.AssemblyFile = assemblyPath)
+            .WithRuntime(runtime => runtime.ConsoleStdOut = TextWriter.Null)
+            .WithRuntime(runtime => runtime.ConsoleErrorOut = TextWriter.Null);
+        var engine = new AuroraEngine(options);
+
+        await engine.BuildAsync(engine.FileSource(sourcePath, Encoding.UTF8));
+    }
+
+    private static bool ReferencesScriptContextLocation(string assemblyPath)
+    {
+        using var stream = File.OpenRead(assemblyPath);
+        using var peReader = new PEReader(stream);
+        var reader = peReader.GetMetadataReader();
+
+        foreach (var handle in reader.MemberReferences)
+        {
+            var member = reader.GetMemberReference(handle);
+            if (!string.Equals(reader.GetString(member.Name), nameof(AuroraScript.Runtime.ScriptContext.Location), StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (member.Parent.Kind != HandleKind.TypeReference)
+            {
+                continue;
+            }
+
+            var type = reader.GetTypeReference((TypeReferenceHandle)member.Parent);
+            if (string.Equals(reader.GetString(type.Namespace), "AuroraScript.Runtime", StringComparison.Ordinal) &&
+                string.Equals(reader.GetString(type.Name), nameof(AuroraScript.Runtime.ScriptContext), StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static string ReadDocumentName(MetadataReader reader, DocumentHandle handle)
     {
         return reader.GetString(reader.GetDocument(handle).Name);

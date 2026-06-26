@@ -24,7 +24,7 @@ namespace Examples
             compiler.Directory = Path.Combine(AppContext.BaseDirectory, "tests");
             compiler.MaxDegreeOfParallelism = 0;
             compiler.ExtName = "as";
-            compiler.Mode = CompilationMode.Dynamic;
+            compiler.Mode = CompilationMode.Persistence;
         })
         .WithOutput(output =>
         {
@@ -43,6 +43,7 @@ namespace Examples
 
         .WithOptimization(optimization =>
         {
+            optimization.StackTrace = true;
             optimization.ModuleConstInlining = true;
             optimization.AutoModuleDirectCall = true;
             optimization.Level = OptimizeOptions.Release;

@@ -99,6 +99,31 @@ public sealed class ReleaseRegressionTests
     }
 
     [Fact]
+    public async Task NumericElementFastPathsPreserveAdditionOrderAndPropertyKeys()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func run() {
+                var array = [10, 20, 30, 40];
+                var map = {};
+                map["12"] = 12;
+                map["21"] = 21;
+                var text = "2";
+                return [
+                    array[1],
+                    array[1 + 1],
+                    map[1 + text],
+                    map[text + 1]
+                ];
+            }
+            """);
+
+        ScriptAssert.Equal(new object?[] { 20, 30, 12, 21 }, TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
     public void ArraySpreadCopiesOnlyLogicalElementsNotBackingCapacity()
     {
         using var workspace = new TestWorkspace();

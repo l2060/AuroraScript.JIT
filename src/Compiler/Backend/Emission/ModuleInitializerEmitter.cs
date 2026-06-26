@@ -174,8 +174,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     return;
                 case ExpressionStatement expressionStatement:
                     MarkSequencePoint(expressionStatement);
-                    EmitExpressionOrNull(expressionStatement.Expression);
-                    _il.Emit(OpCodes.Pop);
+                    EmitExpressionDiscarded(expressionStatement.Expression);
                     return;
                 default:
                     throw new NotSupportedException("Module initializer statement " + node.GetType().Name);
@@ -270,6 +269,30 @@ namespace AuroraScript.Compiler.Backend.Emission
             EmitExpression(expression);
         }
 
+        private void EmitExpressionDiscarded(Expression expression)
+        {
+            if (expression == null)
+            {
+                return;
+            }
+
+            if (expression is GroupExpression group)
+            {
+                EmitExpressionDiscarded(group.Expression);
+                return;
+            }
+
+            if (expression is UnaryExpression unary &&
+                GetMutationVoidMethod(unary.Operator) != null)
+            {
+                EmitUnaryDiscarded(unary);
+                return;
+            }
+
+            EmitExpression(expression);
+            _il.Emit(OpCodes.Pop);
+        }
+
         private void EmitExpression(Expression expression)
         {
             switch (expression)
@@ -331,6 +354,17 @@ namespace AuroraScript.Compiler.Backend.Emission
                 default:
                     throw new NotSupportedException("Module initializer expression " + expression.GetType().Name);
             }
+        }
+
+        private void EmitCondition(Expression expression)
+        {
+            if (TryEmitCondition(expression))
+            {
+                return;
+            }
+
+            EmitExpressionOrNull(expression);
+            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_ToBoolean);
         }
 
         private void EmitLiteral(LiteralExpression expression)
@@ -416,6 +450,106 @@ namespace AuroraScript.Compiler.Backend.Emission
             EmitExpression(expression.Left);
             EmitExpression(expression.Right);
             _il.Emit(OpCodes.Call, GetBinaryMethod(expression.Operator));
+        }
+
+        private bool TryEmitCondition(Expression expression)
+        {
+            switch (expression)
+            {
+                case null:
+                    _il.Emit(OpCodes.Ldc_I4_0);
+                    return true;
+                case GroupExpression group:
+                    return TryEmitCondition(group.Expression);
+                case LiteralExpression literal:
+                    return TryEmitLiteralCondition(literal);
+                case BinaryExpression binary:
+                    return TryEmitBinaryCondition(binary);
+                case UnaryExpression unary when unary.Operator == Operator.LogicalNot:
+                    EmitCondition(unary.Expression);
+                    _il.Emit(OpCodes.Ldc_I4_0);
+                    _il.Emit(OpCodes.Ceq);
+                    return true;
+                case IncludedExpression included:
+                    EmitExpression(included.Right);
+                    _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
+                    EmitExpression(included.Left);
+                    _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_IncludedBool);
+                    return true;
+                case InExpression inExpression:
+                    EmitExpression(inExpression.Right);
+                    _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
+                    EmitExpression(inExpression.Left);
+                    _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_IncludedBool);
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private bool TryEmitLiteralCondition(LiteralExpression expression)
+        {
+            switch (expression.Token)
+            {
+                case BooleanToken boolean:
+                    _il.Emit(boolean.BoolValue ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
+                    return true;
+                case NullToken:
+                    _il.Emit(OpCodes.Ldc_I4_0);
+                    return true;
+                case NumberToken number:
+                    _il.Emit(number.NumberValue != 0 && !double.IsNaN(number.NumberValue) ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
+                    return true;
+                case StringToken stringToken:
+                    _il.Emit(string.IsNullOrEmpty(stringToken.Value) ? OpCodes.Ldc_I4_0 : OpCodes.Ldc_I4_1);
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private bool TryEmitBinaryCondition(BinaryExpression expression)
+        {
+            if (expression.Operator == Operator.LogicalAnd)
+            {
+                var falseLabel = _il.DefineLabel();
+                var endLabel = _il.DefineLabel();
+
+                EmitCondition(expression.Left);
+                _il.Emit(OpCodes.Brfalse, falseLabel);
+                EmitCondition(expression.Right);
+                _il.Emit(OpCodes.Br, endLabel);
+                _il.MarkLabel(falseLabel);
+                _il.Emit(OpCodes.Ldc_I4_0);
+                _il.MarkLabel(endLabel);
+                return true;
+            }
+
+            if (expression.Operator == Operator.LogicalOr)
+            {
+                var trueLabel = _il.DefineLabel();
+                var endLabel = _il.DefineLabel();
+
+                EmitCondition(expression.Left);
+                _il.Emit(OpCodes.Brtrue, trueLabel);
+                EmitCondition(expression.Right);
+                _il.Emit(OpCodes.Br, endLabel);
+                _il.MarkLabel(trueLabel);
+                _il.Emit(OpCodes.Ldc_I4_1);
+                _il.MarkLabel(endLabel);
+                return true;
+            }
+
+            var conditionMethod = GetBinaryConditionMethod(expression.Operator);
+            if (conditionMethod == null)
+            {
+                return false;
+            }
+
+            EmitExpression(expression.Left);
+            EmitExpression(expression.Right);
+            _il.Emit(OpCodes.Call, conditionMethod);
+            return true;
         }
 
         private bool TryEmitStringAddition(BinaryExpression expression)
@@ -567,6 +701,37 @@ namespace AuroraScript.Compiler.Backend.Emission
             throw new NotSupportedException("Module unary target " + expression.Expression?.GetType().Name);
         }
 
+        private void EmitUnaryDiscarded(UnaryExpression expression)
+        {
+            if (expression.Expression is NameExpression name)
+            {
+                EmitStoreTargetObject(name.Identifier.Value);
+                _session.Builder.LoadStringConstant(_il, name.Identifier.Value);
+                _il.Emit(OpCodes.Call, GetPropertyMutationVoidMethod(expression.Operator));
+                return;
+            }
+
+            if (expression.Expression is GetElementExpression element)
+            {
+                EmitExpression(element.Object);
+                _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
+                EmitExpression(element.Index);
+                _il.Emit(OpCodes.Call, GetElementMutationVoidMethod(expression.Operator));
+                return;
+            }
+
+            if (expression.Expression is GetPropertyExpression property && TryGetStaticPropertyName(property, out var propertyName))
+            {
+                EmitExpression(property.Object);
+                _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
+                _session.Builder.LoadStringConstant(_il, propertyName);
+                _il.Emit(OpCodes.Call, GetPropertyMutationVoidMethod(expression.Operator));
+                return;
+            }
+
+            throw new NotSupportedException("Module unary target " + expression.Expression?.GetType().Name);
+        }
+
         private void EmitIncluded(Expression left, Expression right)
         {
             EmitExpression(right);
@@ -616,9 +781,66 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitGetElement(GetElementExpression expression)
         {
+            if (TryEmitGetElementFastPath(expression))
+            {
+                return;
+            }
+
             EmitExpression(expression.Object);
             EmitExpression(expression.Index);
             _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_GetElementDatum);
+        }
+
+        private bool TryEmitGetElementFastPath(GetElementExpression expression)
+        {
+            if (TryGetNumberLiteral(expression.Index, out var index))
+            {
+                EmitExpression(expression.Object);
+                EmitRawNumber(index);
+                _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_GetElementNumber);
+                return true;
+            }
+
+            if (expression.Index is BinaryExpression binary &&
+                binary.Operator == Operator.Add)
+            {
+                if (TryGetNumberLiteral(binary.Right, out var right))
+                {
+                    EmitExpression(expression.Object);
+                    EmitExpression(binary.Left);
+                    EmitRawNumber(right);
+                    _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_GetElementAddNumberRight);
+                    return true;
+                }
+
+                if (TryGetNumberLiteral(binary.Left, out var left))
+                {
+                    EmitExpression(expression.Object);
+                    EmitRawNumber(left);
+                    EmitExpression(binary.Right);
+                    _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_GetElementAddNumberLeft);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryGetNumberLiteral(Expression expression, out double value)
+        {
+            if (expression is LiteralExpression { Token: NumberToken token })
+            {
+                value = token.NumberValue;
+                return true;
+            }
+
+            value = default;
+            return false;
+        }
+
+        private void EmitRawNumber(double value)
+        {
+            _il.Emit(OpCodes.Ldc_R8, value);
         }
 
         private void EmitSetElement(SetElementExpression expression)
@@ -863,8 +1085,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 for (var i = 0; i < arguments.Count; i++)
                 {
-                    EmitExpression(arguments[i]);
-                    _il.Emit(OpCodes.Pop);
+                    EmitExpressionDiscarded(arguments[i]);
                 }
 
                 return Array.Empty<LocalBuilder>();
@@ -874,16 +1095,16 @@ namespace AuroraScript.Compiler.Backend.Emission
             var locals = new LocalBuilder[count];
             for (var i = 0; i < arguments.Count; i++)
             {
-                EmitExpression(arguments[i]);
                 if (i < count)
                 {
+                    EmitExpression(arguments[i]);
                     var local = DeclareTemp();
                     _il.Emit(OpCodes.Stloc, local);
                     locals[i] = local;
                 }
                 else
                 {
-                    _il.Emit(OpCodes.Pop);
+                    EmitExpressionDiscarded(arguments[i]);
                 }
             }
 
@@ -1104,6 +1325,28 @@ namespace AuroraScript.Compiler.Backend.Emission
             return null;
         }
 
+        private static MethodInfo GetBinaryConditionMethod(Operator op)
+        {
+            if (op == Operator.Add) return RuntimeMetadata.CILHelper_AddBool;
+            if (op == Operator.Subtract) return RuntimeMetadata.CILHelper_SubtractBool;
+            if (op == Operator.Multiply) return RuntimeMetadata.CILHelper_MultiplyBool;
+            if (op == Operator.Divide) return RuntimeMetadata.CILHelper_DivideBool;
+            if (op == Operator.Modulo) return RuntimeMetadata.CILHelper_ModuloBool;
+            if (op == Operator.Equal) return RuntimeMetadata.CILHelper_EqualBool;
+            if (op == Operator.NotEqual) return RuntimeMetadata.CILHelper_NotEqualBool;
+            if (op == Operator.LessThan) return RuntimeMetadata.CILHelper_LessBool;
+            if (op == Operator.LessThanOrEqual) return RuntimeMetadata.CILHelper_LessEqualBool;
+            if (op == Operator.GreaterThan) return RuntimeMetadata.CILHelper_GreaterBool;
+            if (op == Operator.GreaterThanOrEqual) return RuntimeMetadata.CILHelper_GreaterEqualBool;
+            if (op == Operator.BitwiseAnd) return RuntimeMetadata.CILHelper_BitwiseAndBool;
+            if (op == Operator.BitwiseOr) return RuntimeMetadata.CILHelper_BitwiseOrBool;
+            if (op == Operator.BitwiseXor) return RuntimeMetadata.CILHelper_BitwiseXorBool;
+            if (op == Operator.LeftShift) return RuntimeMetadata.CILHelper_LeftShiftBool;
+            if (op == Operator.SignedRightShift) return RuntimeMetadata.CILHelper_RightShiftBool;
+            if (op == Operator.UnSignedRightShift) return RuntimeMetadata.CILHelper_UnsignedRightShiftBool;
+            return null;
+        }
+
         private static MethodInfo GetUnaryMethod(Operator op)
         {
             if (op == Operator.LogicalNot) return RuntimeMetadata.CILHelper_Not;
@@ -1122,6 +1365,13 @@ namespace AuroraScript.Compiler.Backend.Emission
             return null;
         }
 
+        private static MethodInfo GetMutationVoidMethod(Operator op)
+        {
+            if (op == Operator.PreIncrement || op == Operator.PostIncrement) return RuntimeMetadata.CILHelper_IncrementVoid;
+            if (op == Operator.PreDecrement || op == Operator.PostDecrement) return RuntimeMetadata.CILHelper_DecrementVoid;
+            return null;
+        }
+
         private static MethodInfo GetElementMutationMethod(Operator op)
         {
             if (op == Operator.PreIncrement) return RuntimeMetadata.CILHelper_IncrementElementPrefix;
@@ -1131,12 +1381,26 @@ namespace AuroraScript.Compiler.Backend.Emission
             return null;
         }
 
+        private static MethodInfo GetElementMutationVoidMethod(Operator op)
+        {
+            if (op == Operator.PreIncrement || op == Operator.PostIncrement) return RuntimeMetadata.CILHelper_IncrementElementVoid;
+            if (op == Operator.PreDecrement || op == Operator.PostDecrement) return RuntimeMetadata.CILHelper_DecrementElementVoid;
+            return null;
+        }
+
         private static MethodInfo GetPropertyMutationMethod(Operator op)
         {
             if (op == Operator.PreIncrement) return RuntimeMetadata.CILHelper_IncrementPropertyPrefix;
             if (op == Operator.PostIncrement) return RuntimeMetadata.CILHelper_IncrementPropertyPostfix;
             if (op == Operator.PreDecrement) return RuntimeMetadata.CILHelper_DecrementPropertyPrefix;
             if (op == Operator.PostDecrement) return RuntimeMetadata.CILHelper_DecrementPropertyPostfix;
+            return null;
+        }
+
+        private static MethodInfo GetPropertyMutationVoidMethod(Operator op)
+        {
+            if (op == Operator.PreIncrement || op == Operator.PostIncrement) return RuntimeMetadata.CILHelper_IncrementPropertyVoid;
+            if (op == Operator.PreDecrement || op == Operator.PostDecrement) return RuntimeMetadata.CILHelper_DecrementPropertyVoid;
             return null;
         }
 

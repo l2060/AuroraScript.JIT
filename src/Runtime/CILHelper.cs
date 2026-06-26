@@ -53,6 +53,29 @@ namespace AuroraScript.Runtime
             return ScriptDatum.TryToNumber(value, out number);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool IsTrueNumber(double value)
+        {
+            return value != 0 && !double.IsNaN(value);
+        }
+
+        /// <summary>
+        /// Performs addition and returns the truthiness of the result as a native boolean.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool AddBool(ScriptDatum a, ScriptDatum b)
+        {
+            if (a.Kind != ValueKind.String &&
+                b.Kind != ValueKind.String &&
+                TryToNumberForArithmetic(a, out var na) &&
+                TryToNumberForArithmetic(b, out var nb))
+            {
+                return IsTrueNumber(na + nb);
+            }
+
+            return ToBoolean(Add(a, b));
+        }
+
         /// <summary>Concatenates a script value with a literal string on the right.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum AddStringRight(ScriptDatum a, string b)
@@ -109,6 +132,17 @@ namespace AuroraScript.Runtime
         }
 
         /// <summary>
+        /// Performs subtraction and returns the truthiness of the result as a native boolean.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool SubtractBool(ScriptDatum a, ScriptDatum b)
+        {
+            return TryToNumberForArithmetic(a, out var na) &&
+                TryToNumberForArithmetic(b, out var nb) &&
+                IsTrueNumber(na - nb);
+        }
+
+        /// <summary>
         /// Performs the multiplication operation (*) between two script values.
         /// Coerces operands to numbers; returns NaN if conversion fails.
         /// </summary>
@@ -127,6 +161,17 @@ namespace AuroraScript.Runtime
             {
                 return ScriptDatum.FromNumber(double.NaN);
             }
+        }
+
+        /// <summary>
+        /// Performs multiplication and returns the truthiness of the result as a native boolean.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool MultiplyBool(ScriptDatum a, ScriptDatum b)
+        {
+            return TryToNumberForArithmetic(a, out var na) &&
+                TryToNumberForArithmetic(b, out var nb) &&
+                IsTrueNumber(na * nb);
         }
 
         /// <summary>
@@ -151,6 +196,17 @@ namespace AuroraScript.Runtime
         }
 
         /// <summary>
+        /// Performs division and returns the truthiness of the result as a native boolean.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool DivideBool(ScriptDatum a, ScriptDatum b)
+        {
+            return TryToNumberForArithmetic(a, out var na) &&
+                TryToNumberForArithmetic(b, out var nb) &&
+                IsTrueNumber(na / nb);
+        }
+
+        /// <summary>
         /// Performs the modulo operation (%) between two script values.
         /// Coerces operands to numbers; returns NaN if conversion fails.
         /// </summary>
@@ -172,28 +228,48 @@ namespace AuroraScript.Runtime
         }
 
         /// <summary>
+        /// Performs modulo and returns the truthiness of the result as a native boolean.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool ModuloBool(ScriptDatum a, ScriptDatum b)
+        {
+            return TryToNumberForArithmetic(a, out var na) &&
+                TryToNumberForArithmetic(b, out var nb) &&
+                IsTrueNumber(na % nb);
+        }
+
+        /// <summary>
         /// Checks if two script values are equal (==).
         /// Handles primitive equality and object reference equality.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum Equal(ScriptDatum a, ScriptDatum b)
         {
+            return ScriptDatum.FromBoolean(EqualBool(a, b));
+        }
+
+        /// <summary>
+        /// Checks if two script values are equal and returns a native boolean.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool EqualBool(ScriptDatum a, ScriptDatum b)
+        {
             if (a.Kind == b.Kind)
             {
                 switch (a.Kind)
                 {
-                    case ValueKind.Null: return ScriptDatum.FromBoolean(true);
-                    case ValueKind.Boolean: return ScriptDatum.FromBoolean(a.Boolean == b.Boolean);
-                    case ValueKind.Number: return ScriptDatum.FromBoolean(a.Number == b.Number);
-                    case ValueKind.String: return ScriptDatum.FromBoolean(a.String.Value == b.String.Value);
-                    default: return ScriptDatum.FromBoolean(ReferenceEquals(a.Object, b.Object));
+                    case ValueKind.Null: return true;
+                    case ValueKind.Boolean: return a.Boolean == b.Boolean;
+                    case ValueKind.Number: return a.Number == b.Number;
+                    case ValueKind.String: return a.String.Value == b.String.Value;
+                    default: return ReferenceEquals(a.Object, b.Object);
                 }
             }
             if (ScriptDatum.TryToNumber(a, out var na) && ScriptDatum.TryToNumber(b, out var nb))
             {
-                return ScriptDatum.FromBoolean(na == nb);
+                return na == nb;
             }
-            return ScriptDatum.FromBoolean(false);
+            return false;
         }
 
         /// <summary>
@@ -202,7 +278,16 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum NotEqual(ScriptDatum a, ScriptDatum b)
         {
-            return ScriptDatum.FromBoolean(!Equal(a, b).Boolean);
+            return ScriptDatum.FromBoolean(NotEqualBool(a, b));
+        }
+
+        /// <summary>
+        /// Checks if two script values are not equal and returns a native boolean.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool NotEqualBool(ScriptDatum a, ScriptDatum b)
+        {
+            return !EqualBool(a, b);
         }
 
         /// <summary>
@@ -211,15 +296,24 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum Less(ScriptDatum a, ScriptDatum b)
         {
+            return ScriptDatum.FromBoolean(LessBool(a, b));
+        }
+
+        /// <summary>
+        /// Checks if the left value is less than the right value and returns a native boolean.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool LessBool(ScriptDatum a, ScriptDatum b)
+        {
             if (a.Kind == ValueKind.Number && b.Kind == ValueKind.Number)
             {
-                return ScriptDatum.FromBoolean(a.Number < b.Number);
+                return a.Number < b.Number;
             }
             else if (ScriptDatum.TryToNumber(a, out var na) && ScriptDatum.TryToNumber(b, out var nb))
             {
-                return ScriptDatum.FromBoolean(na < nb);
+                return na < nb;
             }
-            return ScriptDatum.FromBoolean(false);
+            return false;
         }
 
         /// <summary>
@@ -228,15 +322,24 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum LessEqual(ScriptDatum a, ScriptDatum b)
         {
+            return ScriptDatum.FromBoolean(LessEqualBool(a, b));
+        }
+
+        /// <summary>
+        /// Checks if the left value is less than or equal to the right value and returns a native boolean.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool LessEqualBool(ScriptDatum a, ScriptDatum b)
+        {
             if (a.Kind == ValueKind.Number && b.Kind == ValueKind.Number)
             {
-                return ScriptDatum.FromBoolean(a.Number <= b.Number);
+                return a.Number <= b.Number;
             }
             else if (ScriptDatum.TryToNumber(a, out var na) && ScriptDatum.TryToNumber(b, out var nb))
             {
-                return ScriptDatum.FromBoolean(na <= nb);
+                return na <= nb;
             }
-            return ScriptDatum.FromBoolean(false);
+            return false;
         }
 
         /// <summary>
@@ -245,15 +348,24 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum Greater(ScriptDatum a, ScriptDatum b)
         {
+            return ScriptDatum.FromBoolean(GreaterBool(a, b));
+        }
+
+        /// <summary>
+        /// Checks if the left value is greater than the right value and returns a native boolean.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool GreaterBool(ScriptDatum a, ScriptDatum b)
+        {
             if (a.Kind == ValueKind.Number && b.Kind == ValueKind.Number)
             {
-                return ScriptDatum.FromBoolean(a.Number > b.Number);
+                return a.Number > b.Number;
             }
             else if (ScriptDatum.TryToNumber(a, out var na) && ScriptDatum.TryToNumber(b, out var nb))
             {
-                return ScriptDatum.FromBoolean(na > nb);
+                return na > nb;
             }
-            return ScriptDatum.FromBoolean(false);
+            return false;
         }
 
         /// <summary>
@@ -262,15 +374,24 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum GreaterEqual(ScriptDatum a, ScriptDatum b)
         {
+            return ScriptDatum.FromBoolean(GreaterEqualBool(a, b));
+        }
+
+        /// <summary>
+        /// Checks if the left value is greater than or equal to the right value and returns a native boolean.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool GreaterEqualBool(ScriptDatum a, ScriptDatum b)
+        {
             if (a.Kind == ValueKind.Number && b.Kind == ValueKind.Number)
             {
-                return ScriptDatum.FromBoolean(a.Number >= b.Number);
+                return a.Number >= b.Number;
             }
             else if (ScriptDatum.TryToNumber(a, out var na) && ScriptDatum.TryToNumber(b, out var nb))
             {
-                return ScriptDatum.FromBoolean(na >= nb);
+                return na >= nb;
             }
-            return ScriptDatum.FromBoolean(false);
+            return false;
         }
 
         /// <summary>
@@ -293,6 +414,17 @@ namespace AuroraScript.Runtime
         }
 
         /// <summary>
+        /// Performs bitwise AND and returns the truthiness of the result as a native boolean.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool BitwiseAndBool(ScriptDatum a, ScriptDatum b)
+        {
+            return a.Kind == ValueKind.Number &&
+                b.Kind == ValueKind.Number &&
+                (unchecked((Int32)(Int64)a.Number) & unchecked((Int32)(Int64)b.Number)) != 0;
+        }
+
+        /// <summary>
         /// Performs the bitwise OR operation (|) between two script values.
         /// Treats operands as 32-bit integers.
         /// </summary>
@@ -312,6 +444,20 @@ namespace AuroraScript.Runtime
         }
 
         /// <summary>
+        /// Performs bitwise OR and returns the truthiness of the result as a native boolean.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool BitwiseOrBool(ScriptDatum a, ScriptDatum b)
+        {
+            if (a.Kind == ValueKind.Number && b.Kind == ValueKind.Number)
+            {
+                return (unchecked((Int32)(Int64)a.Number) | unchecked((Int32)(Int64)b.Number)) != 0;
+            }
+
+            return a.Kind == ValueKind.Null && ToBoolean(b);
+        }
+
+        /// <summary>
         /// Performs the bitwise XOR operation (^) between two script values.
         /// Treats operands as 32-bit integers.
         /// </summary>
@@ -324,6 +470,17 @@ namespace AuroraScript.Runtime
                 return ScriptDatum.FromNumber(v);
             }
             return ScriptDatum.FromNumber(Double.NaN);
+        }
+
+        /// <summary>
+        /// Performs bitwise XOR and returns the truthiness of the result as a native boolean.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool BitwiseXorBool(ScriptDatum a, ScriptDatum b)
+        {
+            return a.Kind == ValueKind.Number &&
+                b.Kind == ValueKind.Number &&
+                (unchecked((Int32)(Int64)a.Number) ^ unchecked((Int32)(Int64)b.Number)) != 0;
         }
 
         /// <summary>
@@ -341,6 +498,17 @@ namespace AuroraScript.Runtime
         }
 
         /// <summary>
+        /// Performs left shift and returns the truthiness of the result as a native boolean.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool LeftShiftBool(ScriptDatum a, ScriptDatum b)
+        {
+            return a.Kind == ValueKind.Number &&
+                b.Kind == ValueKind.Number &&
+                ((int)a.Number << (int)b.Number) != 0;
+        }
+
+        /// <summary>
         /// Performs the signed right shift operation (&gt;&gt;) between two script values.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -355,6 +523,17 @@ namespace AuroraScript.Runtime
         }
 
         /// <summary>
+        /// Performs signed right shift and returns the truthiness of the result as a native boolean.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool RightShiftBool(ScriptDatum a, ScriptDatum b)
+        {
+            return a.Kind == ValueKind.Number &&
+                b.Kind == ValueKind.Number &&
+                ((int)a.Number >> (int)b.Number) != 0;
+        }
+
+        /// <summary>
         /// Performs the unsigned right shift operation (&gt;&gt;&gt;) between two script values.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -366,6 +545,17 @@ namespace AuroraScript.Runtime
                 return ScriptDatum.FromNumber(value);
             }
             return ScriptDatum.FromNumber(Double.NaN);
+        }
+
+        /// <summary>
+        /// Performs unsigned right shift and returns the truthiness of the result as a native boolean.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool UnsignedRightShiftBool(ScriptDatum a, ScriptDatum b)
+        {
+            return a.Kind == ValueKind.Number &&
+                b.Kind == ValueKind.Number &&
+                ((int)a.Number >>> (int)b.Number) != 0;
         }
 
         /// <summary>
@@ -450,6 +640,55 @@ namespace AuroraScript.Runtime
         public static ScriptDatum GetElement(ScriptDatum obj, ScriptDatum index)
         {
             return GetElement(ScriptDatum.ToObject(obj), index);
+        }
+
+        /// <summary>
+        /// Gets an element by numeric literal index without materializing the index datum on the fast path.
+        /// Falls back to the normal element path for non-array receivers to preserve property-key semantics.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum GetElementNumber(ScriptDatum obj, double index)
+        {
+            if (obj.Kind == ValueKind.Array && obj.Object is ScriptArray array)
+            {
+                ScriptDatum datum = default;
+                array.GetElement((int)index, ref datum);
+                return datum;
+            }
+
+            return GetElement(obj, ScriptDatum.FromNumber(index));
+        }
+
+        /// <summary>
+        /// Gets an element for obj[index + offset], preserving non-numeric addition semantics via fallback.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum GetElementAddNumberRight(ScriptDatum obj, ScriptDatum index, double offset)
+        {
+            if (obj.Kind == ValueKind.Array && obj.Object is ScriptArray array && index.Kind == ValueKind.Number)
+            {
+                ScriptDatum datum = default;
+                array.GetElement((int)(index.Number + offset), ref datum);
+                return datum;
+            }
+
+            return GetElement(obj, Add(index, ScriptDatum.FromNumber(offset)));
+        }
+
+        /// <summary>
+        /// Gets an element for obj[offset + index], preserving non-numeric addition semantics via fallback.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum GetElementAddNumberLeft(ScriptDatum obj, double offset, ScriptDatum index)
+        {
+            if (obj.Kind == ValueKind.Array && obj.Object is ScriptArray array && index.Kind == ValueKind.Number)
+            {
+                ScriptDatum datum = default;
+                array.GetElement((int)(offset + index.Number), ref datum);
+                return datum;
+            }
+
+            return GetElement(obj, Add(ScriptDatum.FromNumber(offset), index));
         }
 
         /// <summary>
@@ -1038,18 +1277,7 @@ namespace AuroraScript.Runtime
         public static ScriptDatum IncrementPostfix(ref ScriptDatum val)
         {
             ScriptDatum result = val;
-            if (val.Kind == ValueKind.Number)
-            {
-                val.Number += 1;
-            }
-            else if (ScriptDatum.TryToNumber(val, out var n))
-            {
-                val = ScriptDatum.FromNumber(n + 1);
-            }
-            else
-            {
-                val = ScriptDatum.FromNumber(double.NaN);
-            }
+            IncrementVoid(ref val);
             return result;
         }
 
@@ -1081,6 +1309,36 @@ namespace AuroraScript.Runtime
         public static ScriptDatum DecrementPostfix(ref ScriptDatum val)
         {
             ScriptDatum result = val;
+            DecrementVoid(ref val);
+            return result;
+        }
+
+        /// <summary>
+        /// Increments a script value in place without returning the previous or current value.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void IncrementVoid(ref ScriptDatum val)
+        {
+            if (val.Kind == ValueKind.Number)
+            {
+                val.Number += 1;
+            }
+            else if (ScriptDatum.TryToNumber(val, out var n))
+            {
+                val = ScriptDatum.FromNumber(n + 1);
+            }
+            else
+            {
+                val = ScriptDatum.FromNumber(double.NaN);
+            }
+        }
+
+        /// <summary>
+        /// Decrements a script value in place without returning the previous or current value.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void DecrementVoid(ref ScriptDatum val)
+        {
             if (val.Kind == ValueKind.Number)
             {
                 val.Number -= 1;
@@ -1093,7 +1351,6 @@ namespace AuroraScript.Runtime
             {
                 val = ScriptDatum.FromNumber(double.NaN);
             }
-            return result;
         }
 
         /// <summary>
@@ -1157,6 +1414,29 @@ namespace AuroraScript.Runtime
                     val = ScriptDatum.FromNumber(double.NaN);
                 obj.SetPropertyDatum(null, key, val);
                 return result;
+            }
+        }
+
+        /// <summary>
+        /// Increments an object element in place without returning the previous or current value.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void IncrementElementVoid(ScriptObject obj, ScriptDatum index)
+        {
+            if (obj is ScriptArray array)
+            {
+                int idx = (int)index.Number;
+                ScriptDatum val = default;
+                array.GetElement(idx, ref val);
+                IncrementVoid(ref val);
+                array.SetElement(idx, val);
+            }
+            else
+            {
+                string key = ScriptDatum.ToString(index);
+                ScriptDatum val = obj.GetPropertyDatum(null, key);
+                IncrementVoid(ref val);
+                obj.SetPropertyDatum(null, key, val);
             }
         }
 
@@ -1225,6 +1505,29 @@ namespace AuroraScript.Runtime
         }
 
         /// <summary>
+        /// Decrements an object element in place without returning the previous or current value.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void DecrementElementVoid(ScriptObject obj, ScriptDatum index)
+        {
+            if (obj is ScriptArray array)
+            {
+                int idx = (int)index.Number;
+                ScriptDatum val = default;
+                array.GetElement(idx, ref val);
+                DecrementVoid(ref val);
+                array.SetElement(idx, val);
+            }
+            else
+            {
+                string key = ScriptDatum.ToString(index);
+                ScriptDatum val = obj.GetPropertyDatum(null, key);
+                DecrementVoid(ref val);
+                obj.SetPropertyDatum(null, key, val);
+            }
+        }
+
+        /// <summary>
         /// Performs prefix increment on an object property (++obj.name).
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1253,6 +1556,17 @@ namespace AuroraScript.Runtime
                 val = ScriptDatum.FromNumber(double.NaN);
             obj.SetPropertyDatum(null, name, val);
             return result;
+        }
+
+        /// <summary>
+        /// Increments an object property in place without returning the previous or current value.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void IncrementPropertyVoid(ScriptObject obj, string name)
+        {
+            ScriptDatum val = obj.GetPropertyDatum(null, name);
+            IncrementVoid(ref val);
+            obj.SetPropertyDatum(null, name, val);
         }
 
         /// <summary>
@@ -1285,6 +1599,17 @@ namespace AuroraScript.Runtime
                 val = ScriptDatum.FromNumber(double.NaN);
             obj.SetPropertyDatum(null, name, val);
             return result;
+        }
+
+        /// <summary>
+        /// Decrements an object property in place without returning the previous or current value.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void DecrementPropertyVoid(ScriptObject obj, string name)
+        {
+            ScriptDatum val = obj.GetPropertyDatum(null, name);
+            DecrementVoid(ref val);
+            obj.SetPropertyDatum(null, name, val);
         }
 
         /// <summary>
@@ -1356,7 +1681,16 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum Included(ScriptObject collection, ScriptDatum value)
         {
-            if (collection == null) return ScriptDatum.FromBoolean(false);
+            return ScriptDatum.FromBoolean(IncludedBool(collection, value));
+        }
+
+        /// <summary>
+        /// Checks if a value is included in a collection and returns a native boolean.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IncludedBool(ScriptObject collection, ScriptDatum value)
+        {
+            if (collection == null) return false;
             // string  has special behavior for 'in' operator, it checks if the substring exists in the string
             if (collection is StringValue stringValue && ScriptDatum.TryGetString(in value, out var str) && str.Value.Length > 1)
             {
@@ -1366,9 +1700,9 @@ namespace AuroraScript.Runtime
             ScriptDatum current = default;
             while (enumerator.NextValue(out current))
             {
-                if (current.Equals(value)) return ScriptDatum.FromBoolean(true);
+                if (current.Equals(value)) return true;
             }
-            return ScriptDatum.FromBoolean(false);
+            return false;
         }
 
         /// <summary>
