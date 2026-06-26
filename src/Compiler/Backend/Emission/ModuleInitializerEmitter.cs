@@ -289,6 +289,22 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return;
             }
 
+            switch (expression)
+            {
+                case AssignmentExpression assignment:
+                    EmitAssignmentDiscarded(assignment);
+                    return;
+                case CompoundExpression compound:
+                    EmitCompoundDiscarded(compound);
+                    return;
+                case SetPropertyExpression property:
+                    EmitSetPropertyDiscarded(property);
+                    return;
+                case SetElementExpression element:
+                    EmitSetElementDiscarded(element);
+                    return;
+            }
+
             EmitExpression(expression);
             _il.Emit(OpCodes.Pop);
         }
@@ -638,6 +654,30 @@ namespace AuroraScript.Compiler.Backend.Emission
             throw new NotSupportedException("Module assignment target " + expression.Left?.GetType().Name);
         }
 
+        private void EmitAssignmentDiscarded(AssignmentExpression expression)
+        {
+            if (expression.Left is NameExpression name)
+            {
+                EmitExpression(expression.Right);
+                EmitStoreNameFromStack(name.Identifier.Value);
+                return;
+            }
+
+            if (expression.Left is GetPropertyExpression property)
+            {
+                EmitSetPropertyDiscarded(new SetPropertyExpression(property.Object, property.Property, expression.Right));
+                return;
+            }
+
+            if (expression.Left is GetElementExpression element)
+            {
+                EmitSetElementDiscarded(new SetElementExpression(element.Object, element.Index, expression.Right));
+                return;
+            }
+
+            throw new NotSupportedException("Module assignment target " + expression.Left?.GetType().Name);
+        }
+
         private void EmitCompound(CompoundExpression expression)
         {
             if (expression.Left is NameExpression name)
@@ -656,6 +696,30 @@ namespace AuroraScript.Compiler.Backend.Emission
                 EmitExpression(element.Index);
                 EmitExpression(expression.Right);
                 _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_CompoundAddElementDatum);
+                return;
+            }
+
+            throw new NotSupportedException("Module compound target " + expression.Left?.GetType().Name);
+        }
+
+        private void EmitCompoundDiscarded(CompoundExpression expression)
+        {
+            if (expression.Left is NameExpression name)
+            {
+                EmitName(name);
+                EmitExpression(expression.Right);
+                _il.Emit(OpCodes.Call, GetBinaryMethod(expression.Operator.SimplerOperator));
+                EmitStoreNameFromStack(name.Identifier.Value);
+                return;
+            }
+
+            if (expression.Left is GetElementExpression element && expression.Operator.SimplerOperator == Operator.Add)
+            {
+                EmitExpression(element.Object);
+                EmitExpression(element.Index);
+                EmitExpression(expression.Right);
+                _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_CompoundAddElementDatum);
+                _il.Emit(OpCodes.Pop);
                 return;
             }
 
@@ -779,6 +843,21 @@ namespace AuroraScript.Compiler.Backend.Emission
             _il.Emit(OpCodes.Ldloc, valueLocal);
         }
 
+        private void EmitSetPropertyDiscarded(SetPropertyExpression expression)
+        {
+            if (!TryGetStaticPropertyName(expression, out var name))
+            {
+                throw new NotSupportedException("Dynamic module property name");
+            }
+
+            EmitExpression(expression.Object);
+            _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
+            _il.Emit(OpCodes.Ldarg_0);
+            _session.Builder.LoadStringConstant(_il, name);
+            EmitExpression(expression.Value);
+            _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptObject_SetPropertyDatum);
+        }
+
         private void EmitGetElement(GetElementExpression expression)
         {
             if (TryEmitGetElementFastPath(expression))
@@ -853,6 +932,14 @@ namespace AuroraScript.Compiler.Backend.Emission
             _il.Emit(OpCodes.Stloc, valueLocal);
             _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_SetElementDatum);
             _il.Emit(OpCodes.Ldloc, valueLocal);
+        }
+
+        private void EmitSetElementDiscarded(SetElementExpression expression)
+        {
+            EmitExpression(expression.Object);
+            EmitExpression(expression.Index);
+            EmitExpression(expression.Value);
+            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_SetElementDatum);
         }
 
         private void EmitArrayLiteral(ArrayLiteralExpression expression)

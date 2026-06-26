@@ -43,6 +43,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         private LocalBuilder _capturedUpvalues;
         private LocalBuilder _contextUpvalues;
         private Dictionary<int, int> _capturedLocalByLocalSlot;
+        private ParameterLoadPlan[] _parameterLoadPlans;
         private int _cilLocalCount;
         private long _lastLocation;
         private int _lastLocationEndOffset;
@@ -132,11 +133,12 @@ namespace AuroraScript.Compiler.Backend.Emission
             method = executable.Method;
             _function = function;
             _il = executable.IL;
+            _parameterLoadPlans = BuildParameterLoadPlans(function, executable.Convention);
+            _cilLocalCount = 0;
             _locals = DeclareLocals(function);
             _capturedLocalByLocalSlot = BuildCapturedLocalMap(function);
             _capturedUpvalues = null;
             _contextUpvalues = null;
-            _cilLocalCount = function.LocalSlots.Length;
             try
             {
                 InitializeCapturedLocals(function);
@@ -154,6 +156,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 _function = null;
                 _locals = null;
                 _capturedLocalByLocalSlot = null;
+                _parameterLoadPlans = null;
                 _capturedUpvalues = null;
                 _contextUpvalues = null;
             }
@@ -212,7 +215,14 @@ namespace AuroraScript.Compiler.Backend.Emission
             var locals = ArrayPool<LocalBuilder>.Shared.Rent(function.LocalSlots.Length);
             for (var i = 0; i < function.LocalSlots.Length; i++)
             {
+                if (CanLoadParameterDirectly(function.LocalSlots[i].Id))
+                {
+                    locals[i] = null;
+                    continue;
+                }
+
                 locals[i] = _il.DeclareLocal(typeof(ScriptDatum));
+                _cilLocalCount++;
                 _session.Builder.SetLocalSymInfo(locals[i], function.LocalSlots[i].Name);
             }
             return locals;
@@ -239,14 +249,20 @@ namespace AuroraScript.Compiler.Backend.Emission
                     continue;
                 }
 
+                var currentParameterIndex = parameterIndex;
+                parameterIndex++;
+                if (CanLoadParameterDirectly(slot.Id))
+                {
+                    continue;
+                }
+
                 void EmitParameterValue()
                 {
                     if (convention == FunctionCallConvention.Span)
                     {
                         _il.Emit(OpCodes.Ldarg_1);
-                        _il.Emit(OpCodes.Ldc_I4, parameterIndex);
-                        var defaultValue = GetParameterDefault(function, parameterIndex);
-                        parameterIndex++;
+                        _il.Emit(OpCodes.Ldc_I4, currentParameterIndex);
+                        var defaultValue = GetParameterDefault(function, currentParameterIndex);
                         if (defaultValue != null)
                         {
                             EmitExpression(defaultValue);
@@ -259,13 +275,34 @@ namespace AuroraScript.Compiler.Backend.Emission
                     }
                     else
                     {
-                        _il.Emit(OpCodes.Ldarg, parameterIndex + 1);
-                        parameterIndex++;
+                        _il.Emit(OpCodes.Ldarg, currentParameterIndex + 1);
                     }
                 }
 
                 EmitStoreLocalFromProducer(slot.Id, EmitParameterValue);
             }
+        }
+
+        private bool CanLoadParameterDirectly(LocalSlotId slot)
+        {
+            return slot.IsValid &&
+                _parameterLoadPlans != null &&
+                (uint)slot.Value < (uint)_parameterLoadPlans.Length &&
+                _parameterLoadPlans[slot.Value].CanLoadDirectly;
+        }
+
+        private void EmitDirectParameterLoad(LocalSlotId slot)
+        {
+            var plan = _parameterLoadPlans[slot.Value];
+            if (plan.Convention == FunctionCallConvention.Span)
+            {
+                _il.Emit(OpCodes.Ldarg_1);
+                _il.Emit(OpCodes.Ldc_I4, plan.ParameterIndex);
+                _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_GetArg);
+                return;
+            }
+
+            _il.Emit(OpCodes.Ldarg, plan.ParameterIndex + 1);
         }
 
         private static LoweredExpression GetParameterDefault(FunctionPlan function, int parameterIndex)
@@ -275,6 +312,39 @@ namespace AuroraScript.Compiler.Backend.Emission
                 parameterIndex < function.ParameterDefaults.Length
                 ? function.ParameterDefaults[parameterIndex]
                 : null;
+        }
+
+        private static ParameterLoadPlan[] BuildParameterLoadPlans(FunctionPlan function, FunctionCallConvention convention)
+        {
+            if (function.LocalSlots.Length == 0)
+            {
+                return Array.Empty<ParameterLoadPlan>();
+            }
+
+            var usage = LocalUsageAnalyzer.Analyze(function);
+            var plans = new ParameterLoadPlan[function.LocalSlots.Length];
+            var parameterIndex = 0;
+            for (var i = 0; i < function.LocalSlots.Length; i++)
+            {
+                var slot = function.LocalSlots[i];
+                if (!slot.IsParameter)
+                {
+                    continue;
+                }
+
+                var direct = convention != FunctionCallConvention.Span &&
+                    !function.UsesArgumentsObject &&
+                    function.CapturedLocalSlots.Length == 0 &&
+                    GetParameterDefault(function, parameterIndex) == null &&
+                    usage.Reads[i] == 1 &&
+                    usage.Writes[i] == 0 &&
+                    usage.Addresses[i] == 0;
+
+                plans[i] = new ParameterLoadPlan(direct, parameterIndex, convention);
+                parameterIndex++;
+            }
+
+            return plans;
         }
 
         private static Dictionary<int, int> BuildCapturedLocalMap(FunctionPlan function)
@@ -342,6 +412,12 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitLoadLocal(LocalSlotId slot)
         {
+            if (CanLoadParameterDirectly(slot))
+            {
+                EmitDirectParameterLoad(slot);
+                return;
+            }
+
             if (TryGetCapturedLocalIndex(slot, out var index))
             {
                 EmitLoadCapturedUpvalue(index);
@@ -354,6 +430,11 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitStoreLocalFromStack(LocalSlotId slot)
         {
+            if (CanLoadParameterDirectly(slot))
+            {
+                throw new InvalidOperationException("Direct parameter load slot cannot be written.");
+            }
+
             if (TryGetCapturedLocalIndex(slot, out var index))
             {
                 var value = DeclareTemp();
@@ -371,6 +452,11 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             if (emitValue == null) throw new ArgumentNullException(nameof(emitValue));
 
+            if (CanLoadParameterDirectly(slot))
+            {
+                throw new InvalidOperationException("Direct parameter load slot cannot be written.");
+            }
+
             if (TryGetCapturedLocalIndex(slot, out var index))
             {
                 EmitLoadCapturedUpvalue(index);
@@ -385,6 +471,11 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitLoadLocalAddress(LocalSlotId slot)
         {
+            if (CanLoadParameterDirectly(slot))
+            {
+                throw new InvalidOperationException("Direct parameter load slot cannot be addressed.");
+            }
+
             if (TryGetCapturedLocalIndex(slot, out var index))
             {
                 EmitLoadCapturedUpvalue(index);
@@ -904,6 +995,22 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return;
             }
 
+            switch (expression)
+            {
+                case LoweredAssignmentExpression assignment:
+                    EmitAssignmentDiscarded(assignment);
+                    return;
+                case LoweredCompoundExpression compound:
+                    EmitCompoundDiscarded(compound);
+                    return;
+                case LoweredSetPropertyExpression property:
+                    EmitSetPropertyDiscarded(property);
+                    return;
+                case LoweredSetElementExpression element:
+                    EmitSetElementDiscarded(element);
+                    return;
+            }
+
             EmitExpression(expression);
             _il.Emit(OpCodes.Pop);
         }
@@ -1164,6 +1271,13 @@ namespace AuroraScript.Compiler.Backend.Emission
             EmitStoreNameFromStack(name);
         }
 
+        private void EmitAssignmentDiscarded(LoweredAssignmentExpression expression)
+        {
+            var name = (LoweredNameExpression)expression.Left;
+            EmitExpression(expression.Right);
+            EmitStoreNameFromStack(name);
+        }
+
         private void EmitCompound(LoweredCompoundExpression expression)
         {
             if (expression.Left is LoweredGetElementExpression element && expression.Operator.SimplerOperator == Operator.Add)
@@ -1180,6 +1294,25 @@ namespace AuroraScript.Compiler.Backend.Emission
             EmitExpression(expression.Right);
             _il.Emit(OpCodes.Call, GetBinaryMethod(expression.Operator.SimplerOperator));
             _il.Emit(OpCodes.Dup);
+            EmitStoreNameFromStack(name);
+        }
+
+        private void EmitCompoundDiscarded(LoweredCompoundExpression expression)
+        {
+            if (expression.Left is LoweredGetElementExpression element && expression.Operator.SimplerOperator == Operator.Add)
+            {
+                EmitExpression(element.Instance);
+                EmitExpression(element.Index);
+                EmitExpression(expression.Right);
+                _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_CompoundAddElementDatum);
+                _il.Emit(OpCodes.Pop);
+                return;
+            }
+
+            var name = (LoweredNameExpression)expression.Left;
+            EmitName(name);
+            EmitExpression(expression.Right);
+            _il.Emit(OpCodes.Call, GetBinaryMethod(expression.Operator.SimplerOperator));
             EmitStoreNameFromStack(name);
         }
 
@@ -1317,6 +1450,21 @@ namespace AuroraScript.Compiler.Backend.Emission
             _il.Emit(OpCodes.Ldloc, valueLocal);
         }
 
+        private void EmitSetPropertyDiscarded(LoweredSetPropertyExpression expression)
+        {
+            if (!TryGetStaticPropertyName(expression, out var name))
+            {
+                throw new NotSupportedException("Dynamic property name");
+            }
+
+            EmitExpression(expression.Instance);
+            _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
+            _il.Emit(OpCodes.Ldarg_0);
+            _session.Builder.LoadStringConstant(_il, name);
+            EmitExpression(expression.Value);
+            _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptObject_SetPropertyDatum);
+        }
+
         private void EmitGetElement(LoweredGetElementExpression expression)
         {
             if (TryEmitGetElementFastPath(expression))
@@ -1391,6 +1539,14 @@ namespace AuroraScript.Compiler.Backend.Emission
             _il.Emit(OpCodes.Stloc, valueLocal);
             _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_SetElementDatum);
             _il.Emit(OpCodes.Ldloc, valueLocal);
+        }
+
+        private void EmitSetElementDiscarded(LoweredSetElementExpression expression)
+        {
+            EmitExpression(expression.Instance);
+            EmitExpression(expression.Index);
+            EmitExpression(expression.Value);
+            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_SetElementDatum);
         }
 
         private void EmitArrayLiteral(LoweredArrayLiteralExpression expression)
@@ -1489,6 +1645,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return;
             }
 
+            EmitLocation(expression);
             EmitExpression(call.Target);
             _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
             _il.Emit(OpCodes.Ldarg_0);
@@ -1496,7 +1653,6 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 EmitExpression(call.Arguments[i]);
             }
-            EmitLocation(expression);
             _il.Emit(OpCodes.Call, GetNewMethod(call.Arguments.Length));
         }
 
@@ -1505,6 +1661,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             var typeLocal = DeclareLocal(typeof(ScriptObject));
             var argsLocal = DeclareLocal(typeof(ScriptDatum[]));
 
+            EmitLocation(call);
             EmitExpression(call.Target);
             _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
             _il.Emit(OpCodes.Stloc, typeLocal);
@@ -1515,7 +1672,6 @@ namespace AuroraScript.Compiler.Backend.Emission
             _il.Emit(OpCodes.Ldarg_0);
             _il.Emit(OpCodes.Ldloc, argsLocal);
             _il.Emit(OpCodes.Ldloc, countLocal);
-            EmitLocation(call);
             _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_NewMany);
         }
 
@@ -1631,6 +1787,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return;
             }
 
+            EmitLocation(call);
             EmitExpression(call.Target);
             _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
             _il.Emit(OpCodes.Ldarg_0);
@@ -1638,7 +1795,6 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 EmitExpression(call.Arguments[i]);
             }
-            EmitLocation(call);
             _il.Emit(OpCodes.Call, GetInvokeMethod(call.Arguments.Length));
         }
 
@@ -1656,6 +1812,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return;
             }
 
+            EmitLocation(call);
             EmitExpression(property.Instance);
             _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
             _il.Emit(OpCodes.Ldarg_0);
@@ -1664,7 +1821,6 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 EmitExpression(call.Arguments[i]);
             }
-            EmitLocation(call);
             _il.Emit(OpCodes.Call, GetInvokePropertyMethod(call.Arguments.Length));
         }
 
@@ -1673,6 +1829,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             var receiverLocal = DeclareLocal(typeof(ScriptObject));
             var argsLocal = DeclareLocal(typeof(ScriptDatum[]));
 
+            EmitLocation(call);
             EmitExpression(property.Instance);
             _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
             _il.Emit(OpCodes.Stloc, receiverLocal);
@@ -1683,7 +1840,6 @@ namespace AuroraScript.Compiler.Backend.Emission
             _session.Builder.LoadStringConstant(_il, name);
             _il.Emit(OpCodes.Ldloc, argsLocal);
             _il.Emit(OpCodes.Ldloc, countLocal);
-            EmitLocation(call);
             _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_InvokePropertyMany);
         }
 
@@ -1692,6 +1848,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             var functionLocal = DeclareLocal(typeof(ScriptObject));
             var argsLocal = DeclareLocal(typeof(ScriptDatum[]));
 
+            EmitLocation(call);
             EmitExpression(call.Target);
             _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
             _il.Emit(OpCodes.Stloc, functionLocal);
@@ -1701,7 +1858,6 @@ namespace AuroraScript.Compiler.Backend.Emission
             _il.Emit(OpCodes.Ldarg_0);
             _il.Emit(OpCodes.Ldloc, argsLocal);
             _il.Emit(OpCodes.Ldloc, countLocal);
-            EmitLocation(call);
             _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_InvokeMany);
         }
 
@@ -2868,6 +3024,276 @@ namespace AuroraScript.Compiler.Backend.Emission
             public FunctionCallConvention Convention { get; }
             public bool Emitted { get; set; }
             public bool IsDefined => Method != null;
+        }
+
+        private readonly struct ParameterLoadPlan
+        {
+            public ParameterLoadPlan(bool canLoadDirectly, int parameterIndex, FunctionCallConvention convention)
+            {
+                CanLoadDirectly = canLoadDirectly;
+                ParameterIndex = parameterIndex;
+                Convention = convention;
+            }
+
+            public bool CanLoadDirectly { get; }
+            public int ParameterIndex { get; }
+            public FunctionCallConvention Convention { get; }
+        }
+
+        private readonly struct LocalUsage
+        {
+            public LocalUsage(int[] reads, int[] writes, int[] addresses)
+            {
+                Reads = reads;
+                Writes = writes;
+                Addresses = addresses;
+            }
+
+            public int[] Reads { get; }
+            public int[] Writes { get; }
+            public int[] Addresses { get; }
+        }
+
+        private sealed class LocalUsageAnalyzer
+        {
+            private readonly int[] _reads;
+            private readonly int[] _writes;
+            private readonly int[] _addresses;
+
+            private LocalUsageAnalyzer(int localCount)
+            {
+                _reads = new int[localCount];
+                _writes = new int[localCount];
+                _addresses = new int[localCount];
+            }
+
+            public static LocalUsage Analyze(FunctionPlan function)
+            {
+                var analyzer = new LocalUsageAnalyzer(function.LocalSlots.Length);
+                analyzer.VisitStatement(function.Body);
+                return new LocalUsage(analyzer._reads, analyzer._writes, analyzer._addresses);
+            }
+
+            private void Read(LocalSlotId slot)
+            {
+                if (slot.IsValid && (uint)slot.Value < (uint)_reads.Length)
+                {
+                    _reads[slot.Value]++;
+                }
+            }
+
+            private void Write(LocalSlotId slot)
+            {
+                if (slot.IsValid && (uint)slot.Value < (uint)_writes.Length)
+                {
+                    _writes[slot.Value]++;
+                }
+            }
+
+            private void Address(LocalSlotId slot)
+            {
+                if (slot.IsValid && (uint)slot.Value < (uint)_addresses.Length)
+                {
+                    _addresses[slot.Value]++;
+                }
+            }
+
+            private void VisitStatement(LoweredStatement statement)
+            {
+                switch (statement)
+                {
+                    case null:
+                        return;
+                    case LoweredBlockStatement block:
+                        for (var i = 0; i < block.Statements.Length; i++)
+                        {
+                            VisitStatement(block.Statements[i]);
+                        }
+                        return;
+                    case LoweredExpressionStatement expression:
+                        VisitExpression(expression.Expression);
+                        return;
+                    case LoweredReturnStatement @return:
+                        VisitExpression(@return.Expression);
+                        return;
+                    case LoweredVariableDeclarationStatement variable:
+                        Write(variable.Slot);
+                        VisitExpression(variable.Initializer);
+                        return;
+                    case LoweredObjectDestructuringDeclarationStatement destructuring:
+                        VisitExpression(destructuring.Initializer);
+                        for (var i = 0; i < destructuring.Bindings.Length; i++)
+                        {
+                            Write(destructuring.Bindings[i].Slot);
+                        }
+                        return;
+                    case LoweredArrayDestructuringDeclarationStatement destructuring:
+                        VisitExpression(destructuring.Initializer);
+                        for (var i = 0; i < destructuring.Bindings.Length; i++)
+                        {
+                            Write(destructuring.Bindings[i].Slot);
+                        }
+                        return;
+                    case LoweredFunctionDeclarationStatement function:
+                        Write(function.LocalSlot);
+                        return;
+                    case LoweredIfStatement ifStatement:
+                        VisitExpression(ifStatement.Condition);
+                        VisitStatement(ifStatement.Body);
+                        VisitStatement(ifStatement.Else);
+                        return;
+                    case LoweredWhileStatement whileStatement:
+                        VisitExpression(whileStatement.Condition);
+                        VisitStatement(whileStatement.Body);
+                        return;
+                    case LoweredForStatement forStatement:
+                        VisitStatement(forStatement.Initializer);
+                        VisitExpression(forStatement.Condition);
+                        VisitStatement(forStatement.Body);
+                        VisitExpression(forStatement.Incrementor);
+                        return;
+                    case LoweredForInStatement forInStatement:
+                        VisitStatement(forInStatement.Initializer);
+                        VisitExpression(forInStatement.Iterator?.Right);
+                        if (forInStatement.Iterator?.Left is LoweredNameExpression iteratorName)
+                        {
+                            VisitWriteTarget(iteratorName);
+                        }
+                        VisitStatement(forInStatement.Body);
+                        return;
+                    case LoweredTryStatement tryStatement:
+                        VisitStatement(tryStatement.Body);
+                        Write(tryStatement.CatchSlot);
+                        VisitStatement(tryStatement.CatchBody);
+                        VisitStatement(tryStatement.FinallyBody);
+                        return;
+                    case LoweredThrowStatement throwStatement:
+                        VisitExpression(throwStatement.Expression);
+                        return;
+                    case LoweredDeleteStatement deleteStatement:
+                        VisitExpression(deleteStatement.Expression);
+                        return;
+                    case LoweredBreakStatement:
+                    case LoweredContinueStatement:
+                    case LoweredDebuggerStatement:
+                    case LoweredUnsupportedStatement:
+                        return;
+                    default:
+                        throw new NotSupportedException(statement.GetType().Name);
+                }
+            }
+
+            private void VisitExpression(LoweredExpression expression)
+            {
+                switch (expression)
+                {
+                    case null:
+                    case LoweredLiteralExpression:
+                    case LoweredUnsupportedExpression:
+                        return;
+                    case LoweredNameExpression name:
+                        Read(name.LocalSlot);
+                        return;
+                    case LoweredBinaryExpression binary:
+                        VisitExpression(binary.Left);
+                        VisitExpression(binary.Right);
+                        return;
+                    case LoweredCallExpression call:
+                        VisitExpression(call.Target);
+                        for (var i = 0; i < call.Arguments.Length; i++)
+                        {
+                            VisitExpression(call.Arguments[i]);
+                        }
+                        return;
+                    case LoweredAssignmentExpression assignment:
+                        VisitExpression(assignment.Right);
+                        VisitWriteTarget(assignment.Left);
+                        return;
+                    case LoweredCompoundExpression compound:
+                        VisitExpression(compound.Left);
+                        VisitExpression(compound.Right);
+                        VisitWriteTarget(compound.Left);
+                        return;
+                    case LoweredUnaryExpression unary:
+                        if (GetIncrementMethod(unary.Operator) != null)
+                        {
+                            VisitExpression(unary.Expression);
+                            VisitWriteTarget(unary.Expression);
+                            return;
+                        }
+                        VisitExpression(unary.Expression);
+                        return;
+                    case LoweredInExpression inExpression:
+                        VisitExpression(inExpression.Left);
+                        VisitExpression(inExpression.Right);
+                        return;
+                    case LoweredGetPropertyExpression property:
+                        VisitExpression(property.Instance);
+                        VisitExpression(property.Property);
+                        return;
+                    case LoweredGetElementExpression element:
+                        VisitExpression(element.Instance);
+                        VisitExpression(element.Index);
+                        return;
+                    case LoweredSetPropertyExpression property:
+                        VisitExpression(property.Instance);
+                        VisitExpression(property.Property);
+                        VisitExpression(property.Value);
+                        return;
+                    case LoweredSetElementExpression element:
+                        VisitExpression(element.Instance);
+                        VisitExpression(element.Index);
+                        VisitExpression(element.Value);
+                        return;
+                    case LoweredArrayLiteralExpression array:
+                        for (var i = 0; i < array.Elements.Length; i++)
+                        {
+                            VisitExpression(array.Elements[i]);
+                        }
+                        return;
+                    case LoweredMapExpression map:
+                        for (var i = 0; i < map.Entries.Length; i++)
+                        {
+                            VisitExpression(map.Entries[i].Value);
+                        }
+                        return;
+                    case LoweredSpreadExpression spread:
+                        VisitExpression(spread.Expression);
+                        return;
+                    case LoweredNewExpression @new:
+                        VisitExpression(@new.Expression);
+                        return;
+                    case LoweredLambdaExpression:
+                        return;
+                    default:
+                        throw new NotSupportedException(expression.GetType().Name);
+                }
+            }
+
+            private void VisitWriteTarget(LoweredExpression expression)
+            {
+                switch (expression)
+                {
+                    case LoweredNameExpression name:
+                        Write(name.LocalSlot);
+                        if (name.LocalSlot.IsValid || name.UpvalueSlot.IsValid)
+                        {
+                            Address(name.LocalSlot);
+                        }
+                        return;
+                    case LoweredGetPropertyExpression property:
+                        VisitExpression(property.Instance);
+                        VisitExpression(property.Property);
+                        return;
+                    case LoweredGetElementExpression element:
+                        VisitExpression(element.Instance);
+                        VisitExpression(element.Index);
+                        return;
+                    default:
+                        VisitExpression(expression);
+                        return;
+                }
+            }
         }
     }
 }
