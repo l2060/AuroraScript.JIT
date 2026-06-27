@@ -259,7 +259,7 @@ namespace AuroraScript.Compiler.Analyzer
             if (symbol == Symbols.KW_WHILE) { var res = ParseWhileBlock(); if (res != null) res.IsIndependent = true; return res; }
             if (symbol == Symbols.KW_IF) { var res = ParseIfBlock(); if (res != null) res.IsIndependent = true; return res; }
             if (symbol == Symbols.KW_CONTINUE) { var res = ParseContinueStatement(); if (res != null) res.IsIndependent = true; return res; }
-            if (symbol == Symbols.KW_YIELD) { var res = ParseYieldStatement(); if (res != null) res.IsIndependent = true; return res; }
+
             if (symbol == Symbols.KW_BREAK) { var res = ParseBreakStatement(); if (res != null) res.IsIndependent = true; return res; }
             if (symbol == Symbols.KW_RETURN) { var res = ParseReturnStatement(); if (res != null) res.IsIndependent = true; return res; }
             if (symbol == Symbols.KW_THROW) { var res = ParseThrowStatement(); if (res != null) res.IsIndependent = true; return res; }
@@ -1495,12 +1495,6 @@ namespace AuroraScript.Compiler.Analyzer
             return SetRange(new ContinueStatement(), range, semi);
         }
 
-        private Statement ParseYieldStatement()
-        {
-            var range = this.Lexer.NextRangeOfKind(Symbols.KW_YIELD);
-            var semi = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
-            return SetRange(new YieldStatement(), range, semi);
-        }
 
         private Statement ParseBreakStatement()
         {
