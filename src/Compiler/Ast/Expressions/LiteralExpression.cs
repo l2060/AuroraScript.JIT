@@ -1,4 +1,4 @@
-﻿using AuroraScript.Runtime;
+using AuroraScript.Runtime;
 using AuroraScript.Tokens;
 
 namespace AuroraScript.Compiler.Ast.Expressions
@@ -20,12 +20,6 @@ namespace AuroraScript.Compiler.Ast.Expressions
         {
             visitor.AcceptLiteralExpression(this);
         }
-
-        public override string ToString()
-        {
-            return Token.ToValue();
-        }
-
         public override bool TryEvalConst(EvaluationContext ctx, ref ScriptDatum value)
         {
             if (Token is NumberToken numberToken)

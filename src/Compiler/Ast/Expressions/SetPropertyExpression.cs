@@ -1,4 +1,4 @@
-﻿namespace AuroraScript.Compiler.Ast.Expressions
+namespace AuroraScript.Compiler.Ast.Expressions
 {
     internal class SetPropertyExpression : OperatorExpression
     {
@@ -20,11 +20,6 @@
         public override void Accept(IAstVisitor visitor)
         {
             visitor.AcceptSetPropertyExpression(this);
-        }
-
-        public override string ToString()
-        {
-            return $"{Object}.{Property} = {Value}";
         }
     }
 }

@@ -8,8 +8,10 @@ namespace AuroraScript.Compiler.Ast.Statements
     {
         public Boolean IsFunction { get; set; }
 
+        private List<Statement> _statements;
         private List<FunctionDeclaration> _functions;
 
+        public IReadOnlyList<Statement> Statements => _statements ?? (IReadOnlyList<Statement>)Array.Empty<Statement>();
         public IReadOnlyList<FunctionDeclaration> Functions => _functions ?? (IReadOnlyList<FunctionDeclaration>)Array.Empty<FunctionDeclaration>();
 
         internal BlockStatement()
@@ -25,6 +27,14 @@ namespace AuroraScript.Compiler.Ast.Statements
         {
             _functions ??= new List<FunctionDeclaration>();
             _functions.Add(function);
+            AttachParent(function, this);
+        }
+
+        public void AddStatement(Statement statement)
+        {
+            _statements ??= new List<Statement>();
+            _statements.Add(statement);
+            AttachParent(statement, this);
         }
     }
 }

@@ -148,6 +148,24 @@ namespace AuroraScript.Compiler.Backend.Traversal
                 case MapKeyValueExpression mapEntry:
                     VisitIfNotNull(mapEntry.Value, ref visitor);
                     return;
+                case GroupExpression group:
+                    for (var i = 0; i < group.Expressions.Count; i++)
+                    {
+                        VisitIfNotNull(group.Expressions[i], ref visitor);
+                    }
+                    return;
+                case ArrayLiteralExpression array:
+                    for (var i = 0; i < array.Elements.Count; i++)
+                    {
+                        VisitIfNotNull(array.Elements[i], ref visitor);
+                    }
+                    return;
+                case MapExpression map:
+                    for (var i = 0; i < map.Entries.Count; i++)
+                    {
+                        VisitIfNotNull(map.Entries[i], ref visitor);
+                    }
+                    return;
                 case PrefixUnaryExpression prefix:
                     VisitIfNotNull(prefix.Expression, ref visitor);
                     if (prefix is CastTypeExpression cast)
@@ -159,8 +177,6 @@ namespace AuroraScript.Compiler.Backend.Traversal
                     VisitIfNotNull(unary.Expression, ref visitor);
                     return;
             }
-
-            VisitIndexedChildren(node, ref visitor);
         }
 
         public static void VisitDescendants<TVisitor>(AstNode node, ref TVisitor visitor)
@@ -174,7 +190,10 @@ namespace AuroraScript.Compiler.Backend.Traversal
         private static void VisitBlockChildren<TVisitor>(BlockStatement block, ref TVisitor visitor)
             where TVisitor : struct, IAstChildVisitor
         {
-            VisitIndexedChildren(block, ref visitor);
+            for (var i = 0; i < block.Statements.Count; i++)
+            {
+                VisitIfNotNull(block.Statements[i], ref visitor);
+            }
             for (var i = 0; i < block.Functions.Count; i++)
             {
                 visitor.Visit(block.Functions[i]);
@@ -187,15 +206,6 @@ namespace AuroraScript.Compiler.Backend.Traversal
             for (var i = 0; i < module.Imports.Count; i++)
             {
                 visitor.Visit(module.Imports[i]);
-            }
-        }
-
-        private static void VisitIndexedChildren<TVisitor>(AstNode node, ref TVisitor visitor)
-            where TVisitor : struct, IAstChildVisitor
-        {
-            for (var i = 0; i < node.Length; i++)
-            {
-                VisitIfNotNull(node[i], ref visitor);
             }
         }
 

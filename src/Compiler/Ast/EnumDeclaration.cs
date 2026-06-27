@@ -1,4 +1,4 @@
-﻿using AuroraScript.Compiler.Ast.Statements;
+using AuroraScript.Compiler.Ast.Statements;
 using System;
 using System.Collections.Generic;
 
@@ -32,11 +32,6 @@ namespace AuroraScript.Compiler.Ast
         public override void Accept(IAstVisitor visitor)
         {
             visitor.AcceptEnumDeclaration(this);
-        }
-
-        override public string ToString()
-        {
-            return $"EnumDeclaration: {Identifier?.Value}";
         }
     }
 }

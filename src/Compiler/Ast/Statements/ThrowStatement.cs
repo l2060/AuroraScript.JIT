@@ -17,10 +17,5 @@ namespace AuroraScript.Compiler.Ast.Statements
         {
             visitor.AcceptThrowStatement(this);
         }
-
-        public override string ToString()
-        {
-            return $"throw {Expression}";
-        }
     }
 }

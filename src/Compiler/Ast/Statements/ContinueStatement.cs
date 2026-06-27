@@ -1,4 +1,4 @@
-﻿namespace AuroraScript.Compiler.Ast.Statements
+namespace AuroraScript.Compiler.Ast.Statements
 {
     internal class ContinueStatement : Statement
     {
@@ -9,11 +9,6 @@
         public override void Accept(IAstVisitor visitor)
         {
             visitor.AcceptContinueExpression(this);
-        }
-
-        override public string ToString()
-        {
-            return $"ContinueStatement";
         }
     }
 }

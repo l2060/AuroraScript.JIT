@@ -77,9 +77,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                 EmitDefineFunction(_il, function);
             }
 
-            for (var i = 0; i < _module.Declaration.Length; i++)
+            for (var i = 0; i < _module.Declaration.Statements.Count; i++)
             {
-                EmitModuleStatement(_module.Declaration[i]);
+                EmitModuleStatement(_module.Declaration.Statements[i]);
             }
 
             for (var i = 0; i < _module.Declaration.Imports.Count; i++)
@@ -1082,13 +1082,14 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitArrayLiteral(ArrayLiteralExpression expression)
         {
-            _il.Emit(OpCodes.Ldc_I4, expression.Length);
+            _il.Emit(OpCodes.Ldc_I4, expression.Elements.Count);
             _il.Emit(OpCodes.Newobj, RuntimeMetadata.ScriptArray_CtorCapacity);
-            for (var i = 0; i < expression.Length; i++)
+            for (var i = 0; i < expression.Elements.Count; i++)
             {
                 _il.Emit(OpCodes.Dup);
                 _il.Emit(OpCodes.Ldc_I4, i);
-                if (expression[i] is SpreadExpression spread)
+                var element = expression.Elements[i];
+                if (element is SpreadExpression spread)
                 {
                     _il.Emit(OpCodes.Pop);
                     EmitExpression(spread.Expression);
@@ -1097,7 +1098,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 }
                 else
                 {
-                    EmitExpressionOrNull(expression[i] as Expression);
+                    EmitExpressionOrNull(element);
                     _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptArray_SetElementValue);
                 }
             }
@@ -1107,10 +1108,11 @@ namespace AuroraScript.Compiler.Backend.Emission
         private void EmitMap(MapExpression expression)
         {
             _il.Emit(OpCodes.Newobj, RuntimeMetadata.ScriptObject_Ctor);
-            for (var i = 0; i < expression.Length; i++)
+            for (var i = 0; i < expression.Entries.Count; i++)
             {
                 _il.Emit(OpCodes.Dup);
-                if (expression[i] is MapKeyValueExpression entry)
+                var mapEntry = expression.Entries[i];
+                if (mapEntry is MapKeyValueExpression entry)
                 {
                     _il.Emit(OpCodes.Ldarg_0);
                     _session.Builder.LoadStringConstant(_il, entry.Key.Value);
@@ -1119,7 +1121,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     continue;
                 }
 
-                if (expression[i] is SpreadExpression spread)
+                if (mapEntry is SpreadExpression spread)
                 {
                     EmitExpression(spread.Expression);
                     _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
@@ -1128,7 +1130,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     continue;
                 }
 
-                if (expression[i] is NameExpression name)
+                if (mapEntry is NameExpression name)
                 {
                     _il.Emit(OpCodes.Ldarg_0);
                     _session.Builder.LoadStringConstant(_il, name.Identifier.Value);
@@ -1137,7 +1139,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     continue;
                 }
 
-                throw new NotSupportedException("Module map entry " + expression[i]?.GetType().Name);
+                throw new NotSupportedException("Module map entry " + mapEntry?.GetType().Name);
             }
             _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromObject);
         }

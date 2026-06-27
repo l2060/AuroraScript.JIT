@@ -1,4 +1,4 @@
-﻿using AuroraScript.Compiler.Ast.Expressions;
+using AuroraScript.Compiler.Ast.Expressions;
 
 
 namespace AuroraScript.Compiler.Ast.Statements
@@ -22,12 +22,5 @@ namespace AuroraScript.Compiler.Ast.Statements
         {
             visitor.AcceptWhileStatement(this);
         }
-
-        public override string ToString()
-        {
-            return $"whele ({this.Condition}) {this.Body}";
-        }
-
-
     }
 }

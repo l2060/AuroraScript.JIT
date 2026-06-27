@@ -149,7 +149,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
 
                 return WithNodeScope(block, () =>
                 {
-                    var statementCount = block.Length + block.Functions.Count;
+                    var statementCount = block.Statements.Count + block.Functions.Count;
                     if (statementCount == 0)
                     {
                         return new LoweredBlockStatement(block, Array.Empty<LoweredStatement>());
@@ -161,9 +161,9 @@ namespace AuroraScript.Compiler.Backend.Lowering
                     {
                         statements[index++] = LowerStatement(block.Functions[i]);
                     }
-                    for (var i = 0; i < block.Length; i++)
+                    for (var i = 0; i < block.Statements.Count; i++)
                     {
-                        statements[index++] = LowerStatement(block[i]);
+                        statements[index++] = LowerStatement(block.Statements[i]);
                     }
                     return new LoweredBlockStatement(block, statements);
                 });
@@ -456,52 +456,44 @@ namespace AuroraScript.Compiler.Backend.Lowering
 
             private LoweredArrayLiteralExpression LowerArrayLiteral(ArrayLiteralExpression expression)
             {
-                var elements = LowerChildExpressions(expression);
+                if (expression.Elements.Count == 0)
+                {
+                    return new LoweredArrayLiteralExpression(expression, Array.Empty<LoweredExpression>());
+                }
+
+                var elements = new LoweredExpression[expression.Elements.Count];
+                for (var i = 0; i < expression.Elements.Count; i++)
+                {
+                    elements[i] = LowerExpression(expression.Elements[i]);
+                }
                 return new LoweredArrayLiteralExpression(expression, elements);
             }
 
             private LoweredMapExpression LowerMap(MapExpression expression)
             {
-                if (expression.Length == 0)
+                if (expression.Entries.Count == 0)
                 {
                     return new LoweredMapExpression(expression, Array.Empty<LoweredMapEntry>());
                 }
 
-                var entries = new LoweredMapEntry[expression.Length];
-                for (var i = 0; i < expression.Length; i++)
+                var entries = new LoweredMapEntry[expression.Entries.Count];
+                for (var i = 0; i < expression.Entries.Count; i++)
                 {
-                    if (expression[i] is MapKeyValueExpression entry)
+                    if (expression.Entries[i] is MapKeyValueExpression entry)
                     {
                         entries[i] = new LoweredMapEntry(entry.Key, LowerExpression(entry.Value), entry.Range);
                     }
-                    else if (expression[i] is Expression value)
+                    else if (expression.Entries[i] is Expression value)
                     {
                         entries[i] = new LoweredMapEntry(null, LowerExpression(value), value.Range);
                     }
                     else
                     {
-                        entries[i] = new LoweredMapEntry(null, UnsupportedExpression(null), expression[i]?.Range ?? SourceSpan.None);
+                        entries[i] = new LoweredMapEntry(null, UnsupportedExpression(null), expression.Entries[i]?.Range ?? SourceSpan.None);
                     }
                 }
 
                 return new LoweredMapExpression(expression, entries);
-            }
-
-            private LoweredExpression[] LowerChildExpressions(AstNode node)
-            {
-                if (node.Length == 0)
-                {
-                    return Array.Empty<LoweredExpression>();
-                }
-
-                var expressions = new LoweredExpression[node.Length];
-                for (var i = 0; i < node.Length; i++)
-                {
-                    expressions[i] = node[i] is Expression expression
-                        ? LowerExpression(expression)
-                        : UnsupportedExpression(null);
-                }
-                return expressions;
             }
 
             private LoweredExpression LowerLambda(LambdaExpression lambda)
@@ -614,7 +606,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
 
             private LoweredBlockStatement LowerBlockWithoutScope(BlockStatement block)
             {
-                var statementCount = block.Length + block.Functions.Count;
+                var statementCount = block.Statements.Count + block.Functions.Count;
                 if (statementCount == 0)
                 {
                     return new LoweredBlockStatement(block, Array.Empty<LoweredStatement>());
@@ -626,9 +618,9 @@ namespace AuroraScript.Compiler.Backend.Lowering
                 {
                     statements[index++] = LowerStatement(block.Functions[i]);
                 }
-                for (var i = 0; i < block.Length; i++)
+                for (var i = 0; i < block.Statements.Count; i++)
                 {
-                    statements[index++] = LowerStatement(block[i]);
+                    statements[index++] = LowerStatement(block.Statements[i]);
                 }
                 return new LoweredBlockStatement(block, statements);
             }

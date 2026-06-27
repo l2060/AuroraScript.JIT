@@ -42,9 +42,9 @@ namespace AuroraScript.Compiler.Backend.Binding
             FunctionPlanRegistry functions)
         {
             var collector = new ModuleInitializerFunctionCollector(session, modulePlan, functions);
-            for (var i = 0; i < modulePlan.Declaration.Length; i++)
+            for (var i = 0; i < modulePlan.Declaration.Statements.Count; i++)
             {
-                collector.Visit(modulePlan.Declaration[i]);
+                collector.Visit(modulePlan.Declaration.Statements[i]);
             }
         }
 
@@ -281,9 +281,9 @@ namespace AuroraScript.Compiler.Backend.Binding
                     {
                         CollectDeclarations(block.Functions[i]);
                     }
-                    for (var i = 0; i < block.Length; i++)
+                    for (var i = 0; i < block.Statements.Count; i++)
                     {
-                        CollectDeclarations(block[i]);
+                        CollectDeclarations(block.Statements[i]);
                     }
                 }
                 finally

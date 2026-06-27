@@ -1,4 +1,4 @@
-﻿using AuroraScript.Runtime;
+using AuroraScript.Runtime;
 
 
 namespace AuroraScript.Compiler.Ast.Expressions
@@ -33,23 +33,6 @@ namespace AuroraScript.Compiler.Ast.Expressions
         }
 
         public readonly Expression Expression;
-
-
-
-        public override string ToString()
-        {
-            if (Type == UnaryType.Post)
-            {
-                return $"{Expression}{this.Operator}";
-            }
-            else
-            {
-                return $"{this.Operator}{Expression}";
-            }
-        }
-
-
-
         public override bool TryEvalConst(EvaluationContext ctx, ref ScriptDatum value)
         {
             if (Expression.TryEvalConst(ctx, ref value))

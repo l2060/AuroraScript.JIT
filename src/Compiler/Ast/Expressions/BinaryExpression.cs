@@ -1,4 +1,4 @@
-﻿using AuroraScript.Runtime;
+using AuroraScript.Runtime;
 
 namespace AuroraScript.Compiler.Ast.Expressions
 {
@@ -24,22 +24,6 @@ namespace AuroraScript.Compiler.Ast.Expressions
         {
             visitor.AcceptBinaryExpression(this);
         }
-
-
-        public override string ToString()
-        {
-            var isPriority = false;
-            if (this.Parent is BinaryExpression parent)
-            {
-                isPriority = parent.Operator.Precedence > this.Operator.Precedence;
-            }
-            var value = $"{Left} {Operator} {Right}";
-            if (isPriority) return $"({value})";
-            return value;
-        }
-
-
-
         public override bool TryEvalConst(EvaluationContext ctx, ref ScriptDatum value)
         {
             ScriptDatum leftSlot = default;

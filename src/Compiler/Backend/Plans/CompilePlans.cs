@@ -185,7 +185,7 @@ namespace AuroraScript.Compiler.Backend.Plans
             Declaration = declaration ?? throw new ArgumentNullException(nameof(declaration));
             _functions = new List<FunctionPlan>(Math.Max(4, declaration.Functions.Count));
             _symbolsByName = new Dictionary<string, SymbolId>(
-                Math.Max(4, declaration.Imports.Count + declaration.Length + declaration.Functions.Count),
+                Math.Max(4, declaration.Imports.Count + declaration.Statements.Count + declaration.Functions.Count),
                 StringComparer.Ordinal);
             Name = declaration.ModuleName;
             Path = declaration.ModulePath;

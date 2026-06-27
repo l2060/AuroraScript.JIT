@@ -1,4 +1,4 @@
-﻿namespace AuroraScript.Compiler.Ast.Expressions
+namespace AuroraScript.Compiler.Ast.Expressions
 {
     internal class MapKeyValueExpression : OperatorExpression
     {
@@ -16,19 +16,6 @@
         public override void Accept(IAstVisitor visitor)
         {
 
-        }
-
-
-        public override string ToString()
-        {
-            if (Key != null)
-            {
-                return $"{Key.Value}: {Value}";
-            }
-            else
-            {
-                return Value.ToString();
-            }
         }
     }
 }

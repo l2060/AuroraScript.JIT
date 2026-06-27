@@ -21,9 +21,9 @@ namespace AuroraScript.Compiler.Backend.Analysis
             }
 
             var evaluator = new Evaluator(session, modulePlan);
-            for (var i = 0; i < modulePlan.Declaration.Length; i++)
+            for (var i = 0; i < modulePlan.Declaration.Statements.Count; i++)
             {
-                if (modulePlan.Declaration[i] is not VariableDeclaration variable ||
+                if (modulePlan.Declaration.Statements[i] is not VariableDeclaration variable ||
                     !variable.IsConst ||
                     variable.Name == null ||
                     !modulePlan.TryGetSymbol(variable.Name.Value, out var symbolId) ||

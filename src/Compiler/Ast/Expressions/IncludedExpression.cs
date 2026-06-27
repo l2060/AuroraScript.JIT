@@ -1,4 +1,4 @@
-﻿namespace AuroraScript.Compiler.Ast.Expressions
+namespace AuroraScript.Compiler.Ast.Expressions
 {
     /// <summary>
     /// 二元表达式
@@ -22,19 +22,5 @@
         {
             visitor.AcceptIncludedExpression(this);
         }
-
-
-        public override string ToString()
-        {
-            var isPriority = false;
-            if (this.Parent is BinaryExpression parent)
-            {
-                isPriority = parent.Operator.Precedence > this.Operator.Precedence;
-            }
-            var value = $"{Left} {Operator} {Right}";
-            if (isPriority) return $"({value})";
-            return value;
-        }
-
     }
 }

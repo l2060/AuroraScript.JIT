@@ -74,7 +74,7 @@ public sealed class ParserSyntaxTests
             workspace.Root);
 
         Assert.Equal(3, module.Imports.Count);
-        Assert.Equal(0, module.Length);
+        Assert.Empty(module.Statements);
         Assert.Single(module.Functions);
     }
 

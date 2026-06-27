@@ -33,29 +33,6 @@ namespace AuroraScript.Compiler.Ast.Expressions
         {
             visitor.AcceptTemplateStringExpression(this);
         }
-
-        public override string ToString()
-        {
-            var builder = new StringBuilder();
-            builder.Append('`');
-            for (var i = 0; i < _parts.Length; i++)
-            {
-                var part = _parts[i];
-                if (part.IsLiteral)
-                {
-                    builder.Append(part.Literal);
-                }
-                else
-                {
-                    builder.Append("${");
-                    builder.Append(part.Expression);
-                    builder.Append('}');
-                }
-            }
-            builder.Append('`');
-            return builder.ToString();
-        }
-
         public override bool TryEvalConst(EvaluationContext ctx, ref ScriptDatum value)
         {
             var builder = new StringBuilder();

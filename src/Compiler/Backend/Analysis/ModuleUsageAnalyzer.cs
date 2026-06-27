@@ -213,9 +213,9 @@ namespace AuroraScript.Compiler.Backend.Analysis
                 {
                     Visit(module.Imports[i]);
                 }
-                for (var i = 0; i < module.Length; i++)
+                for (var i = 0; i < module.Statements.Count; i++)
                 {
-                    Visit(module[i]);
+                    Visit(module.Statements[i]);
                 }
                 for (var i = 0; i < module.Functions.Count; i++)
                 {

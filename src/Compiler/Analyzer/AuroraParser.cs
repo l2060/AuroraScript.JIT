@@ -67,7 +67,7 @@ namespace AuroraScript.Compiler.Analyzer
 
             protected override void VisitMapExpression(MapExpression node)
             {
-                for (int i = 0; i < node.Length; i++) node[i]?.Accept(this);
+                for (int i = 0; i < node.Entries.Count; i++) node.Entries[i]?.Accept(this);
             }
 
             protected override void VisitEnumDeclaration(EnumDeclaration node)
@@ -172,7 +172,7 @@ namespace AuroraScript.Compiler.Analyzer
                     }
                     else
                     {
-                        this.Root.AddNode(node);
+                        this.Root.AddStatement(node);
                     }
 
                     seenModuleSyntax = true;
@@ -207,7 +207,7 @@ namespace AuroraScript.Compiler.Analyzer
                     }
                     else
                     {
-                        block.AddNode(node);
+                        block.AddStatement(node);
                     }
                 }
                 SetSourceRecursive(block);
@@ -349,7 +349,7 @@ namespace AuroraScript.Compiler.Analyzer
                     while (true)
                     {
                         var exp = ParseExpression(0);
-                        if (exp != null) group.AddNode(exp);
+                        if (exp != null) group.AddExpression(exp);
                         if (this.Lexer.TestNext(Symbols.PT_COMMA)) continue;
                         break;
                     }
@@ -369,11 +369,11 @@ namespace AuroraScript.Compiler.Analyzer
                     {
                         var exp = ParseExpression(0);
                         if (exp != null)
-                            arrayLiteral.AddNode(exp);
+                            arrayLiteral.AddElement(exp);
                         else
                         {
                             var nullLiteral = new LiteralExpression(new NullToken());
-                            arrayLiteral.AddNode(nullLiteral);
+                            arrayLiteral.AddElement(nullLiteral);
                         }
 
                         if (this.Lexer.TestSymbol(Symbols.PT_RIGHTBRACKET)) break;
@@ -448,7 +448,7 @@ namespace AuroraScript.Compiler.Analyzer
                     while (true)
                     {
                         var exp = ParseExpression(0);
-                        if (exp != null) group.AddNode(exp);
+                        if (exp != null) group.AddExpression(exp);
                         if (this.Lexer.TestNext(Symbols.PT_COMMA)) continue;
                         break;
                     }
@@ -467,11 +467,11 @@ namespace AuroraScript.Compiler.Analyzer
                     {
                         var exp = ParseExpression(0);
                         if (exp != null)
-                            arrayLiteral.AddNode(exp);
+                            arrayLiteral.AddElement(exp);
                         else
                         {
                             var nullLiteral = new LiteralExpression(new NullToken());
-                            arrayLiteral.AddNode(nullLiteral);
+                            arrayLiteral.AddElement(nullLiteral);
                         }
 
                         if (this.Lexer.TestSymbol(Symbols.PT_RIGHTBRACKET)) break;
@@ -954,7 +954,7 @@ namespace AuroraScript.Compiler.Analyzer
                     }
                     else if (exp != null)
                     {
-                        result.AddNode(exp);
+                        result.AddStatement(exp);
                     }
                 }
                 var rightBrace = this.Lexer.NextRangeOfKind(Symbols.PT_RIGHTBRACE);
@@ -1078,7 +1078,7 @@ namespace AuroraScript.Compiler.Analyzer
                 if (!(body is BlockStatement))
                 {
                     var newBody = new BlockStatement();
-                    newBody.AddNode(body);
+                    newBody.AddStatement(body);
                     body = newBody;
                 }
                 ((BlockStatement)body).IsFunction = true;
@@ -1426,7 +1426,7 @@ namespace AuroraScript.Compiler.Analyzer
             if (this.Lexer.TestSymbol(Symbols.KW_IF))
             {
                 var block = new BlockStatement();
-                block.AddNode(ParseIfBlock());
+                block.AddStatement(ParseIfBlock());
                 return OptimizeStatement(block);
             }
             else
@@ -1434,7 +1434,7 @@ namespace AuroraScript.Compiler.Analyzer
                 var block = new BlockStatement();
                 var body = this.ParseStatement();
                 if (body == null) throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, this.Lexer.Previous(), "else body statement should not be empty");
-                block.AddNode(body);
+                block.AddStatement(body);
                 return OptimizeStatement(block);
             }
         }
@@ -1565,7 +1565,7 @@ namespace AuroraScript.Compiler.Analyzer
                         throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, this.Lexer.LookAtHead(), "Spread requires an expression.");
                     }
                     var spread = new SpreadExpression(value);
-                    constructExpression.AddNode(spread);
+                    constructExpression.AddEntry(spread);
                     this.Lexer.TestNext(Symbols.PT_COMMA);
                     continue;
                 }
@@ -1587,7 +1587,7 @@ namespace AuroraScript.Compiler.Analyzer
                     }
                     var newExp = new MapKeyValueExpression(varName, value);
                     SetRange(newExp, varName.Range, value.Range);
-                    constructExpression.AddNode(newExp);
+                    constructExpression.AddEntry(newExp);
                 }
                 else
                 {
@@ -1596,7 +1596,7 @@ namespace AuroraScript.Compiler.Analyzer
                     SetRange(nameToken, varName.Range, varName.Range);
                     var kv = new MapKeyValueExpression(varName, nameToken);
                     SetRange(kv, varName.Range, varName.Range);
-                    constructExpression.AddNode(kv);
+                    constructExpression.AddEntry(kv);
                 }
 
                 if (this.Lexer.TestNext(Symbols.PT_COMMA))
@@ -1670,9 +1670,9 @@ namespace AuroraScript.Compiler.Analyzer
             if (left is GroupExpression group)
             {
                 // Extract args from group
-                for (int i = 0; i < group.Length; i++)
+                for (int i = 0; i < group.Expressions.Count; i++)
                 {
-                    var node = group[i];
+                    var node = group.Expressions[i];
                     if (node is NameExpression name)
                     {
                         args.Add(SetRange(new ParameterDeclaration((byte)args.Count, name.Identifier, null), name.Range, name.Range));
@@ -1712,7 +1712,7 @@ namespace AuroraScript.Compiler.Analyzer
                     bodyStmt = new ReturnStatement(expr);
                     var block = new BlockStatement();
                     block.IsFunction = true;
-                    block.AddNode(bodyStmt);
+                    block.AddStatement(bodyStmt);
                     bodyStmt = block;
                 }
             }
@@ -1906,7 +1906,7 @@ namespace AuroraScript.Compiler.Analyzer
             }
             else if (node is MapExpression map)
             {
-                for (int i = 0; i < map.Length; i++) FixRange(map[i], range);
+                for (int i = 0; i < map.Entries.Count; i++) FixRange(map.Entries[i], range);
             }
             else if (node is MapKeyValueExpression kv)
             {

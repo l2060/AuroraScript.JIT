@@ -411,9 +411,9 @@ namespace AuroraScript.Compiler.Backend.Binding
             {
                 WithNodeScope(block, () =>
                 {
-                    for (var i = 0; i < block.Length; i++)
+                    for (var i = 0; i < block.Statements.Count; i++)
                     {
-                        Visit(block[i]);
+                        Visit(block.Statements[i]);
                     }
                     for (var i = 0; i < block.Functions.Count; i++)
                     {

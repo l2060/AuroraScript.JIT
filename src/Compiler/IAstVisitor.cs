@@ -330,9 +330,9 @@ namespace AuroraScript.Compiler
         {
             if (node.Include && node.Module != null)
             {
-                for (int i = 0; i < node.Module.Length; i++)
+                for (int i = 0; i < node.Module.Statements.Count; i++)
                 {
-                    node.Module[i].Accept(this);
+                    node.Module.Statements[i].Accept(this);
                 }
                 for (int i = 0; i < node.Module.Functions.Count; i++)
                 {
@@ -368,9 +368,9 @@ namespace AuroraScript.Compiler
 
         protected virtual void VisitBlock(BlockStatement node)
         {
-            for (int i = 0; i < node.Length; i++)
+            for (int i = 0; i < node.Statements.Count; i++)
             {
-                node[i].Accept(this);
+                node.Statements[i].Accept(this);
             }
             for (int i = 0; i < node.Functions.Count; i++)
             {
@@ -539,14 +539,17 @@ namespace AuroraScript.Compiler
 
         protected virtual void VisitGroupingExpression(GroupExpression node)
         {
-            node.Expression.Accept(this);
+            for (int i = 0; i < node.Expressions.Count; i++)
+            {
+                node.Expressions[i].Accept(this);
+            }
         }
 
         protected virtual void VisitArrayExpression(ArrayLiteralExpression node)
         {
-            for (int i = 0; i < node.Length; i++)
+            for (int i = 0; i < node.Elements.Count; i++)
             {
-                node[i].Accept(this);
+                node.Elements[i].Accept(this);
             }
         }
 
@@ -580,12 +583,16 @@ namespace AuroraScript.Compiler
 
         protected virtual void VisitMapExpression(MapExpression node)
         {
-            for (int i = 0; i < node.Length; i++)
+            for (int i = 0; i < node.Entries.Count; i++)
             {
-                var entry = node[i];
+                var entry = node.Entries[i];
                 if (entry is MapKeyValueExpression property)
                 {
                     property.Value.Accept(this);
+                }
+                else
+                {
+                    entry.Accept(this);
                 }
             }
         }

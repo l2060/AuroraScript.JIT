@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
 
 namespace AuroraScript.Compiler.Ast.Expressions
 {
@@ -21,13 +20,6 @@ namespace AuroraScript.Compiler.Ast.Expressions
         public override void Accept(IAstVisitor visitor)
         {
             visitor.AcceptObjectDestructuringPattern(this);
-        }
-
-
-        public override string ToString()
-        {
-            var props = string.Join(", ", Properties.Select(p => p.Value));
-            return $"{{ {props} }}";
         }
     }
 }

@@ -248,9 +248,9 @@ namespace AuroraScript.Compiler.Backend
                 symbolCount++;
             }
 
-            for (var i = 0; i < module.Length; i++)
+            for (var i = 0; i < module.Statements.Count; i++)
             {
-                var child = module[i];
+                var child = module.Statements[i];
                 switch (child)
                 {
                     case VariableDeclaration variable:
@@ -371,9 +371,9 @@ namespace AuroraScript.Compiler.Backend
             }
 
             var count = 0;
-            for (var i = 0; i < includedModule.Length; i++)
+            for (var i = 0; i < includedModule.Statements.Count; i++)
             {
-                var child = includedModule[i];
+                var child = includedModule.Statements[i];
                 switch (child)
                 {
                     case VariableDeclaration variable when variable.Access == MemberAccess.Export:

@@ -1,4 +1,4 @@
-﻿using AuroraScript.Compiler.Ast.Expressions;
+using AuroraScript.Compiler.Ast.Expressions;
 
 
 namespace AuroraScript.Compiler.Ast.Statements
@@ -16,11 +16,6 @@ namespace AuroraScript.Compiler.Ast.Statements
         public override void Accept(IAstVisitor visitor)
         {
             visitor.AcceptReturnStatement(this);
-        }
-
-        public override string ToString()
-        {
-            return $"return {Expression}";
         }
     }
 }

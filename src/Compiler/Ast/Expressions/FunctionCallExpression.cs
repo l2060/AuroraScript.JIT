@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 
@@ -34,12 +34,5 @@ namespace AuroraScript.Compiler.Ast.Expressions
         {
             visitor.AcceptCallExpression(this);
         }
-
-
-        public override string ToString()
-        {
-            return $"{Target}({String.Join(", ", Arguments)})";
-        }
-
     }
 }

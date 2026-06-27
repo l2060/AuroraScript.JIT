@@ -1,4 +1,4 @@
-﻿using AuroraScript.Compiler.Ast.Statements;
+using AuroraScript.Compiler.Ast.Statements;
 using System;
 using System.Collections.Generic;
 
@@ -50,20 +50,14 @@ namespace AuroraScript.Compiler.Ast
         {
             _imports ??= new List<ImportDeclaration>();
             _imports.Add(import);
+            AttachParent(import, this);
         }
 
 
 
         public Boolean IsEmpty()
         {
-            return Functions.Count == 0 && Length == 0;
-        }
-
-
-
-        public override string ToString()
-        {
-            return $"ModuleDeclaration: {ModuleName}";
+            return Functions.Count == 0 && Statements.Count == 0;
         }
     }
 

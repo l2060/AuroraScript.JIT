@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
 
 namespace AuroraScript.Compiler.Ast.Expressions
 {
@@ -22,12 +21,6 @@ namespace AuroraScript.Compiler.Ast.Expressions
         public override void Accept(IAstVisitor visitor)
         {
             visitor.AcceptArrayDestructuringPattern(this);
-        }
-
-        public override string ToString()
-        {
-            var elements = string.Join(", ", Elements.Select(e => e?.ToString() ?? ""));
-            return $"[ {elements} ]";
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿namespace AuroraScript.Compiler.Ast.Expressions
+namespace AuroraScript.Compiler.Ast.Expressions
 {
     internal class SetElementExpression : OperatorExpression
     {
@@ -20,13 +20,5 @@
         {
             visitor.AcceptSetElementExpression(this);
         }
-
-        public override string ToString()
-        {
-            return $"{Object}[{Index}] = {Value}";
-        }
-
-
-
     }
 }

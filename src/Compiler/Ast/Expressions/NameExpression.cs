@@ -1,4 +1,4 @@
-﻿using AuroraScript.Runtime;
+using AuroraScript.Runtime;
 
 
 namespace AuroraScript.Compiler.Ast.Expressions
@@ -30,12 +30,6 @@ namespace AuroraScript.Compiler.Ast.Expressions
             }
             // not a constant
             return false;
-        }
-
-
-        override public string ToString()
-        {
-            return $"NameExpression: {Identifier?.Value}";
         }
     }
 }

@@ -10,13 +10,4 @@ namespace AuroraScript.Compiler.Ast.Expressions
             return false;
         }
     }
-
-    internal class ExpressionStack : Expression
-    {
-        public override void Accept(IAstVisitor visitor)
-        {
-
-        }
-    }
-
 }

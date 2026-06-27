@@ -38,9 +38,9 @@ namespace AuroraScript.Compiler.Backend.Analysis
             public void VisitModule()
             {
                 var declaration = _modulePlan.Declaration;
-                for (var i = 0; i < declaration.Length; i++)
+                for (var i = 0; i < declaration.Statements.Count; i++)
                 {
-                    Visit(declaration[i]);
+                    Visit(declaration.Statements[i]);
                 }
 
                 for (var i = 0; i < declaration.Functions.Count; i++)
@@ -71,9 +71,9 @@ namespace AuroraScript.Compiler.Backend.Analysis
                             {
                                 Visit(block.Functions[i]);
                             }
-                            for (var i = 0; i < block.Length; i++)
+                            for (var i = 0; i < block.Statements.Count; i++)
                             {
-                                Visit(block[i]);
+                                Visit(block.Statements[i]);
                             }
                         });
                         return;
@@ -137,9 +137,9 @@ namespace AuroraScript.Compiler.Backend.Analysis
                         {
                             Visit(catchBlock.Functions[i]);
                         }
-                        for (var i = 0; i < catchBlock.Length; i++)
+                        for (var i = 0; i < catchBlock.Statements.Count; i++)
                         {
-                            Visit(catchBlock[i]);
+                            Visit(catchBlock.Statements[i]);
                         }
                     }
                     else

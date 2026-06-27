@@ -1,4 +1,4 @@
-﻿namespace AuroraScript.Compiler.Ast.Expressions
+namespace AuroraScript.Compiler.Ast.Expressions
 {
     /// <summary>
     /// 赋值
@@ -16,21 +16,9 @@
         public readonly Expression Left;
         public readonly Expression Right;
 
-
-        public override void AddNode(AstNode node)
-        {
-            throw new System.Exception();
-        }
-
         public override void Accept(IAstVisitor visitor)
         {
             visitor.AcceptAssignmentExpression(this);
-        }
-
-
-        public override string ToString()
-        {
-            return $"{this.Left} {this.Operator.Symbol.Name} {this.Right}";
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿using AuroraScript.Compiler.Ast.Statements;
+using AuroraScript.Compiler.Ast.Statements;
 using System;
 
 
@@ -42,19 +42,6 @@ namespace AuroraScript.Compiler.Ast
         public override void Accept(IAstVisitor visitor)
         {
             visitor.AcceptImportDeclaration(this);
-        }
-
-        override public string ToString()
-        {
-            if (Include)
-            {
-                return $"ImportDeclaration: {FullPath}";
-            }
-            else
-            {
-                return $"ImportDeclaration: {Name.Value} {FullPath}";
-            }
-
         }
     }
 }

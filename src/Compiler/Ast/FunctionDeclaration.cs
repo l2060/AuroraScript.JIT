@@ -1,4 +1,4 @@
-﻿using AuroraScript.Compiler.Ast.Expressions;
+using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Ast.Statements;
 using System;
 using System.Collections.Generic;
@@ -76,11 +76,6 @@ namespace AuroraScript.Compiler.Ast
         public MemberAccess Access { get; private set; }
 
         /// <summary>
-        /// Export ....
-        /// </summary>
-        public List<Token> Modifiers { get; private set; }
-
-        /// <summary>
         /// function name
         /// </summary>
         public Token Name { get; private set; }
@@ -93,11 +88,6 @@ namespace AuroraScript.Compiler.Ast
         public override void Accept(IAstVisitor visitor)
         {
             visitor.AcceptFunction(this);
-        }
-
-        override public string ToString()
-        {
-            return $"FunctionDeclaration: {Name?.Value}";
         }
     }
 }

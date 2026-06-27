@@ -1,4 +1,4 @@
-﻿using AuroraScript.Compiler.Ast.Expressions;
+using AuroraScript.Compiler.Ast.Expressions;
 
 
 
@@ -17,11 +17,6 @@ namespace AuroraScript.Compiler.Ast.Statements
         public override void Accept(IAstVisitor visitor)
         {
             visitor.AcceptDeleteStatement(this);
-        }
-
-        public override string ToString()
-        {
-            return $"delete {Expression}";
         }
     }
 }

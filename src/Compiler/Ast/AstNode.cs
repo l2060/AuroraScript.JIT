@@ -1,6 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Text.Json.Serialization;
 
 namespace AuroraScript.Compiler.Ast
 {
@@ -13,10 +11,6 @@ namespace AuroraScript.Compiler.Ast
         public Int32 ColumnNumber => Range.StartColumn;
         public String FileName => Range.FileName;
 
-        protected List<AstNode> _children;
-
-
-        [JsonIgnore]
         public AstNode Parent { get; internal set; }
 
 
@@ -25,29 +19,12 @@ namespace AuroraScript.Compiler.Ast
         }
 
 
-        public Int32 Length
+        protected static void AttachParent(AstNode node, AstNode parent)
         {
-            get
+            if (node != null)
             {
-                return this._children?.Count ?? 0;
+                node.Parent = parent;
             }
-        }
-
-        public AstNode this[Int32 index]
-        {
-            get
-            {
-                return this._children[index];
-            }
-        }
-
-
-        public virtual void AddNode(AstNode node)
-        {
-            // if (node.Parent != null) throw new InvalidOperationException();
-            this._children ??= new List<AstNode>();
-            this._children.Add(node);
-            node.Parent = this;
         }
 
         public abstract void Accept(IAstVisitor visitor);

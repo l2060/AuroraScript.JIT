@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 
 namespace AuroraScript.Compiler.Ast.Expressions
@@ -25,11 +25,6 @@ namespace AuroraScript.Compiler.Ast.Expressions
         public override void Accept(IAstVisitor visitor)
         {
             visitor.AcceptParameterDeclaration(this);
-        }
-
-        override public string ToString()
-        {
-            return $"ParameterDeclaration: [{Index}] {Name?.Value}";
         }
     }
 }

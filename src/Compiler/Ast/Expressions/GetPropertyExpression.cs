@@ -1,4 +1,4 @@
-﻿namespace AuroraScript.Compiler.Ast.Expressions
+namespace AuroraScript.Compiler.Ast.Expressions
 {
     /// <summary>
     /// 成员函数表达式
@@ -20,11 +20,6 @@
         public override void Accept(IAstVisitor visitor)
         {
             visitor.AcceptGetPropertyExpression(this);
-        }
-
-        public override string ToString()
-        {
-            return $"{Object}.{Property}";
         }
     }
 }

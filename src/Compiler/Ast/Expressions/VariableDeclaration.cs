@@ -1,4 +1,4 @@
-﻿using AuroraScript.Compiler.Ast.Statements;
+using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Runtime;
 using AuroraScript.Tokens;
 using System;
@@ -42,11 +42,6 @@ namespace AuroraScript.Compiler.Ast.Expressions
         }
 
         /// <summary>
-        /// parameter Modifier  ....
-        /// </summary>
-        public Token Modifier { get; set; }
-
-        /// <summary>
         /// variable names
         /// </summary>
         public Token Name { get; set; }
@@ -76,13 +71,6 @@ namespace AuroraScript.Compiler.Ast.Expressions
         {
             visitor.AcceptVarDeclaration(this);
         }
-
-        override public string ToString()
-        {
-            return $"VariableDeclaration: {Name?.Value}";
-        }
-
-
         public void TryFolding(EvaluationContext ctx)
         {
             ScriptDatum datum = default;
