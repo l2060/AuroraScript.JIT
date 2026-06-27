@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aurorascript.dev/schema/diagnostics.schema.json",
+  "title": "AuroraScript diagnostics",
+  "type": "object",
+  "required": ["valid", "diagnostics"],
+  "properties": {
+    "valid": { "type": "boolean" },
+    "diagnostics": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/diagnostic" }
+    }
+  },
+  "$defs": {
+    "diagnostic": {
+      "type": "object",
+      "required": ["message", "fileName", "lineNumber", "columnNumber"],
+      "properties": {
+        "message": { "type": "string" },
+        "fileName": { "type": ["string", "null"] },
+        "lineNumber": { "type": "integer" },
+        "columnNumber": { "type": "integer" },
+        "endLineNumber": { "type": "integer" },
+        "endColumnNumber": { "type": "integer" },
+        "offset": { "type": "integer" },
+        "length": { "type": "integer" }
+      },
+      "additionalProperties": false
+    }
+  }
+}
+

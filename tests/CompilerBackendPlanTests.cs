@@ -1334,7 +1334,7 @@ public sealed class CompilerBackendPlanTests
             @module(TEST);
             func test(value) {
                 var [first, ...rest] = value;
-                yield;
+                enum Unsupported { Value }
                 return first;
             }
             """,
@@ -1349,7 +1349,7 @@ public sealed class CompilerBackendPlanTests
         var test = Assert.Single(Assert.Single(session.Modules).Functions, function => function.Name == "test");
 
         Assert.True(test.UnsupportedLoweredStatementCount > 0);
-        Assert.Contains(test.UnsupportedLoweredNodes, node => node.NodeType == "YieldStatement" && !node.IsExpression);
+        Assert.Contains(test.UnsupportedLoweredNodes, node => node.NodeType == "EnumDeclaration" && !node.IsExpression);
         Assert.Equal(test.UnsupportedLoweredStatementCount, test.UnsupportedLoweredNodes.Count(node => !node.IsExpression));
         Assert.Equal(test.UnsupportedLoweredExpressionCount, test.UnsupportedLoweredNodes.Count(node => node.IsExpression));
     }
@@ -1448,7 +1448,7 @@ public sealed class CompilerBackendPlanTests
             """
             @module(TEST);
             export func run() {
-                yield;
+                enum Unsupported { Value }
                 return 1;
             }
             """,
@@ -1463,7 +1463,7 @@ public sealed class CompilerBackendPlanTests
         var session = backend.CreateModulePlans([module]);
         var exception = Assert.Throws<UnsupportedEmissionException>(() => new EmissionSession(session, builder, collectDiagnostics: true).Emit());
 
-        Assert.Equal("YieldStatement", exception.NodeType);
+        Assert.Equal("EnumDeclaration", exception.NodeType);
         Assert.False(exception.IsExpression);
     }
 

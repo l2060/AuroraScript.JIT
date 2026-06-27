@@ -1,0 +1,59 @@
+{
+  "$schema": "../schema/examples.schema.json",
+  "language": "AuroraScript",
+  "versionTarget": "2.1.1",
+  "valid": [
+    {
+      "path": "valid/scope-var-shadow.as",
+      "entry": "run",
+      "expected": [123, 123456],
+      "features": ["declaration.var", "scope.block"]
+    },
+    {
+      "path": "valid/templates.as",
+      "entry": "run",
+      "arguments": ["Aurora"],
+      "expected": ["hello Aurora", "[ 10 - 11 - 12 - 13 - 14 - 15 ]"],
+      "features": ["template-string"]
+    },
+    {
+      "path": "valid/functions-and-lambdas.as",
+      "entry": "run",
+      "expected": [2, 3, 7],
+      "features": ["function.declaration", "function.annotation.directCall", "lambda"]
+    },
+    {
+      "path": "valid/destructuring-and-loops.as",
+      "entry": "run",
+      "expected": "Aurora:6:10",
+      "features": ["declaration.destructuring", "control.for-in"]
+    },
+    {
+      "path": "valid/string-buffer.as",
+      "entry": "run",
+      "arguments": [4],
+      "expected": "0,1,2,3",
+      "features": ["runtime.string-buffer"]
+    }
+  ],
+  "invalid": [
+    {
+      "path": "invalid/duplicate-same-scope.as",
+      "expectedDiagnosticContains": "Duplicate declaration 'a'"
+    },
+    {
+      "path": "invalid/const-shadow-in-child-block.as",
+      "expectedDiagnosticContains": "Duplicate declaration 'a'"
+    },
+    {
+      "path": "invalid/const-assignment.as",
+      "expectedDiagnosticContains": "Cannot assign to constant 'a'"
+    },
+    {
+      "path": "invalid/module-syntax-in-block.as",
+      "mode": "block",
+      "expectedDiagnosticContains": "CompileBlock does not support module-level statement"
+    }
+  ]
+}
+

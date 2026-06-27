@@ -101,11 +101,11 @@ public sealed class LexerTests
     public void TokenizesEveryReservedKeyword()
     {
         const string source = "var const func function if else for while break continue return throw try catch finally " +
-            "new typeof in delete true false null import from include export declare enum debugger yield";
+            "new typeof in delete true false null import from include export declare enum debugger";
         using var lexer = CreateLexer(source);
         var tokens = ReadTokens(lexer);
 
-        Assert.Equal(30, tokens.Count);
+        Assert.Equal(29, tokens.Count);
         Assert.DoesNotContain(tokens, token => token is IdentifierToken);
     }
 

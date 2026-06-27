@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aurorascript.dev/schema/examples.schema.json",
+  "title": "AuroraScript examples manifest",
+  "type": "object",
+  "required": ["language", "versionTarget", "valid", "invalid"],
+  "properties": {
+    "language": { "const": "AuroraScript" },
+    "versionTarget": { "type": "string" },
+    "valid": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/validExample" }
+    },
+    "invalid": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/invalidExample" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "validExample": {
+      "type": "object",
+      "required": ["path", "features"],
+      "properties": {
+        "path": { "type": "string" },
+        "entry": { "type": "string" },
+        "arguments": { "type": "array" },
+        "expected": {},
+        "features": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "invalidExample": {
+      "type": "object",
+      "required": ["path", "expectedDiagnosticContains"],
+      "properties": {
+        "path": { "type": "string" },
+        "mode": { "enum": ["module", "block"] },
+        "expectedDiagnosticContains": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  }
+}
+

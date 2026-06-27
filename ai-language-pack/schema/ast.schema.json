@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aurorascript.dev/schema/ast.schema.json",
+  "title": "AuroraScript AST summary schema",
+  "description": "A documentation schema for parser-facing AST concepts. This is intentionally stable and does not expose every internal field.",
+  "type": "object",
+  "oneOf": [
+    { "$ref": "#/$defs/ModuleDeclaration" },
+    { "$ref": "#/$defs/Statement" },
+    { "$ref": "#/$defs/Expression" }
+  ],
+  "$defs": {
+    "SourceSpan": {
+      "type": "object",
+      "properties": {
+        "fileName": { "type": ["string", "null"] },
+        "startLine": { "type": "integer" },
+        "startColumn": { "type": "integer" },
+        "endLine": { "type": "integer" },
+        "endColumn": { "type": "integer" }
+      }
+    },
+    "NodeBase": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": { "type": "string" },
+        "range": { "$ref": "#/$defs/SourceSpan" }
+      }
+    },
+    "ModuleDeclaration": {
+      "allOf": [
+        { "$ref": "#/$defs/NodeBase" },
+        {
+          "type": "object",
+          "required": ["kind", "body"],
+          "properties": {
+            "kind": { "const": "ModuleDeclaration" },
+            "moduleName": { "type": ["string", "null"] },
+            "imports": { "type": "array", "items": { "$ref": "#/$defs/ImportDeclaration" } },
+            "body": { "type": "array", "items": { "$ref": "#/$defs/Statement" } }
+          }
+        }
+      ]
+    },
+    "ImportDeclaration": {
+      "allOf": [
+        { "$ref": "#/$defs/NodeBase" },
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "ImportDeclaration" },
+            "name": { "type": ["string", "null"] },
+            "file": { "type": "string" },
+            "include": { "type": "boolean" }
+          }
+        }
+      ]
+    },
+    "Statement": {
+      "oneOf": [
+        { "$ref": "#/$defs/BlockStatement" },
+        { "$ref": "#/$defs/FunctionDeclaration" },
+        { "$ref": "#/$defs/VariableDeclaration" },
+        { "$ref": "#/$defs/EnumDeclaration" },
+        { "$ref": "#/$defs/IfStatement" },
+        { "$ref": "#/$defs/ForStatement" },
+        { "$ref": "#/$defs/ForInStatement" },
+        { "$ref": "#/$defs/WhileStatement" },
+        { "$ref": "#/$defs/TryStatement" },
+        { "$ref": "#/$defs/ReturnStatement" },
+        { "$ref": "#/$defs/ExpressionStatement" }
+      ]
+    },
+    "BlockStatement": {
+      "allOf": [
+        { "$ref": "#/$defs/NodeBase" },
+        { "type": "object", "properties": { "kind": { "const": "BlockStatement" }, "statements": { "type": "array", "items": { "$ref": "#/$defs/Statement" } } } }
+      ]
+    },
+    "FunctionDeclaration": {
+      "allOf": [
+        { "$ref": "#/$defs/NodeBase" },
+        { "type": "object", "properties": { "kind": { "const": "FunctionDeclaration" }, "name": { "type": "string" }, "parameters": { "type": "array" }, "body": { "$ref": "#/$defs/BlockStatement" }, "flags": { "enum": ["General", "Lambda", "Declare"] } } }
+      ]
+    },
+    "VariableDeclaration": {
+      "allOf": [
+        { "$ref": "#/$defs/NodeBase" },
+        { "type": "object", "properties": { "kind": { "const": "VariableDeclaration" }, "name": { "type": ["string", "null"] }, "isConst": { "type": "boolean" }, "initializer": { "$ref": "#/$defs/Expression" } } }
+      ]
+    },
+    "EnumDeclaration": { "$ref": "#/$defs/NodeBase" },
+    "IfStatement": { "$ref": "#/$defs/NodeBase" },
+    "ForStatement": { "$ref": "#/$defs/NodeBase" },
+    "ForInStatement": { "$ref": "#/$defs/NodeBase" },
+    "WhileStatement": { "$ref": "#/$defs/NodeBase" },
+    "TryStatement": { "$ref": "#/$defs/NodeBase" },
+    "ReturnStatement": { "$ref": "#/$defs/NodeBase" },
+    "ExpressionStatement": { "$ref": "#/$defs/NodeBase" },
+    "Expression": {
+      "oneOf": [
+        { "$ref": "#/$defs/LiteralExpression" },
+        { "$ref": "#/$defs/NameExpression" },
+        { "$ref": "#/$defs/BinaryExpression" },
+        { "$ref": "#/$defs/UnaryExpression" },
+        { "$ref": "#/$defs/AssignmentExpression" },
+        { "$ref": "#/$defs/CallExpression" },
+        { "$ref": "#/$defs/MemberExpression" },
+        { "$ref": "#/$defs/ArrayExpression" },
+        { "$ref": "#/$defs/ObjectExpression" },
+        { "$ref": "#/$defs/TemplateStringExpression" },
+        { "$ref": "#/$defs/LambdaExpression" }
+      ]
+    },
+    "LiteralExpression": { "$ref": "#/$defs/NodeBase" },
+    "NameExpression": { "$ref": "#/$defs/NodeBase" },
+    "BinaryExpression": { "$ref": "#/$defs/NodeBase" },
+    "UnaryExpression": { "$ref": "#/$defs/NodeBase" },
+    "AssignmentExpression": { "$ref": "#/$defs/NodeBase" },
+    "CallExpression": { "$ref": "#/$defs/NodeBase" },
+    "MemberExpression": { "$ref": "#/$defs/NodeBase" },
+    "ArrayExpression": { "$ref": "#/$defs/NodeBase" },
+    "ObjectExpression": { "$ref": "#/$defs/NodeBase" },
+    "TemplateStringExpression": { "$ref": "#/$defs/NodeBase" },
+    "LambdaExpression": { "$ref": "#/$defs/NodeBase" }
+  }
+}
+

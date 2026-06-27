@@ -1,0 +1,123 @@
+(* AuroraScript grammar summary. This is a documentation grammar, not a generated parser source. *)
+
+source-file        = module-item* EOF ;
+module-item        = module-meta
+                   | include-declaration
+                   | import-declaration
+                   | export-declaration
+                   | statement ;
+
+module-meta        = "@" identifier "(" identifier ")" ";" ;
+include-declaration = "include" string-literal ";" ;
+import-declaration  = "import" identifier "from" string-literal ";" ;
+
+export-declaration = "export" ( function-declaration
+                              | variable-declaration
+                              | declare-function
+                              | enum-declaration ) ;
+
+statement          = ";"
+                   | block
+                   | annotated-function
+                   | function-declaration
+                   | declare-function
+                   | variable-declaration
+                   | enum-declaration
+                   | if-statement
+                   | while-statement
+                   | for-statement
+                   | try-statement
+                   | throw-statement
+                   | return-statement
+                   | break-statement
+                   | continue-statement
+                   | delete-statement
+                   | debugger-statement
+                   | expression-statement ;
+
+block              = "{" statement* "}" ;
+
+annotation         = "@" identifier [ "(" [ annotation-argument { "," annotation-argument } ] ")" ] ;
+annotation-argument = identifier | string-literal | number-literal | boolean-literal ;
+annotated-function = annotation+ function-declaration ;
+
+function-declaration = ( "func" | "function" ) identifier parameter-list block ;
+declare-function     = "declare" ( "func" | "function" ) identifier parameter-list ";" ;
+parameter-list       = "(" [ parameter { "," parameter } ] ")" ;
+parameter            = [ "..." ] identifier [ "=" expression ] ;
+
+variable-declaration = ( "var" | "const" ) binding [ "=" expression ] ";" ;
+binding              = identifier | object-pattern | array-pattern ;
+object-pattern       = "{" identifier { "," identifier } "}" ;
+array-pattern        = "[" pattern-element { "," pattern-element } "]" ;
+pattern-element      = identifier | "..." identifier ;
+
+enum-declaration    = "enum" identifier "{" [ enum-member { "," enum-member } [ "," ] ] "}" ;
+enum-member         = identifier [ "=" number-literal ] ;
+
+if-statement        = "if" "(" expression ")" statement [ "else" statement ] ;
+while-statement     = "while" "(" expression ")" statement ;
+for-statement       = "for" "(" for-header ")" statement ;
+for-header          = variable-declaration expression ";" [ expression ]
+                    | expression ";" expression ";" [ expression ]
+                    | "var" identifier "in" expression
+                    | expression "in" expression ;
+
+try-statement       = "try" block [ "catch" [ "(" identifier ")" ] block ] [ "finally" block ] ;
+throw-statement     = "throw" expression ";" ;
+return-statement    = "return" [ expression ] ";" ;
+break-statement     = "break" ";" ;
+continue-statement  = "continue" ";" ;
+delete-statement    = "delete" expression ";" ;
+debugger-statement  = "debugger" ";" ;
+expression-statement = expression ";" ;
+
+expression          = assignment ;
+assignment          = lambda-expression
+                    | binary-expression
+                    | unary-expression
+                    | postfix-expression
+                    | primary-expression ;
+
+lambda-expression   = ( identifier | "(" [ lambda-parameter { "," lambda-parameter } ] ")" )
+                       "=>" ( expression | block ) ;
+lambda-parameter    = identifier [ "=" expression ] ;
+
+primary-expression  = identifier
+                    | literal
+                    | template-string
+                    | array-literal
+                    | object-literal
+                    | "(" [ expression { "," expression } ] ")" ;
+
+array-literal       = "[" [ array-element { "," array-element } [ "," ] ] "]" ;
+array-element       = expression | "..." expression ;
+object-literal      = "{" [ object-entry { "," object-entry } [ "," ] ] "}" ;
+object-entry        = "..." expression
+                    | object-key ":" expression
+                    | identifier ;
+object-key          = identifier | string-literal | number-literal | boolean-literal | "null" ;
+
+postfix-expression  = primary-expression { call | index | member | "++" | "--" } ;
+call                = "(" [ argument { "," argument } ] ")" ;
+argument            = expression | "..." expression ;
+index               = "[" expression "]" ;
+member              = "." identifier ;
+
+unary-expression    = ( "new" | "..." | "++" | "--" | "!" | "~" | "-" | "typeof" ) expression ;
+
+binary-expression   = expression binary-operator expression ;
+binary-operator     = "*" | "/" | "%" | "+" | "-" | "<<" | ">>" | ">>>"
+                    | "<" | "<=" | ">" | ">=" | "in" | "==" | "!="
+                    | "&" | "^" | "|" | "&&" | "||"
+                    | "=" | "+=" | "-=" | "*=" | "/=" | "%=" ;
+
+literal             = number-literal | string-literal | regex-literal | boolean-literal | "null" ;
+boolean-literal     = "true" | "false" ;
+template-string     = "`" template-part* "`" ;
+template-part       = template-text | "${" expression "}" ;
+
+identifier          = identifier-start identifier-part* ;
+identifier-start    = "A".."Z" | "a".."z" | "_" | "$" | CJK ;
+identifier-part     = identifier-start | "0".."9" ;
+

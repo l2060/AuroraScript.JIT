@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "language": "AuroraScript",
+  "versionTarget": "2.1.1",
+  "features": [
+    {
+      "id": "module.metadata",
+      "syntax": "@module(NAME);",
+      "scope": "module",
+      "notes": ["Must be the first effective statement when present."]
+    },
+    {
+      "id": "module.import",
+      "syntax": "import Alias from \"path\";",
+      "scope": "module",
+      "notes": ["Must appear at the top of the module."]
+    },
+    {
+      "id": "module.include",
+      "syntax": "include \"path\";",
+      "scope": "module",
+      "notes": ["Must appear at the top of the module."]
+    },
+    {
+      "id": "module.export",
+      "syntax": "export func name() { } | export var name = value; | export const name = value;",
+      "scope": "module",
+      "notes": ["Invalid outside module scope."]
+    },
+    {
+      "id": "declaration.var",
+      "syntax": "var name = expression;",
+      "scope": "function-or-block",
+      "notes": ["May shadow an outer var in a child block.", "Duplicate declaration in the same scope is rejected."]
+    },
+    {
+      "id": "declaration.const",
+      "syntax": "const name = expression;",
+      "scope": "function-or-block",
+      "notes": ["Cannot be assigned after declaration.", "A child block may not redeclare a visible outer const."]
+    },
+    {
+      "id": "declaration.destructuring",
+      "syntax": "var { a, b } = obj; var [ first, ...rest ] = array;",
+      "scope": "function-or-block",
+      "notes": ["Initializer is required."]
+    },
+    {
+      "id": "function.declaration",
+      "syntax": "func name(parameters) { statements }",
+      "scope": "module-or-block",
+      "notes": ["function is also accepted as a keyword."]
+    },
+    {
+      "id": "function.annotation.directCall",
+      "syntax": "@directCall | @directCall(true) | @directCall(false)",
+      "scope": "function",
+      "notes": ["Only supported function annotation in the current binder."]
+    },
+    {
+      "id": "lambda",
+      "syntax": "x => x + 1; (a, b = 1) => { return a + b; }",
+      "scope": "expression",
+      "notes": ["Expression body is lowered to return expression."]
+    },
+    {
+      "id": "template-string",
+      "syntax": "`value=${expression}`",
+      "scope": "expression",
+      "notes": ["Interpolations evaluate left to right.", "Compiler selects concat or StringBuilder strategy by element count."]
+    },
+    {
+      "id": "control.for",
+      "syntax": "for (var i = 0; i < n; i++) statement",
+      "scope": "statement",
+      "notes": ["Condition expression is required."]
+    },
+    {
+      "id": "control.for-in",
+      "syntax": "for (var item in values) statement",
+      "scope": "statement",
+      "notes": ["Iterates arrays, objects, and strings according to runtime iterator behavior."]
+    },
+    {
+      "id": "error.try-catch-finally",
+      "syntax": "try { } catch (error) { } finally { }",
+      "scope": "statement",
+      "notes": ["Catch variable creates a catch scope."]
+    },
+    {
+      "id": "runtime.string-buffer",
+      "syntax": "new StringBuffer(\"\").append(value)",
+      "scope": "runtime",
+      "notes": ["Use stringAndRelease for pooled builder return."]
+    }
+  ]
+}
+

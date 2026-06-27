@@ -96,6 +96,26 @@
 	    <Pack>True</Pack>
 	    <PackagePath>\</PackagePath>
 	  </None>
+	  <None Include="..\ai-language-pack\README.md">
+	    <Pack>True</Pack>
+	    <PackagePath>contentFiles\any\any\ai-language-pack\</PackagePath>
+	  </None>
+	  <None Include="..\ai-language-pack\llms.txt">
+	    <Pack>True</Pack>
+	    <PackagePath>contentFiles\any\any\ai-language-pack\</PackagePath>
+	  </None>
+	  <None Include="..\ai-language-pack\docs\**\*.*">
+	    <Pack>True</Pack>
+	    <PackagePath>contentFiles\any\any\ai-language-pack\docs\</PackagePath>
+	  </None>
+	  <None Include="..\ai-language-pack\schema\**\*.*">
+	    <Pack>True</Pack>
+	    <PackagePath>contentFiles\any\any\ai-language-pack\schema\</PackagePath>
+	  </None>
+	  <None Include="..\ai-language-pack\examples\**\*.*">
+	    <Pack>True</Pack>
+	    <PackagePath>contentFiles\any\any\ai-language-pack\examples\</PackagePath>
+	  </None>
 	</ItemGroup>
 
 </Project>

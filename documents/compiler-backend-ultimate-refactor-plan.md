@@ -1855,12 +1855,11 @@ lowering 初版仍不切换旧 emitter。下一阶段应优先补 statement/expr
 - `LoweringRepresentsObjectArrayMapAndConstructorExpressions`
 - `FunctionBindingDeclaresCatchVariableSlot`
 - `LoweringCountsUnsupportedNodes` 改为使用 destructuring variable declaration 作为当前仍未覆盖的缺口样例。
-- `LoweringCountsUnsupportedNodes` 明确断言 `YieldStatement` 保持 unsupported。
+
 
 当前仍未覆盖：
 
 - destructuring declaration lowering。
-- yield statement lowering；旧 emitter 未实装，本阶段不纳入新 lowered 支持集。
 - template/interpolation/include/cast/group 等低频或需要独立语义决策的表达式。
 - enum/import/module-meta 等模块级语句的 emitter 消费侧设计。
 
@@ -1932,8 +1931,6 @@ CompilerPipelineBenchmarks: completed
 - `EmissionPassConsumesSupportedLoweredPlan`
   - 验证 supported lowered plan 可被 emission pass 消费。
   - 验证 sequence point、local slot、module symbol、direct-call candidate、catch slot 均可被 emitter 看见。
-- `EmissionPassRejectsUnsupportedLoweredNodes`
-  - 验证 `YieldStatement` 仍作为 unsupported lowered node 被拒绝。
 - `EmissionPassConsumesLoweredBodyInsteadOfAst`
   - 人为替换 `FunctionPlan.Body` 后 emission pass 成功，证明新 emitter 不回 AST。
 
@@ -3239,7 +3236,6 @@ net10.0: 289 passed, 0 failed, 0 skipped
 
 - `LoweringCountsUnsupportedNodes`
   - 解构不再作为 unsupported 样例。
-  - 保留 `YieldStatement` unsupported 断言；Yield 旧 emitter 也未实装，仍不实现。
 - `LoweringRepresentsDestructuringDeclarations`
   - 验证 object/array destructuring lowered 结构、rest trailing count。
 - `EmissionSkeletonExecutesDestructuringDeclarations`

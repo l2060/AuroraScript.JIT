@@ -55,6 +55,29 @@ public sealed class ParserSyntaxTests
         Assert.Contains(module.Imports, import => !import.Include);
     }
 
+    [Fact]
+    public void AllowsMultipleImportsAndIncludesAtModuleTop()
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource("first.as", "@module(FIRST);");
+        workspace.WriteSource("second.as", "@module(SECOND);");
+        workspace.WriteSource("included.as", "export const VALUE = 1;");
+
+        var module = Parse(
+            """
+            @module(TEST);
+            import first from 'first';
+            include 'included';
+            import second from 'second';
+            export func run() { return VALUE; }
+            """,
+            workspace.Root);
+
+        Assert.Equal(3, module.Imports.Count);
+        Assert.Equal(0, module.Length);
+        Assert.Single(module.Functions);
+    }
+
     [Theory]
     [InlineData("var value = ;")]
     [InlineData("if (true) {")]
