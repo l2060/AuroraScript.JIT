@@ -1,0 +1,522 @@
+using AuroraScript.LanguageServer;
+using System;
+using System.IO;
+using System.Text.Json.Nodes;
+using System.Threading.Tasks;
+using Xunit;
+
+namespace AuroraScript.LanguageServer.Tests;
+
+public sealed class AuroraLanguageServerTests
+{
+    [Fact]
+    public async Task InitializeReturnsCoreCapabilities()
+    {
+        var server = CreateServer();
+        var result = await server.HandleAsync(new JsonObject
+        {
+            ["jsonrpc"] = "2.0",
+            ["id"] = 1,
+            ["method"] = "initialize",
+            ["params"] = new JsonObject()
+        });
+
+        Assert.NotNull(result.Response);
+        var capabilities = result.Response!.Result!.AsObject()["capabilities"]!.AsObject();
+        Assert.True(capabilities["hoverProvider"]!.GetValue<bool>());
+        Assert.NotNull(capabilities["completionProvider"]);
+        Assert.NotNull(capabilities["signatureHelpProvider"]);
+        Assert.True(capabilities["renameProvider"]!.GetValue<bool>());
+        Assert.NotNull(capabilities["semanticTokensProvider"]);
+    }
+
+    [Fact]
+    public async Task DidOpenPublishesReadonlyBuiltinDiagnostics()
+    {
+        var server = CreateServer();
+        var result = await DidOpen(server,
+            """
+            @module(TEST);
+            export func run() {
+                Math.PI = 1;
+            }
+            """);
+
+        var notification = Assert.Single(result.Notifications);
+        Assert.Equal("textDocument/publishDiagnostics", notification.Method);
+        var diagnostics = notification.Parameters["diagnostics"]!.AsArray();
+        var diagnosticNode = Assert.Single(diagnostics);
+        Assert.NotNull(diagnosticNode);
+        var diagnostic = diagnosticNode!.AsObject();
+        Assert.Equal("AURORA-BUILTIN-READONLY", diagnostic["code"]!.GetValue<string>());
+        Assert.Contains("Math.PI", diagnostic["message"]!.GetValue<string>(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task HoverReturnsBuiltinMemberMarkdown()
+    {
+        var server = CreateServer();
+        const string source =
+            """
+            @module(TEST);
+            export func run() {
+                return Math.abs(-1);
+            }
+            """;
+        await DidOpen(server, source);
+
+        var result = await Request(server, 2, "textDocument/hover", new JsonObject
+        {
+            ["textDocument"] = TextDocument(),
+            ["position"] = Position(source, "abs")
+        });
+
+        var hover = result.Response!.Result!.AsObject();
+        var value = hover["contents"]!.AsObject()["value"]!.GetValue<string>();
+        Assert.Contains("Math.abs", value, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CompletionReturnsBuiltinMembers()
+    {
+        var server = CreateServer();
+        const string source =
+            """
+            @module(TEST);
+            export func run() {
+                Math.
+            }
+            """;
+        await DidOpen(server, source);
+
+        var result = await Request(server, 3, "textDocument/completion", new JsonObject
+        {
+            ["textDocument"] = TextDocument(),
+            ["position"] = new JsonObject { ["line"] = 2, ["character"] = 9 }
+        });
+
+        var items = result.Response!.Result!.AsArray();
+        Assert.Contains(items, node => node!.AsObject()["label"]!.GetValue<string>() == "abs");
+        Assert.Contains(items, node => node!.AsObject()["label"]!.GetValue<string>() == "PI");
+    }
+
+    [Fact]
+    public async Task SignatureHelpReturnsActiveParameter()
+    {
+        var server = CreateServer();
+        const string source =
+            """
+            @module(TEST);
+            export func run() {
+                return Math.pow(2, 3);
+            }
+            """;
+        await DidOpen(server, source);
+
+        var result = await Request(server, 4, "textDocument/signatureHelp", new JsonObject
+        {
+            ["textDocument"] = TextDocument(),
+            ["position"] = Position(source, "3")
+        });
+
+        var signatureHelp = result.Response!.Result!.AsObject();
+        Assert.Equal(1, signatureHelp["activeParameter"]!.GetValue<int>());
+        var signatureNode = Assert.Single(signatureHelp["signatures"]!.AsArray());
+        Assert.NotNull(signatureNode);
+        var signature = signatureNode!.AsObject();
+        Assert.Equal("Math.pow(x: number, y: number): number", signature["label"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task DefinitionReturnsImportedModuleMemberLocation()
+    {
+        var server = CreateServer();
+        var root = Path.Combine(Path.GetTempPath(), "aurora-lsp-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var mainPath = Path.Combine(root, "main.as");
+            var libPath = Path.Combine(root, "lib.as");
+            var mainUri = new Uri(mainPath).AbsoluteUri;
+            var libUri = new Uri(libPath).AbsoluteUri;
+            const string main =
+                """
+                @module(MAIN);
+                import lib from './lib';
+                export func run() {
+                    return lib.value;
+                }
+                """;
+            const string lib = "@module(LIB); export const value = 42;";
+            File.WriteAllText(libPath, lib);
+            await DidOpen(server, libUri, lib);
+            await DidOpen(server, mainUri, main);
+
+            var result = await Request(server, 5, "textDocument/definition", new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = mainUri },
+                ["position"] = Position(main, "value")
+            });
+
+            var location = result.Response!.Result!.AsObject();
+            Assert.Equal(libUri, location["uri"]!.GetValue<string>());
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task DefinitionUsesOpenWorkspaceDocumentsWithoutDiskFile()
+    {
+        var server = CreateServer();
+        var root = Path.Combine(Path.GetTempPath(), "aurora-lsp-memory-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var mainPath = Path.Combine(root, "main.as");
+            var libPath = Path.Combine(root, "lib.as");
+            var mainUri = new Uri(mainPath).AbsoluteUri;
+            var libUri = new Uri(libPath).AbsoluteUri;
+            const string main =
+                """
+                @module(MAIN);
+                import lib from './lib';
+                export func run() {
+                    return lib.value;
+                }
+                """;
+            const string lib = "@module(LIB); export const value = 42;";
+            await DidOpen(server, libUri, lib);
+            await DidOpen(server, mainUri, main);
+
+            var result = await Request(server, 50, "textDocument/definition", new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = mainUri },
+                ["position"] = Position(main, "value")
+            });
+
+            var location = result.Response!.Result!.AsObject();
+            Assert.Equal(libUri, location["uri"]!.GetValue<string>());
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task DidChangeInvalidatesImportedDefinitionLocation()
+    {
+        var server = CreateServer();
+        var root = Path.Combine(Path.GetTempPath(), "aurora-lsp-change-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var mainPath = Path.Combine(root, "main.as");
+            var libPath = Path.Combine(root, "lib.as");
+            var mainUri = new Uri(mainPath).AbsoluteUri;
+            var libUri = new Uri(libPath).AbsoluteUri;
+            const string main =
+                """
+                @module(MAIN);
+                import lib from './lib';
+                export func run() {
+                    return lib.value;
+                }
+                """;
+            const string firstLib = "@module(LIB); export const value = 1;";
+            const string secondLib =
+                """
+                @module(LIB);
+                export const other = 1;
+                export const value = 2;
+                """;
+            await DidOpen(server, libUri, firstLib);
+            await DidOpen(server, mainUri, main);
+
+            var firstResult = await Request(server, 51, "textDocument/definition", new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = mainUri },
+                ["position"] = Position(main, "value")
+            });
+
+            await DidChange(server, libUri, secondLib, version: 2);
+            var secondResult = await Request(server, 52, "textDocument/definition", new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = mainUri },
+                ["position"] = Position(main, "value")
+            });
+
+            Assert.Equal(0, LocationStartLine(firstResult.Response!.Result!));
+            Assert.Equal(2, LocationStartLine(secondResult.Response!.Result!));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ReferencesReturnsImportedExportLocations()
+    {
+        var server = CreateServer();
+        var root = Path.Combine(Path.GetTempPath(), "aurora-lsp-ref-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var mainPath = Path.Combine(root, "main.as");
+            var libPath = Path.Combine(root, "lib.as");
+            var otherPath = Path.Combine(root, "other.as");
+            var mainUri = new Uri(mainPath).AbsoluteUri;
+            var libUri = new Uri(libPath).AbsoluteUri;
+            var otherUri = new Uri(otherPath).AbsoluteUri;
+            const string main =
+                """
+                @module(MAIN);
+                import lib from './lib';
+                export func run() { return lib.value; }
+                """;
+            const string lib = "@module(LIB); export const value = 42;";
+            const string other =
+                """
+                @module(OTHER);
+                import lib from './lib';
+                export func run() { return lib.value; }
+                """;
+            File.WriteAllText(libPath, lib);
+            await DidOpen(server, libUri, lib);
+            await DidOpen(server, mainUri, main);
+            await DidOpen(server, otherUri, other);
+
+            var result = await Request(server, 6, "textDocument/references", new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = mainUri },
+                ["position"] = Position(main, "value"),
+                ["context"] = new JsonObject { ["includeDeclaration"] = true }
+            });
+
+            var locations = result.Response!.Result!.AsArray();
+            Assert.Equal(3, locations.Count);
+            Assert.Contains(locations, node => node!.AsObject()["uri"]!.GetValue<string>() == libUri);
+            Assert.Contains(locations, node => node!.AsObject()["uri"]!.GetValue<string>() == mainUri);
+            Assert.Contains(locations, node => node!.AsObject()["uri"]!.GetValue<string>() == otherUri);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task RenameReturnsWorkspaceEditForImportedExport()
+    {
+        var server = CreateServer();
+        var root = Path.Combine(Path.GetTempPath(), "aurora-lsp-rename-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var mainPath = Path.Combine(root, "main.as");
+            var libPath = Path.Combine(root, "lib.as");
+            var otherPath = Path.Combine(root, "other.as");
+            var mainUri = new Uri(mainPath).AbsoluteUri;
+            var libUri = new Uri(libPath).AbsoluteUri;
+            var otherUri = new Uri(otherPath).AbsoluteUri;
+            const string main =
+                """
+                @module(MAIN);
+                import lib from './lib';
+                export func run() { return lib.value; }
+                """;
+            const string lib = "@module(LIB); export const value = 42;";
+            const string other =
+                """
+                @module(OTHER);
+                import lib from './lib';
+                export func run() { return lib.value; }
+                """;
+            File.WriteAllText(libPath, lib);
+            await DidOpen(server, libUri, lib);
+            await DidOpen(server, mainUri, main);
+            await DidOpen(server, otherUri, other);
+
+            var result = await Request(server, 7, "textDocument/rename", new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = mainUri },
+                ["position"] = Position(main, "value"),
+                ["newName"] = "total"
+            });
+
+            var edit = result.Response!.Result!.AsObject();
+            var changes = edit["changes"]!.AsObject();
+            Assert.True(changes.ContainsKey(libUri));
+            Assert.True(changes.ContainsKey(mainUri));
+            Assert.True(changes.ContainsKey(otherUri));
+            Assert.Equal("total", changes[mainUri]!.AsArray()[0]!.AsObject()["newText"]!.GetValue<string>());
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task SemanticTokensReturnsEncodedTokenData()
+    {
+        var server = CreateServer();
+        const string source =
+            """
+            @module(TEST);
+            export func run(value) {
+                const total = value + 10;
+                return `total: ${total}`;
+            }
+            """;
+        await DidOpen(server, source);
+
+        var result = await Request(server, 8, "textDocument/semanticTokens/full", new JsonObject
+        {
+            ["textDocument"] = TextDocument()
+        });
+
+        var semanticTokens = result.Response!.Result!.AsObject();
+        var data = semanticTokens["data"]!.AsArray();
+        Assert.NotEmpty(data);
+        Assert.Equal(0, data.Count % 5);
+    }
+
+    private static AuroraLanguageServer CreateServer()
+    {
+        return AuroraLanguageServerFactory.CreateDefault();
+    }
+
+    private static Task<AuroraScript.LanguageServer.Protocol.LspResult> DidOpen(AuroraLanguageServer server, string source)
+    {
+        return DidOpen(server, TestUri, source);
+    }
+
+    private static Task<AuroraScript.LanguageServer.Protocol.LspResult> DidOpen(AuroraLanguageServer server, string uri, string source)
+    {
+        return server.HandleAsync(new JsonObject
+        {
+            ["jsonrpc"] = "2.0",
+            ["method"] = "textDocument/didOpen",
+            ["params"] = new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = uri,
+                    ["languageId"] = "aurora",
+                    ["version"] = 1,
+                    ["text"] = source
+                }
+            }
+        });
+    }
+
+    private static Task<AuroraScript.LanguageServer.Protocol.LspResult> DidChange(
+        AuroraLanguageServer server,
+        string uri,
+        string source,
+        int version)
+    {
+        return server.HandleAsync(new JsonObject
+        {
+            ["jsonrpc"] = "2.0",
+            ["method"] = "textDocument/didChange",
+            ["params"] = new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = uri,
+                    ["version"] = version
+                },
+                ["contentChanges"] = new JsonArray
+                {
+                    new JsonObject
+                    {
+                        ["text"] = source
+                    }
+                }
+            }
+        });
+    }
+
+    private static Task<AuroraScript.LanguageServer.Protocol.LspResult> Request(
+        AuroraLanguageServer server,
+        int id,
+        string method,
+        JsonObject parameters)
+    {
+        return server.HandleAsync(new JsonObject
+        {
+            ["jsonrpc"] = "2.0",
+            ["id"] = id,
+            ["method"] = method,
+            ["params"] = parameters
+        });
+    }
+
+    private static JsonObject TextDocument()
+    {
+        return new JsonObject { ["uri"] = TestUri };
+    }
+
+    private static JsonObject Position(string source, string needle)
+    {
+        var offset = source.IndexOf(needle, StringComparison.Ordinal);
+        Assert.True(offset >= 0, $"Needle '{needle}' not found.");
+        var line = 0;
+        var character = 0;
+        for (var i = 0; i < offset; i++)
+        {
+            if (source[i] == '\r')
+            {
+                if (i + 1 < offset && source[i + 1] == '\n')
+                {
+                    i++;
+                }
+                line++;
+                character = 0;
+            }
+            else if (source[i] == '\n')
+            {
+                line++;
+                character = 0;
+            }
+            else
+            {
+                character++;
+            }
+        }
+
+        return new JsonObject { ["line"] = line, ["character"] = character };
+    }
+
+    private static int LocationStartLine(JsonNode location)
+    {
+        return location
+            .AsObject()["range"]!
+            .AsObject()["start"]!
+            .AsObject()["line"]!
+            .GetValue<int>();
+    }
+
+    private const string TestUri = "file:///D:/workspace/test.as";
+}

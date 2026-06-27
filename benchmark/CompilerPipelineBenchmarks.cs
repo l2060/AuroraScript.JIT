@@ -141,7 +141,7 @@ namespace AuroraBenchmark
         {
             var options = CreateOptions();
             var engine = new AuroraEngine(options);
-            await engine.BuildAsync(new TextSource(baseDirectory, Path.Combine(baseDirectory, "single.as"), largeSource));
+            await engine.BuildAsync(new MemoryScriptSource(baseDirectory, Path.Combine(baseDirectory, "single.as"), largeSource));
         }
 
         [BenchmarkCategory("compile")]
@@ -169,7 +169,7 @@ namespace AuroraBenchmark
         private AuroraLexer CreateLexer(string fileName, string source)
         {
             var fullPath = Path.Combine(baseDirectory, fileName);
-            return new AuroraLexer(baseDirectory, new TextSource(baseDirectory, fullPath, source));
+            return new AuroraLexer(baseDirectory, new MemoryScriptSource(baseDirectory, fullPath, source));
         }
 
         private int Lex(string fileName, string source)

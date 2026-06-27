@@ -23,7 +23,7 @@ namespace AuroraScript.Compiler.Analyzer
 
         public String Directory { get; private set; }
 
-        private enum LexTokenKind : byte
+        internal enum LexTokenKind : byte
         {
             Identifier,
             Keyword,
@@ -88,6 +88,22 @@ namespace AuroraScript.Compiler.Analyzer
 
                 return ((int)kind << 24) | TextPayloadFlag | (textId + 1);
             }
+        }
+
+        internal readonly struct LexerTokenInfo
+        {
+            public LexerTokenInfo(LexTokenKind kind, SourceSpan range, string value, Symbols symbol)
+            {
+                Kind = kind;
+                Range = range;
+                Value = value;
+                Symbol = symbol;
+            }
+
+            public LexTokenKind Kind { get; }
+            public SourceSpan Range { get; }
+            public string Value { get; }
+            public Symbols Symbol { get; }
         }
 
         private sealed class LexTokenBuffer : IDisposable
@@ -182,10 +198,10 @@ namespace AuroraScript.Compiler.Analyzer
 
         public AuroraLexer(String baseDirectory, ScriptSource source)
         {
-            this.BaseDirectory = baseDirectory;
-            this.Directory = Path.GetDirectoryName(source.FullPath);
+            this.BaseDirectory = ScriptPath.NormalizeBaseDirectory(baseDirectory);
+            this.Directory = ScriptPath.GetDirectoryName(source.FullPath);
             this.FullPath = source.FullPath;
-            this.FileName = Path.GetFileName(source.FullPath);
+            this.FileName = ScriptPath.GetFileName(source.FullPath);
             this.InputData = source.ReadSource();
             this.bufferLength = this.InputData.Length;
             this.tokens = new LexTokenBuffer(GetTokenChunkSize(this.bufferLength));
@@ -408,6 +424,13 @@ namespace AuroraScript.Compiler.Analyzer
         public Boolean IsAtEnd => this.tokens[this.Position].Kind == LexTokenKind.EndOfFile;
 
         internal int TokenCount => this.tokens?.Count ?? 0;
+
+        internal LexerTokenInfo GetTokenInfo(int index)
+        {
+            var token = this.tokens[index];
+            var symbol = Symbols.FromId(token.SymbolId);
+            return new LexerTokenInfo(token.Kind, this.CreateRange(in token), this.GetTokenValue(in token, symbol), symbol);
+        }
 
         public void Dispose()
         {

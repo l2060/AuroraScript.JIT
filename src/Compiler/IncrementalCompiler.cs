@@ -91,7 +91,9 @@ namespace AuroraScript.Compiler
                 {
                     if (!visited.Contains(dep.FullPath))
                     {
-                        source = new FileSource(source.BaseDirectory, dep.FullPath, Encoding.UTF8);
+                        source = Options.Compiler.SourceResolver.Open(
+                            new ScriptSourceReference(source.BaseDirectory, dep.FullPath, dep.ModulePath),
+                            Encoding.UTF8);
                         padding.Enqueue(source);
                         visited.Add(dep.FullPath);
                     }

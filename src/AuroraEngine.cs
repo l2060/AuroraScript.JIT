@@ -119,11 +119,7 @@ namespace AuroraScript
         /// <returns>A <see cref="ScriptSource"/> representing the memory-based content.</returns>
         public ScriptSource MemorySource(string file, string code)
         {
-            if (!Path.IsPathRooted(file))
-            {
-                file = Path.Join(Options.Compiler.BaseDirectory, file);
-            }
-            return new TextSource(Options.Compiler.BaseDirectory, file, code);
+            return new MemoryScriptSource(Options.Compiler.BaseDirectory, file, code);
         }
 
         /// <summary>
@@ -134,10 +130,6 @@ namespace AuroraScript
         /// <returns>A <see cref="ScriptSource"/> representing the file-based content.</returns>
         public ScriptSource FileSource(string file, Encoding encoding)
         {
-            if (!Path.IsPathRooted(file))
-            {
-                file = Path.Join(Options.Compiler.BaseDirectory, file);
-            }
             return new FileSource(Options.Compiler.BaseDirectory, file, encoding);
         }
 
@@ -182,11 +174,6 @@ namespace AuroraScript
             await _buildLock.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                var baseDirectory = Path.GetFullPath(Options.Compiler.BaseDirectory);
-                if (string.IsNullOrEmpty(baseDirectory) || !Directory.Exists(baseDirectory))
-                {
-                    throw new AuroraException($"The Directory “{baseDirectory}” field of the parameter options is not a valid directory");
-                }
                 AbstractCILBuilder builder = Options.Compiler.Mode switch
                 {
                     CompilationMode.Persistence => new PersistedBuilder(Options),

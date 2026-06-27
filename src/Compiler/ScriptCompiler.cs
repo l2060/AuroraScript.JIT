@@ -42,7 +42,7 @@ namespace AuroraScript.Compiler
         public ScriptCompiler(EngineOptions options)
         {
             _options = options;
-            _baseDirectory = Path.GetFullPath(_options.Compiler.BaseDirectory);
+            _baseDirectory = ScriptPath.NormalizeBaseDirectory(_options.Compiler.BaseDirectory);
         }
 
         public async Task<ModuleDeclaration[]> BuildModuleGraphAsync(ScriptSource[] sources, CancellationToken cancellationToken = default)
@@ -243,7 +243,9 @@ namespace AuroraScript.Compiler
             for (var i = 0; i < syntaxTree.Imports.Count; i++)
             {
                 var dependency = syntaxTree.Imports[i];
-                RegisterCompileModule(new FileSource(source.BaseDirectory, dependency.FullPath, dependencyEncoding));
+                RegisterCompileModule(_options.Compiler.SourceResolver.Open(
+                    new ScriptSourceReference(source.BaseDirectory, dependency.FullPath, dependency.ModulePath),
+                    dependencyEncoding));
             }
         }
 
@@ -397,7 +399,7 @@ namespace AuroraScript.Compiler
             {
                 throw new ArgumentException("Script source paths cannot be empty.", nameof(path));
             }
-            return Path.GetFullPath(path);
+            return ScriptPath.NormalizeFullPath(path);
         }
 
         private static int CompareModulesByPath(ModuleDeclaration left, ModuleDeclaration right)

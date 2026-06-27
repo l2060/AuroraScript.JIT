@@ -1,4 +1,5 @@
 ﻿using AuroraScript.Runtime.Serialization;
+using AuroraScript.Core;
 using System;
 using System.IO;
 
@@ -683,6 +684,12 @@ namespace AuroraScript
         /// A value of zero selects <see cref="Environment.ProcessorCount"/>.
         /// </summary>
         public int MaxDegreeOfParallelism { get; init; }
+
+        /// <summary>
+        /// Gets the resolver used to locate and open imported script sources.
+        /// The default resolver reads from the file system.
+        /// </summary>
+        public IScriptSourceResolver SourceResolver { get; init; } = FileScriptSourceResolver.Instance;
     }
 
     /// <summary>
@@ -693,6 +700,7 @@ namespace AuroraScript
         private string _baseDirectory;
         private string _extName;
         private int _maxDegreeOfParallelism;
+        private IScriptSourceResolver _sourceResolver;
 
         /// <summary>
         /// Creates a mutable compiler-options builder from an immutable options snapshot.
@@ -705,6 +713,7 @@ namespace AuroraScript
             Mode = options.Mode;
             _extName = options.ExtName;
             _maxDegreeOfParallelism = options.MaxDegreeOfParallelism;
+            _sourceResolver = options.SourceResolver ?? FileScriptSourceResolver.Instance;
         }
 
         /// <summary>
@@ -713,7 +722,7 @@ namespace AuroraScript
         public string Directory
         {
             get => _baseDirectory;
-            set => _baseDirectory = Path.GetFullPath(value);
+            set => _baseDirectory = ScriptPath.NormalizeBaseDirectory(value);
         }
 
         /// <summary>
@@ -756,6 +765,15 @@ namespace AuroraScript
         }
 
         /// <summary>
+        /// Gets or sets the resolver used to locate and open imported script sources.
+        /// </summary>
+        public IScriptSourceResolver SourceResolver
+        {
+            get => _sourceResolver;
+            set => _sourceResolver = value ?? throw new ArgumentNullException(nameof(value));
+        }
+
+        /// <summary>
         /// Sets the base directory path used for resolving relative script files.
         /// </summary>
         public CompilerOptionsBuilder WithDirectory(string value)
@@ -791,6 +809,15 @@ namespace AuroraScript
             return this;
         }
 
+        /// <summary>
+        /// Sets the resolver used to locate and open imported script sources.
+        /// </summary>
+        public CompilerOptionsBuilder WithSourceResolver(IScriptSourceResolver value)
+        {
+            SourceResolver = value;
+            return this;
+        }
+
         internal CompilerOptions ToOptions()
         {
             return new CompilerOptions
@@ -798,7 +825,8 @@ namespace AuroraScript
                 BaseDirectory = Directory,
                 Mode = Mode,
                 ExtName = ExtName,
-                MaxDegreeOfParallelism = MaxDegreeOfParallelism
+                MaxDegreeOfParallelism = MaxDegreeOfParallelism,
+                SourceResolver = SourceResolver
             };
         }
     }

@@ -100,20 +100,7 @@ namespace AuroraScript.Compiler.Analyzer
             this.Lexer = lexer;
             this.Root = new ModuleDeclaration(this.Lexer.Directory);
             this.Root.FullPath = lexer.FullPath;
-            if (lexer.FullPath.StartsWith(lexer.BaseDirectory))
-            {
-                this.Root.ModulePath = lexer.FullPath.Substring(lexer.BaseDirectory.Length).Replace("\\", "/");
-            }
-            else
-            {
-                this.Root.ModulePath = Path.GetRelativePath(lexer.BaseDirectory, lexer.FullPath).Replace("\\", "/");
-            }
-
-            // Remove leading /
-            if (this.Root.ModulePath.StartsWith("/"))
-            {
-                this.Root.ModulePath = this.Root.ModulePath.Substring(1);
-            }
+            this.Root.ModulePath = ScriptPath.GetModulePath(lexer.BaseDirectory, lexer.FullPath);
             // Set default module name
             var moduleDefaultName = this.Root.ModulePath;
             if (moduleDefaultName.EndsWith(_options.Compiler.ExtName))
@@ -732,7 +719,7 @@ namespace AuroraScript.Compiler.Analyzer
                     if (!TryParseTemplateIdentifier(expressionSource, token.Range, out var expr))
                     {
                         string exprText = expressionSource.ToString();
-                        var subLexer = new AuroraLexer(this.Lexer.BaseDirectory, new TextSource(this.Lexer.BaseDirectory, this.Lexer.FullPath, exprText));
+                        var subLexer = new AuroraLexer(this.Lexer.BaseDirectory, new MemoryScriptSource(this.Lexer.BaseDirectory, this.Lexer.FullPath, exprText));
                         var subParser = new AuroraParser(subLexer, _options);
                         expr = subParser.ParseExpression(0);
                         if (expr == null)
@@ -977,12 +964,11 @@ namespace AuroraScript.Compiler.Analyzer
             }
             StringToken fileToken = this.Lexer.NextOfKind<StringToken>();
             var closed = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
-            var (fullPath, modulePath) = ResolveImportPath(fileToken.Value);
-            if (!File.Exists(fullPath))
+            if (!TryResolveImportPath(fileToken.Value, out var source))
             {
                 throw new AuroraCompilationException(AuroraCompilationStage.Binding, importRange, $"include file not found: {fileToken.Value}");
             }
-            var import = new ImportDeclaration() { File = fileToken, FullPath = fullPath, ModulePath = modulePath, Include = true };
+            var import = new ImportDeclaration() { File = fileToken, FullPath = source.FullPath, ModulePath = source.ModulePath, Include = true };
 
             return SetRange(import, importRange, closed);
         }
@@ -1000,12 +986,11 @@ namespace AuroraScript.Compiler.Analyzer
             this.Lexer.Expect(Symbols.KW_FROM);
             StringToken fileToken = this.Lexer.NextOfKind<StringToken>();
             var closed = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
-            var (fullPath, modulePath) = ResolveImportPath(fileToken.Value);
-            if (!File.Exists(fullPath))
+            if (!TryResolveImportPath(fileToken.Value, out var source))
             {
                 throw new AuroraCompilationException(AuroraCompilationStage.Binding, importRange, $"Import file not found: {fileToken.Value}");
             }
-            var import = new ImportDeclaration() { Name = module, File = fileToken, FullPath = fullPath, ModulePath = modulePath, Include = false };
+            var import = new ImportDeclaration() { Name = module, File = fileToken, FullPath = source.FullPath, ModulePath = source.ModulePath, Include = false };
 
             return SetRange(import, importRange, closed);
         }
@@ -1260,16 +1245,14 @@ namespace AuroraScript.Compiler.Analyzer
             return statement;
         }
 
-        private (string, string) ResolveImportPath(string path)
+        private bool TryResolveImportPath(string path, out ScriptSourceReference source)
         {
-            var fullPath = Path.GetFullPath(Path.Combine(this.Lexer.Directory, path));
-            var extension = Path.GetExtension(fullPath).ToLower();
-            if (extension != _options.Compiler.ExtName)
-            {
-                fullPath = Path.ChangeExtension(fullPath, _options.Compiler.ExtName);
-            }
-            var modulePath = Path.GetRelativePath(this.Lexer.BaseDirectory, fullPath).Replace("\\", "/");
-            return (fullPath, modulePath);
+            return _options.Compiler.SourceResolver.TryResolve(
+                this.Lexer.BaseDirectory,
+                this.Lexer.FullPath,
+                path,
+                _options.Compiler.ExtName,
+                out source);
         }
         private Statement ParseForBlock()
         {

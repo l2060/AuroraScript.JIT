@@ -81,6 +81,8 @@
 
 	<ItemGroup>
 	  <Content Include="icon.ico" />
+	  <InternalsVisibleTo Include="AuroraScript.LanguageServices" />
+	  <InternalsVisibleTo Include="AuroraScript.LanguageServices.Tests" />
 	</ItemGroup>
 
 	<ItemGroup>
