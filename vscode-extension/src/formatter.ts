@@ -114,7 +114,7 @@ export class AuroraFormatter {
                     // It's a regex if it follows an operator, punctuation (except ), ], }), or certain keywords
                     // Simplified: check last token char
                     const isRegexStart = lastTokenChar === '' || '(=,:[!&|?+-*%/><^~;{'.includes(lastTokenChar) ||
-                        /(^|[\s\W])(return|yield|case|throw|delete|typeof|void|in|new|func|function)$/.test(formattedStream.trimEnd());
+                        /(^|[\s\W])(return|case|throw|delete|typeof|void|in|new|func|function)$/.test(formattedStream.trimEnd());
 
                     if (isRegexStart) {
                         state = 'REGEX';
@@ -286,7 +286,7 @@ export class AuroraFormatter {
 
                 if (op) {
                     const trimmedSafe = formattedStream.trimEnd();
-                    const isKeywordUnary = /(^|[\s\W])(return|throw|case|yield|delete|typeof|void|in|new|func|function|default)$/.test(trimmedSafe);
+                    const isKeywordUnary = /(^|[\s\W])(return|throw|case|delete|typeof|void|in|new|func|function|default)$/.test(trimmedSafe);
                     // If op is preceded by anything that triggers unary, OR a keyword like return
                     const isUnary = ['+', '-', '!', '~'].includes(op) && (lastTokenChar === '' || '+-*/%=!&|^<>,({[:;'.includes(lastTokenChar) || isKeywordUnary);
 

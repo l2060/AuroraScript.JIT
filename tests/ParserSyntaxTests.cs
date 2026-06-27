@@ -23,7 +23,7 @@ public sealed class ParserSyntaxTests
     [InlineData("var array = [1, , 2, ...[3, 4]]; var map = { a: 1, b: 2, key, ...{ c: 3 } };")]
     [InlineData("var { a, b } = { a: 1, b: 2 }; var [first, ...rest, last] = [1, 2, 3];")]
     [InlineData("var expression = (a, b) => a + b; var block = () => { return 1; };")]
-    [InlineData("func mutate(obj) { delete obj.value; debugger; yield; }")]
+    [InlineData("func mutate(obj) { delete obj.value; debugger; }")]
     [InlineData("func values() { return `value=${1 + 2}`; }")]
     [InlineData("func values() { return `outer=${`inner=${1 + 2}`}`; }")]
     [InlineData("func values() { return `literal=\\${value}`; }")]

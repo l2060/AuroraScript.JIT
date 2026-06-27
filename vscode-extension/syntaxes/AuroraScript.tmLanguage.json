@@ -96,7 +96,7 @@
             "patterns": [
                 {
                     "name": "keyword.control.auroraScript",
-                    "match": "\\b(if|else|for|while|break|continue|return|yield|debugger|in)\\b"
+                    "match": "\\b(if|else|for|while|break|continue|return|debugger|in)\\b"
                 },
                 {
                     "name": "keyword.other.auroraScript",

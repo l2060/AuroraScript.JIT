@@ -16,7 +16,7 @@ export class AuroraHoverProvider implements vscode.HoverProvider {
 
         const keywords = new Set([
             'declare', 'if', 'else', 'const', 'function', 'func', 'var', 'return',
-            'debugger', 'break', 'yield', 'continue', 'enum', 'for', 'new',
+            'debugger', 'break', 'continue', 'enum', 'for', 'new',
             'delete', 'while', 'import', 'include', 'from', 'export', 'typeof',
             'true', 'false', 'null'
         ]);

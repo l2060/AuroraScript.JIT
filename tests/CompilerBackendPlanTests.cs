@@ -1475,7 +1475,6 @@ public sealed class CompilerBackendPlanTests
             """
             @module(TEST);
             export func run() {
-                yield;
                 return 1;
             }
             """,
