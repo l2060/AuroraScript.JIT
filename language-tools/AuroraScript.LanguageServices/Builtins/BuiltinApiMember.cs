@@ -12,7 +12,7 @@ public sealed class BuiltinApiMember
         string returnType,
         bool readOnly,
         IReadOnlyList<BuiltinApiParameter> parameters,
-        IReadOnlyList<string> notes)
+        BuiltinApiDocumentation documentation)
     {
         OwnerName = ownerName ?? string.Empty;
         Name = string.IsNullOrWhiteSpace(name) ? throw new ArgumentException("Member name is required.", nameof(name)) : name;
@@ -20,7 +20,7 @@ public sealed class BuiltinApiMember
         ReturnType = string.IsNullOrWhiteSpace(returnType) ? "any" : returnType;
         ReadOnly = readOnly;
         Parameters = parameters ?? Array.Empty<BuiltinApiParameter>();
-        Notes = notes ?? Array.Empty<string>();
+        Documentation = documentation ?? BuiltinApiDocumentation.Empty;
     }
 
     public string OwnerName { get; }
@@ -29,7 +29,8 @@ public sealed class BuiltinApiMember
     public string ReturnType { get; }
     public bool ReadOnly { get; }
     public IReadOnlyList<BuiltinApiParameter> Parameters { get; }
-    public IReadOnlyList<string> Notes { get; }
+    public BuiltinApiDocumentation Documentation { get; }
+    public IReadOnlyList<string> Notes => Documentation.GetNotes(null);
 
     public string FullName => string.IsNullOrEmpty(OwnerName) ? Name : OwnerName + "." + Name;
 }

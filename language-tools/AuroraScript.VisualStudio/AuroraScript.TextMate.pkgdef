@@ -1,0 +1,14 @@
+[$RootKey$\TextMate\Repositories]
+"AuroraScript"="$PackageFolder$\Grammars"
+
+[$RootKey$\TextMate\LanguageMapping]
+".as"="source.aurora"
+
+[$RootKey$\TextMate\LanguageConfiguration\GrammarMapping]
+"source.aurora"="$PackageFolder$\language-configuration.json"
+
+[$RootKey$\TextMate\LanguageConfiguration\ContentTypeMapping]
+"aurorascript"="$PackageFolder$\language-configuration.json"
+
+[$RootKey$\TextMate\ContentTypeMapping]
+"aurorascript"="source.aurora"

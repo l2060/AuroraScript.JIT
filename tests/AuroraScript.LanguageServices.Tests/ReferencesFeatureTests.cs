@@ -58,6 +58,141 @@ public sealed class ReferencesFeatureTests : IDisposable
     }
 
     [Fact]
+    public void FindsReferencesForImportedExportFromDeclaration()
+    {
+        var libPath = Path.Combine(_root, "lib.as");
+        var mainPath = Path.Combine(_root, "main.as");
+        var otherPath = Path.Combine(_root, "other.as");
+        var lib = "@module(LIB); export const value = 42;";
+        var main =
+            """
+            @module(MAIN);
+            import lib from './lib';
+            export func run() { return lib.value; }
+            """;
+        var other =
+            """
+            @module(OTHER);
+            import otherLib from './lib';
+            export func run() { return otherLib.value + otherLib.value; }
+            """;
+        File.WriteAllText(libPath, lib);
+        File.WriteAllText(mainPath, main);
+        File.WriteAllText(otherPath, other);
+        var service = CreateService();
+        service.OpenOrUpdateDocument(libPath, lib);
+        service.OpenOrUpdateDocument(mainPath, main);
+        service.OpenOrUpdateDocument(otherPath, other);
+
+        var references = service.GetReferences(libPath, PositionOf(lib, "value"), includeDeclaration: true);
+
+        Assert.Equal(4, references.Count);
+        Assert.Contains(references, reference => PathEquals(reference.Path, libPath));
+        Assert.Contains(references, reference => PathEquals(reference.Path, mainPath));
+        Assert.Equal(2, references.Count(reference => PathEquals(reference.Path, otherPath)));
+    }
+
+    [Fact]
+    public void FindsReferencesAcrossWorkspaceDiskFiles()
+    {
+        var libPath = Path.Combine(_root, "lib.as");
+        var mainPath = Path.Combine(_root, "main.as");
+        var otherPath = Path.Combine(_root, "other.as");
+        var lib = "@module(LIB); export const value = 42;";
+        var main =
+            """
+            @module(MAIN);
+            import lib from './lib';
+            export func run() { return lib.value; }
+            """;
+        var other =
+            """
+            @module(OTHER);
+            import shared from './lib';
+            export func run() { return shared.value; }
+            """;
+        File.WriteAllText(libPath, lib);
+        File.WriteAllText(mainPath, main);
+        File.WriteAllText(otherPath, other);
+        var service = CreateWorkspaceIndexingService();
+        service.OpenOrUpdateDocument(mainPath, main);
+
+        var references = service.GetReferences(mainPath, PositionOf(main, "value"), includeDeclaration: true);
+
+        Assert.Equal(3, references.Count);
+        Assert.Contains(references, reference => PathEquals(reference.Path, libPath));
+        Assert.Contains(references, reference => PathEquals(reference.Path, mainPath));
+        Assert.Contains(references, reference => PathEquals(reference.Path, otherPath));
+    }
+
+    [Fact]
+    public void FindsReferencesForImportedExportAcrossAliases()
+    {
+        var libPath = Path.Combine(_root, "lib.as");
+        var mainPath = Path.Combine(_root, "main.as");
+        var otherPath = Path.Combine(_root, "other.as");
+        var lib = "@module(LIB); export func reset() { }";
+        var main =
+            """
+            @module(MAIN);
+            import timer from './lib';
+            export func run() { timer.reset(); }
+            """;
+        var other =
+            """
+            @module(OTHER);
+            import clock from './lib';
+            export func run() { clock.reset(); }
+            """;
+        var service = CreateService();
+
+        var references = service.GetReferences(
+            mainPath,
+            main,
+            PositionOf(main, "reset"),
+            includeDeclaration: true,
+            new[]
+            {
+                new AuroraWorkspaceDocument(libPath, lib),
+                new AuroraWorkspaceDocument(otherPath, other)
+            });
+
+        Assert.Equal(3, references.Count);
+        Assert.Contains(references, reference => PathEquals(reference.Path, libPath));
+        Assert.Contains(references, reference => PathEquals(reference.Path, mainPath));
+        Assert.Contains(references, reference => PathEquals(reference.Path, otherPath));
+    }
+
+    [Fact]
+    public void DoesNotReturnReferencesForBuiltinMember()
+    {
+        var mainPath = Path.Combine(_root, "main.as");
+        var constantPath = Path.Combine(_root, "constant.as");
+        var main =
+            """
+            @module(MAIN);
+            include './constant';
+            export func run() { console.log("reset"); }
+            """;
+        var constant =
+            """
+            @module(CONSTANT);
+            export func log() {
+            }
+            """;
+        var service = CreateService();
+
+        var references = service.GetReferences(
+            mainPath,
+            main,
+            PositionOf(main, "log"),
+            includeDeclaration: true,
+            new[] { new AuroraWorkspaceDocument(constantPath, constant) });
+
+        Assert.Empty(references);
+    }
+
+    [Fact]
     public void FindsReferencesForIncludedExport()
     {
         var sharedPath = Path.Combine(_root, "shared.as");
@@ -158,6 +293,15 @@ public sealed class ReferencesFeatureTests : IDisposable
     private static AuroraLanguageService CreateService()
     {
         return new AuroraLanguageService(BuiltinApiLoader.LoadFromFile(BuiltinApiCatalogTests.GetRuntimeApiPath()));
+    }
+
+    private AuroraLanguageService CreateWorkspaceIndexingService()
+    {
+        return new AuroraLanguageService(new AuroraLanguageServiceOptions(BuiltinApiLoader.LoadFromFile(BuiltinApiCatalogTests.GetRuntimeApiPath()))
+        {
+            BaseDirectory = _root,
+            IndexWorkspaceFiles = true
+        });
     }
 
     private static bool PathEquals(string left, string right)

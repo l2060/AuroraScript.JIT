@@ -1,4 +1,5 @@
 using AuroraScript.LanguageServer;
+using AuroraScript.LanguageServices.Builtins;
 using System;
 using System.IO;
 using System.Text.Json.Nodes;
@@ -9,6 +10,30 @@ namespace AuroraScript.LanguageServer.Tests;
 
 public sealed class AuroraLanguageServerTests
 {
+    [Fact]
+    public void EmbeddedRuntimeApiMetadataLoads()
+    {
+        using var stream = typeof(AuroraLanguageServerFactory).Assembly.GetManifestResourceStream(
+            AuroraLanguageServerFactory.RuntimeApiResourceName);
+        Assert.NotNull(stream);
+
+        var catalog = BuiltinApiLoader.Load(stream);
+
+        Assert.True(catalog.TryGetGlobal("Math", out var math));
+        Assert.True(math.TryGetMember("abs", out var abs));
+        Assert.Equal("number", abs.ReturnType);
+    }
+
+    [Fact]
+    public void DefaultBuiltinCatalogFallsBackToEmbeddedRuntimeApiMetadata()
+    {
+        var catalog = AuroraLanguageServerFactory.LoadDefaultBuiltinCatalog(() => null);
+
+        Assert.True(catalog.TryGetGlobal("Math", out var math));
+        Assert.True(math.TryGetMember("abs", out var abs));
+        Assert.Equal("number", abs.ReturnType);
+    }
+
     [Fact]
     public async Task InitializeReturnsCoreCapabilities()
     {
@@ -53,6 +78,52 @@ public sealed class AuroraLanguageServerTests
     }
 
     [Fact]
+    public async Task DependencyDocumentChangesRefreshReferencingDiagnostics()
+    {
+        var server = CreateServer();
+        var root = Path.Combine(Path.GetTempPath(), "aurora-lsp-diagnostics-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var mainPath = Path.Combine(root, "main.as");
+            var libPath = Path.Combine(root, "lib.as");
+            var mainUri = new Uri(mainPath).AbsoluteUri;
+            var libUri = new Uri(libPath).AbsoluteUri;
+            const string main =
+                """
+                @module(MAIN);
+                import lib from './lib';
+                export func run() {
+                    return lib.value;
+                }
+                """;
+            const string lib = "@module(LIB); export const value = 42;";
+
+            var missingResult = await DidOpen(server, mainUri, main);
+            var missingDiagnostics = PublishedDiagnostics(missingResult, mainUri);
+            var missingDiagnostic = Assert.Single(missingDiagnostics);
+            Assert.Contains("Import file not found", missingDiagnostic!.AsObject()["message"]!.GetValue<string>(), StringComparison.OrdinalIgnoreCase);
+
+            var resolvedResult = await DidOpen(server, libUri, lib);
+            Assert.Empty(PublishedDiagnostics(resolvedResult, mainUri));
+            Assert.Empty(PublishedDiagnostics(resolvedResult, libUri));
+
+            var missingAgainResult = await DidClose(server, libUri);
+            Assert.Empty(PublishedDiagnostics(missingAgainResult, libUri));
+            var missingAgainDiagnostics = PublishedDiagnostics(missingAgainResult, mainUri);
+            var missingAgainDiagnostic = Assert.Single(missingAgainDiagnostics);
+            Assert.Contains("Import file not found", missingAgainDiagnostic!.AsObject()["message"]!.GetValue<string>(), StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task HoverReturnsBuiltinMemberMarkdown()
     {
         var server = CreateServer();
@@ -72,8 +143,102 @@ public sealed class AuroraLanguageServerTests
         });
 
         var hover = result.Response!.Result!.AsObject();
+        var contents = hover["contents"]!.AsObject();
+        Assert.Equal("markdown", contents["kind"]!.GetValue<string>());
+        var value = contents["value"]!.GetValue<string>();
+        Assert.Contains("```aurorascript", value, StringComparison.Ordinal);
+        Assert.Contains("export declare Math.abs(value: Number): Number;", value, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task HoverReturnsBuiltinOwnerAndMemberDeclarationMarkdown()
+    {
+        var server = CreateServer();
+        const string source =
+            """
+            @module(TEST);
+            export func run() {
+                console.log("x");
+            }
+            """;
+        await DidOpen(server, source);
+
+        var ownerResult = await Request(server, 23, "textDocument/hover", new JsonObject
+        {
+            ["textDocument"] = TextDocument(),
+            ["position"] = Position(source, "console")
+        });
+        var ownerValue = ownerResult.Response!.Result!.AsObject()["contents"]!.AsObject()["value"]!.GetValue<string>();
+        Assert.Contains("export declare console;", ownerValue, StringComparison.Ordinal);
+        Assert.DoesNotContain("console.log", ownerValue, StringComparison.Ordinal);
+
+        var memberResult = await Request(server, 24, "textDocument/hover", new JsonObject
+        {
+            ["textDocument"] = TextDocument(),
+            ["position"] = Position(source, "log")
+        });
+        var memberValue = memberResult.Response!.Result!.AsObject()["contents"]!.AsObject()["value"]!.GetValue<string>();
+        Assert.Contains("export declare console.log(...values: Object[]): void;", memberValue, StringComparison.Ordinal);
+        Assert.DoesNotContain("readonly func", memberValue, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task HoverReturnsScriptFunctionCommentsAtCallSite()
+    {
+        var server = CreateServer();
+        const string source =
+            """
+            @module(TEST);
+            // Adds two values.
+            export func add(left, right) {
+                return left + right;
+            }
+            export func run() {
+                return add(1, 2);
+            }
+            """;
+        await DidOpen(server, source);
+
+        var result = await Request(server, 25, "textDocument/hover", new JsonObject
+        {
+            ["textDocument"] = TextDocument(),
+            ["position"] = PositionOfLast(source, "add")
+        });
+
+        var contents = result.Response!.Result!.AsObject()["contents"]!.AsObject();
+        Assert.Equal("markdown", contents["kind"]!.GetValue<string>());
+        var value = contents["value"]!.GetValue<string>();
+        Assert.Contains("```aurorascript", value, StringComparison.Ordinal);
+        Assert.Contains("func add(left, right)", value, StringComparison.Ordinal);
+        Assert.Contains("Adds two values.", value, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task InitializeLocaleControlsBuiltinHoverLanguage()
+    {
+        var server = CreateServer();
+        await Request(server, 21, "initialize", new JsonObject
+        {
+            ["locale"] = "zh-CN"
+        });
+        const string source =
+            """
+            @module(TEST);
+            export func run() {
+                return String.fromCharCode(65);
+            }
+            """;
+        await DidOpen(server, source);
+
+        var result = await Request(server, 22, "textDocument/hover", new JsonObject
+        {
+            ["textDocument"] = TextDocument(),
+            ["position"] = Position(source, "fromCharCode")
+        });
+
+        var hover = result.Response!.Result!.AsObject();
         var value = hover["contents"]!.AsObject()["value"]!.GetValue<string>();
-        Assert.Contains("Math.abs", value, StringComparison.Ordinal);
+        Assert.Contains("根据字符编码创建单字符字符串", value, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -168,6 +333,61 @@ public sealed class AuroraLanguageServerTests
                 Directory.Delete(root, recursive: true);
             }
         }
+    }
+
+    [Fact]
+    public async Task DefinitionReturnsBuiltinVirtualDocumentLocation()
+    {
+        var server = CreateServer();
+        const string source =
+            """
+            @module(TEST);
+            export func run() {
+                return Math.abs(-1);
+            }
+            """;
+        await DidOpen(server, source);
+
+        var definitionResult = await Request(server, 53, "textDocument/definition", new JsonObject
+        {
+            ["textDocument"] = TextDocument(),
+            ["position"] = Position(source, "abs")
+        });
+
+        var location = definitionResult.Response!.Result!.AsObject();
+        var uri = location["uri"]!.GetValue<string>();
+        Assert.Equal("aurora-builtin:/Math.as", uri);
+
+        var documentResult = await Request(server, 54, "aurora/builtinDocument", new JsonObject
+        {
+            ["uri"] = uri
+        });
+
+        var document = documentResult.Response!.Result!.AsObject();
+        Assert.Equal("aurora", document["languageId"]!.GetValue<string>());
+        var text = document["text"]!.GetValue<string>();
+        Assert.Contains("export declare Math.abs(value: Number): Number;", text, StringComparison.Ordinal);
+        Assert.Contains("export declare Math.PI: Number;", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DefinitionReturnsBuiltinTypeReferenceLocationInsideVirtualDocument()
+    {
+        var server = CreateServer();
+        var documentResult = await Request(server, 55, "aurora/builtinDocument", new JsonObject
+        {
+            ["uri"] = "aurora-builtin:/Math.as"
+        });
+        var text = documentResult.Response!.Result!.AsObject()["text"]!.GetValue<string>();
+
+        var definitionResult = await Request(server, 56, "textDocument/definition", new JsonObject
+        {
+            ["textDocument"] = new JsonObject { ["uri"] = "aurora-builtin:/Math.as" },
+            ["position"] = Position(text, "Number")
+        });
+
+        var location = definitionResult.Response!.Result!.AsObject();
+        Assert.Equal("aurora-builtin:/Number.as", location["uri"]!.GetValue<string>());
     }
 
     [Fact]
@@ -300,6 +520,65 @@ public sealed class AuroraLanguageServerTests
             await DidOpen(server, otherUri, other);
 
             var result = await Request(server, 6, "textDocument/references", new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = mainUri },
+                ["position"] = Position(main, "value"),
+                ["context"] = new JsonObject { ["includeDeclaration"] = true }
+            });
+
+            var locations = result.Response!.Result!.AsArray();
+            Assert.Equal(3, locations.Count);
+            Assert.Contains(locations, node => node!.AsObject()["uri"]!.GetValue<string>() == libUri);
+            Assert.Contains(locations, node => node!.AsObject()["uri"]!.GetValue<string>() == mainUri);
+            Assert.Contains(locations, node => node!.AsObject()["uri"]!.GetValue<string>() == otherUri);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ReferencesUseInitializeWorkspaceRootForDiskFiles()
+    {
+        var server = CreateServer();
+        var root = Path.Combine(Path.GetTempPath(), "aurora-lsp-root-ref-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var mainPath = Path.Combine(root, "main.as");
+            var libPath = Path.Combine(root, "lib.as");
+            var otherPath = Path.Combine(root, "other.as");
+            var mainUri = new Uri(mainPath).AbsoluteUri;
+            var libUri = new Uri(libPath).AbsoluteUri;
+            var otherUri = new Uri(otherPath).AbsoluteUri;
+            const string lib = "@module(LIB); export const value = 42;";
+            const string main =
+                """
+                @module(MAIN);
+                import lib from './lib';
+                export func run() { return lib.value; }
+                """;
+            const string other =
+                """
+                @module(OTHER);
+                import shared from './lib';
+                export func run() { return shared.value; }
+                """;
+            File.WriteAllText(libPath, lib);
+            File.WriteAllText(mainPath, main);
+            File.WriteAllText(otherPath, other);
+
+            await Request(server, 61, "initialize", new JsonObject
+            {
+                ["rootUri"] = new Uri(root).AbsoluteUri
+            });
+            await DidOpen(server, mainUri, main);
+
+            var result = await Request(server, 62, "textDocument/references", new JsonObject
             {
                 ["textDocument"] = new JsonObject { ["uri"] = mainUri },
                 ["position"] = Position(main, "value"),
@@ -458,6 +737,22 @@ public sealed class AuroraLanguageServerTests
         });
     }
 
+    private static Task<AuroraScript.LanguageServer.Protocol.LspResult> DidClose(AuroraLanguageServer server, string uri)
+    {
+        return server.HandleAsync(new JsonObject
+        {
+            ["jsonrpc"] = "2.0",
+            ["method"] = "textDocument/didClose",
+            ["params"] = new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = uri
+                }
+            }
+        });
+    }
+
     private static Task<AuroraScript.LanguageServer.Protocol.LspResult> Request(
         AuroraLanguageServer server,
         int id,
@@ -482,6 +777,18 @@ public sealed class AuroraLanguageServerTests
     {
         var offset = source.IndexOf(needle, StringComparison.Ordinal);
         Assert.True(offset >= 0, $"Needle '{needle}' not found.");
+        return PositionAtOffset(source, offset);
+    }
+
+    private static JsonObject PositionOfLast(string source, string needle)
+    {
+        var offset = source.LastIndexOf(needle, StringComparison.Ordinal);
+        Assert.True(offset >= 0, $"Needle '{needle}' not found.");
+        return PositionAtOffset(source, offset);
+    }
+
+    private static JsonObject PositionAtOffset(string source, int offset)
+    {
         var line = 0;
         var character = 0;
         for (var i = 0; i < offset; i++)
@@ -516,6 +823,23 @@ public sealed class AuroraLanguageServerTests
             .AsObject()["start"]!
             .AsObject()["line"]!
             .GetValue<int>();
+    }
+
+    private static JsonArray PublishedDiagnostics(
+        AuroraScript.LanguageServer.Protocol.LspResult result,
+        string uri)
+    {
+        foreach (var notification in result.Notifications)
+        {
+            if (notification.Method == "textDocument/publishDiagnostics" &&
+                notification.Parameters["uri"]!.GetValue<string>() == uri)
+            {
+                return notification.Parameters["diagnostics"]!.AsArray();
+            }
+        }
+
+        Assert.Fail($"No publishDiagnostics notification for {uri}.");
+        return new JsonArray();
     }
 
     private const string TestUri = "file:///D:/workspace/test.as";

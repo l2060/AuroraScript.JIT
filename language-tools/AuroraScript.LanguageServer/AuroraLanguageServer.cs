@@ -2,6 +2,7 @@ using AuroraScript.LanguageServer.Protocol;
 using AuroraScript.LanguageServices;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
@@ -45,6 +46,7 @@ public sealed class AuroraLanguageServer
         switch (method)
         {
             case "initialize":
+                ConfigureWorkspace(parameters);
                 return Respond(id, InitializeResult());
             case "shutdown":
                 return Respond(id, null);
@@ -62,6 +64,8 @@ public sealed class AuroraLanguageServer
                 return Respond(id, HandleRename(parameters));
             case "textDocument/semanticTokens/full":
                 return Respond(id, HandleSemanticTokens(parameters));
+            case "aurora/builtinDocument":
+                return Respond(id, HandleBuiltinDocument(parameters));
             default:
                 return Respond(id, null);
         }
@@ -93,7 +97,7 @@ public sealed class AuroraLanguageServer
         var text = textDocument["text"]!.GetValue<string>();
         var path = SourceName(uri);
         _languageService.OpenOrUpdateDocument(path, text);
-        return PublishDiagnostics(uri);
+        return PublishWorkspaceDiagnostics();
     }
 
     private LspResult HandleDidChange(JsonObject parameters)
@@ -109,7 +113,7 @@ public sealed class AuroraLanguageServer
         var text = lastChange["text"]!.GetValue<string>();
         var path = SourceName(uri);
         _languageService.OpenOrUpdateDocument(path, text);
-        return PublishDiagnostics(uri);
+        return PublishWorkspaceDiagnostics();
     }
 
     private LspResult HandleDidClose(JsonObject parameters)
@@ -117,14 +121,7 @@ public sealed class AuroraLanguageServer
         var textDocument = parameters["textDocument"]!.AsObject();
         var uri = textDocument["uri"]!.GetValue<string>();
         _languageService.CloseDocument(SourceName(uri));
-        return new LspResult(null, new[]
-        {
-            new LspNotification("textDocument/publishDiagnostics", new JsonObject
-            {
-                ["uri"] = uri,
-                ["diagnostics"] = new JsonArray()
-            })
-        }, false);
+        return PublishWorkspaceDiagnostics(uri);
     }
 
     private JsonNode? HandleHover(JsonObject parameters)
@@ -188,17 +185,118 @@ public sealed class AuroraLanguageServer
         return LspMapper.SemanticTokens(result);
     }
 
-    private LspResult PublishDiagnostics(string uri)
+    private JsonNode? HandleBuiltinDocument(JsonObject parameters)
     {
-        var diagnostics = _languageService.GetDiagnostics(SourceName(uri));
-        return new LspResult(null, new[]
+        var uri = parameters.TryGetPropertyValue("uri", out var uriNode) && uriNode != null
+            ? uriNode.GetValue<string>()
+            : string.Empty;
+        var document = _languageService.GetBuiltinDocument(uri);
+        if (document == null)
         {
-            new LspNotification("textDocument/publishDiagnostics", new JsonObject
+            return null;
+        }
+
+        return new JsonObject
+        {
+            ["uri"] = document.Uri,
+            ["languageId"] = document.LanguageId,
+            ["text"] = document.Text
+        };
+    }
+
+    private void ConfigureWorkspace(JsonObject parameters)
+    {
+        if (parameters.TryGetPropertyValue("locale", out var localeNode) &&
+            localeNode != null)
+        {
+            _languageService.SetDocumentationLocale(localeNode.GetValue<string>());
+        }
+
+        if (TryReadWorkspaceRoot(parameters, out var root))
+        {
+            _languageService.SetWorkspaceRoot(root);
+        }
+    }
+
+    private static bool TryReadWorkspaceRoot(JsonObject parameters, out string root)
+    {
+        root = string.Empty;
+        if (parameters.TryGetPropertyValue("workspaceFolders", out var foldersNode) &&
+            foldersNode is JsonArray folders &&
+            folders.Count > 0)
+        {
+            for (var i = 0; i < folders.Count; i++)
             {
-                ["uri"] = uri,
+                if (folders[i] is JsonObject folder &&
+                    folder.TryGetPropertyValue("uri", out var uriNode) &&
+                    uriNode != null &&
+                    TryGetSourceName(uriNode.GetValue<string>(), out root))
+                {
+                    return true;
+                }
+            }
+        }
+
+        if (parameters.TryGetPropertyValue("rootUri", out var rootUriNode) &&
+            rootUriNode != null &&
+            TryGetSourceName(rootUriNode.GetValue<string>(), out root))
+        {
+            return true;
+        }
+
+        if (parameters.TryGetPropertyValue("rootPath", out var rootPathNode) &&
+            rootPathNode != null)
+        {
+            root = rootPathNode.GetValue<string>();
+            return !string.IsNullOrWhiteSpace(root);
+        }
+
+        return false;
+    }
+
+    private static bool TryGetSourceName(string value, out string sourceName)
+    {
+        sourceName = string.Empty;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        sourceName = SourceName(value);
+        return !string.IsNullOrWhiteSpace(sourceName);
+    }
+
+    private LspResult PublishWorkspaceDiagnostics(params string[] clearedUris)
+    {
+        var notifications = new List<LspNotification>();
+        if (clearedUris != null)
+        {
+            for (var i = 0; i < clearedUris.Length; i++)
+            {
+                if (string.IsNullOrWhiteSpace(clearedUris[i]))
+                {
+                    continue;
+                }
+
+                notifications.Add(new LspNotification("textDocument/publishDiagnostics", new JsonObject
+                {
+                    ["uri"] = clearedUris[i],
+                    ["diagnostics"] = new JsonArray()
+                }));
+            }
+        }
+
+        foreach (var document in _languageService.Workspace.Documents)
+        {
+            var diagnostics = _languageService.GetDiagnostics(document.Path);
+            notifications.Add(new LspNotification("textDocument/publishDiagnostics", new JsonObject
+            {
+                ["uri"] = UriFromSourceName(document.Path),
                 ["diagnostics"] = LspMapper.Diagnostics(diagnostics)
-            })
-        }, false);
+            }));
+        }
+
+        return new LspResult(null, notifications, false);
     }
 
     private static LspResult Respond(JsonNode id, JsonNode? result)
@@ -249,6 +347,16 @@ public sealed class AuroraLanguageServer
         }
 
         return uri;
+    }
+
+    private static string UriFromSourceName(string sourceName)
+    {
+        if (Path.IsPathRooted(sourceName))
+        {
+            return new Uri(sourceName).AbsoluteUri;
+        }
+
+        return sourceName;
     }
 
 }

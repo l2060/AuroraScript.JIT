@@ -183,6 +183,17 @@ public sealed class LexerTests
     }
 
     [Fact]
+    public void StringTokensAdvanceFollowingTokenColumns()
+    {
+        const string source = "expectTrue(ctx, typeof timer.reset == \"function\", \"Timer exposes reset function\", typeof timer.reset, \"function\");";
+        using var lexer = CreateLexer(source);
+        var tokens = ReadTokens(lexer);
+        var secondTypeof = tokens.FindAll(token => token.Value == "typeof")[1];
+
+        Assert.Equal(source.LastIndexOf("typeof", StringComparison.Ordinal) + 1, secondTypeof.Range.StartColumn);
+    }
+
+    [Fact]
     public void InvalidRegexFlagIsNotConsumedAsRegexFlag()
     {
         using var lexer = CreateLexer("/a/z");

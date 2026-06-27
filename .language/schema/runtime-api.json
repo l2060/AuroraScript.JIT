@@ -1,0 +1,2547 @@
+{
+  "$schema": "runtime-api.schema.json",
+  "language": "AuroraScript",
+  "versionTarget": "2.1.1",
+  "globals": {
+    "Array": {
+      "kind": "constructor",
+      "members": {
+        "from": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "iterable",
+              "type": "object"
+            },
+            {
+              "name": "callback",
+              "type": "function",
+              "optional": true
+            }
+          ],
+          "returns": "array",
+          "notes": {
+            "en": [
+              "Creates an array from an iterable value, optionally mapping each item."
+            ],
+            "zh-CN": [
+              "从可迭代值创建数组，可选地映射每一项。"
+            ]
+          }
+        },
+        "isArray": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "any"
+            }
+          ],
+          "returns": "boolean",
+          "notes": {
+            "en": [
+              "Returns whether the value is an array."
+            ],
+            "zh-CN": [
+              "返回指定值是否为数组。"
+            ]
+          }
+        },
+        "of": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "items",
+              "type": "any",
+              "variadic": true
+            }
+          ],
+          "returns": "array",
+          "notes": {
+            "en": [
+              "Creates an array from the provided arguments."
+            ],
+            "zh-CN": [
+              "使用提供的参数创建数组。"
+            ]
+          }
+        },
+        "withCapacity": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "capacity",
+              "type": "number",
+              "optional": true
+            }
+          ],
+          "returns": "array",
+          "notes": {
+            "en": [
+              "Creates an array with reserved capacity."
+            ],
+            "zh-CN": [
+              "创建预留容量的数组。"
+            ]
+          }
+        }
+      },
+      "notes": {
+        "en": [
+          "Array constructor and static array helpers."
+        ],
+        "zh-CN": [
+          "Array 构造器和数组静态工具。"
+        ]
+      }
+    },
+    "String": {
+      "kind": "constructor",
+      "members": {
+        "fromCharCode": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "charCode",
+              "type": "number"
+            }
+          ],
+          "returns": "string",
+          "notes": {
+            "en": [
+              "Creates a one-character string from a character code."
+            ],
+            "zh-CN": [
+              "根据字符编码创建单字符字符串。"
+            ]
+          }
+        },
+        "valueOf": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "any"
+            }
+          ],
+          "returns": "string",
+          "notes": {
+            "en": [
+              "Converts a value to a string."
+            ],
+            "zh-CN": [
+              "将值转换为字符串。"
+            ]
+          }
+        },
+        "compare": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "left",
+              "type": "string"
+            },
+            {
+              "name": "right",
+              "type": "string"
+            }
+          ],
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Compares two strings and returns their ordering."
+            ],
+            "zh-CN": [
+              "比较两个字符串并返回排序结果。"
+            ]
+          }
+        }
+      },
+      "notes": {
+        "en": [
+          "String constructor and static string helpers."
+        ],
+        "zh-CN": [
+          "String 构造器和字符串静态工具。"
+        ]
+      }
+    },
+    "Boolean": {
+      "kind": "constructor",
+      "members": {
+        "valueOf": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "any"
+            }
+          ],
+          "returns": "boolean",
+          "notes": {
+            "en": [
+              "Converts a value to a Boolean."
+            ],
+            "zh-CN": [
+              "将值转换为 Boolean。"
+            ]
+          }
+        },
+        "true": {
+          "kind": "constant",
+          "returns": "boolean",
+          "notes": {
+            "en": [
+              "Boolean true constant."
+            ],
+            "zh-CN": [
+              "布尔真常量。"
+            ]
+          }
+        },
+        "false": {
+          "kind": "constant",
+          "returns": "boolean",
+          "notes": {
+            "en": [
+              "Boolean false constant."
+            ],
+            "zh-CN": [
+              "布尔假常量。"
+            ]
+          }
+        }
+      },
+      "notes": {
+        "en": [
+          "Boolean constructor and Boolean constants."
+        ],
+        "zh-CN": [
+          "Boolean 构造器和布尔常量。"
+        ]
+      }
+    },
+    "Object": {
+      "kind": "constructor",
+      "members": {
+        "equal$": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "left",
+              "type": "any"
+            },
+            {
+              "name": "right",
+              "type": "any"
+            }
+          ],
+          "returns": "boolean",
+          "notes": {
+            "en": [
+              "Returns strict object equality."
+            ],
+            "zh-CN": [
+              "返回严格对象相等结果。"
+            ]
+          }
+        },
+        "equal": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "left",
+              "type": "any"
+            },
+            {
+              "name": "right",
+              "type": "any"
+            }
+          ],
+          "returns": "boolean",
+          "notes": {
+            "en": [
+              "Returns value equality for supported values."
+            ],
+            "zh-CN": [
+              "返回受支持值的值相等结果。"
+            ]
+          }
+        },
+        "deepEqual": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "left",
+              "type": "any"
+            },
+            {
+              "name": "right",
+              "type": "any"
+            }
+          ],
+          "returns": "boolean",
+          "notes": {
+            "en": [
+              "Returns deep structural equality."
+            ],
+            "zh-CN": [
+              "返回深度结构相等结果。"
+            ]
+          }
+        },
+        "assign": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "target",
+              "type": "object"
+            },
+            {
+              "name": "sources",
+              "type": "object",
+              "variadic": true
+            }
+          ],
+          "returns": "object",
+          "notes": {
+            "en": [
+              "Copies enumerable properties from sources into a target object."
+            ],
+            "zh-CN": [
+              "将源对象的可枚举属性复制到目标对象。"
+            ]
+          }
+        },
+        "keys": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "object"
+            }
+          ],
+          "returns": "string[]",
+          "notes": {
+            "en": [
+              "Returns enumerable property names."
+            ],
+            "zh-CN": [
+              "返回可枚举属性名。"
+            ]
+          }
+        },
+        "clone": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "any"
+            }
+          ],
+          "returns": "any",
+          "notes": {
+            "en": [
+              "Creates a shallow clone of an object."
+            ],
+            "zh-CN": [
+              "创建对象的浅拷贝。"
+            ]
+          }
+        },
+        "deepClone": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "any"
+            }
+          ],
+          "returns": "any",
+          "notes": {
+            "en": [
+              "Creates a deep clone of an object."
+            ],
+            "zh-CN": [
+              "创建对象的深拷贝。"
+            ]
+          }
+        },
+        "extends": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "prototype",
+              "type": "object"
+            }
+          ],
+          "returns": "null",
+          "notes": {
+            "en": [
+              "Creates an object that extends a prototype/object."
+            ],
+            "zh-CN": [
+              "创建继承指定原型或对象的对象。"
+            ]
+          }
+        },
+        "freeze": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "object"
+            }
+          ],
+          "returns": "null",
+          "notes": {
+            "en": [
+              "Freezes an object to prevent mutation."
+            ],
+            "zh-CN": [
+              "冻结对象以防止修改。"
+            ]
+          }
+        }
+      },
+      "notes": {
+        "en": [
+          "Object constructor and object utility helpers."
+        ],
+        "zh-CN": [
+          "Object 构造器和对象工具方法。"
+        ]
+      }
+    },
+    "Number": {
+      "kind": "constructor",
+      "members": {
+        "MAX_VALUE": {
+          "kind": "constant",
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Largest finite number constant."
+            ],
+            "zh-CN": [
+              "最大有限数值常量。"
+            ]
+          }
+        },
+        "MIN_VALUE": {
+          "kind": "constant",
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Smallest positive number constant."
+            ],
+            "zh-CN": [
+              "最小正数常量。"
+            ]
+          }
+        },
+        "MAX_SAFE_INTEGER": {
+          "kind": "constant",
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Largest safely representable integer."
+            ],
+            "zh-CN": [
+              "最大安全整数。"
+            ]
+          }
+        },
+        "MIN_SAFE_INTEGER": {
+          "kind": "constant",
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Smallest safely representable integer."
+            ],
+            "zh-CN": [
+              "最小安全整数。"
+            ]
+          }
+        },
+        "NaN": {
+          "kind": "constant",
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Not-a-Number constant."
+            ],
+            "zh-CN": [
+              "非数字常量。"
+            ]
+          }
+        },
+        "POSITIVE_INFINITY": {
+          "kind": "constant",
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Positive infinity constant."
+            ],
+            "zh-CN": [
+              "正无穷常量。"
+            ]
+          }
+        },
+        "NEGATIVE_INFINITY": {
+          "kind": "constant",
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Negative infinity constant."
+            ],
+            "zh-CN": [
+              "负无穷常量。"
+            ]
+          }
+        },
+        "isNaN": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "number"
+            }
+          ],
+          "returns": "boolean",
+          "notes": {
+            "en": [
+              "Returns whether a value is NaN."
+            ],
+            "zh-CN": [
+              "返回指定值是否为 NaN。"
+            ]
+          }
+        },
+        "isInteger": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "number"
+            }
+          ],
+          "returns": "boolean",
+          "notes": {
+            "en": [
+              "Returns whether a value is an integer."
+            ],
+            "zh-CN": [
+              "返回指定值是否为整数。"
+            ]
+          }
+        },
+        "isInfinity": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "number"
+            }
+          ],
+          "returns": "boolean",
+          "notes": {
+            "en": [
+              "Returns whether a value is positive or negative infinity."
+            ],
+            "zh-CN": [
+              "返回指定值是否为正无穷或负无穷。"
+            ]
+          }
+        },
+        "parseFloat": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "string|number"
+            }
+          ],
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Parses a floating-point number from a string."
+            ],
+            "zh-CN": [
+              "从字符串解析浮点数。"
+            ]
+          }
+        },
+        "parseInt": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "string|number"
+            }
+          ],
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Parses an integer from a string."
+            ],
+            "zh-CN": [
+              "从字符串解析整数。"
+            ]
+          }
+        }
+      },
+      "notes": {
+        "en": [
+          "Number constructor, numeric constants, and numeric parsing helpers."
+        ],
+        "zh-CN": [
+          "Number 构造器、数值常量和数值解析工具。"
+        ]
+      }
+    },
+    "Date": {
+      "kind": "constructor",
+      "members": {
+        "now": {
+          "kind": "method",
+          "parameters": [],
+          "returns": "date",
+          "notes": {
+            "en": [
+              "Returns the current local timestamp."
+            ],
+            "zh-CN": [
+              "返回当前本地时间戳。"
+            ]
+          }
+        },
+        "utcNow": {
+          "kind": "method",
+          "parameters": [],
+          "returns": "date",
+          "notes": {
+            "en": [
+              "Returns the current UTC timestamp."
+            ],
+            "zh-CN": [
+              "返回当前 UTC 时间戳。"
+            ]
+          }
+        },
+        "parse": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "string|number"
+            }
+          ],
+          "returns": "date",
+          "notes": {
+            "en": [
+              "Parses a date/time string."
+            ],
+            "zh-CN": [
+              "解析日期时间字符串。"
+            ]
+          }
+        }
+      },
+      "notes": {
+        "en": [
+          "Date constructor and current time helpers."
+        ],
+        "zh-CN": [
+          "Date 构造器和当前时间工具。"
+        ]
+      }
+    },
+    "Error": {
+      "kind": "constructor",
+      "notes": {
+        "en": [
+          "Error constructor for runtime error values."
+        ],
+        "zh-CN": [
+          "Error 构造器，用于运行时错误值。"
+        ]
+      }
+    },
+    "HashMap": {
+      "kind": "constructor",
+      "notes": {
+        "en": [
+          "HashMap constructor for key-value collections."
+        ],
+        "zh-CN": [
+          "HashMap 构造器，用于键值集合。"
+        ]
+      }
+    },
+    "Regex": {
+      "kind": "constructor",
+      "notes": {
+        "en": [
+          "Regex constructor for regular expression values."
+        ],
+        "zh-CN": [
+          "Regex 构造器，用于正则表达式值。"
+        ]
+      }
+    },
+    "Proxy": {
+      "kind": "constructor",
+      "notes": {
+        "en": [
+          "Proxy constructor for dynamic object interception."
+        ],
+        "zh-CN": [
+          "Proxy 构造器，用于动态对象拦截。"
+        ]
+      }
+    },
+    "StringBuffer": {
+      "kind": "constructor",
+      "notes": {
+        "en": [
+          "Use for high-volume incremental string building."
+        ],
+        "zh-CN": [
+          "用于大量增量字符串构建。"
+        ]
+      }
+    },
+    "console": {
+      "kind": "object",
+      "members": {
+        "log": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "values",
+              "type": "any",
+              "variadic": true
+            }
+          ],
+          "returns": "null",
+          "notes": {
+            "en": [
+              "Writes values to standard output."
+            ],
+            "zh-CN": [
+              "将值写入标准输出。"
+            ]
+          }
+        },
+        "error": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "values",
+              "type": "any",
+              "variadic": true
+            }
+          ],
+          "returns": "null",
+          "notes": {
+            "en": [
+              "Writes values to standard error."
+            ],
+            "zh-CN": [
+              "将值写入标准错误输出。"
+            ]
+          }
+        },
+        "time": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "label",
+              "type": "string"
+            }
+          ],
+          "returns": "null",
+          "notes": {
+            "en": [
+              "Starts a named timer."
+            ],
+            "zh-CN": [
+              "启动命名计时器。"
+            ]
+          }
+        },
+        "timeEnd": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "label",
+              "type": "string"
+            }
+          ],
+          "returns": "null",
+          "notes": {
+            "en": [
+              "Stops a named timer and writes elapsed time."
+            ],
+            "zh-CN": [
+              "结束命名计时器并输出耗时。"
+            ]
+          }
+        }
+      },
+      "notes": {
+        "en": [
+          "Console logging and timing API."
+        ],
+        "zh-CN": [
+          "控制台日志和计时 API。"
+        ]
+      }
+    },
+    "JSON": {
+      "kind": "object",
+      "members": {
+        "parse": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "text",
+              "type": "string"
+            }
+          ],
+          "returns": "any",
+          "notes": {
+            "en": [
+              "Parses JSON text into an AuroraScript value."
+            ],
+            "zh-CN": [
+              "将 JSON 文本解析为 AuroraScript 值。"
+            ]
+          }
+        },
+        "stringify": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "any"
+            },
+            {
+              "name": "indented",
+              "type": "boolean",
+              "optional": true
+            }
+          ],
+          "returns": "string",
+          "notes": {
+            "en": [
+              "Serializes a value to JSON text."
+            ],
+            "zh-CN": [
+              "将值序列化为 JSON 文本。"
+            ]
+          }
+        }
+      },
+      "notes": {
+        "en": [
+          "JSON parsing and serialization API."
+        ],
+        "zh-CN": [
+          "JSON 解析和序列化 API。"
+        ]
+      }
+    },
+    "Math": {
+      "kind": "object",
+      "members": {
+        "PI": {
+          "kind": "constant",
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Circle constant pi."
+            ],
+            "zh-CN": [
+              "圆周率常量。"
+            ]
+          }
+        },
+        "E": {
+          "kind": "constant",
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Euler number constant."
+            ],
+            "zh-CN": [
+              "自然常数。"
+            ]
+          }
+        },
+        "Tau": {
+          "kind": "constant",
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Circle constant tau, equal to 2*pi."
+            ],
+            "zh-CN": [
+              "圆常量 tau，等于 2*pi。"
+            ]
+          }
+        },
+        "DEG_PER_RAD": {
+          "kind": "constant",
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Degrees per radian conversion constant."
+            ],
+            "zh-CN": [
+              "弧度转角度常量。"
+            ]
+          }
+        },
+        "abs": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "number"
+            }
+          ],
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Returns the absolute value."
+            ],
+            "zh-CN": [
+              "返回绝对值。"
+            ]
+          }
+        },
+        "max": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "values",
+              "type": "number",
+              "variadic": true
+            }
+          ],
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Returns the largest argument."
+            ],
+            "zh-CN": [
+              "返回最大参数。"
+            ]
+          }
+        },
+        "min": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "values",
+              "type": "number",
+              "variadic": true
+            }
+          ],
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Returns the smallest argument."
+            ],
+            "zh-CN": [
+              "返回最小参数。"
+            ]
+          }
+        },
+        "random": {
+          "kind": "method",
+          "parameters": [],
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Returns a pseudo-random number."
+            ],
+            "zh-CN": [
+              "返回伪随机数。"
+            ]
+          }
+        },
+        "log": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "number"
+            }
+          ],
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Returns the natural logarithm."
+            ],
+            "zh-CN": [
+              "返回自然对数。"
+            ]
+          }
+        },
+        "pow": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "x",
+              "type": "number"
+            },
+            {
+              "name": "y",
+              "type": "number"
+            }
+          ],
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Returns x raised to the power y."
+            ],
+            "zh-CN": [
+              "返回 x 的 y 次幂。"
+            ]
+          }
+        },
+        "exp": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "number"
+            }
+          ],
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Returns e raised to the power value."
+            ],
+            "zh-CN": [
+              "返回 e 的指定次幂。"
+            ]
+          }
+        },
+        "cos": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "number"
+            }
+          ],
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Returns the cosine of an angle in radians."
+            ],
+            "zh-CN": [
+              "返回弧度角的余弦。"
+            ]
+          }
+        },
+        "sin": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "number"
+            }
+          ],
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Returns the sine of an angle in radians."
+            ],
+            "zh-CN": [
+              "返回弧度角的正弦。"
+            ]
+          }
+        },
+        "tan": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "number"
+            }
+          ],
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Returns the tangent of an angle in radians."
+            ],
+            "zh-CN": [
+              "返回弧度角的正切。"
+            ]
+          }
+        },
+        "acos": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "number"
+            }
+          ],
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Returns the arccosine in radians."
+            ],
+            "zh-CN": [
+              "返回反余弦弧度值。"
+            ]
+          }
+        },
+        "asin": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "number"
+            }
+          ],
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Returns the arcsine in radians."
+            ],
+            "zh-CN": [
+              "返回反正弦弧度值。"
+            ]
+          }
+        },
+        "atan": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "number"
+            }
+          ],
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Returns the arctangent in radians."
+            ],
+            "zh-CN": [
+              "返回反正切弧度值。"
+            ]
+          }
+        },
+        "floor": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "number"
+            }
+          ],
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Rounds down to the nearest integer."
+            ],
+            "zh-CN": [
+              "向下取整。"
+            ]
+          }
+        },
+        "round": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "number"
+            }
+          ],
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Rounds to the nearest integer."
+            ],
+            "zh-CN": [
+              "四舍五入到最近整数。"
+            ]
+          }
+        }
+      },
+      "notes": {
+        "en": [
+          "Math constants and numeric functions."
+        ],
+        "zh-CN": [
+          "数学常量和数值函数。"
+        ]
+      }
+    },
+    "HotPatch": {
+      "kind": "object",
+      "members": {
+        "replace": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "modulePath",
+              "type": "string"
+            },
+            {
+              "name": "script",
+              "type": "string"
+            },
+            {
+              "name": "ignoreDepends",
+              "type": "boolean",
+              "optional": true
+            }
+          ],
+          "returns": "null",
+          "notes": {
+            "en": [
+              "Replaces a module using the supplied script source."
+            ],
+            "zh-CN": [
+              "使用提供的脚本源码替换模块。"
+            ]
+          }
+        },
+        "incremental": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "modulePath",
+              "type": "string"
+            },
+            {
+              "name": "script",
+              "type": "string"
+            },
+            {
+              "name": "ignoreDepends",
+              "type": "boolean",
+              "optional": true
+            }
+          ],
+          "returns": "null",
+          "notes": {
+            "en": [
+              "Applies an incremental module hot patch."
+            ],
+            "zh-CN": [
+              "应用增量模块热更新。"
+            ]
+          }
+        }
+      },
+      "notes": {
+        "en": [
+          "Runtime hot patch API for replacing or incrementally updating modules."
+        ],
+        "zh-CN": [
+          "运行时热更新 API，用于替换或增量更新模块。"
+        ]
+      }
+    },
+    "global": {
+      "kind": "object",
+      "notes": {
+        "en": [
+          "Compiler-provided global execution object for the current script domain."
+        ],
+        "zh-CN": [
+          "编译器提供的当前脚本域全局执行对象。"
+        ]
+      },
+      "members": {
+        "modules": {
+          "kind": "property",
+          "returns": "object",
+          "notes": {
+            "en": [
+              "Loaded module registry exposed by the runtime global object."
+            ],
+            "zh-CN": [
+              "运行时全局对象暴露的已加载模块注册表。"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "prototypes": {
+    "Object": {
+      "toString": {
+        "kind": "method",
+        "parameters": [],
+        "returns": "string",
+        "notes": {
+          "en": [
+            "Returns a string representation."
+          ],
+          "zh-CN": [
+            "返回字符串表示。"
+          ]
+        }
+      },
+      "length": {
+        "kind": "property",
+        "returns": "number",
+        "notes": {
+          "en": [
+            "Returns the number of enumerable members."
+          ],
+          "zh-CN": [
+            "返回可枚举成员数量。"
+          ]
+        }
+      }
+    },
+    "Array": {
+      "has": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "value",
+            "type": "any"
+          }
+        ],
+        "returns": "boolean",
+        "notes": {
+          "en": [
+            "Returns whether the array contains a value."
+          ],
+          "zh-CN": [
+            "返回数组是否包含指定值。"
+          ]
+        }
+      },
+      "indexOf": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "value",
+            "type": "any"
+          },
+          {
+            "name": "fromIndex",
+            "type": "number",
+            "optional": true
+          }
+        ],
+        "returns": "number",
+        "notes": {
+          "en": [
+            "Returns the first index of a value."
+          ],
+          "zh-CN": [
+            "返回指定值第一次出现的索引。"
+          ]
+        }
+      },
+      "lastIndexOf": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "value",
+            "type": "any"
+          },
+          {
+            "name": "fromIndex",
+            "type": "number",
+            "optional": true
+          }
+        ],
+        "returns": "number",
+        "notes": {
+          "en": [
+            "Returns the last index of a value."
+          ],
+          "zh-CN": [
+            "返回指定值最后一次出现的索引。"
+          ]
+        }
+      },
+      "length": {
+        "kind": "property",
+        "returns": "number",
+        "notes": {
+          "en": [
+            "Returns the array length."
+          ],
+          "zh-CN": [
+            "返回数组长度。"
+          ]
+        }
+      },
+      "push": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "values",
+            "type": "any",
+            "variadic": true
+          }
+        ],
+        "returns": "number",
+        "notes": {
+          "en": [
+            "Appends values and returns the new length."
+          ],
+          "zh-CN": [
+            "追加值并返回新长度。"
+          ]
+        }
+      },
+      "pop": {
+        "kind": "method",
+        "parameters": [],
+        "returns": "any",
+        "notes": {
+          "en": [
+            "Removes and returns the last item."
+          ],
+          "zh-CN": [
+            "移除并返回最后一项。"
+          ]
+        }
+      },
+      "sort": {
+        "kind": "method",
+        "parameters": [],
+        "returns": "array",
+        "notes": {
+          "en": [
+            "Sorts the array in place."
+          ],
+          "zh-CN": [
+            "原地排序数组。"
+          ]
+        }
+      },
+      "join": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "separator",
+            "type": "string",
+            "optional": true
+          }
+        ],
+        "returns": "string",
+        "notes": {
+          "en": [
+            "Joins items into a string."
+          ],
+          "zh-CN": [
+            "将数组项连接为字符串。"
+          ]
+        }
+      },
+      "slice": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "start",
+            "type": "number"
+          },
+          {
+            "name": "end",
+            "type": "number",
+            "optional": true
+          }
+        ],
+        "returns": "array",
+        "notes": {
+          "en": [
+            "Returns a shallow slice of the array."
+          ],
+          "zh-CN": [
+            "返回数组的浅切片。"
+          ]
+        }
+      },
+      "reverse": {
+        "kind": "method",
+        "parameters": [],
+        "returns": "array",
+        "notes": {
+          "en": [
+            "Reverses the array in place."
+          ],
+          "zh-CN": [
+            "原地反转数组。"
+          ]
+        }
+      },
+      "unshift": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "values",
+            "type": "any",
+            "variadic": true
+          }
+        ],
+        "returns": "number",
+        "notes": {
+          "en": [
+            "Prepends values and returns the new length."
+          ],
+          "zh-CN": [
+            "在开头插入值并返回新长度。"
+          ]
+        }
+      },
+      "shift": {
+        "kind": "method",
+        "parameters": [],
+        "returns": "any",
+        "notes": {
+          "en": [
+            "Removes and returns the first item."
+          ],
+          "zh-CN": [
+            "移除并返回第一项。"
+          ]
+        }
+      },
+      "concat": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "values",
+            "type": "any",
+            "variadic": true
+          }
+        ],
+        "returns": "array",
+        "notes": {
+          "en": [
+            "Returns a concatenated array."
+          ],
+          "zh-CN": [
+            "返回拼接后的数组。"
+          ]
+        }
+      },
+      "find": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "callback",
+            "type": "function"
+          }
+        ],
+        "returns": "any",
+        "notes": {
+          "en": [
+            "Returns the first item matching a predicate."
+          ],
+          "zh-CN": [
+            "返回第一个满足谓词的项。"
+          ]
+        }
+      },
+      "findIndex": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "callback",
+            "type": "function"
+          }
+        ],
+        "returns": "number",
+        "notes": {
+          "en": [
+            "Returns the first matching index."
+          ],
+          "zh-CN": [
+            "返回第一个满足谓词的索引。"
+          ]
+        }
+      },
+      "findLast": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "callback",
+            "type": "function"
+          }
+        ],
+        "returns": "any",
+        "notes": {
+          "en": [
+            "Returns the last item matching a predicate."
+          ],
+          "zh-CN": [
+            "返回最后一个满足谓词的项。"
+          ]
+        }
+      },
+      "findLastIndex": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "callback",
+            "type": "function"
+          }
+        ],
+        "returns": "number",
+        "notes": {
+          "en": [
+            "Returns the last matching index."
+          ],
+          "zh-CN": [
+            "返回最后一个满足谓词的索引。"
+          ]
+        }
+      },
+      "map": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "callback",
+            "type": "function"
+          }
+        ],
+        "returns": "array",
+        "notes": {
+          "en": [
+            "Maps items into a new array."
+          ],
+          "zh-CN": [
+            "将数组项映射到新数组。"
+          ]
+        }
+      },
+      "filter": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "callback",
+            "type": "function"
+          }
+        ],
+        "returns": "array",
+        "notes": {
+          "en": [
+            "Returns items matching a predicate."
+          ],
+          "zh-CN": [
+            "返回满足谓词的项。"
+          ]
+        }
+      },
+      "some": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "callback",
+            "type": "function"
+          }
+        ],
+        "returns": "boolean",
+        "notes": {
+          "en": [
+            "Returns whether any item matches a predicate."
+          ],
+          "zh-CN": [
+            "返回是否有任意项满足谓词。"
+          ]
+        }
+      },
+      "every": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "callback",
+            "type": "function"
+          }
+        ],
+        "returns": "boolean",
+        "notes": {
+          "en": [
+            "Returns whether every item matches a predicate."
+          ],
+          "zh-CN": [
+            "返回是否所有项都满足谓词。"
+          ]
+        }
+      },
+      "flat": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "depth",
+            "type": "number",
+            "optional": true
+          }
+        ],
+        "returns": "array",
+        "notes": {
+          "en": [
+            "Flattens nested arrays."
+          ],
+          "zh-CN": [
+            "展开嵌套数组。"
+          ]
+        }
+      },
+      "reduce": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "callback",
+            "type": "function"
+          }
+        ],
+        "returns": "any",
+        "notes": {
+          "en": [
+            "Reduces items with an accumulator callback."
+          ],
+          "zh-CN": [
+            "使用累加回调归约数组项。"
+          ]
+        }
+      }
+    },
+    "String": {
+      "length": {
+        "kind": "property",
+        "returns": "number",
+        "notes": {
+          "en": [
+            "Returns the string length."
+          ],
+          "zh-CN": [
+            "返回字符串长度。"
+          ]
+        }
+      },
+      "contains": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "value",
+            "type": "string"
+          }
+        ],
+        "returns": "boolean",
+        "notes": {
+          "en": [
+            "Returns whether the string contains a substring."
+          ],
+          "zh-CN": [
+            "返回字符串是否包含子串。"
+          ]
+        }
+      },
+      "indexOf": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "value",
+            "type": "string"
+          }
+        ],
+        "returns": "number",
+        "notes": {
+          "en": [
+            "Returns the first index of a substring."
+          ],
+          "zh-CN": [
+            "返回子串第一次出现的位置。"
+          ]
+        }
+      },
+      "lastIndexOf": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "value",
+            "type": "string"
+          }
+        ],
+        "returns": "number",
+        "notes": {
+          "en": [
+            "Returns the last index of a substring."
+          ],
+          "zh-CN": [
+            "返回子串最后一次出现的位置。"
+          ]
+        }
+      },
+      "startsWith": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "value",
+            "type": "string"
+          }
+        ],
+        "returns": "boolean",
+        "notes": {
+          "en": [
+            "Returns whether the string starts with a prefix."
+          ],
+          "zh-CN": [
+            "返回字符串是否以指定前缀开头。"
+          ]
+        }
+      },
+      "endsWith": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "value",
+            "type": "string"
+          }
+        ],
+        "returns": "boolean",
+        "notes": {
+          "en": [
+            "Returns whether the string ends with a suffix."
+          ],
+          "zh-CN": [
+            "返回字符串是否以指定后缀结尾。"
+          ]
+        }
+      },
+      "substring": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "start",
+            "type": "number"
+          },
+          {
+            "name": "end",
+            "type": "number",
+            "optional": true
+          }
+        ],
+        "returns": "string",
+        "notes": {
+          "en": [
+            "Returns a substring by start and length/end arguments."
+          ],
+          "zh-CN": [
+            "按起始位置和长度/结束参数返回子串。"
+          ]
+        }
+      },
+      "split": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "separator",
+            "type": "string",
+            "optional": true
+          }
+        ],
+        "returns": "array",
+        "notes": {
+          "en": [
+            "Splits the string into an array."
+          ],
+          "zh-CN": [
+            "将字符串拆分为数组。"
+          ]
+        }
+      },
+      "match": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "pattern",
+            "type": "regex|string"
+          }
+        ],
+        "returns": "any",
+        "notes": {
+          "en": [
+            "Matches the string with a regex or pattern."
+          ],
+          "zh-CN": [
+            "使用正则或模式匹配字符串。"
+          ]
+        }
+      },
+      "matchAll": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "pattern",
+            "type": "regex|string"
+          }
+        ],
+        "returns": "array",
+        "notes": {
+          "en": [
+            "Returns all matches for a regex or pattern."
+          ],
+          "zh-CN": [
+            "返回正则或模式的全部匹配。"
+          ]
+        }
+      },
+      "replace": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "pattern",
+            "type": "string|regex"
+          },
+          {
+            "name": "replacement",
+            "type": "string|function"
+          }
+        ],
+        "returns": "string",
+        "notes": {
+          "en": [
+            "Replaces matched text."
+          ],
+          "zh-CN": [
+            "替换匹配文本。"
+          ]
+        }
+      },
+      "padLeft": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "width",
+            "type": "number"
+          },
+          {
+            "name": "padding",
+            "type": "string"
+          }
+        ],
+        "returns": "string",
+        "notes": {
+          "en": [
+            "Pads the string on the left."
+          ],
+          "zh-CN": [
+            "在左侧填充字符串。"
+          ]
+        }
+      },
+      "padRight": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "width",
+            "type": "number"
+          },
+          {
+            "name": "padding",
+            "type": "string"
+          }
+        ],
+        "returns": "string",
+        "notes": {
+          "en": [
+            "Pads the string on the right."
+          ],
+          "zh-CN": [
+            "在右侧填充字符串。"
+          ]
+        }
+      },
+      "trim": {
+        "kind": "method",
+        "parameters": [],
+        "returns": "string",
+        "notes": {
+          "en": [
+            "Trims both ends of the string."
+          ],
+          "zh-CN": [
+            "去除字符串两端空白。"
+          ]
+        }
+      },
+      "trimLeft": {
+        "kind": "method",
+        "parameters": [],
+        "returns": "string",
+        "notes": {
+          "en": [
+            "Trims the left side of the string."
+          ],
+          "zh-CN": [
+            "去除字符串左侧空白。"
+          ]
+        }
+      },
+      "trimRight": {
+        "kind": "method",
+        "parameters": [],
+        "returns": "string",
+        "notes": {
+          "en": [
+            "Trims the right side of the string."
+          ],
+          "zh-CN": [
+            "去除字符串右侧空白。"
+          ]
+        }
+      },
+      "slice": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "start",
+            "type": "number"
+          },
+          {
+            "name": "end",
+            "type": "number",
+            "optional": true
+          }
+        ],
+        "returns": "string",
+        "notes": {
+          "en": [
+            "Returns a slice of the string."
+          ],
+          "zh-CN": [
+            "返回字符串切片。"
+          ]
+        }
+      },
+      "toString": {
+        "kind": "method",
+        "parameters": [],
+        "returns": "string",
+        "notes": {
+          "en": [
+            "Returns this string."
+          ],
+          "zh-CN": [
+            "返回当前字符串。"
+          ]
+        }
+      },
+      "charCodeAt": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "index",
+            "type": "number"
+          }
+        ],
+        "returns": "number",
+        "notes": {
+          "en": [
+            "Returns the character code at an index."
+          ],
+          "zh-CN": [
+            "返回指定索引处的字符编码。"
+          ]
+        }
+      },
+      "toLowerCase": {
+        "kind": "method",
+        "parameters": [],
+        "returns": "string",
+        "notes": {
+          "en": [
+            "Returns a lowercase copy."
+          ],
+          "zh-CN": [
+            "返回小写副本。"
+          ]
+        }
+      },
+      "toUpperCase": {
+        "kind": "method",
+        "parameters": [],
+        "returns": "string",
+        "notes": {
+          "en": [
+            "Returns an uppercase copy."
+          ],
+          "zh-CN": [
+            "返回大写副本。"
+          ]
+        }
+      }
+    },
+    "StringBuffer": {
+      "append": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "values",
+            "type": "any",
+            "variadic": true
+          }
+        ],
+        "returns": "null",
+        "notes": {
+          "en": [
+            "Appends a value."
+          ],
+          "zh-CN": [
+            "追加值。"
+          ]
+        }
+      },
+      "insert": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "index",
+            "type": "number"
+          },
+          {
+            "name": "value",
+            "type": "string"
+          }
+        ],
+        "returns": "null",
+        "notes": {
+          "en": [
+            "Inserts a value at an index."
+          ],
+          "zh-CN": [
+            "在指定索引插入值。"
+          ]
+        }
+      },
+      "appendLine": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "values",
+            "type": "any",
+            "variadic": true
+          }
+        ],
+        "returns": "null",
+        "notes": {
+          "en": [
+            "Appends a value followed by a line break."
+          ],
+          "zh-CN": [
+            "追加值并换行。"
+          ]
+        }
+      },
+      "clear": {
+        "kind": "method",
+        "parameters": [],
+        "returns": "null",
+        "notes": {
+          "en": [
+            "Clears the buffer."
+          ],
+          "zh-CN": [
+            "清空缓冲区。"
+          ]
+        }
+      },
+      "release": {
+        "kind": "method",
+        "parameters": [],
+        "returns": "null",
+        "notes": {
+          "en": [
+            "Releases the buffer resources."
+          ],
+          "zh-CN": [
+            "释放缓冲区资源。"
+          ]
+        }
+      },
+      "stringAndRelease": {
+        "kind": "method",
+        "parameters": [],
+        "returns": "string",
+        "notes": {
+          "en": [
+            "Returns the string and releases the buffer."
+          ],
+          "zh-CN": [
+            "返回字符串并释放缓冲区。"
+          ]
+        }
+      },
+      "toString": {
+        "kind": "method",
+        "parameters": [],
+        "returns": "string",
+        "notes": {
+          "en": [
+            "Returns the current buffer contents."
+          ],
+          "zh-CN": [
+            "返回当前缓冲区内容。"
+          ]
+        }
+      }
+    },
+    "HashMap": {
+      "has": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "key",
+            "type": "any"
+          }
+        ],
+        "returns": "boolean",
+        "notes": {
+          "en": [
+            "Returns whether a key exists."
+          ],
+          "zh-CN": [
+            "返回键是否存在。"
+          ]
+        }
+      },
+      "set": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "key",
+            "type": "any"
+          },
+          {
+            "name": "value",
+            "type": "any"
+          }
+        ],
+        "returns": "null",
+        "notes": {
+          "en": [
+            "Sets a key-value pair."
+          ],
+          "zh-CN": [
+            "设置键值对。"
+          ]
+        }
+      },
+      "get": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "key",
+            "type": "any"
+          }
+        ],
+        "returns": "any",
+        "notes": {
+          "en": [
+            "Gets a value by key."
+          ],
+          "zh-CN": [
+            "按键获取值。"
+          ]
+        }
+      },
+      "getOrInsert": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "key",
+            "type": "any"
+          },
+          {
+            "name": "value",
+            "type": "any"
+          }
+        ],
+        "returns": "any",
+        "notes": {
+          "en": [
+            "Gets a value or inserts a default value."
+          ],
+          "zh-CN": [
+            "获取值或插入默认值。"
+          ]
+        }
+      },
+      "delete": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "key",
+            "type": "any"
+          }
+        ],
+        "returns": "null",
+        "notes": {
+          "en": [
+            "Deletes a key."
+          ],
+          "zh-CN": [
+            "删除键。"
+          ]
+        }
+      },
+      "clear": {
+        "kind": "method",
+        "parameters": [],
+        "returns": "null",
+        "notes": {
+          "en": [
+            "Clears the map."
+          ],
+          "zh-CN": [
+            "清空映射。"
+          ]
+        }
+      },
+      "keys": {
+        "kind": "property",
+        "returns": "array",
+        "notes": {
+          "en": [
+            "Returns all keys."
+          ],
+          "zh-CN": [
+            "返回所有键。"
+          ]
+        }
+      },
+      "values": {
+        "kind": "property",
+        "returns": "array",
+        "notes": {
+          "en": [
+            "Returns all values."
+          ],
+          "zh-CN": [
+            "返回所有值。"
+          ]
+        }
+      },
+      "size": {
+        "kind": "property",
+        "returns": "number",
+        "notes": {
+          "en": [
+            "Returns the number of entries."
+          ],
+          "zh-CN": [
+            "返回条目数量。"
+          ]
+        }
+      }
+    },
+    "Date": {
+      "year": {
+        "kind": "property",
+        "returns": "number",
+        "notes": {
+          "en": [
+            "Year component."
+          ],
+          "zh-CN": [
+            "年份部分。"
+          ]
+        }
+      },
+      "month": {
+        "kind": "property",
+        "returns": "number",
+        "notes": {
+          "en": [
+            "Month component."
+          ],
+          "zh-CN": [
+            "月份部分。"
+          ]
+        }
+      },
+      "day": {
+        "kind": "property",
+        "returns": "number",
+        "notes": {
+          "en": [
+            "Day component."
+          ],
+          "zh-CN": [
+            "日期部分。"
+          ]
+        }
+      },
+      "hour": {
+        "kind": "property",
+        "returns": "number",
+        "notes": {
+          "en": [
+            "Hour component."
+          ],
+          "zh-CN": [
+            "小时部分。"
+          ]
+        }
+      },
+      "minute": {
+        "kind": "property",
+        "returns": "number",
+        "notes": {
+          "en": [
+            "Minute component."
+          ],
+          "zh-CN": [
+            "分钟部分。"
+          ]
+        }
+      },
+      "second": {
+        "kind": "property",
+        "returns": "number",
+        "notes": {
+          "en": [
+            "Second component."
+          ],
+          "zh-CN": [
+            "秒部分。"
+          ]
+        }
+      },
+      "millisecond": {
+        "kind": "property",
+        "returns": "number",
+        "notes": {
+          "en": [
+            "Millisecond component."
+          ],
+          "zh-CN": [
+            "毫秒部分。"
+          ]
+        }
+      },
+      "dayOfWeek": {
+        "kind": "property",
+        "returns": "number",
+        "notes": {
+          "en": [
+            "Day of week component."
+          ],
+          "zh-CN": [
+            "星期部分。"
+          ]
+        }
+      },
+      "dayOfYear": {
+        "kind": "property",
+        "returns": "number",
+        "notes": {
+          "en": [
+            "Day of year component."
+          ],
+          "zh-CN": [
+            "一年中的天数。"
+          ]
+        }
+      },
+      "ticks": {
+        "kind": "property",
+        "returns": "number",
+        "notes": {
+          "en": [
+            "Underlying tick value."
+          ],
+          "zh-CN": [
+            "底层 ticks 值。"
+          ]
+        }
+      },
+      "toString": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "format",
+            "type": "string",
+            "optional": true
+          }
+        ],
+        "returns": "string",
+        "notes": {
+          "en": [
+            "Formats the date as a string."
+          ],
+          "zh-CN": [
+            "将日期格式化为字符串。"
+          ]
+        }
+      }
+    },
+    "Regex": {
+      "test": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "value",
+            "type": "string"
+          }
+        ],
+        "returns": "boolean",
+        "notes": {
+          "en": [
+            "Returns whether the regex matches input text."
+          ],
+          "zh-CN": [
+            "返回正则是否匹配输入文本。"
+          ]
+        }
+      }
+    },
+    "Number": {
+      "toString": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "radix",
+            "type": "number",
+            "optional": true
+          }
+        ],
+        "returns": "string",
+        "notes": {
+          "en": [
+            "Formats the number as a string."
+          ],
+          "zh-CN": [
+            "将数字格式化为字符串。"
+          ]
+        }
+      }
+    },
+    "Boolean": {
+      "toString": {
+        "kind": "method",
+        "parameters": [],
+        "returns": "string",
+        "notes": {
+          "en": [
+            "Formats the Boolean as a string."
+          ],
+          "zh-CN": [
+            "将布尔值格式化为字符串。"
+          ]
+        }
+      }
+    }
+  }
+}

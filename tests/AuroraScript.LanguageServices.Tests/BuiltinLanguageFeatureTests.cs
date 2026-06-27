@@ -2,6 +2,7 @@ using AuroraScript.LanguageServices.Builtins;
 using AuroraScript.LanguageServices.Features.Completion;
 using AuroraScript.LanguageServices.Text;
 using System;
+using System.IO;
 using System.Linq;
 using Xunit;
 
@@ -25,8 +26,273 @@ public sealed class BuiltinLanguageFeatureTests
 
         Assert.NotNull(hover);
         Assert.Contains("Math.abs", hover!.Contents, StringComparison.Ordinal);
-        Assert.Contains("value: number", hover.Contents, StringComparison.Ordinal);
-        Assert.Contains("number", hover.Contents, StringComparison.Ordinal);
+        Assert.Contains("```aurorascript", hover.Contents, StringComparison.Ordinal);
+        Assert.Contains("export declare Math.abs(value: Number): Number;", hover.Contents, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void HoverReturnsBuiltinOwnerDocumentationForMemberAccess()
+    {
+        const string source =
+            """
+            @module(TEST);
+            export func run() {
+                console.log("x");
+            }
+            """;
+        var service = CreateService();
+
+        var hover = service.GetHover("test.as", source, PositionOf(source, "console"));
+
+        Assert.NotNull(hover);
+        Assert.Contains("```aurorascript", hover!.Contents, StringComparison.Ordinal);
+        Assert.Contains("export declare console;", hover.Contents, StringComparison.Ordinal);
+        Assert.Contains("Console logging and timing API.", hover.Contents, StringComparison.Ordinal);
+        Assert.DoesNotContain("console.log", hover.Contents, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void HoverReturnsBuiltinMemberDeclarationDocumentation()
+    {
+        const string source =
+            """
+            @module(TEST);
+            export func run() {
+                console.log("x");
+            }
+            """;
+        var service = CreateService();
+
+        var hover = service.GetHover("test.as", source, PositionOf(source, "log"));
+
+        Assert.NotNull(hover);
+        Assert.Contains("```aurorascript", hover!.Contents, StringComparison.Ordinal);
+        Assert.Contains("export declare console.log(...values: Object[]): void;", hover.Contents, StringComparison.Ordinal);
+        Assert.Contains("Writes values to standard output.", hover.Contents, StringComparison.Ordinal);
+        Assert.DoesNotContain("readonly func", hover.Contents, StringComparison.Ordinal);
+        Assert.DoesNotContain("any[]): null", hover.Contents, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void HoverReturnsLocalizedBuiltinDocumentation()
+    {
+        const string source =
+            """
+            @module(TEST);
+            export func run() {
+                return String.fromCharCode(65);
+            }
+            """;
+        var english = CreateService("en-US");
+        var chinese = CreateService("zh-CN");
+
+        var englishHover = english.GetHover("test.as", source, PositionOf(source, "fromCharCode"));
+        var chineseHover = chinese.GetHover("test.as", source, PositionOf(source, "fromCharCode"));
+
+        Assert.NotNull(englishHover);
+        Assert.Contains("Creates a one-character string", englishHover!.Contents, StringComparison.Ordinal);
+        Assert.NotNull(chineseHover);
+        Assert.Contains("根据字符编码创建单字符字符串", chineseHover!.Contents, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void HoverReturnsScriptFunctionLeadingComments()
+    {
+        const string source =
+            """
+            @module(TEST);
+            // Adds two values.
+            // Used by callers.
+            export func add(left, right) {
+                return left + right;
+            }
+            """;
+        var service = CreateService();
+
+        var hover = service.GetHover("test.as", source, PositionOf(source, "add"));
+
+        Assert.NotNull(hover);
+        Assert.Contains("func add(left, right)", hover!.Contents, StringComparison.Ordinal);
+        Assert.Contains("Adds two values.", hover.Contents, StringComparison.Ordinal);
+        Assert.Contains("Used by callers.", hover.Contents, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void HoverReturnsScriptFunctionCommentsAtCallSite()
+    {
+        const string source =
+            """
+            @module(TEST);
+            // Adds two values.
+            export func add(left, right) {
+                return left + right;
+            }
+            export func run() {
+                return add(1, 2);
+            }
+            """;
+        var service = CreateService();
+
+        var hover = service.GetHover("test.as", source, PositionOfLast(source, "add"));
+
+        Assert.NotNull(hover);
+        Assert.Contains("```aurorascript", hover!.Contents, StringComparison.Ordinal);
+        Assert.Contains("func add(left, right)", hover.Contents, StringComparison.Ordinal);
+        Assert.Contains("Adds two values.", hover.Contents, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void HoverReturnsImportedScriptFunctionCommentsAtCallSite()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "aurora-hover-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var mainPath = Path.Combine(root, "main.as");
+            var libPath = Path.Combine(root, "lib.as");
+            var main =
+                """
+                @module(MAIN);
+                import lib from './lib';
+                export func run() {
+                    return lib.compute(1);
+                }
+                """;
+            var lib =
+                """
+                @module(LIB);
+                // Computes a value.
+                export func compute(value) {
+                    return value;
+                }
+                """;
+            var service = CreateService();
+            service.OpenOrUpdateDocument(mainPath, main);
+            service.OpenOrUpdateDocument(libPath, lib);
+
+            var hover = service.GetHover(mainPath, PositionOf(main, "compute"));
+
+            Assert.NotNull(hover);
+            Assert.Contains("```aurorascript", hover!.Contents, StringComparison.Ordinal);
+            Assert.Contains("export func compute(value)", hover.Contents, StringComparison.Ordinal);
+            Assert.Contains("Computes a value.", hover.Contents, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void HoverReturnsObjectLiteralMemberCommentsAtCallSite()
+    {
+        const string source =
+            """
+            @module(TEST);
+            export func run() {
+                const timer = {
+                    // Resets the timer.
+                    reset: () => 0,
+                    // Current tick count.
+                    count: 1
+                };
+                timer.reset();
+                return timer.count;
+            }
+            """;
+        var service = CreateService();
+
+        var resetHover = service.GetHover("test.as", source, PositionOfLast(source, "reset"));
+        var countHover = service.GetHover("test.as", source, PositionOfLast(source, "count"));
+
+        Assert.NotNull(resetHover);
+        Assert.Contains("func reset()", resetHover!.Contents, StringComparison.Ordinal);
+        Assert.Contains("Resets the timer.", resetHover.Contents, StringComparison.Ordinal);
+        Assert.NotNull(countHover);
+        Assert.Contains("property count", countHover!.Contents, StringComparison.Ordinal);
+        Assert.Contains("Current tick count.", countHover.Contents, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void HoverReturnsAssignedObjectMemberCommentsAtCallSite()
+    {
+        const string source =
+            """
+            @module(TEST);
+            export func run() {
+                const timer = {};
+                // Stops the timer.
+                timer.stop = () => 0;
+                return timer.stop();
+            }
+            """;
+        var service = CreateService();
+
+        var hover = service.GetHover("test.as", source, PositionOfLast(source, "stop"));
+
+        Assert.NotNull(hover);
+        Assert.Contains("func stop()", hover!.Contents, StringComparison.Ordinal);
+        Assert.Contains("Stops the timer.", hover.Contents, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void HoverReturnsScriptFunctionCommentsBeforeAnnotations()
+    {
+        const string source =
+            """
+            @module(TEST);
+            // Fast callable.
+            @directCall
+            func helper(value) {
+                return value;
+            }
+            """;
+        var service = CreateService();
+
+        var hover = service.GetHover("test.as", source, PositionOf(source, "helper"));
+
+        Assert.NotNull(hover);
+        Assert.Contains("Fast callable.", hover!.Contents, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void HoverReturnsModuleLeadingComments()
+    {
+        const string source =
+            """
+            // MD5 module.
+            // Exports hash helpers.
+            @module(MD5);
+            export func run() {
+                return 1;
+            }
+            """;
+        var service = CreateService();
+
+        var hover = service.GetHover("test.as", source, PositionOf(source, "@module"));
+
+        Assert.NotNull(hover);
+        Assert.Contains("MD5 module.", hover!.Contents, StringComparison.Ordinal);
+        Assert.Contains("Exports hash helpers.", hover.Contents, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void HoverReturnsAnnotationDocumentation()
+    {
+        const string source =
+            """
+            @module(TEST);
+            @directCall
+            func helper() {
+                return 1;
+            }
+            """;
+        var service = CreateService("zh-CN");
+
+        var hover = service.GetHover("test.as", source, PositionOf(source, "@directCall"));
+
+        Assert.NotNull(hover);
+        Assert.Contains("直接调用", hover!.Contents, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -45,6 +311,7 @@ public sealed class BuiltinLanguageFeatureTests
 
         Assert.Contains(completions.Items, item => item.Label == "Math" && item.Kind == CompletionItemKind.Object);
         Assert.Contains(completions.Items, item => item.Label == "console" && item.Kind == CompletionItemKind.Object);
+        Assert.Contains(completions.Items, item => item.Label == "global" && item.Kind == CompletionItemKind.Object);
     }
 
     [Fact]
@@ -63,6 +330,23 @@ public sealed class BuiltinLanguageFeatureTests
 
         Assert.Contains(completions.Items, item => item.Label == "abs" && item.Kind == CompletionItemKind.Method);
         Assert.Contains(completions.Items, item => item.Label == "PI" && item.Kind == CompletionItemKind.Constant && item.ReadOnly);
+    }
+
+    [Fact]
+    public void CompletionReturnsCompilerProvidedGlobalMembers()
+    {
+        const string source =
+            """
+            @module(TEST);
+            export func run() {
+                global.
+            }
+            """;
+        var service = CreateService();
+
+        var completions = service.GetCompletions("test.as", source, new TextPosition(2, 11));
+
+        Assert.Contains(completions.Items, item => item.Label == "modules" && item.Kind == CompletionItemKind.Property && item.ReadOnly);
     }
 
     [Fact]
@@ -86,15 +370,49 @@ public sealed class BuiltinLanguageFeatureTests
         Assert.Equal(2, signature.Parameters.Count);
     }
 
-    private static AuroraLanguageService CreateService()
+    private static AuroraLanguageService CreateService(string? locale = null)
     {
         var catalog = BuiltinApiLoader.LoadFromFile(BuiltinApiCatalogTests.GetRuntimeApiPath());
-        return new AuroraLanguageService(catalog);
+        return new AuroraLanguageService(new AuroraLanguageServiceOptions(catalog)
+        {
+            DocumentationLocale = locale ?? "en"
+        });
     }
 
     private static TextPosition PositionOf(string source, string needle)
     {
         var offset = source.IndexOf(needle, StringComparison.Ordinal);
+        Assert.True(offset >= 0, $"Needle '{needle}' not found.");
+        var line = 0;
+        var character = 0;
+        for (var i = 0; i < offset; i++)
+        {
+            if (source[i] == '\r')
+            {
+                if (i + 1 < offset && source[i + 1] == '\n')
+                {
+                    i++;
+                }
+                line++;
+                character = 0;
+            }
+            else if (source[i] == '\n')
+            {
+                line++;
+                character = 0;
+            }
+            else
+            {
+                character++;
+            }
+        }
+
+        return new TextPosition(line, character);
+    }
+
+    private static TextPosition PositionOfLast(string source, string needle)
+    {
+        var offset = source.LastIndexOf(needle, StringComparison.Ordinal);
         Assert.True(offset >= 0, $"Needle '{needle}' not found.");
         var line = 0;
         var character = 0;

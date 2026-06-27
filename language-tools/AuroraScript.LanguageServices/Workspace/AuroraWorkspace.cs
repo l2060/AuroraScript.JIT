@@ -62,6 +62,17 @@ public sealed class AuroraWorkspace
         return new AuroraWorkspaceSnapshot(_documents.Values, BaseDirectory, _version);
     }
 
+    public AuroraWorkspace Rebase(string baseDirectory)
+    {
+        var rebased = new AuroraWorkspace(baseDirectory);
+        foreach (var document in _documents.Values)
+        {
+            rebased.OpenOrUpdate(document.Path, document.Text, document.Version);
+        }
+
+        return rebased;
+    }
+
     private string NormalizePath(string path)
     {
         if (string.IsNullOrWhiteSpace(path))

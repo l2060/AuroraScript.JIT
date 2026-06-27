@@ -1,0 +1,89 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RootNamespace>AuroraScript.VisualStudio</RootNamespace>
+    <AssemblyName>AuroraScript.VisualStudio</AssemblyName>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <CopyBuildOutputToOutputDirectory>true</CopyBuildOutputToOutputDirectory>
+    <IncludeAssemblyInVSIXContainer>true</IncludeAssemblyInVSIXContainer>
+    <IncludeDebugSymbolsInVSIXContainer>false</IncludeDebugSymbolsInVSIXContainer>
+    <IncludeDebugSymbolsInLocalVSIXDeployment>false</IncludeDebugSymbolsInLocalVSIXDeployment>
+    <MinimumVisualStudioVersion>17.14</MinimumVisualStudioVersion>
+    <StartAction>Program</StartAction>
+    <StartProgram>devenv.exe</StartProgram>
+    <VSSDKBuildToolsAutoSetup>true</VSSDKBuildToolsAutoSetup>
+    <CreateVsixContainer>true</CreateVsixContainer>
+    <EnableContentIncludeInVsix>true</EnableContentIncludeInVsix>
+    <NoWarn>$(NoWarn);0618;0649</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System.ComponentModel.Composition" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net472" Version="1.0.3" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.VisualStudio.LanguageServer.Client" Version="17.14.60" ExcludeAssets="runtime" />
+    <PackageReference Include="Microsoft.VisualStudio.SDK" Version="17.14.40265" ExcludeAssets="runtime" />
+    <PackageReference Include="Microsoft.VSSDK.BuildTools" Version="18.5.40034" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="source.extension.vsixmanifest" SubType="Designer" />
+    <Content Include="AuroraScript.TextMate.pkgdef">
+      <IncludeInVSIX>true</IncludeInVSIX>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="language-configuration.json">
+      <IncludeInVSIX>true</IncludeInVSIX>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Grammars\AuroraScript.tmLanguage.json">
+      <IncludeInVSIX>true</IncludeInVSIX>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\icon.png">
+      <Link>Assets\icon.png</Link>
+      <VSIXSubPath>Assets</VSIXSubPath>
+      <TargetPath>icon.png</TargetPath>
+      <IncludeInVSIX>true</IncludeInVSIX>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\LICENSE">
+      <Link>Assets\LICENSE.txt</Link>
+      <VSIXSubPath>Assets</VSIXSubPath>
+      <TargetPath>LICENSE.txt</TargetPath>
+      <IncludeInVSIX>true</IncludeInVSIX>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <Target Name="PublishAuroraLanguageServer" BeforeTargets="GetVsixSourceItems">
+    <PropertyGroup>
+      <AuroraLanguageServerPublishDir>$(MSBuildProjectDirectory)\obj\$(Configuration)\LanguageServer\win-x64\</AuroraLanguageServerPublishDir>
+      <AuroraLanguageServerExecutable>$(AuroraLanguageServerPublishDir)AuroraScript.LanguageServer.exe</AuroraLanguageServerExecutable>
+    </PropertyGroup>
+    <RemoveDir Directories="$(AuroraLanguageServerPublishDir)" Condition="Exists('$(AuroraLanguageServerPublishDir)')" />
+    <MSBuild
+      Projects="$(MSBuildProjectDirectory)\..\..\language-tools\AuroraScript.LanguageServer\AuroraScript.LanguageServer.csproj"
+      Targets="Publish"
+      Properties="Configuration=$(Configuration);RuntimeIdentifier=win-x64;SelfContained=true;PublishSingleFile=true;PublishTrimmed=true;TrimMode=partial;EnableCompressionInSingleFile=true;DebugType=none;DebugSymbols=false;CopyOutputSymbolsToPublishDirectory=false;CopyDocumentationFileToPublishDirectory=false;PublishDir=$(AuroraLanguageServerPublishDir)" />
+    <ItemGroup>
+      <AuroraLanguageServerSidecarFiles Include="$(AuroraLanguageServerPublishDir)**\*.*" Exclude="$(AuroraLanguageServerExecutable)" />
+    </ItemGroup>
+    <Delete Files="@(AuroraLanguageServerSidecarFiles)" />
+    <Error Text="AuroraScript.LanguageServer single-file publish did not produce $(AuroraLanguageServerExecutable)."
+           Condition="!Exists('$(AuroraLanguageServerExecutable)')" />
+    <ItemGroup>
+      <Content Include="$(AuroraLanguageServerExecutable)">
+        <Link>Server\AuroraScript.LanguageServer.exe</Link>
+        <VSIXSubPath>Server</VSIXSubPath>
+        <TargetPath>AuroraScript.LanguageServer.exe</TargetPath>
+        <IncludeInVSIX>true</IncludeInVSIX>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+    </ItemGroup>
+  </Target>
+
+</Project>

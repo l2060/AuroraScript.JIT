@@ -11,52 +11,62 @@ namespace AuroraScript.LanguageServices.Internal;
 
 internal static class BuiltinQuery
 {
-    public static bool TryGetHover(BuiltinApiCatalog builtins, AstQueryContext context, out HoverResult hover)
+    public static bool TryGetHover(BuiltinApiCatalog builtins, AstQueryContext context, string? locale, out HoverResult hover)
     {
         hover = null!;
         if (context.PropertyAccess != null &&
+            context.IsOnPropertyOwner &&
+            context.PropertyAccess.Object is NameExpression ownerName &&
+            builtins.TryGetGlobal(ownerName.Identifier.Value, out var owner))
+        {
+            hover = new HoverResult(BuiltinFormat.FormatGlobal(owner, locale), TextRange.FromSourceSpan(ownerName.Identifier.Range));
+            return true;
+        }
+
+        if (context.PropertyAccess != null &&
+            context.IsOnPropertyName &&
             TryResolveMember(builtins, context.PropertyAccess, out var member))
         {
             var range = context.PropertyAccess.Property is NameExpression name
                 ? name.Identifier.Range
                 : context.PropertyAccess.Property.Range;
-            hover = new HoverResult(BuiltinFormat.FormatMember(member), TextRange.FromSourceSpan(range));
+            hover = new HoverResult(BuiltinFormat.FormatMember(member, locale), TextRange.FromSourceSpan(range));
             return true;
         }
 
         if (context.Name != null &&
             builtins.TryGetGlobal(context.Name.Identifier.Value, out var global))
         {
-            hover = new HoverResult(BuiltinFormat.FormatGlobal(global), TextRange.FromSourceSpan(context.Name.Range));
+            hover = new HoverResult(BuiltinFormat.FormatGlobal(global, locale), TextRange.FromSourceSpan(context.Name.Range));
             return true;
         }
 
         return false;
     }
 
-    public static CompletionResult GetCompletions(BuiltinApiCatalog builtins, AstQueryContext? context)
+    public static CompletionResult GetCompletions(BuiltinApiCatalog builtins, AstQueryContext? context, string? locale = null)
     {
         if (context?.PropertyAccess != null &&
             TryResolveOwnerName(context.PropertyAccess.Object, out var ownerName) &&
             builtins.TryGetGlobal(ownerName, out var owner))
         {
-            return CompleteMembers(owner.Members);
+            return CompleteMembers(owner.Members, locale);
         }
 
-        return CompleteGlobals(builtins.Globals);
+        return CompleteGlobals(builtins.Globals, locale);
     }
 
-    public static CompletionResult GetMemberCompletions(BuiltinApiCatalog builtins, string ownerName)
+    public static CompletionResult GetMemberCompletions(BuiltinApiCatalog builtins, string ownerName, string? locale = null)
     {
         if (builtins.TryGetGlobal(ownerName, out var owner))
         {
-            return CompleteMembers(owner.Members);
+            return CompleteMembers(owner.Members, locale);
         }
 
         return new CompletionResult(Array.Empty<CompletionItem>());
     }
 
-    public static SignatureHelpResult? GetSignatureHelp(BuiltinApiCatalog builtins, AstQueryContext context, TextPosition position)
+    public static SignatureHelpResult? GetSignatureHelp(BuiltinApiCatalog builtins, AstQueryContext context, TextPosition position, string? locale = null)
     {
         var call = context.Call;
         if (call == null)
@@ -87,19 +97,19 @@ internal static class BuiltinQuery
                 "any",
                 global.ReadOnly,
                 Array.Empty<BuiltinApiParameter>(),
-                global.Notes);
+                global.Documentation);
         }
         else
         {
             return null;
         }
 
-        var signature = BuiltinFormat.FormatSignatureInfo(member);
+        var signature = BuiltinFormat.FormatSignatureInfo(member, locale);
         var activeParameter = GetActiveParameter(call, position);
         return new SignatureHelpResult(new[] { signature }, 0, activeParameter);
     }
 
-    private static CompletionResult CompleteGlobals(IReadOnlyDictionary<string, BuiltinApiSymbol> globals)
+    private static CompletionResult CompleteGlobals(IReadOnlyDictionary<string, BuiltinApiSymbol> globals, string? locale)
     {
         var items = new List<CompletionItem>(globals.Count);
         foreach (var pair in globals)
@@ -109,14 +119,14 @@ internal static class BuiltinQuery
                 symbol.Name,
                 BuiltinFormat.ToCompletionKind(symbol.Kind),
                 BuiltinFormat.FormatCompletionDetail(symbol),
-                BuiltinFormat.FormatGlobal(symbol),
+                BuiltinFormat.FormatGlobal(symbol, locale),
                 symbol.ReadOnly));
         }
 
         return new CompletionResult(items);
     }
 
-    private static CompletionResult CompleteMembers(IReadOnlyDictionary<string, BuiltinApiMember> members)
+    private static CompletionResult CompleteMembers(IReadOnlyDictionary<string, BuiltinApiMember> members, string? locale)
     {
         var items = new List<CompletionItem>(members.Count);
         foreach (var pair in members)
@@ -126,7 +136,7 @@ internal static class BuiltinQuery
                 member.Name,
                 BuiltinFormat.ToCompletionKind(member.Kind),
                 BuiltinFormat.FormatCompletionDetail(member),
-                BuiltinFormat.FormatMember(member),
+                BuiltinFormat.FormatMember(member, locale),
                 member.ReadOnly));
         }
 

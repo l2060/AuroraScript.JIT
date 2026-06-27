@@ -49,12 +49,12 @@ public static class BuiltinApiLoader
     {
         var kind = ReadKind(element, BuiltinApiKind.Object);
         var readOnly = ReadReadOnly(element, defaultValue: true);
-        var notes = ReadNotes(element);
+        var documentation = ReadDocumentation(element);
         var members = element.TryGetProperty("members", out var membersElement)
             ? ReadMembers(name, membersElement)
             : new Dictionary<string, BuiltinApiMember>(StringComparer.Ordinal);
 
-        return new BuiltinApiSymbol(name, kind, readOnly, notes, members);
+        return new BuiltinApiSymbol(name, kind, readOnly, documentation, members);
     }
 
     private static IReadOnlyDictionary<string, BuiltinApiMember> ReadMembers(string ownerName, JsonElement element)
@@ -76,8 +76,8 @@ public static class BuiltinApiLoader
             : "any";
         var readOnly = ReadReadOnly(element, defaultValue: true);
         var parameters = ReadParameters(element);
-        var notes = ReadNotes(element);
-        return new BuiltinApiMember(ownerName, name, kind, returnType, readOnly, parameters, notes);
+        var documentation = ReadDocumentation(element);
+        return new BuiltinApiMember(ownerName, name, kind, returnType, readOnly, parameters, documentation);
     }
 
     private static bool ReadReadOnly(JsonElement element, bool defaultValue)
@@ -122,14 +122,40 @@ public static class BuiltinApiLoader
         return parameters;
     }
 
-    private static IReadOnlyList<string> ReadNotes(JsonElement element)
+    private static BuiltinApiDocumentation ReadDocumentation(JsonElement element)
     {
-        if (!element.TryGetProperty("notes", out var notesElement) ||
-            notesElement.ValueKind != JsonValueKind.Array)
+        if (!element.TryGetProperty("notes", out var notesElement))
         {
-            return Array.Empty<string>();
+            return BuiltinApiDocumentation.Empty;
         }
 
+        if (notesElement.ValueKind == JsonValueKind.Array)
+        {
+            return new BuiltinApiDocumentation(new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["en"] = ReadNoteArray(notesElement)
+            });
+        }
+
+        if (notesElement.ValueKind != JsonValueKind.Object)
+        {
+            return BuiltinApiDocumentation.Empty;
+        }
+
+        var notesByLanguage = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var property in notesElement.EnumerateObject())
+        {
+            if (property.Value.ValueKind == JsonValueKind.Array)
+            {
+                notesByLanguage[property.Name] = ReadNoteArray(property.Value);
+            }
+        }
+
+        return new BuiltinApiDocumentation(notesByLanguage);
+    }
+
+    private static IReadOnlyList<string> ReadNoteArray(JsonElement notesElement)
+    {
         var notes = new List<string>();
         foreach (var noteElement in notesElement.EnumerateArray())
         {

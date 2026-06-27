@@ -15,9 +15,7 @@ function defineTest(name, run) {
 
 // console.log(STR);
 // console.error("This is an error message.");
-
 // log(1,2,3,4,5,6);
-
 export func testEmpty() {
     // empty body
 }
@@ -31,6 +29,8 @@ var node = {
     E: "Hello",
     F: () => { console.log("reset"); }
 };
+
+// 
 
 node = Object.assign(node, { 你好: 'Hello' } );
 
@@ -160,7 +160,7 @@ export func testHotPatch() {
     func testDatetime() {
         console.log("Current     Time", Date.now().toString());
         console.log("Current UTC Time", Date.utcNow().toString());
-
+        
         console.log("Current     Time", Date.now().toString("yyyy-MM-dd HH:mm:ss fff"));
         console.log("Current UTC Time", Date.utcNow().toString("yyyy-MM-dd HH:mm:ss fff"));
     }
@@ -274,8 +274,7 @@ export func testHotPatch() {
     }
 
 
-
-
+    // 4545
     func createTestContext(name) {
         return {
             name: name,
@@ -340,6 +339,8 @@ export func testHotPatch() {
         expectTrue(ctx, !condition, message, condition, false);
     }
 
+    // jjjjjjjjj
+    // bbbbbbbbbb
     func expectEqual(ctx, actual, expected, message) {
         var ok = deepEqual(actual, expected);
         expectTrue(ctx, ok, message, actual, expected);

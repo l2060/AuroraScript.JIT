@@ -1,6 +1,7 @@
 using AuroraScript.Core;
 using AuroraScript.LanguageServices.Builtins;
 using System;
+using System.Globalization;
 using System.IO;
 
 namespace AuroraScript.LanguageServices;
@@ -13,6 +14,8 @@ public sealed class AuroraLanguageServiceOptions
     private string _baseDirectory;
     private string _extension;
     private IScriptSourceResolver _sourceResolver;
+    private int _maxWorkspaceIndexFiles;
+    private string _documentationLocale;
 
     /// <summary>
     /// Creates language-service options with the required builtin API catalog.
@@ -23,6 +26,8 @@ public sealed class AuroraLanguageServiceOptions
         _baseDirectory = Directory.GetCurrentDirectory();
         _extension = ".as";
         _sourceResolver = FileScriptSourceResolver.Instance;
+        _maxWorkspaceIndexFiles = 2000;
+        _documentationLocale = GetDefaultDocumentationLocale();
     }
 
     /// <summary>
@@ -67,6 +72,37 @@ public sealed class AuroraLanguageServiceOptions
         init => _sourceResolver = value ?? throw new ArgumentNullException(nameof(value));
     }
 
+    /// <summary>
+    /// Gets whether disk files under <see cref="BaseDirectory"/> are indexed for workspace-wide references and rename.
+    /// </summary>
+    public bool IndexWorkspaceFiles { get; init; }
+
+    /// <summary>
+    /// Gets the maximum number of workspace script files indexed from disk.
+    /// </summary>
+    public int MaxWorkspaceIndexFiles
+    {
+        get => _maxWorkspaceIndexFiles;
+        init
+        {
+            if (value <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), "Workspace file index limit must be positive.");
+            }
+
+            _maxWorkspaceIndexFiles = value;
+        }
+    }
+
+    /// <summary>
+    /// Gets the locale used for builtin API and annotation documentation. Chinese locales use Chinese notes; other locales use English.
+    /// </summary>
+    public string DocumentationLocale
+    {
+        get => _documentationLocale;
+        init => _documentationLocale = NormalizeDocumentationLocale(value);
+    }
+
     internal EngineOptions ToEngineOptions()
     {
         return EngineOptions.Default.WithCompiler(compiler =>
@@ -75,5 +111,24 @@ public sealed class AuroraLanguageServiceOptions
             compiler.ExtName = Extension;
             compiler.SourceResolver = SourceResolver;
         });
+    }
+
+    internal static string NormalizeDocumentationLocale(string? locale)
+    {
+        if (string.IsNullOrWhiteSpace(locale))
+        {
+            return GetDefaultDocumentationLocale();
+        }
+
+        return locale.StartsWith("zh", StringComparison.OrdinalIgnoreCase)
+            ? "zh-CN"
+            : "en";
+    }
+
+    private static string GetDefaultDocumentationLocale()
+    {
+        return CultureInfo.CurrentUICulture.Name.StartsWith("zh", StringComparison.OrdinalIgnoreCase)
+            ? "zh-CN"
+            : "en";
     }
 }

@@ -44,7 +44,7 @@ internal static class LightweightCompletionQuery
 
     private static bool IsIdentifierStart(char ch)
     {
-        return ch == '_' || char.IsLetter(ch);
+        return ch == '_' || ch == '$' || char.IsLetter(ch);
     }
 
     private static bool IsIdentifierPart(char ch)

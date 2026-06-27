@@ -11,13 +11,13 @@ public sealed class BuiltinApiSymbol
         string name,
         BuiltinApiKind kind,
         bool readOnly,
-        IReadOnlyList<string> notes,
+        BuiltinApiDocumentation documentation,
         IReadOnlyDictionary<string, BuiltinApiMember> members)
     {
         Name = string.IsNullOrWhiteSpace(name) ? throw new ArgumentException("Symbol name is required.", nameof(name)) : name;
         Kind = kind;
         ReadOnly = readOnly;
-        Notes = notes ?? Array.Empty<string>();
+        Documentation = documentation ?? BuiltinApiDocumentation.Empty;
         _members = new Dictionary<string, BuiltinApiMember>(members ?? EmptyMembers, StringComparer.Ordinal);
         Members = _members;
     }
@@ -28,7 +28,8 @@ public sealed class BuiltinApiSymbol
     public string Name { get; }
     public BuiltinApiKind Kind { get; }
     public bool ReadOnly { get; }
-    public IReadOnlyList<string> Notes { get; }
+    public BuiltinApiDocumentation Documentation { get; }
+    public IReadOnlyList<string> Notes => Documentation.GetNotes(null);
     public IReadOnlyDictionary<string, BuiltinApiMember> Members { get; }
 
     public bool TryGetMember(string name, out BuiltinApiMember member)

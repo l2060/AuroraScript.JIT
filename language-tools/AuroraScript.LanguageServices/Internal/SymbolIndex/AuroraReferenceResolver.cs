@@ -54,6 +54,19 @@ internal static class AuroraReferenceResolver
         out AuroraResolvedSymbol target)
     {
         target = null!;
+
+        if (TryResolveModuleDeclaration(module, position, out var declared))
+        {
+            target = AuroraResolvedSymbol.FromSymbol(declared);
+            return true;
+        }
+
+        if (TryResolveImportAlias(module, position, out var declaredImportAlias, out var importAliasSymbol))
+        {
+            target = AuroraResolvedSymbol.FromImportAlias(declaredImportAlias, importAliasSymbol);
+            return true;
+        }
+
         var context = AstQuery.Find(module.Module, position);
         if (context == null)
         {
@@ -66,6 +79,11 @@ internal static class AuroraReferenceResolver
         {
             target = AuroraResolvedSymbol.FromSymbol(imported);
             return true;
+        }
+
+        if (context.PropertyAccess != null && context.IsOnPropertyName)
+        {
+            return false;
         }
 
         if (context.Name == null)
@@ -98,6 +116,53 @@ internal static class AuroraReferenceResolver
             return true;
         }
 
+        return false;
+    }
+
+    private static bool TryResolveModuleDeclaration(
+        AuroraModuleIndex module,
+        TextPosition position,
+        out AuroraSymbolInfo symbol)
+    {
+        foreach (var candidate in module.Symbols.Values)
+        {
+            if (Contains(candidate.NameRange, position))
+            {
+                symbol = candidate;
+                return true;
+            }
+        }
+
+        symbol = null!;
+        return false;
+    }
+
+    private static bool TryResolveImportAlias(
+        AuroraModuleIndex module,
+        TextPosition position,
+        out AuroraImportInfo importAlias,
+        out AuroraSymbolInfo symbol)
+    {
+        foreach (var candidate in module.ImportsByAlias.Values)
+        {
+            if (!Contains(candidate.AliasRange, position))
+            {
+                continue;
+            }
+
+            importAlias = candidate;
+            symbol = new AuroraSymbolInfo(
+                candidate.Alias,
+                AuroraSymbolKind.ImportAlias,
+                module.Module.ModulePath ?? module.Path,
+                module.Path,
+                candidate.AliasRange,
+                exported: false);
+            return true;
+        }
+
+        importAlias = null!;
+        symbol = null!;
         return false;
     }
 
@@ -182,6 +247,26 @@ internal static class AuroraReferenceResolver
     private static ReferenceLocation ToReference(AuroraSymbolInfo symbol)
     {
         return new ReferenceLocation(symbol.FilePath, symbol.NameRange);
+    }
+
+    private static bool Contains(TextRange range, TextPosition position)
+    {
+        if (position.Line < range.Start.Line || position.Line > range.End.Line)
+        {
+            return false;
+        }
+
+        if (position.Line == range.Start.Line && position.Character < range.Start.Character)
+        {
+            return false;
+        }
+
+        if (position.Line == range.End.Line && position.Character > range.End.Character)
+        {
+            return false;
+        }
+
+        return true;
     }
 
     private static StringComparer PathComparer => OperatingSystem.IsWindows()

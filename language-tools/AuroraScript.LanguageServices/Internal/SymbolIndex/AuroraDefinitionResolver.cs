@@ -1,4 +1,6 @@
+using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
+using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.LanguageServices.Features.Definition;
 using AuroraScript.LanguageServices.Text;
 using System.Collections.Generic;
@@ -21,11 +23,36 @@ internal static class AuroraDefinitionResolver
             return null;
         }
 
+        var localIndex = AuroraLocalSymbolIndex.Build(module);
+        if (localIndex.TryGetDefinition(position, out var localDefinition))
+        {
+            return localDefinition;
+        }
+
+        if (context.PropertyAccess != null &&
+            context.IsOnPropertyName &&
+            AuroraObjectMemberIndex.Build(module).TryGetDefinition(context.PropertyAccess, out var objectMemberDefinition))
+        {
+            return objectMemberDefinition;
+        }
+
+        if (context.PropertyAccess != null &&
+            context.IsOnPropertyName &&
+            TryResolveConstructedObjectMember(index, module, localIndex, context.PropertyAccess, out var constructedMemberDefinition))
+        {
+            return constructedMemberDefinition;
+        }
+
         if (context.PropertyAccess != null &&
             context.IsOnPropertyName &&
             TryResolveImportedMember(index, module, context.PropertyAccess, out var importedMember))
         {
             return ToLocation(importedMember);
+        }
+
+        if (context.PropertyAccess != null && context.IsOnPropertyName)
+        {
+            return null;
         }
 
         if (context.Name != null)
@@ -46,6 +73,356 @@ internal static class AuroraDefinitionResolver
             {
                 return ToLocation(included);
             }
+        }
+
+        return null;
+    }
+
+    private static bool TryResolveConstructedObjectMember(
+        AuroraWorkspaceIndex index,
+        AuroraModuleIndex module,
+        AuroraLocalSymbolIndex localIndex,
+        GetPropertyExpression propertyAccess,
+        out DefinitionLocation definition)
+    {
+        definition = null!;
+        if (propertyAccess.Object is not NameExpression owner ||
+            propertyAccess.Property is not NameExpression property ||
+            !TryFindVariableInitializer(module, localIndex, owner, out var initializer) ||
+            !TryResolveCallTarget(index, module, initializer, out var targetModule, out var function))
+        {
+            return false;
+        }
+
+        return TryResolveReturnedObjectMember(targetModule, function, property.Identifier.Value, out definition);
+    }
+
+    private static bool TryResolveReturnedObjectMember(
+        AuroraModuleIndex targetModule,
+        FunctionDeclaration function,
+        string memberName,
+        out DefinitionLocation definition)
+    {
+        definition = null!;
+        if (function.Body == null)
+        {
+            return false;
+        }
+
+        var returnExpression = FindReturnExpression(function.Body);
+        if (returnExpression == null)
+        {
+            return false;
+        }
+
+        if (TryResolveObjectMemberInExpression(targetModule, returnExpression, memberName, out var range))
+        {
+            definition = new DefinitionLocation(targetModule.Path, range);
+            return true;
+        }
+
+        if (returnExpression is NameExpression returnedName &&
+            AuroraObjectMemberIndex.Build(targetModule, function).TryGetMember(returnedName.Identifier.Value, memberName, out range))
+        {
+            definition = new DefinitionLocation(targetModule.Path, range);
+            return true;
+        }
+
+        if (returnExpression is FunctionCallExpression call &&
+            call.Target is NameExpression { Identifier.Value: "Object" } &&
+            call.Arguments.Count > 0)
+        {
+            if (TryResolveObjectMemberInExpression(targetModule, call.Arguments[0], memberName, out range))
+            {
+                definition = new DefinitionLocation(targetModule.Path, range);
+                return true;
+            }
+
+            if (call.Arguments[0] is NameExpression objectName &&
+                AuroraObjectMemberIndex.Build(targetModule, function).TryGetMember(objectName.Identifier.Value, memberName, out range))
+            {
+                definition = new DefinitionLocation(targetModule.Path, range);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryResolveObjectMemberInExpression(
+        AuroraModuleIndex module,
+        Expression expression,
+        string memberName,
+        out TextRange range)
+    {
+        if (expression is MapExpression map)
+        {
+            for (var i = 0; i < map.Entries.Count; i++)
+            {
+                if (map.Entries[i] is MapKeyValueExpression entry &&
+                    entry.Key != null &&
+                    string.Equals(entry.Key.Value, memberName, System.StringComparison.Ordinal))
+                {
+                    range = TextRange.FromSourceSpan(entry.Key.Range);
+                    return true;
+                }
+            }
+        }
+
+        if (expression is NameExpression name &&
+            AuroraObjectMemberIndex.Build(module).TryGetMember(name.Identifier.Value, memberName, out range))
+        {
+            return true;
+        }
+
+        range = default;
+        return false;
+    }
+
+    private static bool TryResolveCallTarget(
+        AuroraWorkspaceIndex index,
+        AuroraModuleIndex module,
+        Expression initializer,
+        out AuroraModuleIndex targetModule,
+        out FunctionDeclaration function)
+    {
+        targetModule = null!;
+        function = null!;
+        var call = UnwrapCall(initializer);
+        if (call == null)
+        {
+            return false;
+        }
+
+        if (call.Target is NameExpression localName)
+        {
+            targetModule = module;
+            return TryFindFunction(module.Module, localName.Identifier.Value, out function);
+        }
+
+        if (call.Target is GetPropertyExpression
+            {
+                Object: NameExpression alias,
+                Property: NameExpression member
+            } &&
+            module.ImportsByAlias.TryGetValue(alias.Identifier.Value, out var import))
+        {
+            var importedModule = index.TryGetModule(import.TargetPath);
+            if (importedModule == null)
+            {
+                return false;
+            }
+
+            targetModule = importedModule;
+            return TryFindFunction(importedModule.Module, member.Identifier.Value, out function);
+        }
+
+        return false;
+    }
+
+    private static FunctionCallExpression? UnwrapCall(Expression expression)
+    {
+        return expression switch
+        {
+            FunctionCallExpression call => call,
+            NewExpression newExpression => newExpression.Expression,
+            _ => null
+        };
+    }
+
+    private static bool TryFindVariableInitializer(
+        AuroraModuleIndex module,
+        AuroraLocalSymbolIndex localIndex,
+        NameExpression owner,
+        out Expression initializer)
+    {
+        initializer = null!;
+        if (localIndex.TryGetDefinition(TextRange.FromSourceSpan(owner.Identifier.Range).Start, out var localDefinition) &&
+            PathComparer.Equals(localDefinition.Path, module.Path))
+        {
+            return TryFindVariableInitializer(module.Module, owner.Identifier.Value, localDefinition.Range, out initializer);
+        }
+
+        if (module.Symbols.TryGetValue(owner.Identifier.Value, out var symbol))
+        {
+            return TryFindVariableInitializer(module.Module, owner.Identifier.Value, symbol.NameRange, out initializer);
+        }
+
+        return false;
+    }
+
+    private static bool TryFindVariableInitializer(
+        Compiler.Ast.ModuleDeclaration module,
+        string variableName,
+        TextRange declarationRange,
+        out Expression initializer)
+    {
+        initializer = null!;
+        return TryFindVariableInitializer(module.Statements, variableName, declarationRange, out initializer) ||
+            TryFindVariableInitializer(module.Functions, variableName, declarationRange, out initializer);
+    }
+
+    private static bool TryFindVariableInitializer(
+        IReadOnlyList<Compiler.Ast.AstNode> nodes,
+        string variableName,
+        TextRange declarationRange,
+        out Expression initializer)
+    {
+        initializer = null!;
+        for (var i = 0; i < nodes.Count; i++)
+        {
+            if (TryFindVariableInitializer(nodes[i], variableName, declarationRange, out initializer))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryFindVariableInitializer(
+        Compiler.Ast.AstNode? node,
+        string variableName,
+        TextRange declarationRange,
+        out Expression initializer)
+    {
+        initializer = null!;
+        switch (node)
+        {
+            case VariableDeclaration variable when variable.Name != null &&
+                string.Equals(variable.Name.Value, variableName, System.StringComparison.Ordinal) &&
+                SameRange(TextRange.FromSourceSpan(variable.Name.Range), declarationRange) &&
+                variable.Initializer != null:
+                initializer = variable.Initializer!;
+                return true;
+            case FunctionDeclaration function:
+                return TryFindVariableInitializer(function.Body, variableName, declarationRange, out initializer);
+            case BlockStatement block:
+                return TryFindVariableInitializer(block.Statements, variableName, declarationRange, out initializer) ||
+                    TryFindVariableInitializer(block.Functions, variableName, declarationRange, out initializer);
+            case IfStatement ifStatement:
+                return TryFindVariableInitializer(ifStatement.Body, variableName, declarationRange, out initializer) ||
+                    TryFindVariableInitializer(ifStatement.Else, variableName, declarationRange, out initializer);
+            case WhileStatement whileStatement:
+                return TryFindVariableInitializer(whileStatement.Body, variableName, declarationRange, out initializer);
+            case ForStatement forStatement:
+                return TryFindVariableInitializer(forStatement.Initializer, variableName, declarationRange, out initializer) ||
+                    TryFindVariableInitializer(forStatement.Body, variableName, declarationRange, out initializer);
+            case ForInStatement forInStatement:
+                return TryFindVariableInitializer(forInStatement.Initializer, variableName, declarationRange, out initializer) ||
+                    TryFindVariableInitializer(forInStatement.Body, variableName, declarationRange, out initializer);
+            case TryStatement tryStatement:
+                return TryFindVariableInitializer(tryStatement.Body, variableName, declarationRange, out initializer) ||
+                    TryFindVariableInitializer(tryStatement.CatchBody, variableName, declarationRange, out initializer) ||
+                    TryFindVariableInitializer(tryStatement.FinallyBody, variableName, declarationRange, out initializer);
+        }
+
+        return false;
+    }
+
+    private static bool TryFindFunction(
+        Compiler.Ast.ModuleDeclaration module,
+        string functionName,
+        out FunctionDeclaration function)
+    {
+        function = null!;
+        for (var i = 0; i < module.Functions.Count; i++)
+        {
+            if (module.Functions[i].Name != null &&
+                string.Equals(module.Functions[i].Name.Value, functionName, System.StringComparison.Ordinal))
+            {
+                function = module.Functions[i];
+                return true;
+            }
+        }
+
+        return TryFindFunction(module.Statements, functionName, out function);
+    }
+
+    private static bool TryFindFunction(
+        IReadOnlyList<Compiler.Ast.AstNode> nodes,
+        string functionName,
+        out FunctionDeclaration function)
+    {
+        function = null!;
+        for (var i = 0; i < nodes.Count; i++)
+        {
+            if (TryFindFunction(nodes[i], functionName, out function))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryFindFunction(
+        Compiler.Ast.AstNode? node,
+        string functionName,
+        out FunctionDeclaration function)
+    {
+        function = null!;
+        switch (node)
+        {
+            case FunctionDeclaration candidate when candidate.Name != null &&
+                string.Equals(candidate.Name.Value, functionName, System.StringComparison.Ordinal):
+                function = candidate;
+                return true;
+            case FunctionDeclaration candidate:
+                return TryFindFunction(candidate.Body, functionName, out function);
+            case BlockStatement block:
+                return TryFindFunction(block.Functions, functionName, out function) ||
+                    TryFindFunction(block.Statements, functionName, out function);
+            case IfStatement ifStatement:
+                return TryFindFunction(ifStatement.Body, functionName, out function) ||
+                    TryFindFunction(ifStatement.Else, functionName, out function);
+            case WhileStatement whileStatement:
+                return TryFindFunction(whileStatement.Body, functionName, out function);
+            case ForStatement forStatement:
+                return TryFindFunction(forStatement.Initializer, functionName, out function) ||
+                    TryFindFunction(forStatement.Body, functionName, out function);
+            case ForInStatement forInStatement:
+                return TryFindFunction(forInStatement.Initializer, functionName, out function) ||
+                    TryFindFunction(forInStatement.Body, functionName, out function);
+            case TryStatement tryStatement:
+                return TryFindFunction(tryStatement.Body, functionName, out function) ||
+                    TryFindFunction(tryStatement.CatchBody, functionName, out function) ||
+                    TryFindFunction(tryStatement.FinallyBody, functionName, out function);
+        }
+
+        return false;
+    }
+
+    private static Expression? FindReturnExpression(Compiler.Ast.AstNode? node)
+    {
+        switch (node)
+        {
+            case null:
+                return null;
+            case ReturnStatement returnStatement:
+                return returnStatement.Expression;
+            case BlockStatement block:
+                for (var i = 0; i < block.Statements.Count; i++)
+                {
+                    var expression = FindReturnExpression(block.Statements[i]);
+                    if (expression != null)
+                    {
+                        return expression;
+                    }
+                }
+                return null;
+            case IfStatement ifStatement:
+                return FindReturnExpression(ifStatement.Body) ?? FindReturnExpression(ifStatement.Else);
+            case WhileStatement whileStatement:
+                return FindReturnExpression(whileStatement.Body);
+            case ForStatement forStatement:
+                return FindReturnExpression(forStatement.Body);
+            case ForInStatement forInStatement:
+                return FindReturnExpression(forInStatement.Body);
+            case TryStatement tryStatement:
+                return FindReturnExpression(tryStatement.Body) ??
+                    FindReturnExpression(tryStatement.CatchBody) ??
+                    FindReturnExpression(tryStatement.FinallyBody);
         }
 
         return null;
@@ -123,4 +500,13 @@ internal static class AuroraDefinitionResolver
     {
         return new DefinitionLocation(symbol.FilePath, symbol.NameRange);
     }
+
+    private static bool SameRange(TextRange left, TextRange right)
+    {
+        return left.Start.Equals(right.Start) && left.End.Equals(right.End);
+    }
+
+    private static System.StringComparer PathComparer => System.OperatingSystem.IsWindows()
+        ? System.StringComparer.OrdinalIgnoreCase
+        : System.StringComparer.Ordinal;
 }

@@ -3,6 +3,7 @@ using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Compiler.Backend.Traversal;
+using AuroraScript.LanguageServices.Features.Definition;
 using AuroraScript.LanguageServices.Features.References;
 using AuroraScript.LanguageServices.Text;
 using System;
@@ -49,6 +50,22 @@ internal sealed class AuroraLocalSymbolIndex
         }
 
         references = GetReferences(symbol, includeDeclaration);
+        return true;
+    }
+
+    public bool TryGetDefinition(TextPosition position, out DefinitionLocation definition)
+    {
+        if (!TryResolveSymbol(position, requireDeclaration: false, out var symbol) ||
+            !symbol.HasDeclarationRange)
+        {
+            definition = null!;
+            return false;
+        }
+
+        var path = string.IsNullOrEmpty(symbol.DeclarationRange.FileName)
+            ? _module.Path
+            : symbol.DeclarationRange.FileName;
+        definition = new DefinitionLocation(path, symbol.DeclarationRange);
         return true;
     }
 

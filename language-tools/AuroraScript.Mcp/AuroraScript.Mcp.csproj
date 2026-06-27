@@ -26,9 +26,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\**\*.*" Exclude="bin\**;obj\**;*.csproj;*.cs;..\AuroraScript.Mcp\bin\**;..\AuroraScript.Mcp\obj\**;..\AuroraScript.Mcp\*.csproj;..\AuroraScript.Mcp\*.cs">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Link>ai-language-pack\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    <None Include="..\..\.language\**\*.*">
+		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		<Link>.language\%(RecursiveDir)%(Filename)%(Extension)</Link>
     </None>
   </ItemGroup>
+	
 </Project>

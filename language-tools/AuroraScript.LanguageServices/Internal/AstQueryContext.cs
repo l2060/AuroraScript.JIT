@@ -8,6 +8,7 @@ internal sealed class AstQueryContext
     public NameExpression? Name { get; init; }
     public GetPropertyExpression? PropertyAccess { get; init; }
     public FunctionCallExpression? Call { get; init; }
+    public bool IsOnPropertyOwner { get; init; }
     public bool IsOnPropertyName { get; init; }
     public bool IsAfterMemberAccessDot { get; init; }
 }

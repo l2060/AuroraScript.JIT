@@ -35,6 +35,11 @@ internal sealed class AuroraWorkspaceIndexCache
         _entries[path] = new CacheEntry(text, module);
     }
 
+    public void Clear()
+    {
+        _entries.Clear();
+    }
+
     private void EvictLeastRecentlyUsed()
     {
         string? path = null;

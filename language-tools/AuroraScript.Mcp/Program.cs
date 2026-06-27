@@ -457,10 +457,10 @@ internal sealed class AuroraMcpServer
     {
         var candidates = new[]
         {
-            Path.Combine(AppContext.BaseDirectory, "ai-language-pack"),
-            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "ai-language-pack")),
-            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "ai-language-pack")),
-            Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "ai-language-pack"))
+            Path.Combine(AppContext.BaseDirectory, ".language"),
+            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", ".language")),
+            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".language")),
+            Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), ".language"))
         };
 
         for (var i = 0; i < candidates.Length; i++)
@@ -471,7 +471,7 @@ internal sealed class AuroraMcpServer
             }
         }
 
-        throw new DirectoryNotFoundException("Could not locate ai-language-pack directory.");
+        throw new DirectoryNotFoundException("Could not locate .language directory.");
     }
 
     private sealed record LanguageResource(

@@ -897,7 +897,7 @@ namespace AuroraScript.Compiler.Analyzer
         private bool ScanString(ReadOnlySpan<char> span, out RuleTestResult result)
         {
             char keychar = span[0];
-            int currentColumn = this.ColumnNumber;
+            int currentColumn = this.ColumnNumber + 1;
             int currentLineCount = 0;
             StringBuilder sb = null;
             int segmentStart = 1;
@@ -923,9 +923,19 @@ namespace AuroraScript.Compiler.Analyzer
                     currentColumn += 2;
                     i++;
                 }
+                else if (viewChar == '\r')
+                {
+                    if (i + 1 < span.Length && span[i + 1] == '\n')
+                    {
+                        i++;
+                    }
+
+                    currentColumn = 1;
+                    currentLineCount += 1;
+                }
                 else if (viewChar == '\n')
                 {
-                    currentColumn = 0;
+                    currentColumn = 1;
                     currentLineCount += 1;
                 }
                 else

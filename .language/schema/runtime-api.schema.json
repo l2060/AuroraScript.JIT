@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aurorascript.dev/schema/runtime-api.schema.json",
+  "title": "AuroraScript Runtime API Schema",
+  "type": "object",
+  "required": ["language", "versionTarget", "globals", "prototypes"],
+  "properties": {
+    "language": { "const": "AuroraScript" },
+    "versionTarget": { "type": "string" },
+    "globals": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/typeOrObject" }
+    },
+    "prototypes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": { "$ref": "#/$defs/member" }
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "typeOrObject": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["constructor", "object", "function", "constant"] },
+        "members": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/member" }
+        },
+        "notes": { "$ref": "#/$defs/localizedNotes" }
+      },
+      "additionalProperties": false
+    },
+    "member": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["method", "property", "constant"] },
+        "parameters": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/parameter" }
+        },
+        "returns": { "type": "string" },
+        "writable": { "type": "boolean" },
+        "notes": { "$ref": "#/$defs/localizedNotes" }
+      },
+      "additionalProperties": false
+    },
+    "parameter": {
+      "type": "object",
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "optional": { "type": "boolean" },
+        "variadic": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "localizedNotes": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        {
+          "type": "object",
+          "properties": {
+            "en": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "zh-CN": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          },
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      ]
+    }
+  }
+}
+

@@ -1,0 +1,627 @@
+using AuroraScript.LanguageServices.Builtins;
+using AuroraScript.LanguageServices.Features.Definition;
+using AuroraScript.LanguageServices.Text;
+using System;
+using System.Collections.Generic;
+using System.Text;
+using System.Text.RegularExpressions;
+
+namespace AuroraScript.LanguageServices.Internal;
+
+internal sealed class BuiltinDefinitionDocuments
+{
+    public const string Scheme = "aurora-builtin";
+
+    private static readonly Regex TypeTokenPattern = new("[A-Za-z_$][A-Za-z0-9_$]*", RegexOptions.Compiled);
+    private static readonly string[] SyntheticTypeNames =
+    {
+        "Function"
+    };
+
+    private readonly Dictionary<string, DocumentInfo> _documentsByOwner = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, DocumentInfo> _documentsByTypeName = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, DocumentInfo> _documentsByUri = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _knownTypes = new(StringComparer.Ordinal);
+
+    private readonly string? _locale;
+
+    public BuiltinDefinitionDocuments(BuiltinApiCatalog catalog, string? locale = null)
+    {
+        _locale = locale;
+        if (catalog == null)
+        {
+            return;
+        }
+
+        foreach (var pair in catalog.Globals)
+        {
+            _knownTypes.Add(pair.Key);
+        }
+
+        for (var i = 0; i < SyntheticTypeNames.Length; i++)
+        {
+            _knownTypes.Add(SyntheticTypeNames[i]);
+        }
+
+        foreach (var pair in catalog.Globals)
+        {
+            catalog.Prototypes.TryGetValue(pair.Key, out var prototypeMembers);
+            var document = BuildDocument(pair.Value, prototypeMembers);
+            _documentsByOwner[pair.Key] = document;
+            _documentsByTypeName[pair.Key] = document;
+            _documentsByUri[document.Uri] = document;
+        }
+
+        for (var i = 0; i < SyntheticTypeNames.Length; i++)
+        {
+            var typeName = SyntheticTypeNames[i];
+            if (_documentsByTypeName.ContainsKey(typeName))
+            {
+                continue;
+            }
+
+            var document = BuildSyntheticTypeDocument(typeName);
+            _documentsByTypeName[typeName] = document;
+            _documentsByUri[document.Uri] = document;
+        }
+    }
+
+    public bool TryGetGlobalLocation(string name, out DefinitionLocation location)
+    {
+        location = null!;
+        if (!_documentsByOwner.TryGetValue(name, out var document))
+        {
+            return false;
+        }
+
+        location = new DefinitionLocation(document.Uri, document.GlobalRange);
+        return true;
+    }
+
+    public bool TryGetMemberLocation(string ownerName, string memberName, out DefinitionLocation location)
+    {
+        location = null!;
+        if (!_documentsByOwner.TryGetValue(ownerName, out var document) ||
+            !document.MemberRanges.TryGetValue(memberName, out var range))
+        {
+            return false;
+        }
+
+        location = new DefinitionLocation(document.Uri, range);
+        return true;
+    }
+
+    public bool TryGetDocumentDefinition(string uri, TextPosition position, out DefinitionLocation location)
+    {
+        location = null!;
+        if (!_documentsByUri.TryGetValue(uri, out var document))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < document.BuiltinReferences.Count; i++)
+        {
+            var reference = document.BuiltinReferences[i];
+            if (!Contains(reference.Range, position) ||
+                !_documentsByTypeName.TryGetValue(reference.TargetName, out var targetDocument))
+            {
+                continue;
+            }
+
+            location = new DefinitionLocation(targetDocument.Uri, targetDocument.GlobalRange);
+            return true;
+        }
+
+        return false;
+    }
+
+    public bool TryGetDocument(string uri, out BuiltinDocument document)
+    {
+        document = null!;
+        if (!_documentsByUri.TryGetValue(uri, out var info))
+        {
+            return false;
+        }
+
+        document = new BuiltinDocument(info.Uri, info.Text);
+        return true;
+    }
+
+    public static bool IsBuiltinUri(string uri)
+    {
+        return uri != null && uri.StartsWith(Scheme + ":", StringComparison.Ordinal);
+    }
+
+    private DocumentInfo BuildDocument(
+        BuiltinApiSymbol symbol,
+        IReadOnlyDictionary<string, BuiltinApiMember>? prototypeMembers)
+    {
+        var uri = Uri(symbol.Name);
+        var builder = new DocumentTextBuilder();
+        var memberRanges = new Dictionary<string, TextRange>(StringComparer.Ordinal);
+        var builtinReferences = new List<BuiltinReference>();
+
+        builder.AppendLine("// AuroraScript built-in declaration document.");
+        builder.AppendLine("// Generated from the runtime API catalog for editor navigation.");
+        builder.AppendLine();
+
+        AppendDocumentation(builder, uri, symbol.Documentation.GetNotes(_locale), null, null, builtinReferences);
+        var globalRange = AppendGlobalDeclaration(builder, uri, symbol);
+
+        if (symbol.Members.Count != 0)
+        {
+            builder.AppendLine();
+        }
+
+        foreach (var memberPair in symbol.Members)
+        {
+            var member = memberPair.Value;
+            AppendMember(builder, uri, symbol.Name, member, includePrototype: false, memberRanges, builtinReferences);
+        }
+
+        if (prototypeMembers != null && prototypeMembers.Count != 0)
+        {
+            builder.AppendLine();
+            builder.AppendLine("// Prototype members");
+            foreach (var memberPair in prototypeMembers)
+            {
+                var member = memberPair.Value;
+                AppendMember(builder, uri, symbol.Name, member, includePrototype: true, memberRanges: null, builtinReferences);
+            }
+        }
+
+        return new DocumentInfo(uri, builder.ToString(), globalRange, memberRanges, builtinReferences);
+    }
+
+    private static DocumentInfo BuildSyntheticTypeDocument(string typeName)
+    {
+        var uri = Uri(typeName);
+        var builder = new DocumentTextBuilder();
+        var memberRanges = new Dictionary<string, TextRange>(StringComparer.Ordinal);
+        var builtinReferences = new List<BuiltinReference>();
+
+        builder.AppendLine("// AuroraScript built-in declaration document.");
+        builder.AppendLine("// Generated for declaration-file type navigation.");
+        builder.AppendLine();
+        builder.AppendLine("/**");
+        builder.Append("* Built-in ").Append(typeName).AppendLine(" type used by runtime API declarations.");
+        builder.AppendLine("*/");
+        builder.Append("export declare ");
+        var globalRange = builder.AppendToken(uri, typeName);
+        builder.AppendLine(";");
+
+        return new DocumentInfo(uri, builder.ToString(), globalRange, memberRanges, builtinReferences);
+    }
+
+    private static TextRange AppendGlobalDeclaration(
+        DocumentTextBuilder builder,
+        string uri,
+        BuiltinApiSymbol symbol)
+    {
+        builder.Append("export declare ");
+        var range = builder.AppendToken(uri, symbol.Name);
+
+        if (symbol.Kind == BuiltinApiKind.Function)
+        {
+            builder.Append("(): Object");
+        }
+
+        builder.AppendLine(";");
+        return range;
+    }
+
+    private void AppendMember(
+        DocumentTextBuilder builder,
+        string uri,
+        string ownerName,
+        BuiltinApiMember member,
+        bool includePrototype,
+        Dictionary<string, TextRange>? memberRanges,
+        List<BuiltinReference> builtinReferences)
+    {
+        AppendDocumentation(builder, uri, member.Documentation.GetNotes(_locale), member.Parameters, member.ReturnType, builtinReferences);
+        builder.Append("export declare ");
+        AppendBuiltinReference(builder, uri, ownerName, builtinReferences);
+        builder.Append(includePrototype ? ".prototype." : ".");
+        var memberRange = builder.AppendToken(uri, member.Name);
+        if (memberRanges != null)
+        {
+            memberRanges[member.Name] = memberRange;
+        }
+
+        if (member.Kind == BuiltinApiKind.Method || member.Kind == BuiltinApiKind.Function)
+        {
+            builder.Append("(");
+            AppendParameters(builder, uri, member.Parameters, builtinReferences);
+            builder.Append("): ");
+            AppendType(builder, uri, member.ReturnType, TypeUsage.Return, optional: false, variadic: false, builtinReferences);
+            builder.AppendLine(";");
+            return;
+        }
+
+        builder.Append(": ");
+        AppendType(builder, uri, member.ReturnType, TypeUsage.Value, optional: false, variadic: false, builtinReferences);
+        builder.AppendLine(";");
+    }
+
+    private void AppendParameters(
+        DocumentTextBuilder builder,
+        string uri,
+        IReadOnlyList<BuiltinApiParameter> parameters,
+        List<BuiltinReference> builtinReferences)
+    {
+        for (var i = 0; i < parameters.Count; i++)
+        {
+            if (i > 0)
+            {
+                builder.Append(", ");
+            }
+
+            var parameter = parameters[i];
+            if (parameter.Variadic)
+            {
+                builder.Append("...");
+            }
+
+            builder.Append(SafeParameterName(parameter.Name, i)).Append(": ");
+            AppendType(builder, uri, parameter.Type, TypeUsage.Value, parameter.Optional, parameter.Variadic, builtinReferences);
+        }
+    }
+
+    private void AppendDocumentation(
+        DocumentTextBuilder builder,
+        string uri,
+        IReadOnlyList<string> notes,
+        IReadOnlyList<BuiltinApiParameter>? parameters,
+        string? returnType,
+        List<BuiltinReference> builtinReferences)
+    {
+        var hasParameters = parameters != null && parameters.Count != 0;
+        var hasReturnType = !string.IsNullOrWhiteSpace(returnType);
+        if (notes.Count == 0 && !hasParameters && !hasReturnType)
+        {
+            return;
+        }
+
+        builder.AppendLine("/**");
+        for (var i = 0; i < notes.Count; i++)
+        {
+            builder.Append("* ").AppendLine(notes[i]);
+        }
+
+        if (hasParameters)
+        {
+            for (var i = 0; i < parameters!.Count; i++)
+            {
+                var parameter = parameters[i];
+                var type = FormatType(parameter.Type, TypeUsage.Value, parameter.Optional, parameter.Variadic);
+                builder
+                    .Append("* @param ")
+                    .Append(SafeParameterName(parameter.Name, i))
+                    .Append(" ");
+                AppendFormattedType(builder, uri, type, builtinReferences);
+                builder.AppendLine(".");
+            }
+        }
+
+        if (hasReturnType)
+        {
+            var type = FormatType(returnType!, TypeUsage.Return, optional: false, variadic: false);
+            if (!string.Equals(type, "void", StringComparison.Ordinal))
+            {
+                builder.Append("* @returns ");
+                AppendFormattedType(builder, uri, type, builtinReferences);
+                builder.AppendLine(".");
+            }
+        }
+
+        builder.AppendLine("*/");
+    }
+
+    private void AppendFormattedType(
+        DocumentTextBuilder builder,
+        string uri,
+        string type,
+        List<BuiltinReference> builtinReferences)
+    {
+        var startLine = builder.Line;
+        var startCharacter = builder.Character;
+        builder.Append(type);
+
+        foreach (Match match in TypeTokenPattern.Matches(type))
+        {
+            var token = match.Value;
+            if (!_knownTypes.Contains(token))
+            {
+                continue;
+            }
+
+            builtinReferences.Add(new BuiltinReference(
+                token,
+                Range(uri, startLine, startCharacter + match.Index, match.Length)));
+        }
+    }
+
+    private void AppendBuiltinReference(
+        DocumentTextBuilder builder,
+        string uri,
+        string targetName,
+        List<BuiltinReference> builtinReferences)
+    {
+        var range = builder.AppendToken(uri, targetName);
+        if (_knownTypes.Contains(targetName))
+        {
+            builtinReferences.Add(new BuiltinReference(targetName, range));
+        }
+    }
+
+    private void AppendType(
+        DocumentTextBuilder builder,
+        string uri,
+        string rawType,
+        TypeUsage usage,
+        bool optional,
+        bool variadic,
+        List<BuiltinReference> builtinReferences)
+    {
+        var type = FormatType(rawType, usage, optional, variadic);
+        AppendFormattedType(builder, uri, type, builtinReferences);
+    }
+
+    private static string FormatType(string rawType, TypeUsage usage, bool optional, bool variadic)
+    {
+        var type = FormatTypeCore(rawType, usage);
+        if (optional && !ContainsNullType(rawType) && !string.Equals(type, "void", StringComparison.Ordinal))
+        {
+            type += " | null";
+        }
+
+        if (!variadic)
+        {
+            return type;
+        }
+
+        return type.Contains(" | ", StringComparison.Ordinal)
+            ? "(" + type + ")[]"
+            : type + "[]";
+    }
+
+    private static string FormatTypeCore(string rawType, TypeUsage usage)
+    {
+        if (string.IsNullOrWhiteSpace(rawType))
+        {
+            return "Object";
+        }
+
+        var parts = rawType.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length > 1)
+        {
+            var mapped = new List<string>(parts.Length);
+            for (var i = 0; i < parts.Length; i++)
+            {
+                var part = MapSingleType(parts[i], usage);
+                if (!mapped.Contains(part))
+                {
+                    mapped.Add(part);
+                }
+            }
+
+            return string.Join(" | ", mapped);
+        }
+
+        return MapSingleType(rawType, usage);
+    }
+
+    private static string MapSingleType(string rawType, TypeUsage usage)
+    {
+        var trimmed = rawType.Trim();
+        if (trimmed.EndsWith("[]", StringComparison.Ordinal))
+        {
+            return MapSingleType(trimmed.Substring(0, trimmed.Length - 2), usage) + "[]";
+        }
+
+        return trimmed.ToLowerInvariant() switch
+        {
+            "number" => "Number",
+            "string" => "String",
+            "boolean" => "Boolean",
+            "bool" => "Boolean",
+            "array" => "Array",
+            "date" => "Date",
+            "object" => "Object",
+            "any" => "Object",
+            "regex" => "Regex",
+            "regexp" => "Regex",
+            "function" => "Function",
+            "func" => "Function",
+            "null" => usage == TypeUsage.Return ? "void" : "null",
+            "undefined" => usage == TypeUsage.Return ? "void" : "null",
+            "void" => "void",
+            _ => trimmed
+        };
+    }
+
+    private static bool ContainsNullType(string rawType)
+    {
+        var parts = rawType.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        for (var i = 0; i < parts.Length; i++)
+        {
+            var part = parts[i];
+            if (string.Equals(part, "null", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(part, "undefined", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(part, "void", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string SafeParameterName(string name, int index)
+    {
+        if (IsIdentifier(name))
+        {
+            return name;
+        }
+
+        return "arg" + index;
+    }
+
+    private static bool IsIdentifier(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        if (!IsIdentifierStart(value[0]))
+        {
+            return false;
+        }
+
+        for (var i = 1; i < value.Length; i++)
+        {
+            if (!IsIdentifierPart(value[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsIdentifierStart(char value)
+    {
+        return char.IsLetter(value) || value == '_' || value == '$';
+    }
+
+    private static bool IsIdentifierPart(char value)
+    {
+        return char.IsLetterOrDigit(value) || value == '_' || value == '$';
+    }
+
+    private static bool Contains(TextRange range, TextPosition position)
+    {
+        if (position.Line < range.Start.Line || position.Line > range.End.Line)
+        {
+            return false;
+        }
+
+        if (position.Line == range.Start.Line && position.Character < range.Start.Character)
+        {
+            return false;
+        }
+
+        if (position.Line == range.End.Line && position.Character >= range.End.Character)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static TextRange Range(string uri, int line, int character, int length)
+    {
+        if (character < 0)
+        {
+            character = 0;
+        }
+
+        return new TextRange(
+            uri,
+            new TextPosition(line, character),
+            new TextPosition(line, character + length));
+    }
+
+    private static string Uri(string ownerName)
+    {
+        return Scheme + ":/" + ownerName + ".as";
+    }
+
+    private enum TypeUsage
+    {
+        Value,
+        Return
+    }
+
+    private readonly record struct BuiltinReference(string TargetName, TextRange Range);
+
+    private sealed class DocumentInfo
+    {
+        public DocumentInfo(
+            string uri,
+            string text,
+            TextRange globalRange,
+            IReadOnlyDictionary<string, TextRange> memberRanges,
+            IReadOnlyList<BuiltinReference> builtinReferences)
+        {
+            Uri = uri;
+            Text = text;
+            GlobalRange = globalRange;
+            MemberRanges = memberRanges;
+            BuiltinReferences = builtinReferences;
+        }
+
+        public string Uri { get; }
+        public string Text { get; }
+        public TextRange GlobalRange { get; }
+        public IReadOnlyDictionary<string, TextRange> MemberRanges { get; }
+        public IReadOnlyList<BuiltinReference> BuiltinReferences { get; }
+    }
+
+    private sealed class DocumentTextBuilder
+    {
+        private readonly StringBuilder _builder = new();
+
+        public int Line { get; private set; }
+        public int Character { get; private set; }
+
+        public DocumentTextBuilder Append(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return this;
+            }
+
+            _builder.Append(text);
+            for (var i = 0; i < text.Length; i++)
+            {
+                if (text[i] == '\n')
+                {
+                    Line++;
+                    Character = 0;
+                }
+                else
+                {
+                    Character++;
+                }
+            }
+
+            return this;
+        }
+
+        public DocumentTextBuilder AppendLine()
+        {
+            return Append("\n");
+        }
+
+        public DocumentTextBuilder AppendLine(string text)
+        {
+            return Append(text).Append("\n");
+        }
+
+        public TextRange AppendToken(string uri, string token)
+        {
+            var line = Line;
+            var character = Character;
+            Append(token);
+            return Range(uri, line, character, token.Length);
+        }
+
+        public override string ToString()
+        {
+            return _builder.ToString();
+        }
+    }
+}

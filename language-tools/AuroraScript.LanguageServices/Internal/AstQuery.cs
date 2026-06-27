@@ -23,6 +23,7 @@ internal static class AstQuery
             Name = state.Name,
             PropertyAccess = state.PropertyAccess,
             Call = state.Call,
+            IsOnPropertyOwner = state.IsOnPropertyOwner,
             IsOnPropertyName = state.IsOnPropertyName,
             IsAfterMemberAccessDot = state.IsAfterMemberAccessDot
         };
@@ -203,6 +204,12 @@ internal static class AstQuery
             state.IsOnPropertyName = true;
         }
 
+        if (node.Object is NameExpression objectName &&
+            objectName.Identifier.Range.Contains(state.Position))
+        {
+            state.IsOnPropertyOwner = true;
+        }
+
         var dotColumn = node.Object.Range.EndColumn;
         var positionLine = state.Position.Line + 1;
         var positionColumn = state.Position.Character + 1;
@@ -242,6 +249,7 @@ internal static class AstQuery
         public NameExpression? Name { get; set; }
         public GetPropertyExpression? PropertyAccess { get; set; }
         public FunctionCallExpression? Call { get; set; }
+        public bool IsOnPropertyOwner { get; set; }
         public bool IsOnPropertyName { get; set; }
         public bool IsAfterMemberAccessDot { get; set; }
     }
