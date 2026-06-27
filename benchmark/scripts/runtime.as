@@ -96,6 +96,22 @@ export func stringConcat(iterations = 1000) {
     return value.length;
 }
 
+export func templateSmall(iterations = 1000) {
+    var value = "";
+    for (var i = 0; i < iterations; i++) {
+        value = `${i}:${i + 1}`;
+    }
+    return value.length;
+}
+
+export func templateLarge(iterations = 1000) {
+    var value = "";
+    for (var i = 0; i < iterations; i++) {
+        value = `a${i}b${i + 1}c${i + 2}d${i + 3}e`;
+    }
+    return value.length;
+}
+
 export func stringBufferAppend(iterations = 1000) {
     var buffer = new StringBuffer("");
     for (var i = 0; i < iterations; i++) {

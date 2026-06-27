@@ -29,7 +29,7 @@ namespace AuroraScript.Compiler
                 SingleWriter = false,
                 AllowSynchronousContinuations = false
             });
-        private readonly ConcurrentQueue<Exception> _exceptions = new();
+        private readonly ConcurrentQueue<AuroraCompilationDiagnostic> _diagnostics = new();
         private readonly EngineOptions _options;
         private readonly object _workerLock = new();
         private Task[] _workers;
@@ -82,11 +82,11 @@ namespace AuroraScript.Compiler
                 throw;
             }
 
-            if (!_exceptions.IsEmpty)
+            if (!_diagnostics.IsEmpty)
             {
-                var errors = _exceptions.ToArray();
-                Array.Sort(errors, CompareCompileErrors);
-                throw new AuroraCompileReportException(errors);
+                var diagnostics = _diagnostics.ToArray();
+                Array.Sort(diagnostics, CompareDiagnostics);
+                throw new AuroraCompilationException(diagnostics);
             }
 
             var modules = _modulesByPath.Values.ToArray();
@@ -124,7 +124,11 @@ namespace AuroraScript.Compiler
                 }
                 catch (Exception ex)
                 {
-                    _exceptions.Enqueue(new AuroraCompileException(source.FullPath, ex));
+                    var diagnostics = AuroraCompilationException.CollectDiagnostics(ex, AuroraCompilationStage.Parsing);
+                    for (var i = 0; i < diagnostics.Length; i++)
+                    {
+                        _diagnostics.Enqueue(diagnostics[i]);
+                    }
                 }
                 finally
                 {
@@ -214,7 +218,12 @@ namespace AuroraScript.Compiler
             var fullPath = NormalizePath(source.FullPath);
             if (source is FileSource && !File.Exists(fullPath))
             {
-                throw new AuroraException($"Import file source not found {fullPath}");
+                throw new AuroraCompilationException(
+                    AuroraCompilationStage.Linking,
+                    fullPath,
+                    1,
+                    1,
+                    $"Import file source not found {fullPath}");
             }
         }
 
@@ -249,7 +258,12 @@ namespace AuroraScript.Compiler
                     var dependencyPath = NormalizePath(import.FullPath);
                     if (!_modulesByPath.TryGetValue(dependencyPath, out var dependency))
                     {
-                        throw new AuroraException($"Imported module was not compiled: {import.FullPath}");
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Linking,
+                        import.FullPath,
+                        1,
+                        1,
+                        $"Imported module was not compiled: {import.FullPath}");
                     }
                     import.Module = dependency;
                     import.ModuleName = dependency.ModuleName;
@@ -289,7 +303,10 @@ namespace AuroraScript.Compiler
 
             if (message != null)
             {
-                throw new AuroraException(message.ToString());
+                throw new AuroraCompilationException(
+                    AuroraCompilationStage.Linking,
+                    SourceSpan.None,
+                    message.ToString());
             }
         }
 
@@ -365,7 +382,10 @@ namespace AuroraScript.Compiler
                         cycle.Append("\n  - ").Append(modules[i].ModulePath);
                     }
                 }
-                throw new AuroraException(cycle.ToString());
+                throw new AuroraCompilationException(
+                    AuroraCompilationStage.Linking,
+                    SourceSpan.None,
+                    cycle.ToString());
             }
 
             return result;
@@ -375,7 +395,7 @@ namespace AuroraScript.Compiler
         {
             if (string.IsNullOrWhiteSpace(path))
             {
-                throw new AuroraException("Script source paths cannot be empty.");
+                throw new ArgumentException("Script source paths cannot be empty.", nameof(path));
             }
             return Path.GetFullPath(path);
         }
@@ -385,11 +405,16 @@ namespace AuroraScript.Compiler
             return PathComparer.Compare(left.FullPath, right.FullPath);
         }
 
-        private static int CompareCompileErrors(Exception left, Exception right)
+        private static int CompareDiagnostics(AuroraCompilationDiagnostic left, AuroraCompilationDiagnostic right)
         {
-            var leftPath = left is AuroraCompileException leftCompile ? leftCompile.ModulePath : left.Message;
-            var rightPath = right is AuroraCompileException rightCompile ? rightCompile.ModulePath : right.Message;
-            return PathComparer.Compare(leftPath, rightPath);
+            var pathCompare = PathComparer.Compare(left.FileName ?? string.Empty, right.FileName ?? string.Empty);
+            if (pathCompare != 0)
+            {
+                return pathCompare;
+            }
+
+            var lineCompare = left.LineNumber.CompareTo(right.LineNumber);
+            return lineCompare != 0 ? lineCompare : left.ColumnNumber.CompareTo(right.ColumnNumber);
         }
     }
 }

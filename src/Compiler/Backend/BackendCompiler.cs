@@ -49,6 +49,7 @@ namespace AuroraScript.Compiler.Backend
             AnalyzeModuleConstants(session, plans, cancellationToken);
             var functionMaps = RegisterNestedFunctions(session, plans, cancellationToken);
             AnalyzeModules(session, plans, functionMaps, cancellationToken);
+            ValidateConstAssignments(session, plans, cancellationToken);
             return session;
         }
 
@@ -65,6 +66,7 @@ namespace AuroraScript.Compiler.Backend
             var functionMaps = RegisterNestedFunctions(session, [modulePlan], cancellationToken);
             FunctionBinder.BindFunctionBodies(session, modulePlan, functionMaps[0]);
             ClosurePlanner.PlanModule(modulePlan);
+            ValidateConstAssignments(session, [modulePlan], cancellationToken);
             FunctionLowerer.LowerModule(modulePlan, functionMaps[0]);
 
             blockPlan.Session = session;
@@ -137,6 +139,7 @@ namespace AuroraScript.Compiler.Backend
 
             var functionMaps = RegisterNestedFunctions(session, plans, cancellationToken);
             AnalyzeModules(session, plans, functionMaps, cancellationToken);
+            ValidateConstAssignments(session, plans, cancellationToken);
             return session;
         }
 
@@ -154,6 +157,18 @@ namespace AuroraScript.Compiler.Backend
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 ModuleConstInliningAnalyzer.Apply(session, plans[i]);
+            }
+        }
+
+        private static void ValidateConstAssignments(
+            CompileSession session,
+            ModulePlan[] plans,
+            CancellationToken cancellationToken)
+        {
+            for (var i = 0; i < plans.Length; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                ConstAssignmentAnalyzer.Apply(session, plans[i]);
             }
         }
 
@@ -229,10 +244,8 @@ namespace AuroraScript.Compiler.Backend
                 {
                     continue;
                 }
-                if (AddModuleSymbol(session, modulePlan, moduleScope, import.Name.Value, BackendSymbolKind.ImportAlias, BackendSymbolFlags.Imported | BackendSymbolFlags.ModuleVisible, import))
-                {
-                    symbolCount++;
-                }
+                AddModuleSymbol(session, modulePlan, moduleScope, import.Name.Value, BackendSymbolKind.ImportAlias, BackendSymbolFlags.Imported | BackendSymbolFlags.ModuleVisible, import);
+                symbolCount++;
             }
 
             for (var i = 0; i < module.Length; i++)
@@ -244,10 +257,8 @@ namespace AuroraScript.Compiler.Backend
                         symbolCount += AddVariableSymbols(session, modulePlan, moduleScope, variable);
                         break;
                     case EnumDeclaration enumDeclaration when enumDeclaration.Identifier != null:
-                        if (AddModuleSymbol(session, modulePlan, moduleScope, enumDeclaration.Identifier.Value, BackendSymbolKind.Enum, GetAccessFlags(enumDeclaration.Access), enumDeclaration))
-                        {
-                            symbolCount++;
-                        }
+                        AddModuleSymbol(session, modulePlan, moduleScope, enumDeclaration.Identifier.Value, BackendSymbolKind.Enum, GetAccessFlags(enumDeclaration.Access), enumDeclaration);
+                        symbolCount++;
                         break;
                 }
             }
@@ -261,10 +272,8 @@ namespace AuroraScript.Compiler.Backend
                 }
 
                 var flags = GetAccessFlags(function.Access);
-                if (AddModuleSymbol(session, modulePlan, moduleScope, function.Name.Value, BackendSymbolKind.Function, flags, function))
-                {
-                    symbolCount++;
-                }
+                AddModuleSymbol(session, modulePlan, moduleScope, function.Name.Value, BackendSymbolKind.Function, flags, function);
+                symbolCount++;
 
                 var functionId = session.AllocateFunctionId();
                 var functionScope = session.Scopes.Add(new ScopeInfo(
@@ -371,10 +380,8 @@ namespace AuroraScript.Compiler.Backend
                         count += AddVariableSymbols(session, modulePlan, moduleScope, variable);
                         break;
                     case EnumDeclaration enumDeclaration when enumDeclaration.Access == MemberAccess.Export && enumDeclaration.Identifier != null:
-                        if (AddModuleSymbol(session, modulePlan, moduleScope, enumDeclaration.Identifier.Value, BackendSymbolKind.Enum, GetAccessFlags(enumDeclaration.Access), enumDeclaration))
-                        {
-                            count++;
-                        }
+                        AddModuleSymbol(session, modulePlan, moduleScope, enumDeclaration.Identifier.Value, BackendSymbolKind.Enum, GetAccessFlags(enumDeclaration.Access), enumDeclaration);
+                        count++;
                         break;
                 }
             }
@@ -384,10 +391,8 @@ namespace AuroraScript.Compiler.Backend
                 var function = includedModule.Functions[i];
                 if (function.Access == MemberAccess.Export && function.Flags != FunctionFlags.Declare && function.Name != null)
                 {
-                    if (AddModuleSymbol(session, modulePlan, moduleScope, function.Name.Value, BackendSymbolKind.Function, GetAccessFlags(function.Access), function))
-                    {
-                        count++;
-                    }
+                    AddModuleSymbol(session, modulePlan, moduleScope, function.Name.Value, BackendSymbolKind.Function, GetAccessFlags(function.Access), function);
+                    count++;
                 }
             }
             return count;
@@ -403,7 +408,8 @@ namespace AuroraScript.Compiler.Backend
 
             if (variable.Name != null)
             {
-                return AddModuleSymbol(session, modulePlan, moduleScope, variable.Name.Value, BackendSymbolKind.ModuleProperty, flags, variable) ? 1 : 0;
+                AddModuleSymbol(session, modulePlan, moduleScope, variable.Name.Value, BackendSymbolKind.ModuleProperty, flags, variable);
+                return 1;
             }
 
             return AddPatternSymbols(session, modulePlan, moduleScope, variable.Pattern, flags, variable);
@@ -420,17 +426,17 @@ namespace AuroraScript.Compiler.Backend
             switch (pattern)
             {
                 case NameExpression name:
-                    return AddModuleSymbol(session, modulePlan, moduleScope, name.Identifier.Value, BackendSymbolKind.ModuleProperty, flags, declaration) ? 1 : 0;
+                    AddModuleSymbol(session, modulePlan, moduleScope, name.Identifier.Value, BackendSymbolKind.ModuleProperty, flags, declaration);
+                    return 1;
                 case SpreadExpression { Expression: NameExpression spreadName }:
-                    return AddModuleSymbol(session, modulePlan, moduleScope, spreadName.Identifier.Value, BackendSymbolKind.ModuleProperty, flags, declaration) ? 1 : 0;
+                    AddModuleSymbol(session, modulePlan, moduleScope, spreadName.Identifier.Value, BackendSymbolKind.ModuleProperty, flags, declaration);
+                    return 1;
                 case ObjectDestructuringPattern objectPattern:
                     var objectCount = 0;
                     for (var i = 0; i < objectPattern.Properties.Count; i++)
                     {
-                        if (AddModuleSymbol(session, modulePlan, moduleScope, objectPattern.Properties[i].Value, BackendSymbolKind.ModuleProperty, flags, declaration))
-                        {
-                            objectCount++;
-                        }
+                        AddModuleSymbol(session, modulePlan, moduleScope, objectPattern.Properties[i].Value, BackendSymbolKind.ModuleProperty, flags, declaration);
+                        objectCount++;
                     }
                     return objectCount;
                 case ArrayDestructuringPattern arrayPattern:
@@ -445,7 +451,7 @@ namespace AuroraScript.Compiler.Backend
             }
         }
 
-        private static bool AddModuleSymbol(
+        private static void AddModuleSymbol(
             CompileSession session,
             ModulePlan modulePlan,
             ScopeId moduleScope,
@@ -454,9 +460,9 @@ namespace AuroraScript.Compiler.Backend
             BackendSymbolFlags flags,
             AstNode declaration)
         {
-            if (modulePlan.TryGetSymbol(name, out _))
+            if (modulePlan.TryGetSymbol(name, out var existingSymbolId))
             {
-                return false;
+                ThrowDuplicateModuleSymbol(session, name, existingSymbolId, declaration);
             }
 
             var symbolId = session.Symbols.Add(new SymbolInfo(
@@ -472,7 +478,29 @@ namespace AuroraScript.Compiler.Backend
                 MemberAccess.Internal,
                 declaration));
             modulePlan.TryDeclareSymbol(name, symbolId);
-            return true;
+        }
+
+        private static void ThrowDuplicateModuleSymbol(
+            CompileSession session,
+            string name,
+            SymbolId existingSymbolId,
+            AstNode declaration)
+        {
+            var existing = session.Symbols[existingSymbolId];
+            var existingLocation = FormatLocation(existing.Declaration?.Range ?? SourceSpan.None);
+            throw new AuroraCompilationException(AuroraCompilationStage.Binding, 
+                declaration ?? existing.Declaration,
+                $"Duplicate declaration '{name}' in module scope. Previous declaration: {existingLocation}.");
+        }
+
+        private static string FormatLocation(SourceSpan range)
+        {
+            if (string.IsNullOrEmpty(range.FileName))
+            {
+                return $"line:{range.StartLine}, column:{range.StartColumn}";
+            }
+
+            return $"{range.FileName} line:{range.StartLine}, column:{range.StartColumn}";
         }
 
         private static BackendSymbolFlags GetAccessFlags(MemberAccess access)

@@ -130,6 +130,20 @@ namespace AuroraBenchmark
 
         [BenchmarkCategory("string")]
         [Benchmark]
+        public ScriptDatum TemplateSmall()
+        {
+            return Execute("templateSmall");
+        }
+
+        [BenchmarkCategory("string")]
+        [Benchmark]
+        public ScriptDatum TemplateLarge()
+        {
+            return Execute("templateLarge");
+        }
+
+        [BenchmarkCategory("string")]
+        [Benchmark]
         public ScriptDatum StringBufferAppend()
         {
             return Execute("stringBufferAppend");

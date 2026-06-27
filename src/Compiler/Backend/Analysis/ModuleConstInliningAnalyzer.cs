@@ -108,6 +108,8 @@ namespace AuroraScript.Compiler.Backend.Analysis
                         return TryEvaluate(group.Expression, ref value);
                     case LiteralExpression literal:
                         return TryEvaluateLiteral(literal, ref value);
+                    case TemplateStringExpression template:
+                        return TryEvaluateTemplateString(template, ref value);
                     case NameExpression name:
                         return TryEvaluateName(name, ref value);
                     case UnaryExpression unary:
@@ -228,6 +230,31 @@ namespace AuroraScript.Compiler.Backend.Analysis
                 }
 
                 return false;
+            }
+
+            private bool TryEvaluateTemplateString(TemplateStringExpression expression, ref ScriptDatum value)
+            {
+                var builder = new System.Text.StringBuilder();
+                for (var i = 0; i < expression.PartCount; i++)
+                {
+                    var part = expression.Parts[i];
+                    if (part.IsLiteral)
+                    {
+                        builder.Append(part.Literal);
+                        continue;
+                    }
+
+                    var inner = default(ScriptDatum);
+                    if (!TryEvaluate(part.Expression, ref inner))
+                    {
+                        return false;
+                    }
+
+                    builder.Append(ScriptDatum.ToString(inner));
+                }
+
+                value = ScriptDatum.FromString(builder.ToString());
+                return true;
             }
 
             private bool TryEvaluateLogical(

@@ -27,7 +27,7 @@ namespace AuroraScript.Compiler.Backend.Binding
                     continue;
                 }
 
-                throw new AuroraEmitException(annotation, $"Unsupported function annotation '@{name}'.");
+                throw new AuroraCompilationException(AuroraCompilationStage.Binding, annotation, $"Unsupported function annotation '@{name}'.");
             }
 
             return result;
@@ -39,7 +39,7 @@ namespace AuroraScript.Compiler.Backend.Binding
         {
             if (seen)
             {
-                throw new AuroraEmitException(annotation, "Duplicate @directCall annotation.");
+                throw new AuroraCompilationException(AuroraCompilationStage.Binding, annotation, "Duplicate @directCall annotation.");
             }
             seen = true;
 
@@ -55,7 +55,7 @@ namespace AuroraScript.Compiler.Backend.Binding
                     : DirectCallDirective.Disabled;
             }
 
-            throw new AuroraEmitException(annotation, "@directCall expects no arguments or a single boolean argument.");
+            throw new AuroraCompilationException(AuroraCompilationStage.Binding, annotation, "@directCall expects no arguments or a single boolean argument.");
         }
     }
 }

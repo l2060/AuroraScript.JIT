@@ -1028,6 +1028,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                 case LoweredBinaryExpression binary:
                     EmitBinary(binary);
                     return;
+                case LoweredTemplateStringExpression template:
+                    EmitTemplateString(template);
+                    return;
                 case LoweredAssignmentExpression assignment:
                     EmitAssignment(assignment);
                     return;
@@ -1229,6 +1232,148 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
 
             return false;
+        }
+
+        private void EmitTemplateString(LoweredTemplateStringExpression expression)
+        {
+            var elementCount = CountTemplateStringElements(expression.Parts);
+            if (elementCount == 0)
+            {
+                _session.Builder.LoadStringConstant(_il, string.Empty);
+                _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromString);
+                return;
+            }
+
+            if (elementCount <= 4)
+            {
+                EmitTemplateStringConcat(expression.Parts, elementCount);
+                return;
+            }
+
+            EmitTemplateStringBuilder(expression.Parts);
+        }
+
+        private static int CountTemplateStringElements(LoweredTemplateStringPart[] parts)
+        {
+            var count = 0;
+            for (var i = 0; i < parts.Length; i++)
+            {
+                if (!parts[i].IsLiteral || parts[i].Literal.Length != 0)
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        private void EmitTemplateStringConcat(LoweredTemplateStringPart[] parts, int elementCount)
+        {
+            for (var i = 0; i < parts.Length; i++)
+            {
+                EmitTemplateStringElement(parts[i]);
+            }
+
+            switch (elementCount)
+            {
+                case 1:
+                    break;
+                case 2:
+                    _il.Emit(OpCodes.Call, RuntimeMetadata.String_Concat2);
+                    break;
+                case 3:
+                    _il.Emit(OpCodes.Call, RuntimeMetadata.String_Concat3);
+                    break;
+                case 4:
+                    _il.Emit(OpCodes.Call, RuntimeMetadata.String_Concat4);
+                    break;
+                default:
+                    throw new NotSupportedException("Template string concat element count " + elementCount);
+            }
+
+            _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromString);
+        }
+
+        private void EmitTemplateStringElement(LoweredTemplateStringPart part)
+        {
+            if (part.IsLiteral)
+            {
+                if (part.Literal.Length != 0)
+                {
+                    _session.Builder.LoadStringConstant(_il, part.Literal);
+                }
+                return;
+            }
+
+            EmitExpression(part.Expression);
+            _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToString);
+        }
+
+        private void EmitTemplateStringBuilder(LoweredTemplateStringPart[] parts)
+        {
+            var dynamicStrings = ArrayPool<LocalBuilder>.Shared.Rent(parts.Length);
+            try
+            {
+                var literalLength = 0;
+                for (var i = 0; i < parts.Length; i++)
+                {
+                    var part = parts[i];
+                    if (part.IsLiteral)
+                    {
+                        literalLength += part.Literal.Length;
+                        dynamicStrings[i] = null;
+                        continue;
+                    }
+
+                    EmitExpression(part.Expression);
+                    _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToString);
+                    var local = DeclareLocal(typeof(string));
+                    _il.Emit(OpCodes.Stloc, local);
+                    dynamicStrings[i] = local;
+                }
+
+                _il.Emit(OpCodes.Ldc_I4, literalLength);
+                for (var i = 0; i < parts.Length; i++)
+                {
+                    var local = dynamicStrings[i];
+                    if (local == null)
+                    {
+                        continue;
+                    }
+
+                    _il.Emit(OpCodes.Ldloc, local);
+                    _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_GetStringLength);
+                    _il.Emit(OpCodes.Add);
+                }
+
+                _il.Emit(OpCodes.Newobj, RuntimeMetadata.StringBuilder_CtorCapacity);
+                for (var i = 0; i < parts.Length; i++)
+                {
+                    var part = parts[i];
+                    if (part.IsLiteral)
+                    {
+                        if (part.Literal.Length == 0)
+                        {
+                            continue;
+                        }
+
+                        _session.Builder.LoadStringConstant(_il, part.Literal);
+                    }
+                    else
+                    {
+                        _il.Emit(OpCodes.Ldloc, dynamicStrings[i]);
+                    }
+
+                    _il.Emit(OpCodes.Callvirt, RuntimeMetadata.StringBuilder_AppendString);
+                }
+
+                _il.Emit(OpCodes.Callvirt, RuntimeMetadata.StringBuilder_ToString);
+                _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromString);
+            }
+            finally
+            {
+                ArrayPool<LocalBuilder>.Shared.Return(dynamicStrings, clearArray: true);
+            }
         }
 
         private static bool TryGetStringLiteral(LoweredExpression expression, out string value)
@@ -2277,6 +2422,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 LoweredLiteralExpression literal => literal.Token is NumberToken or StringToken or RegexToken or BooleanToken or NullToken,
                 LoweredNameExpression name => CanEmitName(name, executableFunctions),
                 LoweredBinaryExpression binary => CanEmitBinary(binary, executableFunctions),
+                LoweredTemplateStringExpression template => CanEmitTemplateString(template, executableFunctions),
                 LoweredAssignmentExpression assignment => assignment.Left is LoweredNameExpression name &&
                     CanEmitNameAssignmentTarget(name) &&
                     CanEmitExpression(assignment.Right, executableFunctions),
@@ -2305,6 +2451,20 @@ namespace AuroraScript.Compiler.Backend.Emission
                     expression.Operator == Operator.LogicalOr) &&
                 CanEmitExpression(expression.Left, executableFunctions) &&
                 CanEmitExpression(expression.Right, executableFunctions);
+        }
+
+        private bool CanEmitTemplateString(LoweredTemplateStringExpression expression, IReadOnlySet<FunctionId> executableFunctions)
+        {
+            for (var i = 0; i < expression.Parts.Length; i++)
+            {
+                var part = expression.Parts[i];
+                if (!part.IsLiteral && !CanEmitExpression(part.Expression, executableFunctions))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private bool CanEmitUnary(LoweredUnaryExpression expression, IReadOnlySet<FunctionId> executableFunctions)
@@ -3197,6 +3357,16 @@ namespace AuroraScript.Compiler.Backend.Emission
                     case LoweredBinaryExpression binary:
                         VisitExpression(binary.Left);
                         VisitExpression(binary.Right);
+                        return;
+                    case LoweredTemplateStringExpression template:
+                        for (var i = 0; i < template.Parts.Length; i++)
+                        {
+                            var part = template.Parts[i];
+                            if (!part.IsLiteral)
+                            {
+                                VisitExpression(part.Expression);
+                            }
+                        }
                         return;
                     case LoweredCallExpression call:
                         VisitExpression(call.Target);

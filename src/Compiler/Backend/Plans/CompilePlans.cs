@@ -40,6 +40,7 @@ namespace AuroraScript.Compiler.Backend.Plans
     {
         public LocalSlot(
             LocalSlotId id,
+            int scopeId,
             string name,
             BackendSymbolKind kind,
             BackendSymbolFlags flags,
@@ -49,6 +50,7 @@ namespace AuroraScript.Compiler.Backend.Plans
             bool isParameter)
         {
             Id = id;
+            ScopeId = scopeId;
             Name = name;
             Kind = kind;
             Flags = flags;
@@ -59,6 +61,7 @@ namespace AuroraScript.Compiler.Backend.Plans
         }
 
         public LocalSlotId Id { get; }
+        public int ScopeId { get; }
         public string Name { get; }
         public BackendSymbolKind Kind { get; }
         public BackendSymbolFlags Flags { get; }
@@ -66,6 +69,20 @@ namespace AuroraScript.Compiler.Backend.Plans
         public AstNode Declaration { get; }
         public Type Type { get; }
         public bool IsParameter { get; }
+    }
+
+    internal readonly struct LocalScope
+    {
+        public LocalScope(int id, int parentId, AstNode owner)
+        {
+            Id = id;
+            ParentId = parentId;
+            Owner = owner;
+        }
+
+        public int Id { get; }
+        public int ParentId { get; }
+        public AstNode Owner { get; }
     }
 
     internal readonly struct UpvalueSlot
@@ -113,12 +130,14 @@ namespace AuroraScript.Compiler.Backend.Plans
             Name = declaration?.Name?.Value;
             CallConvention = FunctionCallConvention.Span;
             LocalSlots = Array.Empty<LocalSlot>();
+            LocalScopes = Array.Empty<LocalScope>();
             UpvalueSlots = Array.Empty<UpvalueSlot>();
             CapturedLocalSlots = Array.Empty<UpvalueSlot>();
             NestedFunctions = Array.Empty<FunctionId>();
             ParameterDefaults = Array.Empty<LoweredExpression>();
             UnsupportedLoweredNodes = Array.Empty<LoweredUnsupportedNode>();
             DirectCallDirective = FunctionAnnotationBinder.ResolveDirectCallDirective(declaration);
+            ParentLocalScopeId = -1;
         }
 
         public FunctionId Id { get; }
@@ -133,6 +152,8 @@ namespace AuroraScript.Compiler.Backend.Plans
         public int DynamicDelegateId { get; set; }
         public FieldInfo DirectClosureField { get; set; }
         public LocalSlot[] LocalSlots { get; set; }
+        public LocalScope[] LocalScopes { get; set; }
+        public Dictionary<AstNode, int> LocalScopeByNode { get; set; }
         public UpvalueSlot[] UpvalueSlots { get; set; }
         public UpvalueSlot[] CapturedLocalSlots { get; set; }
         public FunctionId[] NestedFunctions { get; set; }
@@ -147,6 +168,7 @@ namespace AuroraScript.Compiler.Backend.Plans
         public bool HasDefaultParameters { get; set; }
         public bool RequiresClosureObject { get; set; } = true;
         public bool CanCacheClosureObject { get; set; }
+        public int ParentLocalScopeId { get; set; }
         public bool IsLambda => Declaration?.Flags == FunctionFlags.Lambda;
 
     }

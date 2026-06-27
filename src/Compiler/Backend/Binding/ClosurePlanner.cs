@@ -1,5 +1,6 @@
 using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
+using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Compiler.Backend.Plans;
 using AuroraScript.Compiler.Backend.Traversal;
 using System;
@@ -202,7 +203,6 @@ namespace AuroraScript.Compiler.Backend.Binding
         {
             private readonly ModulePlan _modulePlan;
             private readonly int[] _parentByIndex;
-            private readonly Dictionary<string, LocalSlotId>[] _localIndexByName;
             private readonly LayoutBuilders _builders;
 
             public CaptureResolver(
@@ -212,7 +212,6 @@ namespace AuroraScript.Compiler.Backend.Binding
             {
                 _modulePlan = modulePlan;
                 _parentByIndex = parentByIndex;
-                _localIndexByName = new Dictionary<string, LocalSlotId>[modulePlan.Functions.Count];
                 _builders = builders;
             }
 
@@ -231,7 +230,8 @@ namespace AuroraScript.Compiler.Backend.Binding
                 }
 
                 var parent = _modulePlan.Functions[parentIndex];
-                if (GetLocalIndex(parentIndex).TryGetValue(name, out var parentLocal))
+                var childParentScopeId = _modulePlan.Functions[functionIndex].ParentLocalScopeId;
+                if (TryResolveLocal(parent, childParentScopeId, name, out var parentLocal))
                 {
                     var upvalue = AddUpvalue(functionIndex,
                         name,
@@ -255,6 +255,39 @@ namespace AuroraScript.Compiler.Backend.Binding
                     LocalSlotId.Invalid,
                     parentUpvalue,
                     isInherited: true).Id;
+            }
+
+            private static bool TryResolveLocal(FunctionPlan function, int startScopeId, string name, out LocalSlotId slot)
+            {
+                var scopeId = startScopeId;
+                if (scopeId < 0)
+                {
+                    scopeId = 0;
+                }
+
+                var locals = function.LocalSlots;
+                while (scopeId >= 0)
+                {
+                    for (var i = locals.Length - 1; i >= 0; i--)
+                    {
+                        if (locals[i].ScopeId == scopeId && locals[i].Name == name)
+                        {
+                            slot = locals[i].Id;
+                            return true;
+                        }
+                    }
+
+                    scopeId = GetParentScopeId(function, scopeId);
+                }
+
+                slot = LocalSlotId.Invalid;
+                return false;
+            }
+
+            private static int GetParentScopeId(FunctionPlan function, int scopeId)
+            {
+                var scopes = function.LocalScopes;
+                return (uint)scopeId < (uint)scopes.Length ? scopes[scopeId].ParentId : -1;
             }
 
             private UpvalueSlot AddUpvalue(
@@ -304,42 +337,19 @@ namespace AuroraScript.Compiler.Backend.Binding
                     UpvalueSlotId.Invalid,
                     isInherited: false));
             }
-
-            private Dictionary<string, LocalSlotId> GetLocalIndex(int functionIndex)
-            {
-                var existing = _localIndexByName[functionIndex];
-                if (existing != null)
-                {
-                    return existing;
-                }
-
-                var locals = _modulePlan.Functions[functionIndex].LocalSlots;
-                var map = new Dictionary<string, LocalSlotId>(StringComparer.Ordinal);
-                for (var i = 0; i < locals.Length; i++)
-                {
-                    map.TryAdd(locals[i].Name, locals[i].Id);
-                }
-
-                _localIndexByName[functionIndex] = map;
-                return map;
-            }
         }
 
         private sealed class FreeNameCollector
         {
             private readonly FunctionPlan _function;
-            private readonly HashSet<string> _locals = new(StringComparer.Ordinal);
+            private readonly Stack<int> _scopeStack = new();
 
             public FreeNameCollector(FunctionPlan function)
             {
                 _function = function;
-                for (var i = 0; i < function.LocalSlots.Length; i++)
-                {
-                    _locals.Add(function.LocalSlots[i].Name);
-                }
-
                 Names = new List<string>();
                 _nameSet = new HashSet<string>(StringComparer.Ordinal);
+                _scopeStack.Push(GetScopeId(function.Declaration?.Body ?? function.Declaration, 0));
             }
 
             private readonly HashSet<string> _nameSet;
@@ -357,6 +367,9 @@ namespace AuroraScript.Compiler.Backend.Binding
                     case FunctionDeclaration nested when !ReferenceEquals(nested, _function.Declaration):
                         return;
                     case LambdaExpression:
+                        return;
+                    case BlockStatement block:
+                        VisitBlock(block);
                         return;
                     case VariableDeclaration variable:
                         Visit(variable.Initializer);
@@ -388,9 +401,81 @@ namespace AuroraScript.Compiler.Backend.Binding
                 }
 
                 var value = name.Identifier.Value;
-                if (!_locals.Contains(value) && _nameSet.Add(value))
+                if (!IsLocalVisible(value) && _nameSet.Add(value))
                 {
                     Names.Add(value);
+                }
+            }
+
+            private void VisitBlock(BlockStatement block)
+            {
+                WithNodeScope(block, () =>
+                {
+                    for (var i = 0; i < block.Length; i++)
+                    {
+                        Visit(block[i]);
+                    }
+                    for (var i = 0; i < block.Functions.Count; i++)
+                    {
+                        Visit(block.Functions[i]);
+                    }
+                });
+            }
+
+            private bool IsLocalVisible(string name)
+            {
+                var scopeId = CurrentScopeId;
+                var locals = _function.LocalSlots;
+                while (scopeId >= 0)
+                {
+                    for (var i = locals.Length - 1; i >= 0; i--)
+                    {
+                        if (locals[i].ScopeId == scopeId && locals[i].Name == name)
+                        {
+                            return true;
+                        }
+                    }
+
+                    scopeId = GetParentScopeId(scopeId);
+                }
+
+                return false;
+            }
+
+            private int CurrentScopeId => _scopeStack.Count == 0 ? 0 : _scopeStack.Peek();
+
+            private int GetScopeId(AstNode node, int fallback)
+            {
+                return node != null &&
+                    _function.LocalScopeByNode != null &&
+                    _function.LocalScopeByNode.TryGetValue(node, out var scopeId)
+                    ? scopeId
+                    : fallback;
+            }
+
+            private int GetParentScopeId(int scopeId)
+            {
+                var scopes = _function.LocalScopes;
+                return (uint)scopeId < (uint)scopes.Length ? scopes[scopeId].ParentId : -1;
+            }
+
+            private void WithNodeScope(AstNode node, Action action)
+            {
+                var scopeId = GetScopeId(node, CurrentScopeId);
+                if (scopeId == CurrentScopeId)
+                {
+                    action();
+                    return;
+                }
+
+                _scopeStack.Push(scopeId);
+                try
+                {
+                    action();
+                }
+                finally
+                {
+                    _scopeStack.Pop();
                 }
             }
         }

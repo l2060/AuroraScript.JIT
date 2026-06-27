@@ -53,11 +53,10 @@ Release acceptance requires:
 
 When the first full run is performed, classify failures before changing tests:
 
-1. `AuroraLexicalException` / `AuroraParseException`: source grammar or diagnostic defect.
-2. `AuroraCompileReportException`: worker aggregation, dependency discovery, or emitter defect. Inspect every inner `AuroraCompileException`.
-3. `InvalidProgramException`: invalid emitted IL and a release blocker; never weaken or skip the test.
-4. Wrong `ScriptDatum` kind/value: emitter stack/type conversion or runtime semantic defect.
-5. Timeout/deadlock: compiler channel accounting, build serialization, context pooling, or callback lifetime defect.
-6. Allocation/performance regression: measure and fix in the benchmark projects; functional tests remain deterministic and do not use timing as an assertion.
+1. `AuroraCompilationException`: source grammar, binding, dependency discovery, or emitter defect. Inspect every item in `Diagnostics`.
+2. `InvalidProgramException`: invalid emitted IL and a release blocker; never weaken or skip the test.
+3. Wrong `ScriptDatum` kind/value: emitter stack/type conversion or runtime semantic defect.
+4. Timeout/deadlock: compiler channel accounting, build serialization, context pooling, or callback lifetime defect.
+5. Allocation/performance regression: measure and fix in the benchmark projects; functional tests remain deterministic and do not use timing as an assertion.
 
 The assembly disables xUnit test parallelization because runtime string-pooling configuration is process-global. Explicit concurrency tests create and synchronize their own workloads.

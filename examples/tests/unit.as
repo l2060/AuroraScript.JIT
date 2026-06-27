@@ -107,8 +107,8 @@ export func testHotPatch() {
     var newCode =
     |> @module(UNIT_LIB);
     |> export func patchFunc() {
-        |>  return "fixed";
-        |> }
+    |>  return "fixed";
+    |> }
         ;
         console.log("patchFunc result", patchFunc());
         HotPatch.incremental("unit", newCode);

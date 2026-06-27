@@ -185,7 +185,15 @@ namespace AuroraScript.Runtime
             }
             DynamicBuilder builder = new DynamicBuilder(ExeOptions);
             var compiler = new IncrementalCompiler(this, ExeOptions, builder);
-            var invoker = compiler.BuildPatch(source, patchType);
+            DynamicCallMethod invoker;
+            try
+            {
+                invoker = compiler.BuildPatch(source, patchType);
+            }
+            catch (Exception ex) when (AuroraEngine.IsCompilationPipelineException(ex))
+            {
+                throw AuroraEngine.CreateCompilationException(ex, AuroraCompilationStage.Emission);
+            }
             var ctx = new ScriptContext(this);
             _ = invoker(ctx, []);
         }

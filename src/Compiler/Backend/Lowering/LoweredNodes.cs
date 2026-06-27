@@ -346,6 +346,36 @@ namespace AuroraScript.Compiler.Backend.Lowering
         public LoweredExpression Right { get; }
     }
 
+    internal sealed class LoweredTemplateStringExpression : LoweredExpression
+    {
+        public LoweredTemplateStringExpression(TemplateStringExpression source, LoweredTemplateStringPart[] parts)
+            : base(source)
+        {
+            Parts = parts ?? Array.Empty<LoweredTemplateStringPart>();
+        }
+
+        public LoweredTemplateStringPart[] Parts { get; }
+    }
+
+    internal readonly struct LoweredTemplateStringPart
+    {
+        public LoweredTemplateStringPart(string literal)
+        {
+            Literal = literal ?? string.Empty;
+            Expression = null;
+        }
+
+        public LoweredTemplateStringPart(LoweredExpression expression)
+        {
+            Literal = null;
+            Expression = expression ?? throw new ArgumentNullException(nameof(expression));
+        }
+
+        public string Literal { get; }
+        public LoweredExpression Expression { get; }
+        public bool IsLiteral => Expression == null;
+    }
+
     internal sealed class LoweredCallExpression : LoweredExpression
     {
         public LoweredCallExpression(FunctionCallExpression source, LoweredExpression target, LoweredExpression[] arguments, FunctionId directFunction)

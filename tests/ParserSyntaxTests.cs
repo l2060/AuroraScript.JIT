@@ -119,7 +119,7 @@ public sealed class ParserSyntaxTests
             "@module(TEST); var value = 1; import dependency from 'dependency';",
             workspace.Root));
 
-        var parse = Assert.IsType<AuroraParseException>(exception);
+        var parse = Assert.IsType<AuroraCompilationException>(exception);
         Assert.Contains("top of the module", parse.Message, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -132,7 +132,7 @@ public sealed class ParserSyntaxTests
             "@module(TEST); var value = 1; include 'dependency';",
             workspace.Root));
 
-        var parse = Assert.IsType<AuroraParseException>(exception);
+        var parse = Assert.IsType<AuroraCompilationException>(exception);
         Assert.Contains("top of the module", parse.Message, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -159,7 +159,7 @@ public sealed class ParserSyntaxTests
             "@module(TEST); import missing from 'does-not-exist';",
             workspace.Root));
 
-        Assert.IsType<AuroraEmitException>(exception);
+        Assert.IsType<AuroraCompilationException>(exception);
     }
 
     [Theory]
@@ -235,7 +235,7 @@ public sealed class ParserSyntaxTests
     public void DiagnosticReportsVirtualSourceCoordinates()
     {
         var root = Path.GetTempPath();
-        var error = Assert.Throws<AuroraParseException>(() => Parse(
+        var error = Assert.Throws<AuroraCompilationException>(() => Parse(
             "@module(TEST);\nfunc run() {\n  return 1 +;\n}",
             root));
 

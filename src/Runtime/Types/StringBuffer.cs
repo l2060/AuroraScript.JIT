@@ -11,7 +11,10 @@ namespace AuroraScript.Runtime.Types
     /// </summary>
     public sealed partial class StringBuffer : ScriptObject
     {
+        private const int MaxPooledCapacity = 4096;
+        private const int MaxPooledBuilders = 64;
         private static readonly ConcurrentStack<StringBuilder> _pool = new();
+        private static int _pooledBuilderCount;
         private StringBuilder _builder;
 
         /// <summary>
@@ -22,6 +25,10 @@ namespace AuroraScript.Runtime.Types
             if (!_pool.TryPop(out var instance))
             {
                 instance = new StringBuilder();
+            }
+            else
+            {
+                System.Threading.Interlocked.Decrement(ref _pooledBuilderCount);
             }
             if (initialValue != null)
             {
@@ -39,12 +46,19 @@ namespace AuroraScript.Runtime.Types
             this.ClearProperties();
             if (_builder != null)
             {
-                _builder.Clear();
-                if (initialValue != null) _builder.Append(initialValue);
+                if (_builder.Capacity > MaxPooledCapacity)
+                {
+                    _builder = initialValue == null ? null : new StringBuilder(initialValue);
+                }
+                else
+                {
+                    _builder.Clear();
+                    if (initialValue != null) _builder.Append(initialValue);
+                }
             }
             else if (initialValue != null)
             {
-                _builder = new StringBuilder(initialValue);
+                _builder = Borrow(initialValue);
             }
         }
 
@@ -55,9 +69,21 @@ namespace AuroraScript.Runtime.Types
         {
             if (_builder != null)
             {
-                _builder.Clear();
-                if (_builder.Length > 8) return;
-                _pool.Push(_builder);
+                var builder = _builder;
+                _builder = null;
+                if (builder.Capacity > MaxPooledCapacity)
+                {
+                    return;
+                }
+
+                builder.Clear();
+                if (System.Threading.Interlocked.Increment(ref _pooledBuilderCount) <= MaxPooledBuilders)
+                {
+                    _pool.Push(builder);
+                    return;
+                }
+
+                System.Threading.Interlocked.Decrement(ref _pooledBuilderCount);
             }
         }
 

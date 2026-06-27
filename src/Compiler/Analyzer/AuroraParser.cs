@@ -151,7 +151,7 @@ namespace AuroraScript.Compiler.Analyzer
                     {
                         if (meta.Name.Value == "module" && seenModuleSyntax)
                         {
-                            throw new AuroraParseException(this.Lexer.FullPath, meta.Name, "@module metadata must be the first effective statement in a module.");
+                            throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, meta.Name, "@module metadata must be the first effective statement in a module.");
                         }
 
                         this.Root.MetaInfos[meta.Name.Value] = meta.Value?.Value;
@@ -181,7 +181,7 @@ namespace AuroraScript.Compiler.Analyzer
             }
             if (scopeStack.Count > 0)
             {
-                throw new AuroraParseException(Lexer.FullPath, Token.EOF, "An premature ending statement.");
+                throw new AuroraCompilationException(AuroraCompilationStage.Parsing, Lexer.FullPath, Token.EOF, "An premature ending statement.");
             }
             this.Lexer.Dispose();
             return this.Root;
@@ -231,7 +231,7 @@ namespace AuroraScript.Compiler.Analyzer
                 symbol == Symbols.KW_DECLARE)
             {
                 var token = this.Lexer.LookAtHead();
-                throw new AuroraParseException(this.Lexer.FullPath, token, $"CompileBlock does not support module-level statement '{token.Value}'.");
+                throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, token, $"CompileBlock does not support module-level statement '{token.Value}'.");
             }
         }
 
@@ -276,7 +276,7 @@ namespace AuroraScript.Compiler.Analyzer
                 // If we are here, we have a token that is not a statement start, and not start of expression.
                 // This is a syntax error.
                 var token = this.Lexer.LookAtHead();
-                throw new AuroraParseException(this.Lexer.FullPath, token, $"Unexpected token: {token.Value}");
+                throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, token, $"Unexpected token: {token.Value}");
             }
 
             var semiRange = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
@@ -398,7 +398,7 @@ namespace AuroraScript.Compiler.Analyzer
                 var value = ParseExpression(0); // Lowest precedence
                 if (value == null)
                 {
-                    throw new AuroraParseException(this.Lexer.FullPath, token, "Spread requires an expression.");
+                    throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, token, "Spread requires an expression.");
                 }
                 var spread = new SpreadExpression(value);
                 return SetRange(spread, token.Range, (value != null ? value.Range : token.Range));
@@ -429,7 +429,7 @@ namespace AuroraScript.Compiler.Analyzer
 
 
 
-            throw new AuroraParseException(this.Lexer.FullPath, token, $"Unknown prefix token: {token.Value}");
+            throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, token, $"Unknown prefix token: {token.Value}");
         }
 
         private Expression ParsePrefix(Symbols symbol, SourceSpan range)
@@ -495,7 +495,7 @@ namespace AuroraScript.Compiler.Analyzer
                 if (value == null)
                 {
                     var token = new OperatorToken { Symbol = symbol, Value = symbol?.Name, Range = range };
-                    throw new AuroraParseException(this.Lexer.FullPath, token, "Spread requires an expression.");
+                    throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, token, "Spread requires an expression.");
                 }
                 var spread = new SpreadExpression(value);
                 return SetRange(spread, range, (value != null ? value.Range : range));
@@ -523,7 +523,7 @@ namespace AuroraScript.Compiler.Analyzer
             }
 
             var unexpected = new OperatorToken { Symbol = symbol, Value = symbol?.Name, Range = range };
-            throw new AuroraParseException(this.Lexer.FullPath, unexpected, $"Unknown prefix token: {unexpected.Value}");
+            throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, unexpected, $"Unknown prefix token: {unexpected.Value}");
         }
 
         private Expression ParseInfix(Expression left, Symbols opSymbol, SourceSpan opRange, Operator op)
@@ -549,7 +549,7 @@ namespace AuroraScript.Compiler.Analyzer
                         var arg = ParseExpression(0);
                         if (arg == null)
                         {
-                            throw new AuroraParseException(Lexer.FullPath, Lexer.LookAtHead(), "Function argument requires an expression.");
+                            throw new AuroraCompilationException(AuroraCompilationStage.Parsing, Lexer.FullPath, Lexer.LookAtHead(), "Function argument requires an expression.");
                         }
                         callExp.AddArgument(arg);
 
@@ -567,7 +567,7 @@ namespace AuroraScript.Compiler.Analyzer
                 var indexExp = ParseExpression(0);
                 if (indexExp == null)
                 {
-                    throw new AuroraParseException(Lexer.FullPath, Lexer.LookAtHead(), "Array index requires an expression.");
+                    throw new AuroraCompilationException(AuroraCompilationStage.Parsing, Lexer.FullPath, Lexer.LookAtHead(), "Array index requires an expression.");
                 }
                 var getElem = new GetElementExpression(Operator.Index, left, indexExp);
                 var rightBracket = this.Lexer.NextRangeOfKind(Symbols.PT_RIGHTBRACKET);
@@ -636,14 +636,14 @@ namespace AuroraScript.Compiler.Analyzer
             }
 
             var opToken = new OperatorToken { Symbol = opSymbol, Value = opSymbol?.Name, Range = opRange };
-            throw new AuroraParseException(this.Lexer.FullPath, opToken, "Unexpected operator " + opToken.Value);
+            throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, opToken, "Unexpected operator " + opToken.Value);
         }
 
         private void EnsureRightOperand(Symbols opSymbol, Expression expression)
         {
             if (expression == null)
             {
-                throw new AuroraParseException(Lexer.FullPath, Lexer.LookAtHead(), $"Operator '{opSymbol.Name}' requires a right operand.");
+                throw new AuroraCompilationException(AuroraCompilationStage.Parsing, Lexer.FullPath, Lexer.LookAtHead(), $"Operator '{opSymbol.Name}' requires a right operand.");
             }
         }
 
@@ -652,32 +652,18 @@ namespace AuroraScript.Compiler.Analyzer
             var source = this.Lexer.InputData;
             var raw = source.AsSpan(token.Range.Offset + 1, token.Range.Length - 2);
 
-            Expression result = null;
-
             int i = 0;
             var sb = new StringBuilder();
+            var parts = new List<TemplateStringPart>();
+            var hasExpression = false;
 
             void AddStringPart()
             {
                 if (sb.Length > 0)
                 {
-                    Expression cursmt = null;
                     var str = sb.ToString();
                     sb.Clear();
-                    var st = new StringToken() { Value = str };
-                    var lit = new LiteralExpression(st);
-                    if (result == null)
-                    {
-                        cursmt = lit;
-                    }
-                    else
-                    {
-                        cursmt = new BinaryExpression(Operator.Add, result, lit);
-                        SetRange(cursmt, result.Range, result.Range);
-                    }
-
-
-                    result = cursmt;
+                    parts.Add(new TemplateStringPart(str));
                 }
             }
 
@@ -739,7 +725,7 @@ namespace AuroraScript.Compiler.Analyzer
 
                     if (exprEnd == -1)
                     {
-                        throw new AuroraParseException(this.Lexer.FullPath, token, "Template string interpolation missing closing brace '}'");
+                        throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, token, "Template string interpolation missing closing brace '}'");
                     }
 
                     var expressionSource = raw.Slice(exprStart, exprEnd - exprStart);
@@ -751,26 +737,18 @@ namespace AuroraScript.Compiler.Analyzer
                         expr = subParser.ParseExpression(0);
                         if (expr == null)
                         {
-                            throw new AuroraParseException(this.Lexer.FullPath, token, "Template string interpolation requires an expression.");
+                            throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, token, "Template string interpolation requires an expression.");
                         }
                         if (!subLexer.IsAtEnd)
                         {
-                            throw new AuroraParseException(this.Lexer.FullPath, subLexer.LookAtHead(), "Template string interpolation contains unexpected tokens.");
+                            throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, subLexer.LookAtHead(), "Template string interpolation contains unexpected tokens.");
                         }
                     }
 
                     if (expr != null)
                     {
-                        if (result == null)
-                        {
-                            var empty = new StringToken() { Value = "" };
-                            result = new BinaryExpression(Operator.Add, new LiteralExpression(empty), expr);
-                        }
-                        else
-                        {
-                            result = new BinaryExpression(Operator.Add, result, expr);
-                        }
-                        SetRange(result, token.Range, token.Range); // Base range is the whole template
+                        parts.Add(new TemplateStringPart(expr));
+                        hasExpression = true;
                     }
 
                     i = exprEnd + 1; // Move past }
@@ -783,8 +761,13 @@ namespace AuroraScript.Compiler.Analyzer
 
             AddStringPart();
 
-            var finalExpr = result ?? new LiteralExpression(new StringToken() { Value = "" });
-            return finalExpr;
+            if (!hasExpression)
+            {
+                var text = parts.Count == 0 ? string.Empty : parts[0].Literal;
+                return SetRange(new LiteralExpression(new StringToken() { Value = text }), token.Range, token.Range);
+            }
+
+            return SetRange(new TemplateStringExpression(parts), token.Range, token.Range);
         }
 
         // ===================================
@@ -880,7 +863,7 @@ namespace AuroraScript.Compiler.Analyzer
             {
                 if (annotation.Arguments.Count != 1 || annotation.Arguments[0] is not IdentifierToken)
                 {
-                    throw new AuroraParseException(this.Lexer.FullPath, annotation.Name, "Module metadata requires exactly one identifier value.");
+                    throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, annotation.Name, "Module metadata requires exactly one identifier value.");
                 }
 
                 var statement = SetDebug(new ModuleMetaStatement((IdentifierToken)annotation.Name, annotation.Arguments[0]), annotation.Name);
@@ -893,7 +876,7 @@ namespace AuroraScript.Compiler.Analyzer
                 annotations.Add(ParseAnnotation());
                 if (this.Lexer.TestNext(Symbols.PT_SEMICOLON))
                 {
-                    throw new AuroraParseException(this.Lexer.FullPath, annotations[^1].Name, "Function annotations must not end with semicolon.");
+                    throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, annotations[^1].Name, "Function annotations must not end with semicolon.");
                 }
             }
 
@@ -909,7 +892,7 @@ namespace AuroraScript.Compiler.Analyzer
             }
 
             var token = this.Lexer.LookAtHead();
-            throw new AuroraParseException(this.Lexer.FullPath, token, "Function annotations must be followed by a function declaration.");
+            throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, token, "Function annotations must be followed by a function declaration.");
         }
 
         private FunctionAnnotation ParseAnnotation()
@@ -945,7 +928,7 @@ namespace AuroraScript.Compiler.Analyzer
 
             if (token == null)
             {
-                throw new AuroraParseException(this.Lexer.FullPath, this.Lexer.LookAtHead(), "Annotation argument must be an identifier, string, number, or boolean literal.");
+                throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, this.Lexer.LookAtHead(), "Annotation argument must be an identifier, string, number, or boolean literal.");
             }
 
             return token;
@@ -961,7 +944,7 @@ namespace AuroraScript.Compiler.Analyzer
                 {
                     var symbol = this.Lexer.PeekSymbol();
                     if (symbol == Symbols.PT_RIGHTBRACE) break;
-                    if (symbol == Symbols.KW_EOF) throw new AuroraParseException(this.Lexer.FullPath, this.Lexer.Previous(), "Unexpected end of file in block");
+                    if (symbol == Symbols.KW_EOF) throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, this.Lexer.Previous(), "Unexpected end of file in block");
 
                     var exp = this.ParseStatement();
                     if (exp is FunctionDeclaration functionDeclaration)
@@ -990,14 +973,14 @@ namespace AuroraScript.Compiler.Analyzer
             var importRange = this.Lexer.NextRangeOfKind(Symbols.KW_INCLUDE);
             if (!this.Root.IsEmpty())
             {
-                throw new AuroraParseException(this.Lexer.FullPath, importRange, "The Include statement must be placed at the top of the module.");
+                throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, importRange, "The Include statement must be placed at the top of the module.");
             }
             StringToken fileToken = this.Lexer.NextOfKind<StringToken>();
             var closed = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
             var (fullPath, modulePath) = ResolveImportPath(fileToken.Value);
             if (!File.Exists(fullPath))
             {
-                throw new AuroraEmitException(importRange, $"include file not found: {fileToken.Value}");
+                throw new AuroraCompilationException(AuroraCompilationStage.Binding, importRange, $"include file not found: {fileToken.Value}");
             }
             var import = new ImportDeclaration() { File = fileToken, FullPath = fullPath, ModulePath = modulePath, Include = true };
 
@@ -1011,7 +994,7 @@ namespace AuroraScript.Compiler.Analyzer
             var importRange = this.Lexer.NextRangeOfKind(Symbols.KW_IMPORT);
             if (!this.Root.IsEmpty())
             {
-                throw new AuroraParseException(this.Lexer.FullPath, importRange, "The Import statement must be placed at the top of the module.");
+                throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, importRange, "The Import statement must be placed at the top of the module.");
             }
             var module = this.Lexer.NextOfKind<IdentifierToken>();
             this.Lexer.Expect(Symbols.KW_FROM);
@@ -1020,7 +1003,7 @@ namespace AuroraScript.Compiler.Analyzer
             var (fullPath, modulePath) = ResolveImportPath(fileToken.Value);
             if (!File.Exists(fullPath))
             {
-                throw new AuroraEmitException(importRange, $"Import file not found: {fileToken.Value}");
+                throw new AuroraCompilationException(AuroraCompilationStage.Binding, importRange, $"Import file not found: {fileToken.Value}");
             }
             var import = new ImportDeclaration() { Name = module, File = fileToken, FullPath = fullPath, ModulePath = modulePath, Include = false };
 
@@ -1033,7 +1016,7 @@ namespace AuroraScript.Compiler.Analyzer
 
             if (scopeStack.Current != ScopeType.MODULE)
             {
-                throw new AuroraParseException(this.Lexer.FullPath, exportRange, $"Invalid export keyword in row {exportRange.StartLine}, column {exportRange.StartColumn}, scope not supported.");
+                throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, exportRange, $"Invalid export keyword in row {exportRange.StartLine}, column {exportRange.StartColumn}, scope not supported.");
             }
 
             var symbol = this.Lexer.PeekSymbol();
@@ -1043,7 +1026,7 @@ namespace AuroraScript.Compiler.Analyzer
             }
             if (annotations != null && annotations.Count > 0)
             {
-                throw new AuroraParseException(this.Lexer.FullPath, exportRange, "Function annotations can only be applied to function declarations.");
+                throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, exportRange, "Function annotations can only be applied to function declarations.");
             }
             else if (symbol == Symbols.KW_VAR)
             {
@@ -1063,7 +1046,7 @@ namespace AuroraScript.Compiler.Analyzer
             }
 
             var token = this.Lexer.LookAtHead();
-            throw new AuroraParseException(this.Lexer.FullPath, token, "Invalid keywords appear in export declaration.");
+            throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, token, "Invalid keywords appear in export declaration.");
         }
 
         private Statement ParseFunctionDeclaration(MemberAccess access = MemberAccess.Internal, IReadOnlyList<FunctionAnnotation> annotations = null)
@@ -1117,7 +1100,7 @@ namespace AuroraScript.Compiler.Analyzer
                 var declaration = new FunctionDeclaration(access, funcName, arguments, null, FunctionFlags.Declare);
                 return SetRange(declaration, funcName.Range, semiRange);
             }
-            throw new AuroraParseException(this.Lexer.FullPath, this.Lexer.LookAtHead(), "The Declare keyword only allows the declaration of external methods");
+            throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, this.Lexer.LookAtHead(), "The Declare keyword only allows the declaration of external methods");
         }
 
         private Expression ParseObjectDestructuringPattern()
@@ -1180,7 +1163,7 @@ namespace AuroraScript.Compiler.Analyzer
                 isConst = true;
             }
             else if (this.Lexer.TestSymbol(Symbols.KW_VAR)) start = this.Lexer.NextRangeOfKind(Symbols.KW_VAR);
-            else throw new AuroraParseException(this.Lexer.FullPath, this.Lexer.LookAtHead(), "Variable declaration should be placed after var/const");
+            else throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, this.Lexer.LookAtHead(), "Variable declaration should be placed after var/const");
 
             // Check if this is a destructuring pattern
             var nextSymbol = this.Lexer.PeekSymbol();
@@ -1229,7 +1212,7 @@ namespace AuroraScript.Compiler.Analyzer
             }
 
             var token = Lexer.LookAtHead();
-            throw new AuroraParseException(Lexer.FullPath, token, $"{context} requires an expression.");
+            throw new AuroraCompilationException(AuroraCompilationStage.Parsing, Lexer.FullPath, token, $"{context} requires an expression.");
         }
 
         private Statement ParseEnumDeclaration(MemberAccess access)
@@ -1253,12 +1236,12 @@ namespace AuroraScript.Compiler.Analyzer
                 if (this.Lexer.TestNext(Symbols.OP_ASSIGNMENT))
                 {
                     var token = this.Lexer.NextOfKind<ValueToken>();
-                    if (token is not NumberToken numberToken) throw new AuroraParseException(this.Lexer.FullPath, token, "Enumeration types only apply to integers");
+                    if (token is not NumberToken numberToken) throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, token, "Enumeration types only apply to integers");
                     if (numberToken.NumberValue % 1 != 0 ||
                         numberToken.NumberValue < int.MinValue ||
                         numberToken.NumberValue > int.MaxValue)
                     {
-                        throw new AuroraParseException(this.Lexer.FullPath, token, "Enumeration values must be 32-bit integers.");
+                        throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, token, "Enumeration values must be 32-bit integers.");
                     }
                     elementValue = (int)numberToken.NumberValue;
                 }
@@ -1312,7 +1295,7 @@ namespace AuroraScript.Compiler.Analyzer
                         var right = ParseExpression(0);
                         if (right == null)
                         {
-                            throw new AuroraParseException(this.Lexer.FullPath, this.Lexer.LookAtHead(), "for-in expression requires a collection.");
+                            throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, this.Lexer.LookAtHead(), "for-in expression requires a collection.");
                         }
                         this.Lexer.Expect(Symbols.PT_RIGHTPARENTHESIS);
 
@@ -1325,7 +1308,7 @@ namespace AuroraScript.Compiler.Analyzer
                         body = ParseStatement();
                         if (body == null)
                         {
-                            throw new AuroraParseException(this.Lexer.FullPath, forRange, "for body statement should not be empty");
+                            throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, forRange, "for body statement should not be empty");
                         }
                         var forStmt = new ForInStatement(SetRange(variable, start, varName.Range), inExp, body);
                         return SetRange(forStmt, forRange, (body?.Range ?? right.Range));
@@ -1339,7 +1322,7 @@ namespace AuroraScript.Compiler.Analyzer
                         var condition = ParseExpression(0);
                         if (condition == null)
                         {
-                            throw new AuroraParseException(this.Lexer.FullPath, this.Lexer.LookAtHead(), "for condition requires an expression.");
+                            throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, this.Lexer.LookAtHead(), "for condition requires an expression.");
                         }
                         this.Lexer.Expect(Symbols.PT_SEMICOLON);
 
@@ -1349,7 +1332,7 @@ namespace AuroraScript.Compiler.Analyzer
                         body = ParseStatement();
                         if (body == null)
                         {
-                            throw new AuroraParseException(this.Lexer.FullPath, forRange, "for body statement should not be empty");
+                            throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, forRange, "for body statement should not be empty");
                         }
                         var forStmt = new ForStatement(condition, initializer, increment, body);
                         return SetRange(forStmt, forRange, (body?.Range ?? increment.Range));
@@ -1366,7 +1349,7 @@ namespace AuroraScript.Compiler.Analyzer
                     body = ParseStatement();
                     if (body == null)
                     {
-                        throw new AuroraParseException(this.Lexer.FullPath, startRange, "for body statement should not be empty");
+                        throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, startRange, "for body statement should not be empty");
                     }
                     var forStmt = new ForInStatement(null, inExpr, body);
                     return SetRange(forStmt, startRange, (body?.Range ?? inExpr.Range));
@@ -1377,7 +1360,7 @@ namespace AuroraScript.Compiler.Analyzer
                 var condExpr = ParseExpression(0);
                 if (condExpr == null)
                 {
-                    throw new AuroraParseException(this.Lexer.FullPath, this.Lexer.LookAtHead(), "for condition requires an expression.");
+                    throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, this.Lexer.LookAtHead(), "for condition requires an expression.");
                 }
                 this.Lexer.Expect(Symbols.PT_SEMICOLON);
                 var incExpr = ParseExpression(0);
@@ -1386,7 +1369,7 @@ namespace AuroraScript.Compiler.Analyzer
                 body = ParseStatement();
                 if (body == null)
                 {
-                    throw new AuroraParseException(this.Lexer.FullPath, startRange, "for body statement should not be empty");
+                    throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, startRange, "for body statement should not be empty");
                 }
                 var forStmtLoop = new ForStatement(condExpr, exp, incExpr, body);
                 return SetRange(forStmtLoop, startRange, (body?.Range ?? incExpr.Range));
@@ -1402,11 +1385,11 @@ namespace AuroraScript.Compiler.Analyzer
                 var condition = this.ParseExpression(0);
                 if (condition == null)
                 {
-                    throw new AuroraParseException(this.Lexer.FullPath, range, "while condition requires an expression.");
+                    throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, range, "while condition requires an expression.");
                 }
                 this.Lexer.Expect(Symbols.PT_RIGHTPARENTHESIS);
                 var body = this.ParseStatement();
-                if (body == null) throw new AuroraParseException(this.Lexer.FullPath, range, "while body statement should not be empty");
+                if (body == null) throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, range, "while body statement should not be empty");
                 return SetRange(new WhileStatement(condition, body), range, body.Range);
             }
         }
@@ -1420,12 +1403,12 @@ namespace AuroraScript.Compiler.Analyzer
             var condition = this.ParseExpression(0);
             if (condition == null)
             {
-                throw new AuroraParseException(this.Lexer.FullPath, range, "if condition requires an expression.");
+                throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, range, "if condition requires an expression.");
             }
             this.Lexer.Expect(Symbols.PT_RIGHTPARENTHESIS);
 
             var body = this.ParseStatement();
-            if (body == null) throw new AuroraParseException(this.Lexer.FullPath, range, "if body statement should not be empty");
+            if (body == null) throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, range, "if body statement should not be empty");
 
             Statement elseStatement = null;
             if (this.Lexer.TestSymbol(Symbols.KW_ELSE))
@@ -1450,7 +1433,7 @@ namespace AuroraScript.Compiler.Analyzer
             {
                 var block = new BlockStatement();
                 var body = this.ParseStatement();
-                if (body == null) throw new AuroraParseException(this.Lexer.FullPath, this.Lexer.Previous(), "else body statement should not be empty");
+                if (body == null) throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, this.Lexer.Previous(), "else body statement should not be empty");
                 block.AddNode(body);
                 return OptimizeStatement(block);
             }
@@ -1494,7 +1477,7 @@ namespace AuroraScript.Compiler.Analyzer
             var exp = this.ParseExpression(0);
             if (exp == null)
             {
-                throw new AuroraParseException(this.Lexer.FullPath, range, "throw requires an expression.");
+                throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, range, "throw requires an expression.");
             }
             var semi = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
 
@@ -1506,7 +1489,7 @@ namespace AuroraScript.Compiler.Analyzer
             var range = this.Lexer.NextRangeOfKind(Symbols.KW_CONTINUE);
             if (!IsInsideLoop())
             {
-                throw new AuroraParseException(this.Lexer.FullPath, range, "continue statement must be inside a loop.");
+                throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, range, "continue statement must be inside a loop.");
             }
             var semi = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
             return SetRange(new ContinueStatement(), range, semi);
@@ -1524,7 +1507,7 @@ namespace AuroraScript.Compiler.Analyzer
             var range = this.Lexer.NextRangeOfKind(Symbols.KW_BREAK);
             if (!IsInsideLoop())
             {
-                throw new AuroraParseException(this.Lexer.FullPath, range, "break statement must be inside a loop.");
+                throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, range, "break statement must be inside a loop.");
             }
             var semi = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
             return SetRange(new BreakStatement(), range, semi);
@@ -1561,7 +1544,7 @@ namespace AuroraScript.Compiler.Analyzer
             var exp = this.ParseExpression(0);
             if (exp == null)
             {
-                throw new AuroraParseException(this.Lexer.FullPath, range, "delete requires an expression.");
+                throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, range, "delete requires an expression.");
             }
             var semi = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
             return SetRange(new DeleteStatement(exp), range, semi);
@@ -1576,7 +1559,7 @@ namespace AuroraScript.Compiler.Analyzer
             var constructExpression = new MapExpression(Operator.ObjectLiteral);
             while (true)
             {
-                if (this.Lexer.IsAtEnd) throw new AuroraParseException(this.Lexer.FullPath, this.Lexer.LookAtHead(), "Unexpected end of file in object constructor");
+                if (this.Lexer.IsAtEnd) throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, this.Lexer.LookAtHead(), "Unexpected end of file in object constructor");
                 if (this.Lexer.TestSymbol(Symbols.PT_RIGHTBRACE)) break;
 
                 // Spread ...
@@ -1585,7 +1568,7 @@ namespace AuroraScript.Compiler.Analyzer
                     var value = ParseExpression(0);
                     if (value == null)
                     {
-                        throw new AuroraParseException(this.Lexer.FullPath, this.Lexer.LookAtHead(), "Spread requires an expression.");
+                        throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, this.Lexer.LookAtHead(), "Spread requires an expression.");
                     }
                     var spread = new SpreadExpression(value);
                     constructExpression.AddNode(spread);
@@ -1599,14 +1582,14 @@ namespace AuroraScript.Compiler.Analyzer
                 if (varName == null) varName = this.Lexer.TestNextOfKind<BooleanToken>();
                 if (varName == null) varName = this.Lexer.TestNextOfKind<NullToken>();
 
-                if (varName == null) throw new AuroraParseException(this.Lexer.FullPath, this.Lexer.Next(), "Invalid Map construction syntax");
+                if (varName == null) throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, this.Lexer.Next(), "Invalid Map construction syntax");
 
                 if (this.Lexer.TestNext(Symbols.PT_COLON))
                 {
                     var value = ParseExpression(0);
                     if (value == null)
                     {
-                        throw new AuroraParseException(this.Lexer.FullPath, varName, "Object property value requires an expression.");
+                        throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, varName, "Object property value requires an expression.");
                     }
                     var newExp = new MapKeyValueExpression(varName, value);
                     SetRange(newExp, varName.Range, value.Range);
@@ -1648,14 +1631,14 @@ namespace AuroraScript.Compiler.Analyzer
                 bool isSpread = this.Lexer.TestNext(Symbols.OP_SPREAD);
                 if (seenSpread)
                 {
-                    throw new AuroraParseException(this.Lexer.FullPath, this.Lexer.LookAtHead(), "Rest parameter must be the last parameter.");
+                    throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, this.Lexer.LookAtHead(), "Rest parameter must be the last parameter.");
                 }
                 seenSpread = isSpread;
 
                 var varname = this.Lexer.NextOfKind<IdentifierToken>();
                 if (!argumentNames.Add(varname.Value))
                 {
-                    throw new AuroraParseException(this.Lexer.FullPath, varname, $"Duplicate parameter name '{varname.Value}'.");
+                    throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, varname, $"Duplicate parameter name '{varname.Value}'.");
                 }
                 Expression defaultValue = null;
 
@@ -1663,16 +1646,16 @@ namespace AuroraScript.Compiler.Analyzer
                 {
                     if (isSpread)
                     {
-                        throw new AuroraParseException(this.Lexer.FullPath, varname, "Rest parameter cannot have a default value.");
+                        throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, varname, "Rest parameter cannot have a default value.");
                     }
                     defaultValue = ParseExpression(0);
                     if (defaultValue == null)
                     {
-                        throw new AuroraParseException(this.Lexer.FullPath, varname, "Parameter default value requires an expression.");
+                        throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, varname, "Parameter default value requires an expression.");
                     }
                 }
 
-                var param = new ParameterDeclaration((Byte)arguments.Count, varname, defaultValue);
+                var param = SetRange(new ParameterDeclaration((Byte)arguments.Count, varname, defaultValue), varname.Range, (defaultValue?.Range ?? varname.Range));
                 param.IsSpreadOperator = isSpread;
                 arguments.Add(param);
 
@@ -1698,18 +1681,18 @@ namespace AuroraScript.Compiler.Analyzer
                     var node = group[i];
                     if (node is NameExpression name)
                     {
-                        args.Add(new ParameterDeclaration((byte)args.Count, name.Identifier, null));
+                        args.Add(SetRange(new ParameterDeclaration((byte)args.Count, name.Identifier, null), name.Range, name.Range));
                     }
                     // Assignment/Default value? `(x=1)` -> AssignmentExpression in group
                     else if (node is AssignmentExpression assign && assign.Left is NameExpression nameL)
                     {
-                        args.Add(new ParameterDeclaration((byte)args.Count, nameL.Identifier, assign.Right));
+                        args.Add(SetRange(new ParameterDeclaration((byte)args.Count, nameL.Identifier, assign.Right), nameL.Range, assign.Right?.Range ?? nameL.Range));
                     }
                 }
             }
             else if (left is NameExpression nameExp)
             {
-                args.Add(new ParameterDeclaration(0, nameExp.Identifier, null));
+                args.Add(SetRange(new ParameterDeclaration(0, nameExp.Identifier, null), nameExp.Range, nameExp.Range));
             }
 
             // Ensure unique name
@@ -1769,7 +1752,7 @@ namespace AuroraScript.Compiler.Analyzer
             var target = ParseExpression(Operator.FunctionCall.Precedence);
             if (target == null || !Lexer.TestSymbol(Symbols.PT_LEFTPARENTHESIS))
             {
-                throw new AuroraParseException(this.Lexer.FullPath, token, $"Uncaught TypeError: {target} is not a constructor");
+                throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, token, $"Uncaught TypeError: {target} is not a constructor");
             }
 
             Lexer.NextRangeOfKind(Symbols.PT_LEFTPARENTHESIS);
@@ -1781,7 +1764,7 @@ namespace AuroraScript.Compiler.Analyzer
                     var arg = ParseExpression(0);
                     if (arg == null)
                     {
-                        throw new AuroraParseException(Lexer.FullPath, Lexer.LookAtHead(), "Function argument requires an expression.");
+                        throw new AuroraCompilationException(AuroraCompilationStage.Parsing, Lexer.FullPath, Lexer.LookAtHead(), "Function argument requires an expression.");
                     }
                     callExp.AddArgument(arg);
 
@@ -1822,7 +1805,7 @@ namespace AuroraScript.Compiler.Analyzer
                 return;
             }
 
-            throw new AuroraParseException(this.Lexer.FullPath, target?.Range ?? this.Lexer.PeekRange(), $"Operator '{op?.Symbol?.Name}' requires an assignable target.");
+            throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, target?.Range ?? this.Lexer.PeekRange(), $"Operator '{op?.Symbol?.Name}' requires an assignable target.");
         }
 
         private void EnsureMutationTarget(Expression target, Operator op)
@@ -1832,7 +1815,7 @@ namespace AuroraScript.Compiler.Analyzer
                 return;
             }
 
-            throw new AuroraParseException(this.Lexer.FullPath, target?.Range ?? this.Lexer.PeekRange(), $"Operator '{op?.Symbol?.Name}' requires an assignable target.");
+            throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, target?.Range ?? this.Lexer.PeekRange(), $"Operator '{op?.Symbol?.Name}' requires an assignable target.");
         }
 
         private T SetDebug<T>(T node, Token token) where T : AstNode

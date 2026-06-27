@@ -70,12 +70,13 @@ namespace AuroraScript.Compiler.Backend.Lowering
             return map;
         }
 
-        private struct FunctionLowererCore
+        private sealed class FunctionLowererCore
         {
             private readonly ModulePlan _modulePlan;
             private readonly FunctionPlan _function;
             private readonly FunctionBinder.FunctionPlanRegistry _functions;
             private readonly Dictionary<SymbolId, FunctionId> _directFunctionsBySymbol;
+            private Stack<int> _scopeStack;
             private List<LoweredUnsupportedNode> _unsupportedNodes;
 
             public FunctionLowererCore(
@@ -88,6 +89,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
                 _function = function;
                 _functions = functions;
                 _directFunctionsBySymbol = directFunctionsBySymbol;
+                _scopeStack = null;
             }
 
             public int UnsupportedStatementCount { get; private set; }
@@ -96,8 +98,17 @@ namespace AuroraScript.Compiler.Backend.Lowering
 
             public LoweredBlockStatement LowerBody()
             {
+                _scopeStack = new Stack<int>();
+                _scopeStack.Push(GetScopeId(_function.Declaration?.Body ?? _function.Declaration, 0));
                 _function.ParameterDefaults = LowerParameterDefaults();
-                return LowerBlock(_function.Declaration?.Body);
+                try
+                {
+                    return LowerBlock(_function.Declaration?.Body);
+                }
+                finally
+                {
+                    _scopeStack.Pop();
+                }
             }
 
             private LoweredExpression[] LowerParameterDefaults()
@@ -136,23 +147,26 @@ namespace AuroraScript.Compiler.Backend.Lowering
                     return new LoweredBlockStatement(node, node == null ? Array.Empty<LoweredStatement>() : new[] { LowerStatement(node) });
                 }
 
-                var statementCount = block.Length + block.Functions.Count;
-                if (statementCount == 0)
+                return WithNodeScope(block, () =>
                 {
-                    return new LoweredBlockStatement(block, Array.Empty<LoweredStatement>());
-                }
+                    var statementCount = block.Length + block.Functions.Count;
+                    if (statementCount == 0)
+                    {
+                        return new LoweredBlockStatement(block, Array.Empty<LoweredStatement>());
+                    }
 
-                var statements = new LoweredStatement[statementCount];
-                var index = 0;
-                for (var i = 0; i < block.Functions.Count; i++)
-                {
-                    statements[index++] = LowerStatement(block.Functions[i]);
-                }
-                for (var i = 0; i < block.Length; i++)
-                {
-                    statements[index++] = LowerStatement(block[i]);
-                }
-                return new LoweredBlockStatement(block, statements);
+                    var statements = new LoweredStatement[statementCount];
+                    var index = 0;
+                    for (var i = 0; i < block.Functions.Count; i++)
+                    {
+                        statements[index++] = LowerStatement(block.Functions[i]);
+                    }
+                    for (var i = 0; i < block.Length; i++)
+                    {
+                        statements[index++] = LowerStatement(block[i]);
+                    }
+                    return new LoweredBlockStatement(block, statements);
+                });
             }
 
             private LoweredStatement LowerStatement(AstNode node)
@@ -184,13 +198,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
                         LowerForInInitializer(statement.Initializer),
                         LowerIn(statement.Iterator),
                         LowerOptionalStatement(statement.Body)),
-                    TryStatement statement => new LoweredTryStatement(
-                        statement,
-                        LowerOptionalStatement(statement.Body),
-                        statement.CatchVariable,
-                        ResolveLocal(statement.CatchVariable),
-                        LowerOptionalStatement(statement.CatchBody),
-                        LowerOptionalStatement(statement.FinallyBody)),
+                    TryStatement statement => LowerTry(statement),
                     ThrowStatement statement => new LoweredThrowStatement(statement, LowerExpression(statement.Expression)),
                     DeleteStatement statement => new LoweredDeleteStatement(statement, LowerExpression(statement.Expression)),
                     DebuggerStatement statement => new LoweredDebuggerStatement(statement),
@@ -218,6 +226,38 @@ namespace AuroraScript.Compiler.Backend.Lowering
             private LoweredStatement LowerForInInitializer(VariableDeclaration declaration)
             {
                 return declaration == null ? null : LowerVariableDeclaration(declaration);
+            }
+
+            private LoweredStatement LowerTry(TryStatement statement)
+            {
+                var body = LowerOptionalStatement(statement.Body);
+                var catchSlot = LocalSlotId.Invalid;
+                LoweredStatement catchBody = null;
+                if (string.IsNullOrEmpty(statement.CatchVariable) || statement.CatchBody == null)
+                {
+                    catchSlot = LocalSlotId.Invalid;
+                    catchBody = LowerOptionalStatement(statement.CatchBody);
+                }
+                else
+                {
+                    var owner = statement.CatchBody is BlockStatement block ? (AstNode)block : statement;
+                    WithNodeScope(owner, () =>
+                    {
+                        catchSlot = ResolveLocal(statement.CatchVariable);
+                        catchBody = statement.CatchBody is BlockStatement catchBlock
+                            ? LowerBlockWithoutScope(catchBlock)
+                            : LowerStatement(statement.CatchBody);
+                        return 0;
+                    });
+                }
+
+                return new LoweredTryStatement(
+                    statement,
+                    body,
+                    statement.CatchVariable,
+                    catchSlot,
+                    catchBody,
+                    LowerOptionalStatement(statement.FinallyBody));
             }
 
             private LoweredStatement LowerVariableDeclaration(VariableDeclaration declaration)
@@ -315,6 +355,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
                     return UnsupportedStatement(declaration);
                 }
 
+                function.ParentLocalScopeId = CurrentScopeId;
                 var localSlot = declaration.Name == null ? LocalSlotId.Invalid : ResolveLocal(declaration.Name.Value);
                 return new LoweredFunctionDeclarationStatement(declaration, function.Id, localSlot);
             }
@@ -326,6 +367,7 @@ namespace AuroraScript.Compiler.Backend.Lowering
                     null => null,
                     GroupExpression group => LowerExpression(group.Expression),
                     LiteralExpression literal => new LoweredLiteralExpression(literal),
+                    TemplateStringExpression template => LowerTemplateString(template),
                     NameExpression name => LowerName(name),
                     BinaryExpression binary => new LoweredBinaryExpression(binary, LowerExpression(binary.Left), LowerExpression(binary.Right)),
                     AssignmentExpression assignment => new LoweredAssignmentExpression(assignment, LowerAssignmentTarget(assignment.Left), LowerExpression(assignment.Right)),
@@ -345,6 +387,20 @@ namespace AuroraScript.Compiler.Backend.Lowering
                     LambdaExpression lambda => LowerLambda(lambda),
                     _ => UnsupportedExpression(expression)
                 };
+            }
+
+            private LoweredExpression LowerTemplateString(TemplateStringExpression expression)
+            {
+                var parts = new LoweredTemplateStringPart[expression.PartCount];
+                for (var i = 0; i < expression.PartCount; i++)
+                {
+                    var part = expression.Parts[i];
+                    parts[i] = part.IsLiteral
+                        ? new LoweredTemplateStringPart(part.Literal)
+                        : new LoweredTemplateStringPart(LowerExpression(part.Expression));
+                }
+
+                return new LoweredTemplateStringExpression(expression, parts);
             }
 
             private LoweredExpression LowerAssignmentTarget(Expression expression)
@@ -503,15 +559,78 @@ namespace AuroraScript.Compiler.Backend.Lowering
                 }
 
                 var locals = _function.LocalSlots;
-                for (var i = 0; i < locals.Length; i++)
+                var scopeId = CurrentScopeId;
+                while (scopeId >= 0)
                 {
-                    if (locals[i].Name == name)
+                    for (var i = locals.Length - 1; i >= 0; i--)
                     {
-                        return locals[i].Id;
+                        if (locals[i].ScopeId == scopeId && locals[i].Name == name)
+                        {
+                            return locals[i].Id;
+                        }
                     }
+
+                    scopeId = GetParentScopeId(scopeId);
                 }
 
                 return LocalSlotId.Invalid;
+            }
+
+            private int CurrentScopeId => _scopeStack != null && _scopeStack.Count != 0 ? _scopeStack.Peek() : 0;
+
+            private int GetScopeId(AstNode node, int fallback)
+            {
+                return node != null &&
+                    _function.LocalScopeByNode != null &&
+                    _function.LocalScopeByNode.TryGetValue(node, out var scopeId)
+                    ? scopeId
+                    : fallback;
+            }
+
+            private int GetParentScopeId(int scopeId)
+            {
+                var scopes = _function.LocalScopes;
+                return (uint)scopeId < (uint)scopes.Length ? scopes[scopeId].ParentId : -1;
+            }
+
+            private T WithNodeScope<T>(AstNode node, Func<T> action)
+            {
+                var scopeId = GetScopeId(node, CurrentScopeId);
+                if (scopeId == CurrentScopeId)
+                {
+                    return action();
+                }
+
+                _scopeStack.Push(scopeId);
+                try
+                {
+                    return action();
+                }
+                finally
+                {
+                    _scopeStack.Pop();
+                }
+            }
+
+            private LoweredBlockStatement LowerBlockWithoutScope(BlockStatement block)
+            {
+                var statementCount = block.Length + block.Functions.Count;
+                if (statementCount == 0)
+                {
+                    return new LoweredBlockStatement(block, Array.Empty<LoweredStatement>());
+                }
+
+                var statements = new LoweredStatement[statementCount];
+                var index = 0;
+                for (var i = 0; i < block.Functions.Count; i++)
+                {
+                    statements[index++] = LowerStatement(block.Functions[i]);
+                }
+                for (var i = 0; i < block.Length; i++)
+                {
+                    statements[index++] = LowerStatement(block[i]);
+                }
+                return new LoweredBlockStatement(block, statements);
             }
 
             private UpvalueSlotId ResolveUpvalue(string name)

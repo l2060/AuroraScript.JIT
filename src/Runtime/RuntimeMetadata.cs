@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace AuroraScript.Runtime
 {
@@ -166,6 +167,7 @@ namespace AuroraScript.Runtime
         public static readonly MethodInfo CILHelper_AddStringRight = typeof(CILHelper).GetMethod(nameof(CILHelper.AddStringRight), [typeof(ScriptDatum), typeof(string)]);
         public static readonly MethodInfo CILHelper_AddStringLeft = typeof(CILHelper).GetMethod(nameof(CILHelper.AddStringLeft), [typeof(string), typeof(ScriptDatum)]);
         public static readonly MethodInfo CILHelper_AddStringMiddle = typeof(CILHelper).GetMethod(nameof(CILHelper.AddStringMiddle), [typeof(ScriptDatum), typeof(string), typeof(ScriptDatum)]);
+        public static readonly MethodInfo CILHelper_GetStringLength = typeof(CILHelper).GetMethod(nameof(CILHelper.GetStringLength), [typeof(string)]);
         public static readonly MethodInfo CILHelper_Subtract = typeof(CILHelper).GetMethod(nameof(CILHelper.Subtract), [typeof(ScriptDatum), typeof(ScriptDatum)]);
         public static readonly MethodInfo CILHelper_Multiply = typeof(CILHelper).GetMethod(nameof(CILHelper.Multiply), [typeof(ScriptDatum), typeof(ScriptDatum)]);
         public static readonly MethodInfo CILHelper_Divide = typeof(CILHelper).GetMethod(nameof(CILHelper.Divide), [typeof(ScriptDatum), typeof(ScriptDatum)]);
@@ -202,6 +204,15 @@ namespace AuroraScript.Runtime
         public static readonly MethodInfo CILHelper_BitwiseNot = typeof(CILHelper).GetMethod(nameof(CILHelper.BitwiseNot), [typeof(ScriptDatum)]);
         public static readonly MethodInfo CILHelper_Negate = typeof(CILHelper).GetMethod(nameof(CILHelper.Negate), [typeof(ScriptDatum)]);
         public static readonly MethodInfo CILHelper_TypeOf = typeof(CILHelper).GetMethod(nameof(CILHelper.TypeOf), [typeof(ScriptDatum)]);
+
+        // System.String / StringBuilder
+        public static readonly MethodInfo String_Concat2 = typeof(string).GetMethod(nameof(string.Concat), [typeof(string), typeof(string)]);
+        public static readonly MethodInfo String_Concat3 = typeof(string).GetMethod(nameof(string.Concat), [typeof(string), typeof(string), typeof(string)]);
+        public static readonly MethodInfo String_Concat4 = typeof(string).GetMethod(nameof(string.Concat), [typeof(string), typeof(string), typeof(string), typeof(string)]);
+        public static readonly ConstructorInfo StringBuilder_CtorCapacity = typeof(StringBuilder).GetConstructor([typeof(int)]);
+        public static readonly MethodInfo StringBuilder_AppendString = typeof(StringBuilder).GetMethod(nameof(StringBuilder.Append), [typeof(string)]);
+        public static readonly MethodInfo StringBuilder_ToString = typeof(StringBuilder).GetMethod(nameof(StringBuilder.ToString), Type.EmptyTypes);
+
         public static readonly MethodInfo CILHelper_IncrementPrefix = typeof(CILHelper).GetMethod(nameof(CILHelper.IncrementPrefix), [typeof(ScriptDatum).MakeByRefType()]);
         public static readonly MethodInfo CILHelper_IncrementPostfix = typeof(CILHelper).GetMethod(nameof(CILHelper.IncrementPostfix), [typeof(ScriptDatum).MakeByRefType()]);
         public static readonly MethodInfo CILHelper_DecrementPrefix = typeof(CILHelper).GetMethod(nameof(CILHelper.DecrementPrefix), [typeof(ScriptDatum).MakeByRefType()]);

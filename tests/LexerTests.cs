@@ -139,7 +139,7 @@ public sealed class LexerTests
     [InlineData("1..2")]
     public void RejectsMalformedNumericLiterals(string source)
     {
-        Assert.Throws<AuroraLexicalException>(() => CreateLexer(source));
+        Assert.Throws<AuroraCompilationException>(() => CreateLexer(source));
     }
 
     [Fact]
@@ -199,7 +199,7 @@ public sealed class LexerTests
         var root = Path.GetTempPath();
         var path = Path.Combine(root, "diagnostic-lexer.as");
 
-        var error = Assert.Throws<AuroraLexicalException>(
+        var error = Assert.Throws<AuroraCompilationException>(
             () => new AuroraLexer(root, new TextSource(root, path, "\n\n  §")));
 
         Assert.Contains("diagnostic-lexer.as", error.FileName, StringComparison.OrdinalIgnoreCase);
@@ -231,7 +231,7 @@ public sealed class LexerTests
     [InlineData("/* nested /* unterminated")]
     public void InvalidLexemesReportLexicalError(string source)
     {
-        Assert.Throws<AuroraLexicalException>(() => CreateLexer(source));
+        Assert.Throws<AuroraCompilationException>(() => CreateLexer(source));
     }
 
     private static AuroraLexer CreateLexer(string source)

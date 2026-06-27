@@ -177,6 +177,76 @@ public sealed class LanguageFeatureExecutionTests
     }
 
     [Fact]
+    public async Task TemplateStringsUseConcatAndBuilderPaths()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func run() {
+                var name = 'Aurora';
+                var small = `${name}:${1 + 2}`;
+                var large = `a${1}b${2}c${3}d${4}e`;
+                return [small, large];
+            }
+            """);
+
+        ScriptAssert.Equal(new object?[] { "Aurora:3", "a1b2c3d4e" }, TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
+    public async Task TemplateStringsEvaluatePartsLeftToRight()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func run() {
+                var index = 0;
+                func next() {
+                    index = index + 1;
+                    return index;
+                }
+
+                return [`${next()}-${next()}-${next()}-${next()}`, index];
+            }
+            """);
+
+        ScriptAssert.Equal(new object?[] { "1-2-3-4", 4 }, TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
+    public async Task TemplateStringsWorkInModuleInitializers()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            var base = 'module';
+            var small = `${base}:${21 + 21}`;
+            var large = `a${1}b${2}c${3}d${4}e`;
+            export func run() { return [small, large]; }
+            """);
+
+        ScriptAssert.Equal(new object?[] { "module:42", "a1b2c3d4e" }, TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
+    public async Task ModuleConstTemplateStringsCanBeInlined()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            const prefix = 'const';
+            export const value = `${prefix}:${20 + 22}`;
+            export func run() { return value; }
+            """);
+
+        ScriptAssert.Equal("const:42", TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
     public async Task AssignmentIsRightAssociativeAndCompoundAssignmentEvaluatesTargetOnce()
     {
         using var workspace = new TestWorkspace();

@@ -67,13 +67,14 @@ public sealed class RuntimeApiAndErrorTests
     }
 
     [Fact]
-    public async Task ConstModulePropertyCannotBeReassignedAtRuntime()
+    public async Task ConstModulePropertyCannotBeReassignedAtCompileTime()
     {
         using var workspace = new TestWorkspace();
-        var (_, domain) = await workspace.CompileModuleAsync(
-            "@module(TEST); export const value = 1; export func mutate() { value = 2; }");
 
-        Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, "mutate"));
+        var error = await Assert.ThrowsAsync<AuroraCompilationException>(() => workspace.CompileModuleAsync(
+            "@module(TEST); export const value = 1; export func mutate() { value = 2; }"));
+
+        Assert.Contains("Cannot assign to constant 'value'", error.Message);
     }
 
     [Fact]

@@ -178,6 +178,9 @@ namespace AuroraScript.Compiler.Backend.Binding
             private readonly FunctionPlan _function;
             private readonly FunctionPlanRegistry _functions;
             private LocalSlotBuilder _localSlots;
+            private List<LocalScope> _localScopes;
+            private Dictionary<AstNode, int> _localScopeByNode;
+            private Stack<int> _scopeStack;
             private List<FunctionId> _nestedFunctions;
 
             public FunctionBodyBinder(
@@ -191,34 +194,104 @@ namespace AuroraScript.Compiler.Backend.Binding
                 _function = function;
                 _functions = functions;
                 _localSlots = new LocalSlotBuilder(Math.Max(4, function.Declaration?.Parameters.Count ?? 0));
+                _localScopes = new List<LocalScope>();
+                _localScopeByNode = new Dictionary<AstNode, int>(ReferenceEqualityComparer.Instance);
+                _scopeStack = new Stack<int>();
             }
 
             public void Bind()
             {
                 var declaration = _function.Declaration;
-                if (declaration.Name != null && declaration.Flags == FunctionFlags.Lambda)
+                var rootScope = AddLocalScope(-1, declaration.Body ?? declaration);
+                _scopeStack.Push(rootScope);
+                try
                 {
-                    DeclareLocal(declaration.Name.Value, BackendSymbolKind.Local, declaration.Access, declaration, false);
+                    if (declaration.Name != null && declaration.Flags == FunctionFlags.Lambda)
+                    {
+                        DeclareLocal(declaration.Name.Value, BackendSymbolKind.Local, declaration.Access, declaration, false);
+                    }
+
+                    for (var i = 0; i < declaration.Parameters.Count; i++)
+                    {
+                        var parameter = declaration.Parameters[i];
+                        if (parameter.Initializer != null)
+                        {
+                            _function.HasDefaultParameters = true;
+                        }
+                        if (parameter.Name != null)
+                        {
+                            DeclareLocal(parameter.Name.Value, BackendSymbolKind.Parameter, MemberAccess.Internal, parameter, true);
+                        }
+                    }
+
+                    CollectDeclarations(declaration.Body);
+                }
+                finally
+                {
+                    _scopeStack.Pop();
                 }
 
-                for (var i = 0; i < declaration.Parameters.Count; i++)
-                {
-                    var parameter = declaration.Parameters[i];
-                    if (parameter.Initializer != null)
-                    {
-                        _function.HasDefaultParameters = true;
-                    }
-                    if (parameter.Name != null)
-                    {
-                        DeclareLocal(parameter.Name.Value, BackendSymbolKind.Parameter, MemberAccess.Internal, parameter, true);
-                    }
-                }
-
-                CollectDeclarations(declaration.Body);
+                _function.LocalScopes = _localScopes.ToArray();
+                _function.LocalScopeByNode = _localScopeByNode;
                 _function.LocalSlots = _localSlots.ToArray();
                 if (_nestedFunctions != null)
                 {
                     _function.NestedFunctions = _nestedFunctions.ToArray();
+                }
+            }
+
+            private int CurrentScopeId => _scopeStack.Peek();
+
+            private int AddLocalScope(int parentId, AstNode owner)
+            {
+                var scopeId = _localScopes.Count;
+                _localScopes.Add(new LocalScope(scopeId, parentId, owner));
+                if (owner != null && !_localScopeByNode.ContainsKey(owner))
+                {
+                    _localScopeByNode.Add(owner, scopeId);
+                }
+                return scopeId;
+            }
+
+            private void EnterLocalScope(AstNode owner)
+            {
+                _scopeStack.Push(AddLocalScope(CurrentScopeId, owner));
+            }
+
+            private void ExitLocalScope()
+            {
+                _scopeStack.Pop();
+            }
+
+            private bool IsRootBody(BlockStatement block)
+            {
+                return ReferenceEquals(block, _function.Declaration?.Body);
+            }
+
+            private void CollectBlock(BlockStatement block, bool createScope)
+            {
+                if (createScope)
+                {
+                    EnterLocalScope(block);
+                }
+
+                try
+                {
+                    for (var i = 0; i < block.Functions.Count; i++)
+                    {
+                        CollectDeclarations(block.Functions[i]);
+                    }
+                    for (var i = 0; i < block.Length; i++)
+                    {
+                        CollectDeclarations(block[i]);
+                    }
+                }
+                finally
+                {
+                    if (createScope)
+                    {
+                        ExitLocalScope();
+                    }
                 }
             }
 
@@ -231,6 +304,9 @@ namespace AuroraScript.Compiler.Backend.Binding
 
                 switch (node)
                 {
+                    case BlockStatement block:
+                        CollectBlock(block, createScope: !IsRootBody(block));
+                        return;
                     case VariableDeclaration variable:
                         DeclarePattern(variable);
                         CollectDeclarations(variable.Initializer);
@@ -245,9 +321,8 @@ namespace AuroraScript.Compiler.Backend.Binding
                         _function.UsesArgumentsObject = true;
                         return;
                     case TryStatement tryStatement:
-                        DeclareCatchVariable(tryStatement);
                         CollectDeclarations(tryStatement.Body);
-                        CollectDeclarations(tryStatement.CatchBody);
+                        CollectCatchBlock(tryStatement);
                         CollectDeclarations(tryStatement.FinallyBody);
                         return;
                     case ObjectDestructuringPattern:
@@ -257,6 +332,39 @@ namespace AuroraScript.Compiler.Backend.Binding
 
                 var visitor = new DeclarationVisitor(this);
                 AstTraversal.VisitChildren(node, ref visitor);
+            }
+
+            private void CollectCatchBlock(TryStatement statement)
+            {
+                if (statement.CatchBody == null)
+                {
+                    return;
+                }
+
+                if (string.IsNullOrEmpty(statement.CatchVariable))
+                {
+                    CollectDeclarations(statement.CatchBody);
+                    return;
+                }
+
+                var owner = statement.CatchBody is BlockStatement catchBlock ? (AstNode)catchBlock : statement;
+                EnterLocalScope(owner);
+                try
+                {
+                    DeclareCatchVariable(statement);
+                    if (statement.CatchBody is BlockStatement block)
+                    {
+                        CollectBlock(block, createScope: false);
+                    }
+                    else
+                    {
+                        CollectDeclarations(statement.CatchBody);
+                    }
+                }
+                finally
+                {
+                    ExitLocalScope();
+                }
             }
 
             private void DeclareCatchVariable(TryStatement statement)
@@ -280,6 +388,7 @@ namespace AuroraScript.Compiler.Backend.Binding
                 }
 
                 var nestedPlan = EnsureNestedFunction(declaration);
+                nestedPlan.ParentLocalScopeId = CurrentScopeId;
                 (_nestedFunctions ??= new List<FunctionId>()).Add(nestedPlan.Id);
             }
 
@@ -340,13 +449,19 @@ namespace AuroraScript.Compiler.Backend.Binding
 
             private void DeclareLocal(string name, BackendSymbolKind kind, MemberAccess access, AstNode declaration, bool isParameter)
             {
-                if (string.IsNullOrEmpty(name) || HasLocal(name))
+                if (string.IsNullOrEmpty(name))
                 {
                     return;
                 }
 
+                if (TryGetConflictingLocal(name, CurrentScopeId, out var existing))
+                {
+                    ThrowDuplicateLocal(name, existing, declaration);
+                }
+
                 var slot = new LocalSlot(
                     new LocalSlotId(_localSlots.Count),
+                    CurrentScopeId,
                     name,
                     kind,
                     isParameter ? BackendSymbolFlags.None : GetLocalFlags(declaration),
@@ -357,17 +472,67 @@ namespace AuroraScript.Compiler.Backend.Binding
                 _localSlots.Add(slot);
             }
 
-            private bool HasLocal(string name)
+            private bool TryGetConflictingLocal(string name, int scopeId, out LocalSlot slot)
+            {
+                if (TryGetLocalInScope(name, scopeId, out slot))
+                {
+                    return true;
+                }
+
+                scopeId = GetParentScopeId(scopeId);
+                while (scopeId >= 0)
+                {
+                    if (TryGetLocalInScope(name, scopeId, out slot) &&
+                        (slot.Flags & BackendSymbolFlags.Const) != 0)
+                    {
+                        return true;
+                    }
+
+                    scopeId = GetParentScopeId(scopeId);
+                }
+
+                slot = default;
+                return false;
+            }
+
+            private bool TryGetLocalInScope(string name, int scopeId, out LocalSlot slot)
             {
                 for (var i = 0; i < _localSlots.Count; i++)
                 {
-                    if (string.Equals(_localSlots[i].Name, name, StringComparison.Ordinal))
+                    if (_localSlots[i].ScopeId == scopeId &&
+                        string.Equals(_localSlots[i].Name, name, StringComparison.Ordinal))
                     {
+                        slot = _localSlots[i];
                         return true;
                     }
                 }
 
+                slot = default;
                 return false;
+            }
+
+            private int GetParentScopeId(int scopeId)
+            {
+                return (uint)scopeId < (uint)_localScopes.Count ? _localScopes[scopeId].ParentId : -1;
+            }
+
+            private static void ThrowDuplicateLocal(string name, LocalSlot existing, AstNode declaration)
+            {
+                var existingLocation = FormatLocation(existing.Declaration?.Range ?? SourceSpan.None);
+                var scopeName = existing.ScopeId == 0 ? "function scope" : "block scope";
+                throw new AuroraCompilationException(AuroraCompilationStage.Binding, 
+                    declaration ?? existing.Declaration,
+                    $"Duplicate declaration '{name}' in {scopeName}. Previous declaration: {existingLocation}.");
+            }
+
+            private static string FormatLocation(SourceSpan range)
+            {
+                if (string.IsNullOrEmpty(range.FileName))
+                {
+                    return $"line:{range.StartLine}, column:{range.StartColumn}";
+                }
+
+                return $"{range.FileName} line:{range.StartLine}, column:{range.StartColumn}";
             }
 
             private static BackendSymbolFlags GetLocalFlags(AstNode declaration)

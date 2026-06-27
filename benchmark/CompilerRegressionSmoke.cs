@@ -71,7 +71,7 @@ namespace AuroraBenchmark
                 await compile;
                 throw new InvalidOperationException("Invalid modules compiled successfully.");
             }
-            catch (AuroraCompileReportException report) when (report.Errors.Count == 2)
+            catch (AuroraCompilationException report) when (report.Diagnostics.Count == 2)
             {
             }
         }
@@ -88,7 +88,7 @@ namespace AuroraBenchmark
                 await engine.BuildAsync(engine.FileSource("a.as", Encoding.UTF8));
                 throw new InvalidOperationException("Circular dependencies compiled successfully.");
             }
-            catch (AuroraException ex) when (ex.Message.Contains("Circular module dependency", StringComparison.Ordinal))
+            catch (AuroraCompilationException ex) when (ex.Message.Contains("Circular module dependency", StringComparison.Ordinal))
             {
             }
         }

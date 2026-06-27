@@ -1,4 +1,4 @@
-﻿using AuroraScript.Common;
+using AuroraScript.Common;
 using AuroraScript.Core;
 using AuroraScript.Tokens;
 using System;
@@ -274,7 +274,7 @@ namespace AuroraScript.Compiler.Analyzer
             }
 
             var token = this.Materialize(this.Position);
-            throw new AuroraLexicalException(this.FullPath, token.LineNumber, token.ColumnNumber, $"The keyword {token.Value} appears in the wrong place, it should be {symbol.Name}.");
+            throw new AuroraCompilationException(AuroraCompilationStage.Lexing, this.FullPath, token.LineNumber, token.ColumnNumber, $"The keyword {token.Value} appears in the wrong place, it should be {symbol.Name}.");
         }
 
         public SourceSpan NextRangeOfKind(Symbols symbol)
@@ -283,7 +283,7 @@ namespace AuroraScript.Compiler.Analyzer
             if (lexToken.SymbolId != symbol.Id)
             {
                 var token = this.Materialize(this.Position);
-                throw new AuroraLexicalException(this.FullPath, token.LineNumber, token.ColumnNumber, $"The keyword {token.Value} appears in the wrong place, it should be {symbol.Name}.");
+                throw new AuroraCompilationException(AuroraCompilationStage.Lexing, this.FullPath, token.LineNumber, token.ColumnNumber, $"The keyword {token.Value} appears in the wrong place, it should be {symbol.Name}.");
             }
 
             this.Position++;
@@ -296,7 +296,7 @@ namespace AuroraScript.Compiler.Analyzer
             if (lexToken.SymbolId != symbol1.Id && lexToken.SymbolId != symbol2.Id)
             {
                 var token = this.Materialize(this.Position);
-                throw new AuroraLexicalException(this.FullPath, token.LineNumber, token.ColumnNumber, $"The keyword {token.Value} appears in the wrong place, it should be {symbol1} or {symbol2}.");
+                throw new AuroraCompilationException(AuroraCompilationStage.Lexing, this.FullPath, token.LineNumber, token.ColumnNumber, $"The keyword {token.Value} appears in the wrong place, it should be {symbol1} or {symbol2}.");
             }
 
             this.Position++;
@@ -313,7 +313,7 @@ namespace AuroraScript.Compiler.Analyzer
             }
 
             var token = this.Materialize(this.Position);
-            throw new AuroraLexicalException(this.FullPath, token.LineNumber, token.ColumnNumber, $"The keyword {token.Value} appears in the wrong place, it should be {symbol.Name}.");
+            throw new AuroraCompilationException(AuroraCompilationStage.Lexing, this.FullPath, token.LineNumber, token.ColumnNumber, $"The keyword {token.Value} appears in the wrong place, it should be {symbol.Name}.");
         }
 
         public Token NextOfKind(params Symbols[] symbols)
@@ -323,7 +323,7 @@ namespace AuroraScript.Compiler.Analyzer
             {
                 if (token.Symbol == symbols[i]) return token;
             }
-            throw new AuroraLexicalException(this.FullPath, token.LineNumber, token.ColumnNumber, $"The keyword {token.Value} appears in the wrong place, it should be {String.Join(",", symbols.Select(s => s.ToString()))}.");
+            throw new AuroraCompilationException(AuroraCompilationStage.Lexing, this.FullPath, token.LineNumber, token.ColumnNumber, $"The keyword {token.Value} appears in the wrong place, it should be {String.Join(",", symbols.Select(s => s.ToString()))}.");
         }
 
         public Token NextOfKind(Symbols symbol1, Symbols symbol2)
@@ -335,7 +335,7 @@ namespace AuroraScript.Compiler.Analyzer
             }
 
             var token = this.Materialize(this.Position);
-            throw new AuroraLexicalException(this.FullPath, token.LineNumber, token.ColumnNumber, $"The keyword {token.Value} appears in the wrong place, it should be {symbol1},{symbol2}.");
+            throw new AuroraCompilationException(AuroraCompilationStage.Lexing, this.FullPath, token.LineNumber, token.ColumnNumber, $"The keyword {token.Value} appears in the wrong place, it should be {symbol1},{symbol2}.");
         }
 
 
@@ -349,7 +349,7 @@ namespace AuroraScript.Compiler.Analyzer
         {
             var token = this.Next();
             if (token is T) return (T)token;
-            throw new AuroraLexicalException(this.FullPath, token.LineNumber, token.ColumnNumber, $"Invalid or unexpected token “{token.Value}”");
+            throw new AuroraCompilationException(AuroraCompilationStage.Lexing, this.FullPath, token.LineNumber, token.ColumnNumber, $"Invalid or unexpected token “{token.Value}”");
         }
 
         public Token NextOfToken<T1, T2>() where T1 : Token where T2 : Token
@@ -357,7 +357,7 @@ namespace AuroraScript.Compiler.Analyzer
             var token = this.Next();
             if (token is T1) return token;
             if (token is T2) return token;
-            throw new AuroraLexicalException(this.FullPath, token.LineNumber, token.ColumnNumber, $"Invalid or unexpected token “{token.Value}”");
+            throw new AuroraCompilationException(AuroraCompilationStage.Lexing, this.FullPath, token.LineNumber, token.ColumnNumber, $"Invalid or unexpected token “{token.Value}”");
         }
 
 
@@ -552,7 +552,7 @@ namespace AuroraScript.Compiler.Analyzer
                     this.Advance(in result);
                     return token;
                 }
-                throw new AuroraLexicalException(this.FileName, this.LineNumber, this.ColumnNumber, "Invalid keywords 。");
+                throw new AuroraCompilationException(AuroraCompilationStage.Lexing, this.FileName, this.LineNumber, this.ColumnNumber, "Invalid keywords 。");
             }
         }
 
@@ -605,7 +605,7 @@ namespace AuroraScript.Compiler.Analyzer
                     return true;
                 }
 
-                throw new AuroraLexicalException(this.FullPath, this.LineNumber, this.ColumnNumber, "Malformed hexadecimal numeric literal.");
+                throw new AuroraCompilationException(AuroraCompilationStage.Lexing, this.FullPath, this.LineNumber, this.ColumnNumber, "Malformed hexadecimal numeric literal.");
             }
 
             if (IsDigit(c))
@@ -888,7 +888,7 @@ namespace AuroraScript.Compiler.Analyzer
                     if (i + 1 >= span.Length) break;
                     if (!CanEscape(span[i + 1], out var escapedChar))
                     {
-                        throw new AuroraLexicalException("", this.LineNumber, currentColumn, "Unrecognizable escape characters");
+                        throw new AuroraCompilationException(AuroraCompilationStage.Lexing, "", this.LineNumber, currentColumn, "Unrecognizable escape characters");
                     }
                     if (keychar != '`')
                     {
@@ -1165,7 +1165,7 @@ namespace AuroraScript.Compiler.Analyzer
         /// </summary>
         /// <param name="result"></param>
         /// <returns></returns>
-        /// <exception cref="AuroraLexicalException"></exception>
+        /// <exception cref="AuroraCompilationException"></exception>
         private LexToken CreateLexToken(in RuleTestResult result)
         {
             var tokenSpan = this.InputData.AsSpan(result.Offset, result.Length);
@@ -1211,7 +1211,7 @@ namespace AuroraScript.Compiler.Analyzer
                 else if (symbol.Type == SymbolTypes.NullValue) lexToken.Data = LexToken.Pack(LexTokenKind.Null, symbol.Id);
                 else if (symbol.Type == SymbolTypes.BooleanValue) lexToken.Data = LexToken.Pack(LexTokenKind.Boolean, symbol.Id);
                 else if (symbol.Type == SymbolTypes.Identifier) lexToken.Data = LexToken.Pack(LexTokenKind.Identifier, symbol.Id);
-                else throw new AuroraLexicalException(this.FileName, this.LineNumber, this.ColumnNumber, $"Invalid Identifier {result.Value ?? tokenSpan.ToString()}");
+                else throw new AuroraCompilationException(AuroraCompilationStage.Lexing, this.FileName, this.LineNumber, this.ColumnNumber, $"Invalid Identifier {result.Value ?? tokenSpan.ToString()}");
                 return lexToken;
             }
 
@@ -1221,7 +1221,7 @@ namespace AuroraScript.Compiler.Analyzer
                 return lexToken;
             }
 
-            throw new AuroraLexicalException(this.FileName, this.LineNumber, this.ColumnNumber, $"Invalid Identifier {result.Value ?? tokenSpan.ToString()}");
+            throw new AuroraCompilationException(AuroraCompilationStage.Lexing, this.FileName, this.LineNumber, this.ColumnNumber, $"Invalid Identifier {result.Value ?? tokenSpan.ToString()}");
         }
 
         private Token Materialize(int index)

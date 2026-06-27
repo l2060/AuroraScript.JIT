@@ -40,12 +40,11 @@ namespace Examples
             runtime.HotReload = true;
             runtime.StringPooling = StringPoolingStrategy.None;
         })
-
         .WithOptimization(optimization =>
         {
             optimization.StackTrace = true;
             optimization.ModuleConstInlining = true;
-            optimization.AutoModuleDirectCall = false;
+            optimization.AutoModuleDirectCall = true;
             optimization.Level = OptimizeOptions.Release;
         });
 
@@ -70,11 +69,6 @@ namespace Examples
         public static async Task Main()
         {
             Thread.CurrentThread.Priority = ThreadPriority.AboveNormal;
-            Console.WriteLine("Loaded Assemblies:");
-            foreach (var a in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                if (a.FullName.Contains("Aurora")) Console.WriteLine($"- {a.FullName}");
-            }
             engine.RegisterType<TestObject>();
             engine.RegisterType(typeof(Math), "Math2");
             try
@@ -82,33 +76,28 @@ namespace Examples
                 var sources = engine.SearchAllFileSource(Encoding.UTF8);
                 var s1 = engine.MemorySource("mmmmm1.as", "console.log('qwertyuiop');");
 
-
                 var time = Stopwatch.StartNew();
                 await engine.BuildAsync([s1, .. sources]);
                 var elapsed = time.ElapsedMilliseconds;
                 Console.WriteLine($"BuildAsync {elapsed}ms");
-
+                Console.WriteLine();
                 Test();
             }
-            catch (AuroraCompileReportException ex)
+            catch (AuroraCompilationException ex)
             {
-                Console.WriteLine($"BuildAsync failed: count {ex.Errors.Count}");
-                foreach (var error in ex.Errors)
+                Console.WriteLine($"BuildAsync failed: count {ex.Diagnostics.Count}");
+                foreach (var error in ex.Diagnostics)
                 {
                     Console.WriteLine($"    - {error}");
                 }
                 Console.WriteLine(ex.ToString());
-                return;
             }
             catch (AuroraRuntimeException ex)
             {
                 Console.WriteLine(ex.ToString());
-                return;
             }
 
-
-
-            Console.WriteLine("OK");
+            Console.WriteLine($"{{{5 + 1}}}");
             for (int i = 0; i < 10; i++)
             {
                 GC.Collect();

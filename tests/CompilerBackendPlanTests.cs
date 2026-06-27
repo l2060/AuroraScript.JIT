@@ -111,7 +111,7 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
-    public void GlobalPredefineKeepsFirstDuplicateModuleSymbol()
+    public void GlobalPredefineRejectsDuplicateModuleSymbol()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -125,12 +125,229 @@ public sealed class CompilerBackendPlanTests
         var options = EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(root)).WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
 
-        var session = backend.CreateModulePlans([module]);
-        var modulePlan = Assert.Single(session.Modules);
+        var error = Assert.Throws<AuroraCompilationException>(() => backend.CreateModulePlans([module]));
 
-        Assert.True(modulePlan.TryGetSymbol("value", out var symbolId));
-        Assert.Equal(BackendSymbolKind.ModuleProperty, session.Symbols[symbolId].Kind);
-        Assert.Equal(1, session.Scopes[modulePlan.ModuleScope].SymbolCount);
+        Assert.Contains("Duplicate declaration 'value'", error.Message);
+        Assert.Contains("module scope", error.Message);
+    }
+
+    [Fact]
+    public void GlobalPredefineRejectsDuplicateModuleFunctions()
+    {
+        var root = Path.GetTempPath();
+        var module = Parse(
+            """
+            @module(TEST);
+            export func testTextTemplate() { return 1; }
+            export func testTextTemplate(n) { return n; }
+            """,
+            root);
+        var options = EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(root)).WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var backend = new BackendCompiler(new DynamicBuilder(options), options);
+
+        var error = Assert.Throws<AuroraCompilationException>(() => backend.CreateModulePlans([module]));
+
+        Assert.Contains("Duplicate declaration 'testTextTemplate'", error.Message);
+        Assert.Contains("module scope", error.Message);
+    }
+
+    [Fact]
+    public void FunctionBinderRejectsDuplicateParameterAndLocalDeclaration()
+    {
+        var root = Path.GetTempPath();
+        var module = Parse(
+            """
+            @module(TEST);
+            export func run(n) {
+                const n = { a: 1, b: 2 };
+                return n;
+            }
+            """,
+            root);
+        var options = EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(root)).WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var backend = new BackendCompiler(new DynamicBuilder(options), options);
+
+        var error = Assert.Throws<AuroraCompilationException>(() => backend.CreateModulePlans([module]));
+
+        Assert.Contains("Duplicate declaration 'n'", error.Message);
+        Assert.Contains("function scope", error.Message);
+    }
+
+    [Theory]
+    [InlineData("const a = 123; a = { b: 1234 };")]
+    [InlineData("const a = 123; a += 1;")]
+    [InlineData("const a = 123; a++;")]
+    public void CompileBlockRejectsConstAssignment(string body)
+    {
+        var options = EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(Path.GetTempPath()));
+        var engine = new AuroraEngine(options);
+
+        var error = Assert.Throws<AuroraCompilationException>(() => engine.CompileBlock(body));
+
+        Assert.Contains("Cannot assign to constant 'a'", error.Message);
+    }
+
+    [Fact]
+    public void CompileBlockRejectsDuplicateDeclarationInSameBlock()
+    {
+        var options = EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(Path.GetTempPath()));
+        var engine = new AuroraEngine(options);
+
+        var error = Assert.Throws<AuroraCompilationException>(() => engine.CompileBlock(
+            """
+            const a = 123;
+            var a = { b: 1234 };
+            """));
+
+        Assert.Contains("Duplicate declaration 'a'", error.Message);
+    }
+
+    [Fact]
+    public void CompileBlockRejectsDeclarationShadowingVisibleOuterConst()
+    {
+        var options = EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(Path.GetTempPath()));
+        var engine = new AuroraEngine(options);
+
+        var error = Assert.Throws<AuroraCompilationException>(() => engine.CompileBlock(
+            """
+            const a = 123;
+            {
+                var a = { b: 1234 };
+            }
+            """));
+
+        Assert.Contains("Duplicate declaration 'a'", error.Message);
+    }
+
+    [Fact]
+    public void CompileBlockAllowsSameDeclarationNameInSiblingBlocks()
+    {
+        var options = EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(Path.GetTempPath()));
+        var engine = new AuroraEngine(options);
+
+        var block = engine.CompileBlock(
+            """
+            {
+                var a = 1;
+            }
+            {
+                var a = 2;
+            }
+            """);
+
+        Assert.NotNull(block);
+    }
+
+    [Fact]
+    public void CompileBlockAllowsDeclarationShadowingVisibleOuterVar()
+    {
+        var options = EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(Path.GetTempPath()));
+        var engine = new AuroraEngine(options);
+
+        var block = engine.CompileBlock(
+            """
+            var a = 123;
+            {
+                var a = 123456;
+                console.log(a);
+            }
+            """);
+
+        Assert.NotNull(block);
+    }
+
+    [Fact]
+    public void CompileBlockRejectsAssignmentToBlockScopedConst()
+    {
+        var options = EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(Path.GetTempPath()));
+        var engine = new AuroraEngine(options);
+
+        var error = Assert.Throws<AuroraCompilationException>(() => engine.CompileBlock(
+            """
+            {
+                const a = 123;
+                a = 456;
+            }
+            """));
+
+        Assert.Contains("Cannot assign to constant 'a'", error.Message);
+    }
+
+    [Fact]
+    public void BackendRejectsAssignmentToCapturedConst()
+    {
+        var root = Path.GetTempPath();
+        var module = Parse(
+            """
+            @module(TEST);
+            export func run() {
+                const value = 1;
+                func mutate() {
+                    value = 2;
+                }
+                return mutate;
+            }
+            """,
+            root);
+        var options = EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(root)).WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var backend = new BackendCompiler(new DynamicBuilder(options), options);
+
+        var error = Assert.Throws<AuroraCompilationException>(() => backend.CreateModulePlans([module]));
+
+        Assert.Contains("Cannot assign to constant 'value'", error.Message);
+    }
+
+    [Fact]
+    public void BackendRejectsAssignmentToInheritedCapturedConst()
+    {
+        var root = Path.GetTempPath();
+        var module = Parse(
+            """
+            @module(TEST);
+            export func run() {
+                const value = 1;
+                func outer() {
+                    func inner() {
+                        value = 2;
+                    }
+                    return inner;
+                }
+                return outer;
+            }
+            """,
+            root);
+        var options = EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(root)).WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var backend = new BackendCompiler(new DynamicBuilder(options), options);
+
+        var error = Assert.Throws<AuroraCompilationException>(() => backend.CreateModulePlans([module]));
+
+        Assert.Contains("Cannot assign to constant 'value'", error.Message);
+    }
+
+    [Fact]
+    public void BackendAllowsAssignmentToCapturedVarShadowingModuleConst()
+    {
+        var root = Path.GetTempPath();
+        var module = Parse(
+            """
+            @module(TEST);
+            export const value = 1;
+            export func run() {
+                var value = 2;
+                func mutate() {
+                    value = 3;
+                }
+                mutate();
+                return value;
+            }
+            """,
+            root);
+        var options = EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(root)).WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var backend = new BackendCompiler(new DynamicBuilder(options), options);
+
+        var session = backend.CreateModulePlans([module]);
+
+        Assert.Single(session.Modules);
     }
 
     [Fact]
@@ -313,7 +530,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
 
-        var error = Assert.Throws<AuroraEmitException>(() => backend.CreateModulePlans([module]));
+        var error = Assert.Throws<AuroraCompilationException>(() => backend.CreateModulePlans([module]));
 
         Assert.Contains("Unsupported function annotation '@unknown'", error.Message);
     }
@@ -831,7 +1048,7 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
-    public void ModuleConstInliningKeepsMutationTargetsAsNames()
+    public void ModuleConstInliningRejectsConstMutationTargets()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -841,6 +1058,33 @@ public sealed class CompilerBackendPlanTests
             export func run() {
                 a1 = 2;
                 a1++;
+                return a1;
+            }
+            """,
+            root);
+        var options = EngineOptions.Default
+            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
+            .WithOptimization(optimization => optimization.ModuleConstInlining = true);
+        var backend = new BackendCompiler(new DynamicBuilder(options), options);
+
+        var error = Assert.Throws<AuroraCompilationException>(() => backend.CreateModulePlans([module]));
+
+        Assert.Contains("Cannot assign to constant 'a1'", error.Message);
+    }
+
+    [Fact]
+    public void ModuleConstInliningKeepsMutableMutationTargetsAsNames()
+    {
+        var root = Path.GetTempPath();
+        var module = Parse(
+            """
+            @module(TEST);
+            export const a1 = 1;
+            export var value = 0;
+            export func run() {
+                value = a1;
+                value++;
                 return a1;
             }
             """,
@@ -862,9 +1106,9 @@ public sealed class CompilerBackendPlanTests
         var incrementTarget = Assert.IsType<LoweredNameExpression>(increment.Expression);
         var returnStatement = Assert.IsType<LoweredReturnStatement>(run.Body.Statements[2]);
 
-        Assert.Equal("a1", assignmentTarget.Name);
+        Assert.Equal("value", assignmentTarget.Name);
         Assert.True(assignmentTarget.ModuleSymbol.IsValid);
-        Assert.Equal("a1", incrementTarget.Name);
+        Assert.Equal("value", incrementTarget.Name);
         Assert.True(incrementTarget.ModuleSymbol.IsValid);
         Assert.IsType<LoweredLiteralExpression>(returnStatement.Expression);
     }

@@ -209,6 +209,14 @@ namespace AuroraScript.Compiler
             VisitLiteralExpression(node);
             AfterVisitNode(node);
         }
+
+        public void AcceptTemplateStringExpression(TemplateStringExpression node)
+        {
+            BeforeVisitNode(node);
+            VisitTemplateStringExpression(node);
+            AfterVisitNode(node);
+        }
+
         public void AcceptGroupingExpression(GroupExpression node)
         {
             BeforeVisitNode(node);
@@ -517,6 +525,19 @@ namespace AuroraScript.Compiler
         {
 
         }
+
+        protected virtual void VisitTemplateStringExpression(TemplateStringExpression node)
+        {
+            for (int i = 0; i < node.PartCount; i++)
+            {
+                var part = node.Parts[i];
+                if (!part.IsLiteral)
+                {
+                    part.Expression.Accept(this);
+                }
+            }
+        }
+
         protected virtual void VisitGroupingExpression(GroupExpression node)
         {
             node.Expression.Accept(this);

@@ -32,6 +32,16 @@ namespace AuroraScript.Compiler.Backend.Emission
                     Emit(context, binary.Left);
                     Emit(context, binary.Right);
                     return;
+                case LoweredTemplateStringExpression template:
+                    for (var i = 0; i < template.Parts.Length; i++)
+                    {
+                        var part = template.Parts[i];
+                        if (!part.IsLiteral)
+                        {
+                            Emit(context, part.Expression);
+                        }
+                    }
+                    return;
                 case LoweredCallExpression call:
                     Emit(context, call.Target);
                     for (var i = 0; i < call.Arguments.Length; i++)

@@ -143,6 +143,27 @@ public sealed class StatementExecutionTests
     }
 
     [Fact]
+    public async Task BlockScopeAllowsShadowingOuterVar()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func run() {
+                var a = 123;
+                var inner = null;
+                {
+                    var a = 123456;
+                    inner = a;
+                }
+                return [a, inner];
+            }
+            """);
+
+        ScriptAssert.Equal(new object?[] { 123, 123456 }, TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
     public async Task ModuleVariablesAreIsolatedAcrossDomains()
     {
         using var workspace = new TestWorkspace();

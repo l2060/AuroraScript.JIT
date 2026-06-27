@@ -53,7 +53,7 @@ namespace AuroraScript.Compiler.Backend.Analysis
                 {
                     if (usage.HasAssignment)
                     {
-                        throw new AuroraEmitException(function.Declaration, "@directCall() function name cannot be assigned.");
+                        throw new AuroraCompilationException(AuroraCompilationStage.Binding, function.Declaration, "@directCall() function name cannot be assigned.");
                     }
 
                     if (usage.DirectCallCount > 0)

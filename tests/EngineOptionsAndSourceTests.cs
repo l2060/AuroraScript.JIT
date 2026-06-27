@@ -224,7 +224,9 @@ public sealed class EngineOptionsAndSourceTests
         Directory.CreateDirectory(missing);
         try
         {
-            await Assert.ThrowsAsync<AuroraException>(() => engine.BuildAsync(engine.FileSource("missing.as", Encoding.UTF8)));
+            var error = await Assert.ThrowsAsync<AuroraCompilationException>(() => engine.BuildAsync(engine.FileSource("missing.as", Encoding.UTF8)));
+            var diagnostic = Assert.Single(error.Diagnostics);
+            Assert.Contains("missing.as", diagnostic.Message, StringComparison.OrdinalIgnoreCase);
         }
         finally
         {

@@ -99,6 +99,16 @@ namespace AuroraScript.Compiler.Backend.Traversal
                     VisitIfNotNull(binary.Left, ref visitor);
                     VisitIfNotNull(binary.Right, ref visitor);
                     return;
+                case TemplateStringExpression template:
+                    for (var i = 0; i < template.PartCount; i++)
+                    {
+                        var part = template.Parts[i];
+                        if (!part.IsLiteral)
+                        {
+                            VisitIfNotNull(part.Expression, ref visitor);
+                        }
+                    }
+                    return;
                 case IncludedExpression included:
                     VisitIfNotNull(included.Left, ref visitor);
                     VisitIfNotNull(included.Right, ref visitor);

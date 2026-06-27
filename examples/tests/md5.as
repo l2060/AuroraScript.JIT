@@ -6,6 +6,7 @@
 *  http://www.webtoolkit.info/
 *
 **/
+
 @directCall()
 function throwMethod() {
     console.log("Start testError");
@@ -17,6 +18,7 @@ function throwMethod() {
 function RotateLeft(lValue, iShiftBits) {
     return (lValue << iShiftBits) | (lValue >>> (32 - iShiftBits));
 }
+
 @directCall()
 function AddUnsigned(lX, lY) {
     // debugger;

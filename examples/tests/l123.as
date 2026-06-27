@@ -19,11 +19,23 @@ func testInput() {
         GIVE("esd", value);
         console.log(`����ֵ=${ value }`);
     });
+    console.log(testTextTemplate());
 }
 
+export func testTextTemplate(){
+    return `[ ${ 0+10 } - ${ 1+10 } - ${ 2+10 } - ${ 3+10 } - ${ 4+10 } - ${ 5+10 } ]`;
+}
 
-
-
+export func testTextTemplate2(n){
+    var a = 123;
+    {
+        func a(b){
+            console.log(b);
+        }
+        a("--");
+    }
+    return `Template: ${n}`;
+}
 
 
 func throwTest() {

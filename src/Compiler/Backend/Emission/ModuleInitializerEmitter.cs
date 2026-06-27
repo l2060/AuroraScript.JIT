@@ -325,6 +325,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                 case BinaryExpression binary:
                     EmitBinary(binary);
                     return;
+                case TemplateStringExpression template:
+                    EmitTemplateString(template);
+                    return;
                 case AssignmentExpression assignment:
                     EmitAssignment(assignment);
                     return;
@@ -603,6 +606,141 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
 
             return false;
+        }
+
+        private void EmitTemplateString(TemplateStringExpression expression)
+        {
+            var elementCount = CountTemplateStringElements(expression);
+            if (elementCount == 0)
+            {
+                _session.Builder.LoadStringConstant(_il, string.Empty);
+                _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromString);
+                return;
+            }
+
+            if (elementCount <= 4)
+            {
+                EmitTemplateStringConcat(expression, elementCount);
+                return;
+            }
+
+            EmitTemplateStringBuilder(expression);
+        }
+
+        private static int CountTemplateStringElements(TemplateStringExpression expression)
+        {
+            var count = 0;
+            for (var i = 0; i < expression.PartCount; i++)
+            {
+                var part = expression.Parts[i];
+                if (!part.IsLiteral || part.Literal.Length != 0)
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        private void EmitTemplateStringConcat(TemplateStringExpression expression, int elementCount)
+        {
+            for (var i = 0; i < expression.PartCount; i++)
+            {
+                EmitTemplateStringElement(expression.Parts[i]);
+            }
+
+            switch (elementCount)
+            {
+                case 1:
+                    break;
+                case 2:
+                    _il.Emit(OpCodes.Call, RuntimeMetadata.String_Concat2);
+                    break;
+                case 3:
+                    _il.Emit(OpCodes.Call, RuntimeMetadata.String_Concat3);
+                    break;
+                case 4:
+                    _il.Emit(OpCodes.Call, RuntimeMetadata.String_Concat4);
+                    break;
+                default:
+                    throw new NotSupportedException("Template string concat element count " + elementCount);
+            }
+
+            _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromString);
+        }
+
+        private void EmitTemplateStringElement(TemplateStringPart part)
+        {
+            if (part.IsLiteral)
+            {
+                if (part.Literal.Length != 0)
+                {
+                    _session.Builder.LoadStringConstant(_il, part.Literal);
+                }
+                return;
+            }
+
+            EmitExpression(part.Expression);
+            _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToString);
+        }
+
+        private void EmitTemplateStringBuilder(TemplateStringExpression expression)
+        {
+            var dynamicStrings = new LocalBuilder[expression.PartCount];
+            var literalLength = 0;
+            for (var i = 0; i < expression.PartCount; i++)
+            {
+                var part = expression.Parts[i];
+                if (part.IsLiteral)
+                {
+                    literalLength += part.Literal.Length;
+                    continue;
+                }
+
+                EmitExpression(part.Expression);
+                _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToString);
+                var local = DeclareLocal(typeof(string));
+                _il.Emit(OpCodes.Stloc, local);
+                dynamicStrings[i] = local;
+            }
+
+            _il.Emit(OpCodes.Ldc_I4, literalLength);
+            for (var i = 0; i < dynamicStrings.Length; i++)
+            {
+                var local = dynamicStrings[i];
+                if (local == null)
+                {
+                    continue;
+                }
+
+                _il.Emit(OpCodes.Ldloc, local);
+                _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_GetStringLength);
+                _il.Emit(OpCodes.Add);
+            }
+
+            _il.Emit(OpCodes.Newobj, RuntimeMetadata.StringBuilder_CtorCapacity);
+            for (var i = 0; i < expression.PartCount; i++)
+            {
+                var part = expression.Parts[i];
+                if (part.IsLiteral)
+                {
+                    if (part.Literal.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    _session.Builder.LoadStringConstant(_il, part.Literal);
+                }
+                else
+                {
+                    _il.Emit(OpCodes.Ldloc, dynamicStrings[i]);
+                }
+
+                _il.Emit(OpCodes.Callvirt, RuntimeMetadata.StringBuilder_AppendString);
+            }
+
+            _il.Emit(OpCodes.Callvirt, RuntimeMetadata.StringBuilder_ToString);
+            _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromString);
         }
 
         private static bool TryGetStringLiteral(Expression expression, out string value)
@@ -1378,6 +1516,11 @@ namespace AuroraScript.Compiler.Backend.Emission
         private LocalBuilder DeclareTemp()
         {
             return _il.DeclareLocal(typeof(ScriptDatum));
+        }
+
+        private LocalBuilder DeclareLocal(Type type)
+        {
+            return _il.DeclareLocal(type);
         }
 
         private static bool HasSpread(IReadOnlyList<Expression> expressions)

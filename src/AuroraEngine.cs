@@ -1,4 +1,4 @@
-﻿using AuroraScript.Compiler;
+using AuroraScript.Compiler;
 using AuroraScript.Compiler.Analyzer;
 using AuroraScript.Compiler.Backend;
 using AuroraScript.Compiler.Backend.Builders;
@@ -197,9 +197,7 @@ namespace AuroraScript
                 var compiler = new ScriptCompiler(Options);
                 var modules = await compiler.BuildModuleGraphAsync(sources, cancellationToken).ConfigureAwait(false);
 
-                var backend = new BackendCompiler(builder, Options);
-                var compileSession = backend.CreateModulePlans(modules, cancellationToken);
-                new BackendBuildEmitter(new EmissionSession(compileSession, builder, emitExecutableSkeletons: true)).Emit();
+                EmitProgram(builder, modules, cancellationToken);
 
                 Assembly scriptAssembly = null;
                 MethodInfo entryPoint;
@@ -251,27 +249,73 @@ namespace AuroraScript
             ValidateCompileBlockParameters(options.Parameters);
             var sourceName = string.IsNullOrWhiteSpace(options.SourceName) ? "__compile_block__.as" : options.SourceName;
             var scriptSource = MemorySource(sourceName, source);
-            var lexer = new AuroraLexer(Options.Compiler.BaseDirectory, scriptSource);
-            var parser = new AuroraParser(lexer, Options);
-            var block = parser.ParseBlockBody();
-
-            var builderOptions = Options
-                .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
-                .WithRuntime(runtime => runtime.HotReload = false)
-                .WithOptimization(optimization => optimization.Level = OptimizeOptions.Release);
-            var builder = new DynamicBuilder(builderOptions);
-            var backend = new BackendCompiler(builder, builderOptions);
-            var blockPlan = backend.CreateCompileBlockPlan(block, options.Parameters, sourceName);
-            var emissionSession = new EmissionSession(blockPlan.Session, builder, emitExecutableSkeletons: true);
-            var method = new CompileBlockEmitter(
-                emissionSession,
-                blockPlan).Emit();
-            if (method == null)
+            try
             {
-                throw new AuroraException("The compiler did not produce a compiled block entry point.");
+                var lexer = new AuroraLexer(Options.Compiler.BaseDirectory, scriptSource);
+                var parser = new AuroraParser(lexer, Options);
+                var block = parser.ParseBlockBody();
+
+                var builderOptions = Options
+                    .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
+                    .WithRuntime(runtime => runtime.HotReload = false)
+                    .WithOptimization(optimization => optimization.Level = OptimizeOptions.Release);
+                var builder = new DynamicBuilder(builderOptions);
+                var backend = new BackendCompiler(builder, builderOptions);
+                var blockPlan = backend.CreateCompileBlockPlan(block, options.Parameters, sourceName);
+                var emissionSession = new EmissionSession(blockPlan.Session, builder, emitExecutableSkeletons: true);
+                var method = new CompileBlockEmitter(
+                    emissionSession,
+                    blockPlan).Emit();
+                if (method == null)
+                {
+                    throw new AuroraException("The compiler did not produce a compiled block entry point.");
+                }
+                var target = method.CreateDelegate<ScriptFunctionDelegate>();
+                return new CompiledBlock(this, target, emissionSession.RegisteredDynamicDelegateIds);
             }
-            var target = method.CreateDelegate<ScriptFunctionDelegate>();
-            return new CompiledBlock(this, target, emissionSession.RegisteredDynamicDelegateIds);
+            catch (Exception ex) when (IsCompilationPipelineException(ex))
+            {
+                throw CreateCompilationException(ex, AuroraCompilationStage.Parsing);
+            }
+        }
+
+        private void EmitProgram(AbstractCILBuilder builder, Compiler.Ast.ModuleDeclaration[] modules, CancellationToken cancellationToken)
+        {
+            try
+            {
+                var backend = new BackendCompiler(builder, Options);
+                var compileSession = backend.CreateModulePlans(modules, cancellationToken);
+                new BackendBuildEmitter(new EmissionSession(compileSession, builder, emitExecutableSkeletons: true)).Emit();
+            }
+            catch (Exception ex) when (IsCompilationPipelineException(ex))
+            {
+                throw CreateCompilationException(ex, AuroraCompilationStage.Emission);
+            }
+        }
+
+        internal static bool IsCompilationPipelineException(Exception exception)
+        {
+            if (exception is AuroraCompilationException or NotSupportedException)
+            {
+                return true;
+            }
+
+            if (exception is AggregateException aggregate)
+            {
+                var errors = aggregate.Flatten().InnerExceptions;
+                return errors.Count > 0 && errors.All(IsCompilationPipelineException);
+            }
+
+            return false;
+        }
+
+        internal static AuroraCompilationException CreateCompilationException(
+            Exception exception,
+            AuroraCompilationStage fallbackStage)
+        {
+            return exception is AuroraCompilationException compilation
+                ? compilation
+                : AuroraCompilationException.FromException(exception, fallbackStage);
         }
 
         private static void ValidateCompileBlockParameters(IReadOnlyList<string> parameters)

@@ -110,6 +110,13 @@ namespace AuroraScript.Runtime
             };
         }
 
+        /// <summary>Returns the length of a temporary template string segment.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int GetStringLength(string value)
+        {
+            return value?.Length ?? 0;
+        }
+
         /// <summary>
         /// Performs the subtraction operation (-) between two script values.
         /// Coerces operands to numbers; returns NaN if conversion fails.

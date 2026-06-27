@@ -127,7 +127,7 @@ public sealed class CompileBlockTests
         using var workspace = new TestWorkspace();
         var engine = workspace.CreateEngine();
 
-        var error = Assert.Throws<AuroraParseException>(() => engine.CompileBlock(source));
+        var error = Assert.Throws<AuroraCompilationException>(() => engine.CompileBlock(source));
         Assert.Contains("CompileBlock", error.Message, StringComparison.Ordinal);
     }
 
@@ -137,7 +137,7 @@ public sealed class CompileBlockTests
         using var workspace = new TestWorkspace();
         var engine = workspace.CreateEngine();
 
-        var error = Assert.Throws<AuroraParseException>(() => engine.CompileBlock(
+        var error = Assert.Throws<AuroraCompilationException>(() => engine.CompileBlock(
             "return (1 +;",
             new CompileBlockOptions { SourceName = "virtual/release-regression.as" }));
 
