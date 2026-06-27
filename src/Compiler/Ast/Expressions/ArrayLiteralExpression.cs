@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace AuroraScript.Compiler.Ast.Expressions
+﻿namespace AuroraScript.Compiler.Ast.Expressions
 {
     internal class ArrayLiteralExpression : OperatorExpression
     {
@@ -12,12 +10,6 @@ namespace AuroraScript.Compiler.Ast.Expressions
         {
             visitor.AcceptArrayExpression(this);
         }
-
-        public override string ToString()
-        {
-            return $"[{String.Join(", ", ChildNodes)}]";
-        }
-
 
     }
 }

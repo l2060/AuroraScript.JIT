@@ -2,7 +2,6 @@
 using AuroraScript.Runtime;
 using AuroraScript.Tokens;
 using System;
-using System.Collections.Generic;
 
 
 namespace AuroraScript.Compiler.Ast.Expressions
@@ -62,14 +61,6 @@ namespace AuroraScript.Compiler.Ast.Expressions
         /// </summary>
         public Expression Initializer;
 
-        public override IEnumerable<AstNode> ChildNodes
-        {
-            get
-            {
-                if (Pattern != null) yield return Pattern;
-                if (Initializer != null) yield return Initializer;
-            }
-        }
 
         /// <summary>
         /// Function Access

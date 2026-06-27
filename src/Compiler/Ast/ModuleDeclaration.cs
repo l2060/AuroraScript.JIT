@@ -41,12 +41,6 @@ namespace AuroraScript.Compiler.Ast
         /// </summary>
         public String FullPath { get; set; }
 
-
-        public override IEnumerable<AstNode> ChildNodes
-        {
-            get { return base.ChildNodes; }
-        }
-
         public override void Accept(IAstVisitor visitor)
         {
             visitor.AcceptModule(this);
@@ -62,20 +56,7 @@ namespace AuroraScript.Compiler.Ast
 
         public Boolean IsEmpty()
         {
-            if (Functions.Count > 0) return false;
-
-            foreach (var item in ChildNodes)
-            {
-                switch (item)
-                {
-                    case ModuleMetaStatement:
-                    case ImportDeclaration:
-                        break;
-                    default:
-                        return false;
-                }
-            }
-            return true;
+            return Functions.Count == 0 && Length == 0;
         }
 
 

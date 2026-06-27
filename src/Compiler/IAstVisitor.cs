@@ -297,7 +297,6 @@ namespace AuroraScript.Compiler
             AfterVisitNode(node);
         }
 
-
         public void AcceptParameterDeclaration(ParameterDeclaration node)
         {
             BeforeVisitNode(node);

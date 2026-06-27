@@ -19,17 +19,6 @@ namespace AuroraScript.Compiler.Ast.Expressions
         /// </summary>
         public List<Expression> Elements { get; set; }
 
-        public override IEnumerable<AstNode> ChildNodes
-        {
-            get
-            {
-                foreach (var element in Elements)
-                {
-                    if (element != null) yield return element;
-                }
-            }
-        }
-
         public override void Accept(IAstVisitor visitor)
         {
             visitor.AcceptArrayDestructuringPattern(this);

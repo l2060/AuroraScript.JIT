@@ -1,5 +1,4 @@
 ﻿using AuroraScript.Compiler.Ast.Expressions;
-using System.Collections.Generic;
 
 
 
@@ -14,14 +13,6 @@ namespace AuroraScript.Compiler.Ast.Statements
         }
 
         public readonly Expression Expression;
-
-        public override IEnumerable<AstNode> ChildNodes
-        {
-            get
-            {
-                if (Expression != null) yield return Expression;
-            }
-        }
 
         public override void Accept(IAstVisitor visitor)
         {

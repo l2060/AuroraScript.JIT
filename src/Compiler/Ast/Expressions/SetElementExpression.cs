@@ -1,6 +1,4 @@
-﻿using System.Collections.Generic;
-
-namespace AuroraScript.Compiler.Ast.Expressions
+﻿namespace AuroraScript.Compiler.Ast.Expressions
 {
     internal class SetElementExpression : OperatorExpression
     {
@@ -17,16 +15,6 @@ namespace AuroraScript.Compiler.Ast.Expressions
         public readonly Expression Object;
         public readonly Expression Index;
         public readonly Expression Value;
-
-        public override IEnumerable<AstNode> ChildNodes
-        {
-            get
-            {
-                if (Object != null) yield return Object;
-                if (Index != null) yield return Index;
-                if (Value != null) yield return Value;
-            }
-        }
 
         public override void Accept(IAstVisitor visitor)
         {

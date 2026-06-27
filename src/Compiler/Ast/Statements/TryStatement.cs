@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-
 namespace AuroraScript.Compiler.Ast.Statements
 {
     internal class TryStatement : Statement
@@ -19,16 +17,6 @@ namespace AuroraScript.Compiler.Ast.Statements
         public readonly string CatchVariable;
         public readonly Statement CatchBody;
         public readonly Statement FinallyBody;
-
-        public override IEnumerable<AstNode> ChildNodes
-        {
-            get
-            {
-                if (Body != null) yield return Body;
-                if (CatchBody != null) yield return CatchBody;
-                if (FinallyBody != null) yield return FinallyBody;
-            }
-        }
 
         public override void Accept(IAstVisitor visitor)
         {

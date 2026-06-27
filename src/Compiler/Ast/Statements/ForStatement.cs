@@ -1,5 +1,4 @@
 ﻿using AuroraScript.Compiler.Ast.Expressions;
-using System.Collections.Generic;
 
 
 namespace AuroraScript.Compiler.Ast.Statements
@@ -34,18 +33,6 @@ namespace AuroraScript.Compiler.Ast.Statements
         /// contains multiple sentences
         /// </summary>
         public readonly Expression Incrementor;
-
-        public override IEnumerable<AstNode> ChildNodes
-        {
-            get
-            {
-                if (Initializer != null) yield return Initializer;
-                if (Condition != null) yield return Condition;
-                if (Incrementor != null) yield return Incrementor;
-                if (Body != null) yield return Body;
-            }
-        }
-
 
         public override void Accept(IAstVisitor visitor)
         {

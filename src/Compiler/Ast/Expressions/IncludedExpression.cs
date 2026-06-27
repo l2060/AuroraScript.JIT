@@ -1,6 +1,4 @@
-﻿using System.Collections.Generic;
-
-namespace AuroraScript.Compiler.Ast.Expressions
+﻿namespace AuroraScript.Compiler.Ast.Expressions
 {
     /// <summary>
     /// 二元表达式
@@ -19,16 +17,6 @@ namespace AuroraScript.Compiler.Ast.Expressions
 
         public readonly Expression Left;
         public readonly Expression Right;
-
-
-        public override IEnumerable<AstNode> ChildNodes
-        {
-            get
-            {
-                if (Left != null) yield return Left;
-                if (Right != null) yield return Right;
-            }
-        }
 
         public override void Accept(IAstVisitor visitor)
         {

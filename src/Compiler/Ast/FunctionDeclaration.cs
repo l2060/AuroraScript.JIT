@@ -90,22 +90,6 @@ namespace AuroraScript.Compiler.Ast
         public IReadOnlyList<FunctionAnnotation> Annotations { get; private set; }
 
 
-        public override IEnumerable<AstNode> ChildNodes
-        {
-            get
-            {
-                if (Annotations.Count > 0)
-                {
-                    foreach (var annotation in Annotations) yield return annotation;
-                }
-                if (Parameters.Count > 0)
-                {
-                    foreach (var param in Parameters) yield return param;
-                }
-                if (Body != null) yield return Body;
-            }
-        }
-
         public override void Accept(IAstVisitor visitor)
         {
             visitor.AcceptFunction(this);

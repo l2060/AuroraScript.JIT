@@ -1,6 +1,5 @@
 using AuroraScript.Runtime;
 using System;
-using AuroraScript.Compiler.Ast;
 using System.Collections.Generic;
 using System.Text;
 
@@ -29,21 +28,6 @@ namespace AuroraScript.Compiler.Ast.Expressions
 
         public IReadOnlyList<TemplateStringPart> Parts => _parts;
         public int PartCount => _parts.Length;
-
-        public override IEnumerable<AstNode> ChildNodes
-        {
-            get
-            {
-                for (var i = 0; i < _parts.Length; i++)
-                {
-                    var expression = _parts[i].Expression;
-                    if (expression != null)
-                    {
-                        yield return expression;
-                    }
-                }
-            }
-        }
 
         public override void Accept(IAstVisitor visitor)
         {

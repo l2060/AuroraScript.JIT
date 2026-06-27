@@ -1,6 +1,5 @@
 ﻿using AuroraScript.Compiler.Ast.Statements;
 using System;
-using System.Collections.Generic;
 
 
 namespace AuroraScript.Compiler.Ast
@@ -37,16 +36,8 @@ namespace AuroraScript.Compiler.Ast
         public String FullPath { get; set; }
 
         public ModuleDeclaration Module { get; set; }
-
-
-
         public Boolean Include { get; set; }
 
-
-        public override IEnumerable<AstNode> ChildNodes
-        {
-            get { return base.ChildNodes; }
-        }
 
         public override void Accept(IAstVisitor visitor)
         {

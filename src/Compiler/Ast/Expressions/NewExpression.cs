@@ -1,6 +1,4 @@
-﻿using System.Collections.Generic;
-
-namespace AuroraScript.Compiler.Ast.Expressions
+﻿namespace AuroraScript.Compiler.Ast.Expressions
 {
 
     internal class NewExpression : OperatorExpression
@@ -12,14 +10,6 @@ namespace AuroraScript.Compiler.Ast.Expressions
         }
 
         public readonly FunctionCallExpression Expression;
-
-        public override IEnumerable<AstNode> ChildNodes
-        {
-            get
-            {
-                if (Expression != null) yield return Expression;
-            }
-        }
 
         public override void Accept(IAstVisitor visitor)
         {

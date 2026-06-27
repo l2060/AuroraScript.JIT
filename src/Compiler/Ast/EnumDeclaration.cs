@@ -29,17 +29,6 @@ namespace AuroraScript.Compiler.Ast
         public Token Identifier { get; set; }
         public List<EnumElement> Elements { get; set; }
 
-        public override IEnumerable<AstNode> ChildNodes
-        {
-            get
-            {
-                if (Elements != null)
-                {
-                    foreach (var element in Elements) yield return element;
-                }
-            }
-        }
-
         public override void Accept(IAstVisitor visitor)
         {
             visitor.AcceptEnumDeclaration(this);

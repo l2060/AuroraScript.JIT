@@ -18,11 +18,6 @@ namespace AuroraScript.Compiler.Ast.Expressions
         /// </summary>
         public List<Token> Properties { get; set; }
 
-        public override IEnumerable<AstNode> ChildNodes
-        {
-            get { yield break; }
-        }
-
         public override void Accept(IAstVisitor visitor)
         {
             visitor.AcceptObjectDestructuringPattern(this);

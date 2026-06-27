@@ -26,7 +26,6 @@ namespace AuroraScript.Compiler
         public static readonly Symbols KW_DEBUGGER = new Symbols("debugger", SymbolTypes.KeyWord);
 
         public static readonly Symbols KW_BREAK = new Symbols("break", SymbolTypes.KeyWord);
-        public static readonly Symbols KW_YIELD = new Symbols("yield", SymbolTypes.KeyWord);
         public static readonly Symbols KW_CONTINUE = new Symbols("continue", SymbolTypes.KeyWord);
         public static readonly Symbols KW_ENUM = new Symbols("enum", SymbolTypes.KeyWord);
         public static readonly Symbols KW_FOR = new Symbols("for", SymbolTypes.KeyWord);
@@ -433,7 +432,6 @@ namespace AuroraScript.Compiler
                     if (name.SequenceEqual("const")) return KW_CONST;
                     if (name.SequenceEqual("while")) return KW_WHILE;
                     if (name.SequenceEqual("break")) return KW_BREAK;
-                    if (name.SequenceEqual("yield")) return KW_YIELD;
                     if (name.SequenceEqual("catch")) return KW_CATCH;
                     if (name.SequenceEqual("throw")) return KW_THROW;
                     if (name.SequenceEqual("false")) return VALUE_FALSE;

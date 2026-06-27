@@ -1,7 +1,4 @@
-﻿using System.Collections.Generic;
-
-
-namespace AuroraScript.Compiler.Ast.Expressions
+﻿namespace AuroraScript.Compiler.Ast.Expressions
 {
     internal class MapKeyValueExpression : OperatorExpression
     {
@@ -10,14 +7,6 @@ namespace AuroraScript.Compiler.Ast.Expressions
             this.Key = key;
             this.Value = value;
             if (value != null) value.Parent = this;
-        }
-
-        public override IEnumerable<AstNode> ChildNodes
-        {
-            get
-            {
-                if (Value != null) yield return Value;
-            }
         }
 
 

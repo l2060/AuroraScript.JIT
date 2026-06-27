@@ -1,7 +1,4 @@
-﻿using System.Collections.Generic;
-
-
-namespace AuroraScript.Compiler.Ast.Expressions
+﻿namespace AuroraScript.Compiler.Ast.Expressions
 {
     /// <summary>
     /// PrefixUnary Expression
@@ -17,14 +14,6 @@ namespace AuroraScript.Compiler.Ast.Expressions
         }
 
         public readonly Expression Expression;
-
-        public override IEnumerable<AstNode> ChildNodes
-        {
-            get
-            {
-                if (Expression != null) yield return Expression;
-            }
-        }
 
     }
 }

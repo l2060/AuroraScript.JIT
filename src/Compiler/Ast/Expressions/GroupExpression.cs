@@ -1,7 +1,4 @@
-﻿using System.Collections.Generic;
-
-
-namespace AuroraScript.Compiler.Ast.Expressions
+﻿namespace AuroraScript.Compiler.Ast.Expressions
 {
     internal class GroupExpression : OperatorExpression
     {
@@ -12,11 +9,6 @@ namespace AuroraScript.Compiler.Ast.Expressions
 
 
         public Expression Expression => _children == null || _children.Count == 0 ? null : (Expression)_children[0];
-
-        public override IEnumerable<AstNode> ChildNodes
-        {
-            get { return base.ChildNodes; }
-        }
 
         public override void Accept(IAstVisitor visitor)
         {

@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace AuroraScript.Compiler.Ast.Expressions
+﻿namespace AuroraScript.Compiler.Ast.Expressions
 {
     internal class MapExpression : OperatorExpression
     {
@@ -11,12 +9,6 @@ namespace AuroraScript.Compiler.Ast.Expressions
         public override void Accept(IAstVisitor visitor)
         {
             visitor.AcceptMapExpression(this);
-        }
-
-
-        public override string ToString()
-        {
-            return $"{{ {String.Join(", ", ChildNodes)} }}";
         }
     }
 }

@@ -1,7 +1,4 @@
-﻿using System.Collections.Generic;
-
-
-namespace AuroraScript.Compiler.Ast.Expressions
+﻿namespace AuroraScript.Compiler.Ast.Expressions
 {
     internal class LambdaExpression : Expression
     {
@@ -13,14 +10,6 @@ namespace AuroraScript.Compiler.Ast.Expressions
         }
 
         public readonly FunctionDeclaration Function;
-
-        public override IEnumerable<AstNode> ChildNodes
-        {
-            get
-            {
-                if (Function != null) yield return Function;
-            }
-        }
 
         public override void Accept(IAstVisitor visitor)
         {
