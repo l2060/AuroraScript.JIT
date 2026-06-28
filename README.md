@@ -876,6 +876,118 @@ dotnet run --project benchmark/Benchmark.csproj -c Release -- --compare
 - [tests/AuroraScript.Tests](tests/AuroraScript.Tests)：推荐作为行为规格参考。
 - [benchmark/scripts/runtime.as](benchmark/scripts/runtime.as)：运行时性能指标脚本。
 
+## AI / MCP 服务
+
+`AuroraScript.Mcp` 是面向 AI 编程工具的 stdio MCP 服务器。它把 AuroraScript 的文档、schema、示例、运行时 API、宿主 API 和脚本校验能力暴露给支持 MCP 的客户端，让 AI 在生成脚本前可以先查询语言资料，并在生成后调用编译/运行工具验证结果。
+
+MCP 服务适合这些场景：
+
+- 让 Codex、Claude、VS Code MCP Client 等工具读取 AuroraScript 语法、最佳实践和运行时 API。
+- 检查 AI 生成的 `.as` 脚本是否可编译。
+- 运行单文件、带 import/include 依赖的脚本，捕获返回值、`stdout`、`stderr` 和诊断。
+- 查询 `Array.push`、`String.replace`、`HashMap`、`console.log` 等运行时 API。
+- 查询宿主侧 API 和高级集成资料，例如自定义 `IScriptSourceResolver`。
+
+### 安装 MCP dotnet tool
+
+NuGet tool 包名是 `AuroraScript.Mcp`，命令名是 `aurora-mcp`：
+
+```bash
+dotnet tool install -g AuroraScript.Mcp
+```
+
+更新：
+
+```bash
+dotnet tool update -g AuroraScript.Mcp
+```
+
+本地源码调试也可以直接运行项目：
+
+```bash
+dotnet run --project language-tools/AuroraScript.Mcp/AuroraScript.Mcp.csproj
+```
+
+### 命令行 smoke test
+
+MCP 使用 JSON-RPC over stdin/stdout。安装 tool 后可以这样测试资源读取：
+
+```powershell
+'{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"aurora://schema/runtime-api"}}' | aurora-mcp
+```
+
+也可以调用工具查询文档：
+
+```powershell
+'{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"aurora_get_document","arguments":{"id":"script-best-practices"}}}' | aurora-mcp
+```
+
+### Codex 配置
+
+推荐先安装全局 tool：
+
+```bash
+dotnet tool install -g AuroraScript.Mcp
+```
+
+然后在 Codex 中添加 stdio MCP 服务：
+
+```bash
+codex mcp add aurora-script -- aurora-mcp
+```
+
+也可以手动编辑 Codex 配置文件：
+
+- Windows：`%USERPROFILE%\.codex\config.toml`
+- macOS / Linux：`~/.codex/config.toml`
+
+```toml
+[mcp_servers.aurora-script]
+type = "stdio"
+command = "aurora-mcp"
+startup_timeout_sec = 10
+tool_timeout_sec = 60
+enabled = true
+```
+
+如果使用本地编译出的 exe，可以把 `command` 改成绝对路径：
+
+```toml
+[mcp_servers.aurora-script]
+type = "stdio"
+command = "D:\\mcp\\AuroraScript.Mcp.exe"
+cwd = "D:\\mcp"
+startup_timeout_sec = 10
+tool_timeout_sec = 60
+enabled = true
+```
+
+修改 Codex MCP 配置后，需要重启 Codex 或新开一个 Codex 会话，让 MCP 服务重新加载。
+
+### MCP 资源和工具
+
+常用资源：
+
+- `aurora://docs/ai`
+- `aurora://docs/script-best-practices`
+- `aurora://docs/language`
+- `aurora://docs/performance`
+- `aurora://docs/host-integration`
+- `aurora://schema/runtime-api`
+- `aurora://schema/host-api`
+- `aurora://examples/manifest`
+
+常用工具：
+
+- `aurora_check_script`：检查内存脚本或 CompileBlock。
+- `aurora_run_script`：运行内存脚本或 CompileBlock。
+- `aurora_check_file`：检查磁盘 `.as` 文件及其模块依赖。
+- `aurora_run_file`：运行磁盘 `.as` 文件及其模块依赖。
+- `aurora_build_workspace`：编译指定目录下 resolver 可见的所有脚本。
+- `aurora_search_runtime_api` / `aurora_get_runtime_api`：查询运行时 API。
+- `aurora_get_document` / `aurora_list_documents`：读取内置文档。
+- `aurora_validate_best_practices`：检查 AI 脚本生成的最佳实践问题。
+
 ## 语言工具
 
 语言工具位于 `language-tools/`：

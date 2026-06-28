@@ -6,14 +6,19 @@ Use these documents when writing, reviewing, or fixing AuroraScript code.
 ## Core Documents
 
 - [AI reference](docs/aurora-script-ai.md): compact syntax, semantics, runtime APIs, diagnostics, and examples.
+- [Script authoring best practices](docs/script-authoring-best-practices.md): recommended defaults for AI-generated modules, CompileBlock bodies, imports, data shapes, and validation.
 - [Language reference](docs/language-reference.md): complete language feature reference.
 - [Performance best practices](docs/performance-best-practices.md): compiler and runtime optimization guidance.
+- [Host integration guide](docs/host-integration.md): .NET host API, custom resolvers, CLR interop, domains, and hot patch usage.
 
 ## Machine-Readable Files
 
 - [EBNF grammar](schema/aurora-script.ebnf)
 - [Language feature index](schema/language-features.json)
+- [Script runtime API index](schema/runtime-api.json)
+- [Host API index](schema/host-api.json)
 - [Runtime API schema](schema/runtime-api.schema.json)
+- [Host API schema](schema/host-api.schema.json)
 - [Diagnostics schema](schema/diagnostics.schema.json)
 - [AST schema](schema/ast.schema.json)
 

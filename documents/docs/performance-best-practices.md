@@ -68,10 +68,13 @@ Avoid creating closures in hot loops unless each closure is required.
 Prefer:
 
 ```as
-for (var i = 0; i < values.length; i++) {
+var count = values.length;
+for (var i = 0; i < count; i++) {
     total += values[i];
 }
 ```
+
+Cache loop bounds such as `values.length` before index loops. Do not put dynamic property reads directly in hot loop conditions.
 
 Use closures when behavior needs captured state, not as a default loop abstraction.
 
@@ -81,7 +84,8 @@ Cache repeated dynamic lookups in local variables when the same value is used mu
 
 ```as
 var items = model.items;
-for (var i = 0; i < items.length; i++) {
+var itemCount = items.length;
+for (var i = 0; i < itemCount; i++) {
     process(items[i]);
 }
 ```

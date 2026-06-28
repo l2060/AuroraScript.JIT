@@ -7,11 +7,15 @@ Contents:
 
 - `llms.txt`: LLM entry point and document index.
 - `docs/aurora-script-ai.md`: compact AI reference for syntax, semantics, runtime APIs, and pitfalls.
+- `docs/script-authoring-best-practices.md`: recommended defaults for AI-generated AuroraScript modules and blocks.
 - `docs/language-reference.md`: human-readable language reference.
 - `docs/performance-best-practices.md`: compiler and runtime performance guidance.
+- `docs/host-integration.md`: .NET host API and advanced integration guide, including custom source resolvers.
 - `schema/aurora-script.ebnf`: grammar summary.
 - `schema/*.schema.json`: JSON Schema files for tools.
 - `schema/language-features.json`: structured feature index.
+- `schema/runtime-api.json`: machine-readable script-side runtime API index.
+- `schema/host-api.json`: machine-readable .NET host-side API index.
 - `examples/valid`: examples that should compile and run.
 - `examples/invalid`: examples that should fail compilation.
 - `examples/examples.manifest.json`: expected result metadata for examples.

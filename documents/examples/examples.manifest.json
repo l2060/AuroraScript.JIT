@@ -1,7 +1,7 @@
 {
   "$schema": "../schema/examples.schema.json",
   "language": "AuroraScript",
-  "versionTarget": "2.1.1",
+  "versionTarget": "3.0.0",
   "valid": [
     {
       "path": "valid/scope-var-shadow.as",

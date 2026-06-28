@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aurorascript.dev/schema/host-api.schema.json",
+  "title": "AuroraScript Host API Schema",
+  "type": "object",
+  "required": ["language", "versionTarget", "assemblies", "namespaces", "types"],
+  "properties": {
+    "language": { "const": "AuroraScript" },
+    "versionTarget": { "type": "string" },
+    "assemblies": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "namespaces": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "types": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/type" }
+    },
+    "patterns": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/pattern" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "type": {
+      "type": "object",
+      "required": ["kind", "namespace"],
+      "properties": {
+        "kind": {
+          "enum": ["class", "record", "interface", "enum", "struct", "delegate", "factory"]
+        },
+        "namespace": { "type": "string" },
+        "summary": { "type": "string" },
+        "members": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/member" }
+        },
+        "values": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "member": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "enum": ["constructor", "method", "property", "field", "factory", "overload"]
+        },
+        "signature": { "type": "string" },
+        "returns": { "type": "string" },
+        "summary": { "type": "string" },
+        "parameters": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/parameter" }
+        },
+        "overloads": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "parameter": {
+      "type": "object",
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "optional": { "type": "boolean" },
+        "description": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "pattern": {
+      "type": "object",
+      "required": ["id", "summary"],
+      "properties": {
+        "id": { "type": "string" },
+        "summary": { "type": "string" },
+        "apis": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

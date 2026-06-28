@@ -31,7 +31,7 @@ namespace Examples
 
             compiler.MaxDegreeOfParallelism = 0;
             compiler.ExtName = "as";
-            compiler.Mode = CompilationMode.Dynamic;
+            compiler.Mode = CompilationMode.Persistence;
         })
         .WithOutput(output =>
         {
@@ -260,6 +260,12 @@ namespace Examples
             BenchmarkScript(domain, "UNIT_LIB", "testMD5_1000");
             BenchmarkScript(domain, "UNIT_LIB", "testDraw");
             BenchmarkScript(domain, "UNIT_LIB", "testFor", new NumberValue(10000_0000));
+
+            BenchmarkScript(domain, "ASTAR", "runExample");
+            BenchmarkScript(domain, "ASTAR", "runExample");
+
+
+
             Console.WriteLine("Verification complete!");
 
 
@@ -351,47 +357,6 @@ return clamp(x, 0, 100) + PI;
             Console.WriteLine($" | {elapsedMs,10:F3} ms | {allocatedKb,10:F2} KB");
         }
 
-
-        private static void RunAndReportUnitTests(ScriptDomain domain)
-        {
-            var context = domain.Execute("UNIT_LIB", "testAllUnits");
-            if (ScriptDatum.TryGetAnyObject(context, out var summary))
-            {
-                if (summary.GetPropertyValue("failedCases") is ScriptArray failedCases)
-                {
-                    for (int i = 0; i < failedCases.Length; i++)
-                    {
-                        if (failedCases.GetElement(i).Object is ScriptObject failedCase)
-                        {
-                            var name = failedCase.GetPropertyValue("name");
-                            var checks = failedCase.GetPropertyValue("checks");
-                            ;
-                            Console.WriteLine($"  ✖ {name} (checks: {checks})");
-
-                            if (failedCase.GetPropertyValue("failures") is ScriptArray failures)
-                            {
-                                for (int j = 0; j < failures.Length; j++)
-                                {
-                                    if (failures.GetElement(j).Object is ScriptObject failure)
-                                    {
-                                        var message = failure.GetPropertyValue("message");
-                                        var actual = failure.GetPropertyValue("actual");
-                                        var expected = failure.GetPropertyValue("expected");
-                                        Console.WriteLine($"      - {message}");
-                                        Console.WriteLine($"        actual: {actual}");
-                                        Console.WriteLine($"        expected: {expected}");
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-            }
-
-
-            Console.WriteLine(context);
-        }
     }
 
 

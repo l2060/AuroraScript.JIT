@@ -1,8 +1,21 @@
 # AuroraScript AI Reference
 
-Version target: AuroraScript.JIT 2.1.1
+Version target: AuroraScript.JIT 3.0.0
 
 This file is the primary AI reference for AuroraScript. Prefer these rules over JavaScript assumptions.
+For default code generation style, also read `docs/script-authoring-best-practices.md`.
+
+## Authoring Defaults For AI
+
+- Generate a full module unless the user explicitly asks for a `CompileBlock` body.
+- For modules, start with `@module(NAME);`, then top-level `include`/`import`, then declarations, then exported entry functions.
+- For `CompileBlock`, do not use `@module`, `include`, `import`, `export`, or `declare`.
+- Prefer `const` for values that are never reassigned and `var` for values that change.
+- Return plain data that hosts can serialize: number, string, boolean, null, arrays, and objects.
+- Check `schema/runtime-api.json` before using runtime APIs that look like JavaScript built-ins.
+- Use `aurora_search_runtime_api` or `aurora_get_runtime_api` before generating calls to runtime APIs.
+- Validate generated script with `aurora_check_script`; use `aurora_run_script` when behavior can be verified.
+- Use `aurora_check_file` or `aurora_run_file` for real `.as` files on disk with import/include dependencies.
 
 ## File And Module Model
 
@@ -176,6 +189,7 @@ Common APIs:
 - Avoid `console.log` in hot paths.
 - Avoid unnecessary closure captures in loops.
 - Cache repeated dynamic property lookups in local variables when the same property is used many times.
+- Cache loop bounds such as `items.length` in local variables before index loops; do not put dynamic property reads directly in loop conditions.
 - Use `CompilationMode.Dynamic` for fastest in-memory code, `OnlyRun` for collectible in-memory assemblies, and `Persistence` when a DLL/PDB output is required.
 
 ## Diagnostics Pattern
@@ -200,7 +214,13 @@ Typical diagnostics:
 ## Recommended AI Workflow
 
 1. Read this file.
-2. If generating code, check examples in `examples/valid`.
-3. If rejecting code, compare with `examples/invalid`.
-4. Use the MCP tool `aurora_check_script` for final validation.
+2. If generating script code, read `docs/script-authoring-best-practices.md`.
+3. If generating host-side C# integration code, read `docs/host-integration.md` and `schema/host-api.json`.
+4. Check examples in `examples/valid` for accepted syntax.
+5. If rejecting code, compare with `examples/invalid`.
+6. Use `aurora_search_runtime_api` or `aurora_get_runtime_api` before using runtime APIs that may be confused with JavaScript built-ins.
+7. Use `aurora_validate_best_practices` to catch AI authoring mistakes such as dynamic loop bounds.
+8. Use `aurora_check_script` for generated in-memory source.
+9. Use `aurora_run_script` when a small runnable in-memory example can verify behavior.
+10. Use `aurora_check_file` or `aurora_run_file` when checking an existing `.as` file and its resolver-loaded dependencies.
 

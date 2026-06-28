@@ -1,0 +1,1990 @@
+{
+  "$schema": "host-api.schema.json",
+  "language": "AuroraScript",
+  "versionTarget": "3.0.0",
+  "assemblies": ["AuroraScript.JIT"],
+  "namespaces": [
+    "AuroraScript",
+    "AuroraScript.Compiler",
+    "AuroraScript.Core",
+    "AuroraScript.Source",
+    "AuroraScript.Runtime",
+    "AuroraScript.Runtime.Interop",
+    "AuroraScript.Runtime.Serialization",
+    "AuroraScript.Runtime.Types"
+  ],
+  "types": {
+    "AuroraEngine": {
+      "kind": "class",
+      "namespace": "AuroraScript",
+      "summary": "Primary host entry point for compiling scripts, creating domains, registering CLR types, and compiling lightweight blocks.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "signature": "AuroraEngine(EngineOptions options)",
+          "summary": "Creates an engine with immutable compiler, runtime, optimization, and output options."
+        },
+        "Global": {
+          "kind": "field",
+          "signature": "ScriptGlobal Global",
+          "summary": "Engine-level global prototype used by new domains."
+        },
+        "ClrRegistry": {
+          "kind": "field",
+          "signature": "ClrTypeRegistry ClrRegistry",
+          "summary": "Host-side registry for CLR types exposed to scripts."
+        },
+        "RegisterType": {
+          "kind": "method",
+          "summary": "Registers a CLR type under a script-visible alias.",
+          "overloads": [
+            "void RegisterType<T>(string alias = null, TypeAccess access = TypeAccess.All)",
+            "void RegisterType(Type type, string alias = null, TypeAccess access = TypeAccess.All)"
+          ]
+        },
+        "BuildAsync": {
+          "kind": "method",
+          "summary": "Compiles modules and their import/include graph.",
+          "overloads": [
+            "Task BuildAsync(params ScriptSource[] sources)",
+            "Task BuildAsync(CancellationToken cancellationToken = default)",
+            "Task BuildAsync(string entryPath, CancellationToken cancellationToken = default)",
+            "Task BuildAsync(IEnumerable<string> entryPaths, CancellationToken cancellationToken = default)",
+            "Task BuildAsync(CancellationToken cancellationToken, params ScriptSource[] sources)"
+          ],
+          "notes": [
+            "BuildAsync(string) resolves the entry path through Compiler.SourceResolver.",
+            "BuildAsync() enumerates all sources from Compiler.SourceResolver.GetAllSourcesAsync."
+          ]
+        },
+        "CompileBlock": {
+          "kind": "method",
+          "summary": "Compiles a function body for direct invocation.",
+          "overloads": [
+            "CompiledBlock CompileBlock(string source, string[] parameters)",
+            "CompiledBlock CompileBlock(string source, CompileBlockOptions options = null)"
+          ],
+          "notes": [
+            "CompileBlock accepts statement bodies only, not module syntax."
+          ]
+        },
+        "CreateDomain": {
+          "kind": "method",
+          "summary": "Creates an initialized execution domain for compiled modules.",
+          "overloads": [
+            "ScriptDomain CreateDomain(Action<ScriptGlobal> globalConfiguration, ScriptObject userState = null)",
+            "ScriptDomain CreateDomain(ScriptGlobal domainGlobal = null, ScriptObject userState = null)"
+          ]
+        },
+        "CreateEmptyDomain": {
+          "kind": "method",
+          "signature": "ScriptDomain CreateEmptyDomain(Action<ScriptGlobal> globalConfiguration, ScriptObject userState = null)",
+          "summary": "Creates a domain without running the compiled module initializer."
+        },
+        "NewEnvironment": {
+          "kind": "method",
+          "signature": "ScriptGlobal NewEnvironment()",
+          "summary": "Creates a global environment inheriting from the engine global."
+        }
+      }
+    },
+    "EngineOptions": {
+      "kind": "record",
+      "namespace": "AuroraScript",
+      "summary": "Immutable root configuration for compiler, runtime, optimization, and output behavior.",
+      "members": {
+        "Default": {
+          "kind": "field",
+          "signature": "static readonly EngineOptions Default"
+        },
+        "Runtime": {
+          "kind": "property",
+          "signature": "RuntimeOptions Runtime"
+        },
+        "Compiler": {
+          "kind": "property",
+          "signature": "CompilerOptions Compiler"
+        },
+        "Optimization": {
+          "kind": "property",
+          "signature": "OptimizationOptions Optimization"
+        },
+        "Output": {
+          "kind": "property",
+          "signature": "OutputOptions Output"
+        },
+        "WithCompiler": {
+          "kind": "method",
+          "signature": "EngineOptions WithCompiler(Action<CompilerOptionsBuilder> configure)"
+        },
+        "WithRuntime": {
+          "kind": "method",
+          "signature": "EngineOptions WithRuntime(Action<RuntimeOptionsBuilder> configure)"
+        },
+        "WithOptimization": {
+          "kind": "method",
+          "signature": "EngineOptions WithOptimization(Action<OptimizationOptionsBuilder> configure)"
+        },
+        "WithOutput": {
+          "kind": "method",
+          "signature": "EngineOptions WithOutput(Action<OutputOptionsBuilder> configure)"
+        }
+      }
+    },
+    "RuntimeOptions": {
+      "kind": "record",
+      "namespace": "AuroraScript",
+      "summary": "Runtime behavior used while scripts execute.",
+      "members": {
+        "Default": {
+          "kind": "field",
+          "signature": "static readonly RuntimeOptions Default"
+        },
+        "EnableHotReload": {
+          "kind": "property",
+          "signature": "bool EnableHotReload"
+        },
+        "JsonSerializer": {
+          "kind": "property",
+          "signature": "ScriptJsonSerializer JsonSerializer"
+        },
+        "DateTimeFormat": {
+          "kind": "property",
+          "signature": "string DateTimeFormat"
+        },
+        "ConsoleStdOut": {
+          "kind": "property",
+          "signature": "TextWriter ConsoleStdOut"
+        },
+        "ConsoleErrorOut": {
+          "kind": "property",
+          "signature": "TextWriter ConsoleErrorOut"
+        },
+        "StringPooling": {
+          "kind": "property",
+          "signature": "StringPoolingStrategy StringPooling"
+        }
+      }
+    },
+    "RuntimeOptionsBuilder": {
+      "kind": "class",
+      "namespace": "AuroraScript",
+      "summary": "Mutable builder used by EngineOptions.WithRuntime.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "signature": "RuntimeOptionsBuilder(RuntimeOptions options)"
+        },
+        "HotReload": {
+          "kind": "property",
+          "signature": "bool HotReload"
+        },
+        "JsonSerializer": {
+          "kind": "property",
+          "signature": "ScriptJsonSerializer JsonSerializer"
+        },
+        "DateTimeFormat": {
+          "kind": "property",
+          "signature": "string DateTimeFormat"
+        },
+        "ConsoleStdOut": {
+          "kind": "property",
+          "signature": "TextWriter ConsoleStdOut"
+        },
+        "ConsoleErrorOut": {
+          "kind": "property",
+          "signature": "TextWriter ConsoleErrorOut"
+        },
+        "StringPooling": {
+          "kind": "property",
+          "signature": "StringPoolingStrategy StringPooling"
+        },
+        "WithMethods": {
+          "kind": "method",
+          "overloads": [
+            "RuntimeOptionsBuilder WithHotReload(bool value)",
+            "RuntimeOptionsBuilder WithJsonSerializer(ScriptJsonSerializer value)",
+            "RuntimeOptionsBuilder WithDateTimeFormat(string value)",
+            "RuntimeOptionsBuilder WithConsoleStdOut(TextWriter value)",
+            "RuntimeOptionsBuilder WithConsoleErrorOut(TextWriter value)",
+            "RuntimeOptionsBuilder WithStringPooling(StringPoolingStrategy value)"
+          ]
+        }
+      }
+    },
+    "CompilerOptions": {
+      "kind": "record",
+      "namespace": "AuroraScript",
+      "summary": "Compiler input and compilation mode settings.",
+      "members": {
+        "Default": {
+          "kind": "field",
+          "signature": "static readonly CompilerOptions Default"
+        },
+        "Mode": {
+          "kind": "property",
+          "signature": "CompilationMode Mode"
+        },
+        "ExtName": {
+          "kind": "property",
+          "signature": "string ExtName"
+        },
+        "MaxDegreeOfParallelism": {
+          "kind": "property",
+          "signature": "int MaxDegreeOfParallelism"
+        },
+        "SourceResolver": {
+          "kind": "property",
+          "signature": "IScriptSourceResolver SourceResolver",
+          "summary": "Resolver used to locate and load entry, import, and include sources."
+        }
+      }
+    },
+    "CompilerOptionsBuilder": {
+      "kind": "class",
+      "namespace": "AuroraScript",
+      "summary": "Mutable builder used by EngineOptions.WithCompiler.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "signature": "CompilerOptionsBuilder(CompilerOptions options)"
+        },
+        "Mode": {
+          "kind": "property",
+          "signature": "CompilationMode Mode"
+        },
+        "ExtName": {
+          "kind": "property",
+          "signature": "string ExtName"
+        },
+        "MaxDegreeOfParallelism": {
+          "kind": "property",
+          "signature": "int MaxDegreeOfParallelism"
+        },
+        "SourceResolver": {
+          "kind": "property",
+          "signature": "IScriptSourceResolver SourceResolver"
+        },
+        "WithMethods": {
+          "kind": "method",
+          "overloads": [
+            "CompilerOptionsBuilder WithMode(CompilationMode value)",
+            "CompilerOptionsBuilder WithExtName(string value)",
+            "CompilerOptionsBuilder WithMaxDegreeOfParallelism(int value)",
+            "CompilerOptionsBuilder WithSourceResolver(IScriptSourceResolver value)"
+          ]
+        }
+      }
+    },
+    "OptimizationOptions": {
+      "kind": "record",
+      "namespace": "AuroraScript",
+      "summary": "Compile-time optimization switches.",
+      "members": {
+        "Default": {
+          "kind": "field",
+          "signature": "static readonly OptimizationOptions Default"
+        },
+        "Level": {
+          "kind": "property",
+          "signature": "OptimizeOptions Level"
+        },
+        "EnableAutoModuleDirectCall": {
+          "kind": "property",
+          "signature": "bool EnableAutoModuleDirectCall"
+        },
+        "EnableModuleConstInlining": {
+          "kind": "property",
+          "signature": "bool EnableModuleConstInlining"
+        },
+        "StackTrace": {
+          "kind": "property",
+          "signature": "bool StackTrace"
+        }
+      }
+    },
+    "OptimizationOptionsBuilder": {
+      "kind": "class",
+      "namespace": "AuroraScript",
+      "summary": "Mutable builder used by EngineOptions.WithOptimization.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "signature": "OptimizationOptionsBuilder(OptimizationOptions options)"
+        },
+        "Level": {
+          "kind": "property",
+          "signature": "OptimizeOptions Level"
+        },
+        "AutoModuleDirectCall": {
+          "kind": "property",
+          "signature": "bool AutoModuleDirectCall"
+        },
+        "ModuleConstInlining": {
+          "kind": "property",
+          "signature": "bool ModuleConstInlining"
+        },
+        "StackTrace": {
+          "kind": "property",
+          "signature": "bool StackTrace"
+        },
+        "WithMethods": {
+          "kind": "method",
+          "overloads": [
+            "OptimizationOptionsBuilder WithLevel(OptimizeOptions value)",
+            "OptimizationOptionsBuilder WithAutoModuleDirectCall(bool value)",
+            "OptimizationOptionsBuilder WithModuleConstInlining(bool value)",
+            "OptimizationOptionsBuilder WithStackTrace(bool value)"
+          ]
+        }
+      }
+    },
+    "OutputOptions": {
+      "kind": "record",
+      "namespace": "AuroraScript",
+      "summary": "Generated output and emission settings.",
+      "members": {
+        "Default": {
+          "kind": "field",
+          "signature": "static readonly OutputOptions Default"
+        },
+        "AssemblyFile": {
+          "kind": "property",
+          "signature": "string AssemblyFile",
+          "summary": "Target path for the generated script assembly when using Persistence mode."
+        },
+        "EnableConfused": {
+          "kind": "property",
+          "signature": "bool EnableConfused"
+        }
+      }
+    },
+    "OutputOptionsBuilder": {
+      "kind": "class",
+      "namespace": "AuroraScript",
+      "summary": "Mutable builder used by EngineOptions.WithOutput.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "signature": "OutputOptionsBuilder(OutputOptions options)"
+        },
+        "AssemblyFile": {
+          "kind": "property",
+          "signature": "string AssemblyFile"
+        },
+        "Confused": {
+          "kind": "property",
+          "signature": "bool Confused"
+        },
+        "WithMethods": {
+          "kind": "method",
+          "overloads": [
+            "OutputOptionsBuilder WithAssemblyFile(string value)",
+            "OutputOptionsBuilder WithConfused(bool value)"
+          ]
+        }
+      }
+    },
+    "CompilationMode": {
+      "kind": "enum",
+      "namespace": "AuroraScript",
+      "values": ["Persistence", "OnlyRun", "Dynamic"],
+      "summary": "Controls how generated code is emitted and loaded."
+    },
+    "OptimizeOptions": {
+      "kind": "enum",
+      "namespace": "AuroraScript",
+      "values": ["Debug", "Release"],
+      "summary": "Controls debug-friendly or optimized code generation."
+    },
+    "StringPoolingStrategy": {
+      "kind": "enum",
+      "namespace": "AuroraScript",
+      "values": ["None", "Intern"],
+      "summary": "Controls how CLR strings are wrapped as runtime StringValue objects."
+    },
+    "CompileBlockOptions": {
+      "kind": "class",
+      "namespace": "AuroraScript",
+      "summary": "Options for compiling a lightweight script block.",
+      "members": {
+        "Parameters": {
+          "kind": "property",
+          "signature": "IReadOnlyList<string> Parameters",
+          "summary": "Names of positional arguments exposed as local variables."
+        },
+        "SourceName": {
+          "kind": "property",
+          "signature": "string SourceName",
+          "summary": "Virtual source name used in diagnostics."
+        }
+      }
+    },
+    "Extended": {
+      "kind": "class",
+      "namespace": "AuroraScript",
+      "summary": "Host callback helpers for reading ScriptDatum spans and checking runtime value flags.",
+      "members": {
+        "Include": {
+          "kind": "method",
+          "signature": "static bool Include(this ValueKind valueKind, ValueKind flag)"
+        },
+        "SpanReaders": {
+          "kind": "method",
+          "overloads": [
+            "static bool TryGetNumber(this Span<ScriptDatum> source, int index, out double value)",
+            "static bool TryGetInteger(this Span<ScriptDatum> source, int index, out long value)",
+            "static bool TryGetInt32(this Span<ScriptDatum> source, int index, out int value)",
+            "static bool TryGetStrictNumber(this Span<ScriptDatum> source, int index, out double value)",
+            "static bool TryGetString(this Span<ScriptDatum> source, int index, out string value)",
+            "static bool TryGetObject(this Span<ScriptDatum> source, int index, out ScriptObject value)",
+            "static bool TryGetEnumerator(this Span<ScriptDatum> source, int index, out ScriptEnumerator value)",
+            "static bool TryGetFunction(this Span<ScriptDatum> source, int index, out ClosureFunction value)",
+            "static bool TryGetBoolean(this Span<ScriptDatum> source, int index, out bool value)",
+            "static bool TryGetRef(this Span<ScriptDatum> source, int index, ref ScriptDatum value)"
+          ]
+        }
+      },
+      "notes": [
+        "These helpers are mainly useful inside ClrDatumDelegate or other raw ScriptDatum host callbacks."
+      ]
+    },
+    "ScriptSources": {
+      "kind": "factory",
+      "namespace": "AuroraScript.Core",
+      "summary": "Factory for common script source resolvers.",
+      "members": {
+        "FileSystem": {
+          "kind": "factory",
+          "signature": "FileSystemScriptSourceResolver FileSystem(string root, Encoding encoding = null)",
+          "summary": "Loads .as files from a file-system root."
+        },
+        "Memory": {
+          "kind": "factory",
+          "signature": "MemorySourceResolver Memory(string root = \"mem://\")",
+          "summary": "Creates an in-memory virtual source resolver."
+        },
+        "Composite": {
+          "kind": "factory",
+          "signature": "CompositeScriptSourceResolver Composite(params IScriptSourceResolver[] resolvers)",
+          "summary": "Composes multiple resolvers; earlier resolvers have higher priority."
+        }
+      }
+    },
+    "IScriptSourceResolver": {
+      "kind": "interface",
+      "namespace": "AuroraScript.Source",
+      "summary": "Host extension point for loading scripts from files, memory, databases, virtual directories, embedded resources, or remote stores.",
+      "members": {
+        "Root": {
+          "kind": "property",
+          "signature": "string Root",
+          "summary": "Source root represented by this resolver."
+        },
+        "ResolveAsync": {
+          "kind": "method",
+          "signature": "ValueTask<ScriptSourceReference?> ResolveAsync(ScriptSourceReference? importer, string requestedPath, ScriptResolveContext context, CancellationToken cancellationToken = default)",
+          "summary": "Resolves an import/include path to a stable source reference."
+        },
+        "GetSourceAsync": {
+          "kind": "method",
+          "signature": "ValueTask<ScriptSource> GetSourceAsync(ScriptSourceReference reference, CancellationToken cancellationToken = default)",
+          "summary": "Returns source text for a resolved reference."
+        },
+        "GetAllSourcesAsync": {
+          "kind": "method",
+          "signature": "IAsyncEnumerable<ScriptSource> GetAllSourcesAsync(ScriptSourceQuery query, CancellationToken cancellationToken = default)",
+          "summary": "Enumerates sources visible to BuildAsync()."
+        }
+      }
+    },
+    "ScriptSource": {
+      "kind": "interface",
+      "namespace": "AuroraScript.Source",
+      "summary": "Represents script source text plus the path identity used for module resolution and diagnostics.",
+      "members": {
+        "BaseDirectory": {
+          "kind": "property",
+          "signature": "string BaseDirectory"
+        },
+        "SourcePath": {
+          "kind": "property",
+          "signature": "string SourcePath",
+          "summary": "Module-relative path used by the compiler and runtime."
+        },
+        "FullPath": {
+          "kind": "property",
+          "signature": "string FullPath",
+          "summary": "Absolute file path or virtual source identifier."
+        },
+        "Code": {
+          "kind": "property",
+          "signature": "string Code"
+        },
+        "ReadSource": {
+          "kind": "method",
+          "signature": "string ReadSource()"
+        }
+      }
+    },
+    "MemorySource": {
+      "kind": "class",
+      "namespace": "AuroraScript.Source",
+      "summary": "Script source backed by an in-memory string.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "signature": "MemorySource(string baseDirectory, string fullPath, string text)"
+        },
+        "BaseDirectory": {
+          "kind": "property",
+          "signature": "string BaseDirectory"
+        },
+        "SourcePath": {
+          "kind": "property",
+          "signature": "string SourcePath"
+        },
+        "FullPath": {
+          "kind": "property",
+          "signature": "string FullPath"
+        },
+        "Code": {
+          "kind": "property",
+          "signature": "string Code"
+        },
+        "ReadSource": {
+          "kind": "method",
+          "signature": "string ReadSource()"
+        }
+      }
+    },
+    "ScriptSourceReference": {
+      "kind": "struct",
+      "namespace": "AuroraScript.Core",
+      "summary": "Stable identity returned by a resolver after an import/include path is resolved.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "overloads": [
+            "ScriptSourceReference(string baseDirectory, string fullPath)",
+            "ScriptSourceReference(string baseDirectory, string fullPath, string modulePath)"
+          ]
+        },
+        "BaseDirectory": {
+          "kind": "property",
+          "signature": "string BaseDirectory"
+        },
+        "FullPath": {
+          "kind": "property",
+          "signature": "string FullPath"
+        },
+        "ModulePath": {
+          "kind": "property",
+          "signature": "string ModulePath",
+          "summary": "Module-relative path used by compiler/runtime names."
+        }
+      }
+    },
+    "ScriptResolveContext": {
+      "kind": "class",
+      "namespace": "AuroraScript.Source",
+      "summary": "Context used by ResolveAsync when resolving import/include paths.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "signature": "ScriptResolveContext(string extension, Encoding encoding = null)"
+        },
+        "Extension": {
+          "kind": "property",
+          "signature": "string Extension"
+        },
+        "Encoding": {
+          "kind": "property",
+          "signature": "Encoding Encoding"
+        }
+      }
+    },
+    "ScriptSourceQuery": {
+      "kind": "class",
+      "namespace": "AuroraScript.Source",
+      "summary": "Query options used by GetAllSourcesAsync.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "signature": "ScriptSourceQuery(string extension, Encoding encoding = null)"
+        },
+        "Extension": {
+          "kind": "property",
+          "signature": "string Extension"
+        },
+        "Encoding": {
+          "kind": "property",
+          "signature": "Encoding Encoding"
+        }
+      }
+    },
+    "MemorySourceResolver": {
+      "kind": "class",
+      "namespace": "AuroraScript.Source",
+      "summary": "In-memory IScriptSourceResolver implementation.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "signature": "MemorySourceResolver(string root = \"mem://app/\")"
+        },
+        "Root": {
+          "kind": "property",
+          "signature": "string Root"
+        },
+        "Add": {
+          "kind": "method",
+          "signature": "MemorySourceResolver Add(string path, string source)",
+          "summary": "Adds or replaces a virtual memory source."
+        }
+      }
+    },
+    "FileSystemScriptSourceResolver": {
+      "kind": "class",
+      "namespace": "AuroraScript.Source",
+      "summary": "Default file-system source resolver rooted at a directory.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "signature": "FileSystemScriptSourceResolver(string root = null, Encoding encoding = null)"
+        },
+        "Root": {
+          "kind": "property",
+          "signature": "string Root"
+        },
+        "ResolveAsync": {
+          "kind": "method",
+          "signature": "ValueTask<ScriptSourceReference?> ResolveAsync(ScriptSourceReference? importer, string requestedPath, ScriptResolveContext context, CancellationToken cancellationToken = default)"
+        },
+        "GetSourceAsync": {
+          "kind": "method",
+          "signature": "ValueTask<ScriptSource> GetSourceAsync(ScriptSourceReference reference, CancellationToken cancellationToken = default)"
+        },
+        "GetAllSourcesAsync": {
+          "kind": "method",
+          "signature": "IAsyncEnumerable<ScriptSource> GetAllSourcesAsync(ScriptSourceQuery query, CancellationToken cancellationToken = default)"
+        }
+      }
+    },
+    "FileScriptSourceResolver": {
+      "kind": "class",
+      "namespace": "AuroraScript.Source",
+      "summary": "Backward-compatible alias for the default file-system resolver.",
+      "members": {
+        "Instance": {
+          "kind": "field",
+          "signature": "static readonly FileScriptSourceResolver Instance"
+        }
+      },
+      "notes": [
+        "Prefer ScriptSources.FileSystem(root) or FileSystemScriptSourceResolver for new host code."
+      ]
+    },
+    "CompositeScriptSourceResolver": {
+      "kind": "class",
+      "namespace": "AuroraScript.Source",
+      "summary": "Ordered resolver composition. Earlier resolvers win for ResolveAsync and GetAllSourcesAsync de-duplicates by SourcePath.",
+      "members": {
+        "Root": {
+          "kind": "property",
+          "signature": "string Root"
+        },
+        "Add": {
+          "kind": "method",
+          "signature": "CompositeScriptSourceResolver Add(IScriptSourceResolver resolver)"
+        }
+      }
+    },
+    "ScriptDomain": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime",
+      "summary": "Isolated execution domain over compiled engine code.",
+      "members": {
+        "Global": {
+          "kind": "field",
+          "signature": "ScriptGlobal Global"
+        },
+        "Engine": {
+          "kind": "field",
+          "signature": "AuroraEngine Engine"
+        },
+        "UserState": {
+          "kind": "field",
+          "signature": "ScriptObject UserState"
+        },
+        "Execute": {
+          "kind": "method",
+          "summary": "Executes an exported module method.",
+          "overloads": [
+            "ScriptDatum Execute(string moduleName, string methodName)",
+            "ScriptDatum Execute(string moduleName, string methodName, params ScriptObject[] arguments)",
+            "ScriptDatum Execute(string moduleName, string methodName, params ScriptDatum[] arguments)",
+            "ScriptDatum Execute(string moduleName, string methodName, ScriptObject userState, params ScriptObject[] arguments)",
+            "ScriptDatum Execute(string moduleName, string methodName, ScriptObject userState, params ScriptDatum[] arguments)"
+          ]
+        },
+        "GetMethod": {
+          "kind": "method",
+          "signature": "ClosureFunction GetMethod(string moduleName, string methodName)",
+          "summary": "Gets a compiled closure for advanced host-side invocation."
+        },
+        "DynamicPatch": {
+          "kind": "method",
+          "summary": "Applies a hot patch to the domain.",
+          "overloads": [
+            "void DynamicPatch(ScriptSource source, HotPatchType patchType)",
+            "void DynamicPatch(string modulePath, string script, HotPatchType patchType)"
+          ]
+        },
+        "DynamicPatchAsync": {
+          "kind": "method",
+          "summary": "Asynchronously applies a hot patch to the domain.",
+          "overloads": [
+            "Task DynamicPatchAsync(ScriptSource source, HotPatchType patchType, CancellationToken cancellationToken = default)",
+            "Task DynamicPatchAsync(string modulePath, string script, HotPatchType patchType, CancellationToken cancellationToken = default)"
+          ]
+        },
+        "ReplacePatch": {
+          "kind": "method",
+          "signature": "void ReplacePatch(string modulePath, string script, bool ignoreDepends = false)",
+          "summary": "Replaces the target module with in-memory patch source."
+        },
+        "IncrementalPatch": {
+          "kind": "method",
+          "signature": "void IncrementalPatch(string modulePath, string script, bool ignoreDepends = false)",
+          "summary": "Adds or updates members in the target module."
+        },
+        "ReplacePatchAsync": {
+          "kind": "method",
+          "signature": "Task ReplacePatchAsync(string modulePath, string script, bool ignoreDepends = false, CancellationToken cancellationToken = default)"
+        },
+        "IncrementalPatchAsync": {
+          "kind": "method",
+          "signature": "Task IncrementalPatchAsync(string modulePath, string script, bool ignoreDepends = false, CancellationToken cancellationToken = default)"
+        },
+        "GetModule": {
+          "kind": "method",
+          "signature": "ScriptObject GetModule(string moduleName)"
+        },
+        "Dispose": {
+          "kind": "method",
+          "signature": "void Dispose()"
+        }
+      }
+    },
+    "HotPatchType": {
+      "kind": "enum",
+      "namespace": "AuroraScript.Core",
+      "values": ["Replace", "Incremental", "IgnoreDepends"],
+      "summary": "Flags controlling dynamic patch behavior."
+    },
+    "CompiledBlock": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime",
+      "summary": "Disposable compiled function-body block.",
+      "members": {
+        "Invoke": {
+          "kind": "method",
+          "summary": "Invokes the compiled block.",
+          "overloads": [
+            "ScriptDatum Invoke(params ScriptDatum[] arguments)",
+            "ScriptDatum Invoke(params ScriptObject[] arguments)",
+            "ScriptDatum Invoke(ScriptDomain domain)",
+            "ScriptDatum Invoke(ScriptDomain domain, params ScriptDatum[] arguments)",
+            "ScriptDatum Invoke(ScriptDomain domain, params ScriptObject[] arguments)",
+            "ScriptDatum Invoke(ScriptContext context, ReadOnlySpan<ScriptDatum> arguments)"
+          ]
+        },
+        "Dispose": {
+          "kind": "method",
+          "signature": "void Dispose()",
+          "summary": "Releases dynamic delegates registered during block compilation."
+        }
+      }
+    },
+    "ScriptMethodDelegate": {
+      "kind": "delegate",
+      "namespace": "AuroraScript.Runtime",
+      "summary": "Delegate shape for host-held callable script methods.",
+      "members": {
+        "Invoke": {
+          "kind": "method",
+          "signature": "ScriptDatum Invoke(ScriptObject userState = null, params ScriptDatum[] arguments)"
+        }
+      }
+    },
+    "ScriptFunctionDelegate": {
+      "kind": "delegate",
+      "namespace": "AuroraScript.Runtime",
+      "summary": "Low-level compiled function delegate shape used by advanced host callbacks.",
+      "members": {
+        "Invoke": {
+          "kind": "method",
+          "signature": "ScriptDatum Invoke(ScriptContext ctx, Span<ScriptDatum> args)"
+        }
+      }
+    },
+    "ScriptContext": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime",
+      "summary": "Execution context passed to advanced host callbacks and compiled block invocations.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "overloads": [
+            "ScriptContext(ScriptDomain domain)",
+            "ScriptContext(ScriptDomain domain, ScriptObject userState)"
+          ]
+        },
+        "Domain": {
+          "kind": "field",
+          "signature": "ScriptDomain Domain"
+        },
+        "Engine": {
+          "kind": "field",
+          "signature": "AuroraEngine Engine"
+        },
+        "Global": {
+          "kind": "field",
+          "signature": "ScriptGlobal Global"
+        },
+        "Module": {
+          "kind": "field",
+          "signature": "ScriptModule Module"
+        },
+        "UserState": {
+          "kind": "field",
+          "signature": "ScriptObject UserState"
+        },
+        "Target": {
+          "kind": "field",
+          "signature": "ClosureFunction Target"
+        },
+        "Location": {
+          "kind": "field",
+          "signature": "long Location"
+        },
+        "With": {
+          "kind": "method",
+          "overloads": [
+            "ScriptContext With(ScriptModule module, ClosureFunction closure = null)",
+            "ScriptContext With(ClosureFunction closure)",
+            "ScriptContext With(ScriptModule module, ClosureFunction closure, ScriptObject userState)"
+          ]
+        },
+        "CallStack": {
+          "kind": "method",
+          "signature": "AuroraStackTrace[] CallStack()"
+        },
+        "StackTrace": {
+          "kind": "method",
+          "signature": "List<AuroraStackTrace> StackTrace()"
+        }
+      },
+      "notes": [
+        "Use this type mainly for custom CLR callbacks and advanced closure invocation."
+      ]
+    },
+    "ScriptGlobal": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime",
+      "summary": "Global object for one script domain.",
+      "members": {
+        "Engine": {
+          "kind": "field",
+          "signature": "AuroraEngine Engine"
+        },
+        "Define": {
+          "kind": "method",
+          "summary": "Defines a host value, ScriptDatum, ScriptObject, or delegate on the global object.",
+          "overloads": [
+            "void Define(string key, object value, bool writeable = true, bool enumerable = true)",
+            "void Define(string key, ScriptDatum value, bool writeable = true, bool enumerable = true)",
+            "void Define(string key, ScriptObject value, bool writeable = true, bool enumerable = true)"
+          ]
+        },
+        "SetPropertyValue": {
+          "kind": "method",
+          "overloads": [
+            "void SetPropertyValue(string key, object value)",
+            "void SetPropertyValue(string key, ScriptObject value)"
+          ]
+        }
+      }
+    },
+    "ScriptModule": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime",
+      "summary": "Runtime module object returned from domain/module APIs and closure metadata.",
+      "members": {
+        "Name": {
+          "kind": "field",
+          "signature": "string Name"
+        },
+        "ModulePath": {
+          "kind": "field",
+          "signature": "string ModulePath"
+        }
+      }
+    },
+    "ClosureFunction": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Types",
+      "summary": "Compiled script function object returned by GetMethod and function-valued properties.",
+      "members": {
+        "FuncName": {
+          "kind": "field",
+          "signature": "string FuncName"
+        },
+        "Module": {
+          "kind": "field",
+          "signature": "ScriptModule Module"
+        },
+        "InvokeClr": {
+          "kind": "method",
+          "signature": "ScriptDatum InvokeClr(ScriptContext ctx, params ScriptDatum[] args)",
+          "summary": "Invokes the closure using an active script context."
+        },
+        "InvokeClrDetached": {
+          "kind": "method",
+          "overloads": [
+            "ScriptDatum InvokeClrDetached(params ScriptDatum[] args)",
+            "ScriptDatum InvokeClrDetached(ScriptObject userState, params ScriptDatum[] args)"
+          ],
+          "summary": "Invokes the closure from a new root context; use for deferred or asynchronous host calls."
+        }
+      }
+    },
+    "AuroraException": {
+      "kind": "class",
+      "namespace": "AuroraScript",
+      "summary": "Base exception for AuroraScript engine operations.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "overloads": [
+            "AuroraException()",
+            "AuroraException(string message)",
+            "AuroraException(string message, Exception innerException)"
+          ]
+        }
+      }
+    },
+    "AuroraCompilationException": {
+      "kind": "class",
+      "namespace": "AuroraScript",
+      "summary": "Exception containing one or more script compilation diagnostics.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "signature": "AuroraCompilationException(IEnumerable<AuroraCompilationDiagnostic> diagnostics)"
+        },
+        "Diagnostics": {
+          "kind": "property",
+          "signature": "IReadOnlyList<AuroraCompilationDiagnostic> Diagnostics"
+        },
+        "Count": {
+          "kind": "property",
+          "signature": "int Count"
+        },
+        "FirstDiagnostic": {
+          "kind": "property",
+          "signature": "AuroraCompilationDiagnostic FirstDiagnostic"
+        },
+        "FileName": {
+          "kind": "property",
+          "signature": "string FileName"
+        },
+        "LineNumber": {
+          "kind": "property",
+          "signature": "int LineNumber"
+        },
+        "ColumnNumber": {
+          "kind": "property",
+          "signature": "int ColumnNumber"
+        },
+        "ToString": {
+          "kind": "method",
+          "signature": "string ToString()"
+        }
+      }
+    },
+    "AuroraCompilationDiagnostic": {
+      "kind": "class",
+      "namespace": "AuroraScript",
+      "summary": "Single script compilation diagnostic exposed to hosts.",
+      "members": {
+        "Message": {
+          "kind": "property",
+          "signature": "string Message"
+        },
+        "Location": {
+          "kind": "property",
+          "signature": "SourceSpan Location"
+        },
+        "FileName": {
+          "kind": "property",
+          "signature": "string FileName"
+        },
+        "LineNumber": {
+          "kind": "property",
+          "signature": "int LineNumber"
+        },
+        "ColumnNumber": {
+          "kind": "property",
+          "signature": "int ColumnNumber"
+        },
+        "ToString": {
+          "kind": "method",
+          "signature": "string ToString()"
+        }
+      }
+    },
+    "AuroraRuntimeException": {
+      "kind": "class",
+      "namespace": "AuroraScript",
+      "summary": "Runtime exception with script-level stack trace information.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "overloads": [
+            "AuroraRuntimeException(Exception ex, IReadOnlyList<AuroraStackTrace> stackTrace)",
+            "AuroraRuntimeException(string message)",
+            "AuroraRuntimeException(ScriptError error)"
+          ]
+        },
+        "ModuleName": {
+          "kind": "field",
+          "signature": "string ModuleName"
+        },
+        "LineNumber": {
+          "kind": "field",
+          "signature": "int LineNumber"
+        },
+        "StackTrace": {
+          "kind": "field",
+          "signature": "IReadOnlyList<AuroraStackTrace> StackTrace"
+        },
+        "ToString": {
+          "kind": "method",
+          "signature": "string ToString()"
+        }
+      }
+    },
+    "SourceSpan": {
+      "kind": "struct",
+      "namespace": "AuroraScript.Compiler",
+      "summary": "Source location range used by diagnostics.",
+      "members": {
+        "None": {
+          "kind": "field",
+          "signature": "static readonly SourceSpan None"
+        },
+        "StartLine": {
+          "kind": "property",
+          "signature": "int StartLine"
+        },
+        "StartColumn": {
+          "kind": "property",
+          "signature": "int StartColumn"
+        },
+        "EndLine": {
+          "kind": "property",
+          "signature": "int EndLine"
+        },
+        "EndColumn": {
+          "kind": "property",
+          "signature": "int EndColumn"
+        },
+        "Offset": {
+          "kind": "property",
+          "signature": "int Offset"
+        },
+        "Length": {
+          "kind": "property",
+          "signature": "int Length"
+        },
+        "FileName": {
+          "kind": "property",
+          "signature": "string FileName"
+        },
+        "ToString": {
+          "kind": "method",
+          "signature": "string ToString()"
+        }
+      }
+    },
+    "AuroraStackTrace": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime",
+      "summary": "Single script stack frame.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "signature": "AuroraStackTrace(string path, string method, int line)"
+        },
+        "FileName": {
+          "kind": "field",
+          "signature": "string FileName"
+        },
+        "FullPath": {
+          "kind": "field",
+          "signature": "string FullPath"
+        },
+        "Method": {
+          "kind": "field",
+          "signature": "string Method"
+        },
+        "Line": {
+          "kind": "field",
+          "signature": "int Line"
+        },
+        "ToString": {
+          "kind": "method",
+          "signature": "string ToString()"
+        }
+      }
+    },
+    "ScriptDatum": {
+      "kind": "struct",
+      "namespace": "AuroraScript.Runtime",
+      "summary": "Primary host-visible runtime value. Use factories or ClrMarshaller to create values and Kind/TryGet helpers to inspect them.",
+      "members": {
+        "Constants": {
+          "kind": "field",
+          "overloads": [
+            "static readonly ScriptDatum Null",
+            "static readonly ScriptDatum NaN",
+            "static readonly ScriptDatum True",
+            "static readonly ScriptDatum False"
+          ]
+        },
+        "Kind": {
+          "kind": "field",
+          "signature": "ValueKind Kind"
+        },
+        "Number": {
+          "kind": "field",
+          "signature": "double Number"
+        },
+        "Boolean": {
+          "kind": "field",
+          "signature": "bool Boolean"
+        },
+        "Object": {
+          "kind": "field",
+          "signature": "ScriptObject Object"
+        },
+        "String": {
+          "kind": "property",
+          "signature": "StringValue String"
+        },
+        "Factories": {
+          "kind": "method",
+          "overloads": [
+            "static ScriptDatum FromBoolean(bool value)",
+            "static ScriptDatum FromNumber(double value)",
+            "static ScriptDatum FromString(string value)",
+            "static ScriptDatum FromString(StringValue value)",
+            "static ScriptDatum FromArray(ScriptArray value)",
+            "static ScriptDatum FromDate(DateTime date)",
+            "static ScriptDatum FromDate(DateTimeOffset date)",
+            "static ScriptDatum FromRegex(ScriptRegex value)",
+            "static ScriptDatum FromObject(ScriptObject value)",
+            "static ScriptDatum FromError(ScriptError value)",
+            "static ScriptDatum FromBonding(ClrDatumDelegate value)"
+          ]
+        },
+        "Inspect": {
+          "kind": "method",
+          "overloads": [
+            "static ScriptObject ToObject(ScriptDatum d)",
+            "static bool IsTrue(ScriptDatum d)",
+            "static bool IsFalse(ScriptDatum d)",
+            "static string GetTypeName(ScriptDatum d)",
+            "static ScriptDatum TypeOf(ScriptDatum d)",
+            "static string ToString(ScriptDatum d)",
+            "static bool TryToNumber(in ScriptDatum d, out double value)",
+            "static bool TryToInteger(in ScriptDatum d, out long value)"
+          ]
+        },
+        "TryGet": {
+          "kind": "method",
+          "overloads": [
+            "static bool TryGetAnyObject(in ScriptDatum d, out ScriptObject value)",
+            "static bool TryGetObject(in ScriptDatum d, out ScriptObject value)",
+            "static bool TryGetArray(in ScriptDatum d, out ScriptArray value)",
+            "static bool TryGetString(in ScriptDatum d, out StringValue value)",
+            "static bool TryGetDate(in ScriptDatum d, out ScriptDate value)",
+            "static bool TryGetRegex(in ScriptDatum d, out ScriptRegex value)",
+            "static bool TryGetFunction(in ScriptDatum d, out ClosureFunction value)",
+            "static bool TryGetError(in ScriptDatum d, out ScriptError value)"
+          ]
+        },
+        "Clone": {
+          "kind": "method",
+          "signature": "static ScriptDatum Clone(in ScriptDatum d, bool deepth = false)"
+        },
+        "ImplicitConversions": {
+          "kind": "overload",
+          "overloads": [
+            "bool -> ScriptDatum",
+            "string -> ScriptDatum",
+            "int/long/float/double and related numeric types -> ScriptDatum"
+          ]
+        }
+      }
+    },
+    "ValueKind": {
+      "kind": "enum",
+      "namespace": "AuroraScript.Runtime",
+      "values": ["Null", "Boolean", "Number", "String", "Object", "Array", "Date", "Regex", "Function", "Type", "ClrFunction", "ClrBonding", "Error"],
+      "summary": "Tagged value kind used by ScriptDatum."
+    },
+    "ObjectFlags": {
+      "kind": "enum",
+      "namespace": "AuroraScript.Runtime.Types",
+      "values": ["None", "Frozen", "Immutable"],
+      "summary": "Flags controlling ScriptObject mutability."
+    },
+    "ScriptObject": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Types",
+      "summary": "Base dynamic object type used for host-created objects, user state, globals, modules, and runtime objects.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "signature": "ScriptObject()"
+        },
+        "Prototype": {
+          "kind": "property",
+          "signature": "ScriptObject Prototype"
+        },
+        "IsFrozen": {
+          "kind": "property",
+          "signature": "bool IsFrozen"
+        },
+        "Immutable": {
+          "kind": "property",
+          "signature": "bool Immutable"
+        },
+        "Frozen": {
+          "kind": "method",
+          "signature": "void Frozen()"
+        },
+        "GetPropertyValue": {
+          "kind": "method",
+          "signature": "ScriptObject GetPropertyValue(string key)"
+        },
+        "SetPropertyValue": {
+          "kind": "method",
+          "signature": "void SetPropertyValue(string key, ScriptObject value)"
+        },
+        "DeletePropertyValue": {
+          "kind": "method",
+          "signature": "bool DeletePropertyValue(string key)"
+        },
+        "Define": {
+          "kind": "method",
+          "overloads": [
+            "void Define(string key, ScriptObject value, bool writeable = true, bool enumerable = true)",
+            "void Define(string key, ScriptDatum value, bool writeable = true, bool enumerable = true)"
+          ]
+        },
+        "CopyProperties": {
+          "kind": "method",
+          "signature": "void CopyProperties(ScriptObject target, bool force = false, bool enumerableOnly = false)"
+        },
+        "CopyPropertysFrom": {
+          "kind": "method",
+          "signature": "void CopyPropertysFrom(ScriptObject scriptObject, bool force = false)"
+        },
+        "CopyEnumerablePropertysFrom": {
+          "kind": "method",
+          "signature": "void CopyEnumerablePropertysFrom(ScriptObject scriptObject, bool force = false)"
+        },
+        "DeepClone": {
+          "kind": "method",
+          "signature": "ScriptObject DeepClone()"
+        },
+        "EnumerationKeys": {
+          "kind": "method",
+          "signature": "List<string> EnumerationKeys()"
+        },
+        "GetEnumerator": {
+          "kind": "method",
+          "signature": "ScriptEnumerator GetEnumerator()"
+        },
+        "IsTrue": {
+          "kind": "method",
+          "signature": "bool IsTrue()"
+        }
+      }
+    },
+    "ScriptEnumerator": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Types",
+      "summary": "Enumerator returned by ScriptObject and ScriptArray enumeration APIs.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "overloads": [
+            "ScriptEnumerator(ScriptArray array)",
+            "ScriptEnumerator(ScriptDatum[] items)",
+            "ScriptEnumerator(List<ScriptDatum> items)"
+          ]
+        },
+        "FromString": {
+          "kind": "method",
+          "signature": "static ScriptEnumerator FromString(string value)"
+        },
+        "Value": {
+          "kind": "method",
+          "signature": "ScriptDatum Value()"
+        },
+        "NextValue": {
+          "kind": "method",
+          "signature": "bool NextValue(out ScriptDatum data)"
+        },
+        "HasValue": {
+          "kind": "method",
+          "signature": "bool HasValue()"
+        },
+        "Next": {
+          "kind": "method",
+          "signature": "void Next()"
+        },
+        "Reset": {
+          "kind": "method",
+          "signature": "void Reset()"
+        }
+      }
+    },
+    "ScriptArray": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Types",
+      "summary": "Dynamic array object used for host input/output and JSON-like data.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "overloads": [
+            "ScriptArray()",
+            "ScriptArray(int capacity)",
+            "ScriptArray(ScriptArray array)",
+            "ScriptArray(List<ScriptObject> list)",
+            "ScriptArray(Span<ScriptDatum> array)",
+            "ScriptArray(ScriptDatum[] array)",
+            "ScriptArray(ScriptObject[] array)"
+          ]
+        },
+        "Length": {
+          "kind": "property",
+          "signature": "int Length"
+        },
+        "GetElement": {
+          "kind": "method",
+          "overloads": [
+            "ScriptDatum GetElement(int index)",
+            "void GetElement(int index, ref ScriptDatum scriptDatum)"
+          ]
+        },
+        "SetElement": {
+          "kind": "method",
+          "signature": "void SetElement(int index, in ScriptDatum datum)"
+        },
+        "Push": {
+          "kind": "method",
+          "signature": "void Push(ScriptDatum datum)"
+        },
+        "Remove": {
+          "kind": "method",
+          "signature": "void Remove(int index)"
+        },
+        "Values": {
+          "kind": "method",
+          "signature": "Span<ScriptDatum> Values()"
+        },
+        "ToDatumArray": {
+          "kind": "method",
+          "signature": "ScriptDatum[] ToDatumArray()"
+        },
+        "Has": {
+          "kind": "method",
+          "signature": "bool Has(in ScriptDatum element)"
+        },
+        "IndexOf": {
+          "kind": "method",
+          "signature": "int IndexOf(in ScriptDatum searchElement, int? fromIndex)"
+        },
+        "LastIndexOf": {
+          "kind": "method",
+          "signature": "int LastIndexOf(in ScriptDatum searchElement, int? fromIndex)"
+        }
+      }
+    },
+    "StringValue": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Types",
+      "summary": "Immutable script string wrapper.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "overloads": [
+            "StringValue(string str)",
+            "StringValue(char str)"
+          ]
+        },
+        "Value": {
+          "kind": "field",
+          "signature": "string Value"
+        },
+        "Of": {
+          "kind": "method",
+          "signature": "static StringValue Of(string value)"
+        },
+        "Intern": {
+          "kind": "method",
+          "signature": "static StringValue Intern(string value)"
+        },
+        "IsTrue": {
+          "kind": "method",
+          "signature": "bool IsTrue()"
+        }
+      }
+    },
+    "NumberValue": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Types",
+      "summary": "Immutable script number wrapper.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "signature": "NumberValue(double dValue = 0)"
+        },
+        "DoubleValue": {
+          "kind": "property",
+          "signature": "double DoubleValue"
+        },
+        "Int32Value": {
+          "kind": "property",
+          "signature": "int Int32Value"
+        },
+        "Int64Value": {
+          "kind": "property",
+          "signature": "long Int64Value"
+        },
+        "Of": {
+          "kind": "method",
+          "signature": "static NumberValue Of(double value)"
+        }
+      }
+    },
+    "BooleanValue": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Types",
+      "summary": "Immutable script boolean wrapper.",
+      "members": {
+        "True": {
+          "kind": "field",
+          "signature": "static readonly BooleanValue True"
+        },
+        "False": {
+          "kind": "field",
+          "signature": "static readonly BooleanValue False"
+        },
+        "Value": {
+          "kind": "field",
+          "signature": "bool Value"
+        },
+        "IntValue": {
+          "kind": "field",
+          "signature": "int IntValue"
+        },
+        "StrValue": {
+          "kind": "field",
+          "signature": "StringValue StrValue"
+        },
+        "Of": {
+          "kind": "method",
+          "signature": "static BooleanValue Of(bool value)"
+        }
+      }
+    },
+    "NullValue": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Types",
+      "summary": "Singleton script null object.",
+      "members": {
+        "Instance": {
+          "kind": "field",
+          "signature": "static readonly NullValue Instance"
+        }
+      }
+    },
+    "ScriptDate": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Types",
+      "summary": "Script date wrapper over DateTimeOffset.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "overloads": [
+            "ScriptDate(DateTime date)",
+            "ScriptDate(DateTimeOffset dateTimeOffset)",
+            "ScriptDate(long ticks)"
+          ]
+        },
+        "DateTime": {
+          "kind": "property",
+          "signature": "DateTimeOffset DateTime"
+        },
+        "Components": {
+          "kind": "property",
+          "overloads": [
+            "int Year",
+            "int Month",
+            "int Day",
+            "int Hour",
+            "int Minute",
+            "int Second",
+            "int Millisecond",
+            "DayOfWeek DayOfWeek",
+            "int DayOfYear",
+            "long Ticks"
+          ]
+        },
+        "Format": {
+          "kind": "method",
+          "signature": "string Format(string format = null)"
+        }
+      }
+    },
+    "ScriptRegex": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Types",
+      "summary": "Script regular expression wrapper over System.Text.RegularExpressions.Regex.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "signature": "ScriptRegex(Regex regex, string flags)"
+        },
+        "Test": {
+          "kind": "method",
+          "signature": "bool Test(ScriptDatum value)"
+        },
+        "Match": {
+          "kind": "method",
+          "signature": "ScriptObject Match(StringValue str)"
+        },
+        "MatchOfGlobal": {
+          "kind": "method",
+          "signature": "ScriptObject MatchOfGlobal(StringValue str)"
+        },
+        "MatchAll": {
+          "kind": "method",
+          "signature": "ScriptArray MatchAll(StringValue str)"
+        },
+        "HasFlag": {
+          "kind": "method",
+          "signature": "bool HasFlag(string flag)"
+        }
+      }
+    },
+    "ScriptError": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Types",
+      "summary": "Script-level error object exposed through runtime exceptions and script values.",
+      "members": {
+        "Message": {
+          "kind": "property",
+          "signature": "string Message"
+        },
+        "StackTrace": {
+          "kind": "property",
+          "signature": "AuroraStackTrace[] StackTrace"
+        }
+      }
+    },
+    "ScriptHashMap": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Types",
+      "summary": "High-performance runtime hash map that hosts may create or inspect.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "overloads": [
+            "ScriptHashMap()",
+            "ScriptHashMap(int capacity)"
+          ]
+        },
+        "Put": {
+          "kind": "method",
+          "signature": "void Put(ScriptDatum key, ScriptDatum value)"
+        },
+        "Get": {
+          "kind": "method",
+          "signature": "ScriptDatum Get(ScriptDatum key)"
+        },
+        "GetOrInsert": {
+          "kind": "method",
+          "overloads": [
+            "ScriptDatum GetOrInsert(ScriptDatum key, ScriptDatum value)",
+            "ScriptDatum GetOrInsert(ScriptContext ctx, ScriptDatum key, ClosureFunction callback)"
+          ]
+        },
+        "Has": {
+          "kind": "method",
+          "signature": "bool Has(ScriptDatum key)"
+        },
+        "Delete": {
+          "kind": "method",
+          "signature": "ScriptDatum Delete(ScriptDatum key)"
+        },
+        "Keys": {
+          "kind": "method",
+          "signature": "ScriptDatum[] Keys()"
+        },
+        "Values": {
+          "kind": "method",
+          "signature": "ScriptDatum[] Values()"
+        },
+        "Length": {
+          "kind": "method",
+          "signature": "int Length()"
+        },
+        "Clear": {
+          "kind": "method",
+          "signature": "void Clear()"
+        }
+      }
+    },
+    "ScriptProxy": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Types",
+      "summary": "Runtime proxy object that delegates get/set/delete behavior to script closure handlers.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "signature": "ScriptProxy(ScriptObject target, ScriptObject options)"
+        },
+        "Define": {
+          "kind": "method",
+          "overloads": [
+            "void Define(string key, ScriptObject value, bool writeable = true, bool enumerable = true)",
+            "void Define(string key, ScriptDatum value, bool writeable = true, bool enumerable = true)"
+          ]
+        }
+      },
+      "notes": [
+        "The options object expects script closures named get, set, or unset."
+      ]
+    },
+    "StringBuffer": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Types",
+      "summary": "Runtime string builder object that hosts may receive from scripts or create directly.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "overloads": [
+            "StringBuffer()",
+            "StringBuffer(string initialValue)"
+          ]
+        },
+        "Length": {
+          "kind": "property",
+          "signature": "int Length"
+        },
+        "Release": {
+          "kind": "method",
+          "signature": "void Release()"
+        },
+        "ToString": {
+          "kind": "method",
+          "signature": "string ToString()"
+        }
+      }
+    },
+    "ScriptType": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Types",
+      "summary": "Advanced abstract base for script-visible type constructor objects.",
+      "members": {
+        "Name": {
+          "kind": "field",
+          "signature": "string Name"
+        },
+        "Construct": {
+          "kind": "method",
+          "signature": "void Construct(ScriptContext ctx, Span<ScriptDatum> args, ref ScriptDatum result)"
+        }
+      },
+      "notes": [
+        "Most host code should expose CLR types through AuroraEngine.RegisterType instead of subclassing ScriptType."
+      ]
+    },
+    "ScriptJsonSerializer": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Serialization",
+      "summary": "Base serializer for script values to/from JSON.",
+      "members": {
+        "Default": {
+          "kind": "field",
+          "signature": "static readonly ScriptJsonSerializer Default"
+        },
+        "Serialize": {
+          "kind": "method",
+          "signature": "string Serialize(ScriptDatum datum, EngineOptions options = null, bool indented = false)"
+        },
+        "Deserialize": {
+          "kind": "method",
+          "signature": "ScriptObject Deserialize(string jsonText, EngineOptions options = null)"
+        }
+      }
+    },
+    "StandardScriptJsonSerializer": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Serialization",
+      "summary": "Default JSON serializer matching JSON.stringify-style behavior for functions and circular references."
+    },
+    "DebuggerScriptSerializer": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Serialization",
+      "summary": "JSON serializer variant intended for debugger inspection."
+    },
+    "ClrMarshaller": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Interop",
+      "summary": "Value conversion helper between CLR values and AuroraScript runtime values.",
+      "members": {
+        "ToDatum": {
+          "kind": "method",
+          "signature": "static ScriptDatum ToDatum(object value)"
+        },
+        "WriteToDatum": {
+          "kind": "method",
+          "signature": "static void WriteToDatum(ref ScriptDatum datum, object value)"
+        },
+        "ToDatums": {
+          "kind": "method",
+          "overloads": [
+            "static ScriptDatum[] ToDatums(object[] values)",
+            "static ScriptDatum[] ToDatums(ScriptObject[] arguments)"
+          ]
+        },
+        "ToScript": {
+          "kind": "method",
+          "signature": "static ScriptObject ToScript(object value)"
+        },
+        "TryConvertArgument": {
+          "kind": "method",
+          "overloads": [
+            "static bool TryConvertArgument(ScriptObject scriptValue, Type targetType, out object result)",
+            "static bool TryConvertArgument(in ScriptDatum datum, Type targetType, out object result)"
+          ],
+          "summary": "Attempts to convert a script value to a requested CLR type."
+        }
+      }
+    },
+    "ClrTypeRegistry": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Interop",
+      "summary": "Host-side registry mapping script-visible aliases to CLR types.",
+      "members": {
+        "RegisterType": {
+          "kind": "method",
+          "signature": "void RegisterType(Type type, string alias, TypeAccess access)"
+        },
+        "UnregisterType": {
+          "kind": "method",
+          "signature": "bool UnregisterType(string alias)"
+        },
+        "TryGetClrType": {
+          "kind": "method",
+          "signature": "bool TryGetClrType(string alias, out ClrType descriptor)"
+        },
+        "Dispose": {
+          "kind": "method",
+          "signature": "void Dispose()"
+        }
+      }
+    },
+    "ClrType": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Interop",
+      "summary": "Script-visible wrapper for a registered CLR type.",
+      "members": {
+        "Construct": {
+          "kind": "method",
+          "signature": "void Construct(ScriptContext ctx, Span<ScriptDatum> args, ref ScriptDatum result)",
+          "summary": "Constructs a CLR instance when constructor access is allowed."
+        }
+      },
+      "notes": [
+        "Hosts normally obtain this through AuroraEngine.RegisterType or ClrTypeRegistry.TryGetClrType."
+      ]
+    },
+    "ClrInstanceObject": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Interop",
+      "summary": "ScriptObject wrapper around a CLR object instance.",
+      "members": {
+        "Instance": {
+          "kind": "field",
+          "signature": "object Instance"
+        }
+      },
+      "notes": [
+        "Hosts commonly receive this when ClrMarshaller wraps a registered CLR object."
+      ]
+    },
+    "TypeAccess": {
+      "kind": "enum",
+      "namespace": "AuroraScript.Runtime.Interop",
+      "values": ["Constructor", "Static", "All"],
+      "summary": "Controls constructor and static-member access for registered CLR types."
+    },
+    "ClrDatumDelegate": {
+      "kind": "delegate",
+      "namespace": "AuroraScript.Runtime.Types",
+      "summary": "Advanced delegate shape for native host functions that operate directly on ScriptDatum values.",
+      "members": {
+        "Invoke": {
+          "kind": "method",
+          "signature": "void Invoke(ScriptContext ctx, ScriptObject module, Span<ScriptDatum> args, ref ScriptDatum result)"
+        }
+      }
+    },
+    "BondingFunction": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Types",
+      "summary": "Script callable wrapper for a ClrDatumDelegate.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "signature": "BondingFunction(ClrDatumDelegate callback)"
+        },
+        "Target": {
+          "kind": "field",
+          "signature": "ScriptObject Target"
+        },
+        "DatumMethod": {
+          "kind": "field",
+          "signature": "ClrDatumDelegate DatumMethod"
+        },
+        "Bind": {
+          "kind": "method",
+          "signature": "BondingFunction Bind(ScriptObject target)"
+        },
+        "Name": {
+          "kind": "property",
+          "signature": "string Name"
+        }
+      },
+      "notes": [
+        "For simple host functions, passing a normal CLR delegate to ScriptGlobal.Define is usually easier."
+      ]
+    },
+    "ClrGetterDelegate": {
+      "kind": "delegate",
+      "namespace": "AuroraScript.Runtime.Types",
+      "summary": "Advanced delegate shape for host-backed dynamic getters.",
+      "members": {
+        "Invoke": {
+          "kind": "method",
+          "signature": "void Invoke(ScriptObject @object, ref ScriptDatum result)"
+        }
+      }
+    },
+    "BondingGetter": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Types",
+      "summary": "Script object wrapper for a ClrGetterDelegate.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "signature": "BondingGetter(ClrGetterDelegate callback)"
+        },
+        "Name": {
+          "kind": "field",
+          "signature": "string Name"
+        },
+        "Invoke": {
+          "kind": "method",
+          "signature": "void Invoke(ScriptObject @object, ref ScriptDatum result)"
+        }
+      }
+    }
+  },
+  "patterns": [
+    {
+      "id": "resolver.memory-overlay",
+      "summary": "Put MemorySourceResolver before FileSystemScriptSourceResolver in CompositeScriptSourceResolver to let generated or unsaved sources override disk files.",
+      "apis": ["ScriptSources.Memory", "ScriptSources.FileSystem", "ScriptSources.Composite"]
+    },
+    {
+      "id": "resolver.database",
+      "summary": "Use a stable virtual root and map import paths to database records in ResolveAsync, then load text in GetSourceAsync.",
+      "apis": ["IScriptSourceResolver.ResolveAsync", "IScriptSourceResolver.GetSourceAsync", "ScriptSourceReference"]
+    },
+    {
+      "id": "build.entry-graph",
+      "summary": "Call BuildAsync(entryPath) when the host wants one entry plus its import/include graph.",
+      "apis": ["AuroraEngine.BuildAsync", "IScriptSourceResolver.ResolveAsync", "IScriptSourceResolver.GetSourceAsync"]
+    },
+    {
+      "id": "build.all-visible-sources",
+      "summary": "Call BuildAsync() when the resolver should decide every source that belongs in the compilation.",
+      "apis": ["AuroraEngine.BuildAsync", "IScriptSourceResolver.GetAllSourcesAsync"]
+    },
+    {
+      "id": "run.isolated-domain",
+      "summary": "Build once and create separate ScriptDomain instances for isolated executions over the same compiled code.",
+      "apis": ["AuroraEngine.CreateDomain", "ScriptDomain.Execute", "ScriptObject", "ScriptDatum"]
+    },
+    {
+      "id": "interop.domain-global",
+      "summary": "Use CreateDomain(global => global.Define(...)) to expose per-domain host services or state.",
+      "apis": ["AuroraEngine.CreateDomain", "ScriptGlobal.Define", "ClrMarshaller"]
+    },
+    {
+      "id": "interop.register-clr-type",
+      "summary": "Use AuroraEngine.RegisterType or ClrTypeRegistry.RegisterType to expose public CLR constructors and static members to scripts.",
+      "apis": ["AuroraEngine.RegisterType", "ClrTypeRegistry.RegisterType", "TypeAccess"]
+    },
+    {
+      "id": "runtime.convert-values",
+      "summary": "Use ClrMarshaller.ToDatum/ToScript for normal host values; use ScriptDatum factories when exact runtime kinds are required.",
+      "apis": ["ClrMarshaller", "ScriptDatum", "ScriptObject", "ScriptArray"]
+    },
+    {
+      "id": "runtime.serialize-json",
+      "summary": "Use EngineOptions.WithRuntime to install a serializer, or call ScriptJsonSerializer directly for host-side inspection.",
+      "apis": ["RuntimeOptions.JsonSerializer", "ScriptJsonSerializer", "StandardScriptJsonSerializer", "DebuggerScriptSerializer"]
+    },
+    {
+      "id": "runtime.errors",
+      "summary": "Catch AuroraCompilationException for compile diagnostics and AuroraRuntimeException for script stack traces.",
+      "apis": ["AuroraCompilationException", "AuroraCompilationDiagnostic", "AuroraRuntimeException", "AuroraStackTrace", "SourceSpan"]
+    },
+    {
+      "id": "runtime.hot-patch",
+      "summary": "Enable runtime hot reload and use ReplacePatch/IncrementalPatch or DynamicPatchAsync to update loaded modules.",
+      "apis": ["RuntimeOptions.EnableHotReload", "ScriptDomain.ReplacePatchAsync", "ScriptDomain.IncrementalPatchAsync", "HotPatchType"]
+    },
+    {
+      "id": "run.compile-block",
+      "summary": "Use CompileBlock for lightweight expression or statement bodies that hosts invoke directly without a module file.",
+      "apis": ["AuroraEngine.CompileBlock", "CompileBlockOptions", "CompiledBlock"]
+    },
+    {
+      "id": "callbacks.raw-datum",
+      "summary": "Use BondingFunction and ClrDatumDelegate only for advanced callbacks that need raw ScriptDatum access.",
+      "apis": ["ScriptGlobal.Define", "BondingFunction", "ClrDatumDelegate", "ScriptContext"]
+    }
+  ]
+}
