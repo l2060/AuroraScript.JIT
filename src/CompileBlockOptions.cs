@@ -16,6 +16,6 @@ namespace AuroraScript
         /// <summary>
         /// Virtual source name used in diagnostics.
         /// </summary>
-        public string SourceName { get; init; } = "__compile_block__.as";
+        public string SourceName { get; init; }
     }
 }

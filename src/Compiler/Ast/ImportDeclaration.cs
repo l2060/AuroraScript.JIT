@@ -1,4 +1,5 @@
 using AuroraScript.Compiler.Ast.Statements;
+using AuroraScript.Core;
 using System;
 
 
@@ -34,6 +35,11 @@ namespace AuroraScript.Compiler.Ast
         /// 模块路径
         /// </summary>
         public String FullPath { get; set; }
+
+        /// <summary>
+        /// Resolved source reference for the imported module.
+        /// </summary>
+        public ScriptSourceReference Reference { get; set; }
 
         public ModuleDeclaration Module { get; set; }
         public Boolean Include { get; set; }

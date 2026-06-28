@@ -7,13 +7,13 @@ It intentionally keeps dependencies small and uses JSON-RPC over stdin/stdout.
 ## Build
 
 ```bash
-dotnet build .language/mcp/AuroraScript.Mcp.csproj
+dotnet build language-tools/AuroraScript.Mcp/AuroraScript.Mcp.csproj
 ```
 
 ## Run
 
 ```bash
-dotnet run --project .language/mcp/AuroraScript.Mcp.csproj
+dotnet run --project language-tools/AuroraScript.Mcp/AuroraScript.Mcp.csproj
 ```
 
 ## Tools

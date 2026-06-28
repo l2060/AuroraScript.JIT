@@ -15,7 +15,7 @@
 	<PropertyGroup>
 		<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
 		<PackageId>AuroraScript.JIT</PackageId>
-		<Version>2.1.2</Version>
+		<Version>3.0.0</Version>
 		<Title>AuroraScript</Title>
 		<PackageIcon>icon.png</PackageIcon>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
@@ -98,25 +98,25 @@
 	    <Pack>True</Pack>
 	    <PackagePath>\</PackagePath>
 	  </None>
-	  <None Include="..\.language\README.md">
+	  <None Include="..\documents\README.md">
 	    <Pack>True</Pack>
-	    <PackagePath>.language\</PackagePath>
+	    <PackagePath>documents\</PackagePath>
 	  </None>
-	  <None Include="..\.language\llms.txt">
+	  <None Include="..\documents\llms.txt">
 	    <Pack>True</Pack>
-	    <PackagePath>.language\</PackagePath>
+	    <PackagePath>documents\</PackagePath>
 	  </None>
-	  <None Include="..\.language\docs\**\*.*">
+	  <None Include="..\documents\docs\**\*.*">
 	    <Pack>True</Pack>
-	    <PackagePath>.language\docs\</PackagePath>
+	    <PackagePath>documents\docs\</PackagePath>
 	  </None>
-	  <None Include="..\.language\schema\**\*.*">
+	  <None Include="..\documents\schema\**\*.*">
 	    <Pack>True</Pack>
-	    <PackagePath>.language\schema\</PackagePath>
+	    <PackagePath>documents\schema\</PackagePath>
 	  </None>
-	  <None Include="..\.language\examples\**\*.*">
+	  <None Include="..\documents\examples\**\*.*">
 	    <Pack>True</Pack>
-	    <PackagePath>.language\examples\</PackagePath>
+	    <PackagePath>documents\examples\</PackagePath>
 	  </None>
 	</ItemGroup>
 

@@ -1,4 +1,4 @@
-﻿namespace AuroraScript.Core
+﻿namespace AuroraScript.Source
 {
     /// <summary>
     /// Represents a source of AuroraScript code, providing path resolution and content retrieval.

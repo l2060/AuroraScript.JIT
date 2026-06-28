@@ -56,7 +56,7 @@ public sealed class CompilationModeTests
             }
             """);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(workspace.Root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(workspace.Root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Persistence)
             .WithOptimization(optimization => optimization.Level = OptimizeOptions.Debug)
             .WithOutput(output => output.AssemblyFile = assemblyPath)
@@ -64,7 +64,7 @@ public sealed class CompilationModeTests
             .WithRuntime(runtime => runtime.ConsoleErrorOut = TextWriter.Null);
         var engine = new AuroraEngine(options);
 
-        await engine.BuildAsync(engine.FileSource(sourcePath, Encoding.UTF8));
+        await engine.BuildAsync(sourcePath);
 
         Assert.True(File.Exists(assemblyPath));
 
@@ -164,7 +164,7 @@ public sealed class CompilationModeTests
             }
             """);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(workspace.Root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(workspace.Root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Persistence)
             .WithOptimization(optimization => optimization.Level = level)
             .WithOptimization(optimization => optimization.StackTrace = stackTrace)
@@ -173,7 +173,7 @@ public sealed class CompilationModeTests
             .WithRuntime(runtime => runtime.ConsoleErrorOut = TextWriter.Null);
         var engine = new AuroraEngine(options);
 
-        await engine.BuildAsync(engine.FileSource(sourcePath, Encoding.UTF8));
+        await engine.BuildAsync(sourcePath);
     }
 
     private static bool ReferencesScriptContextLocation(string assemblyPath)

@@ -1,10 +1,12 @@
 using AuroraScript.Core;
+using AuroraScript.Source;
 using AuroraScript.Tests.Infrastructure;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
-using System.Text;
+using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -43,7 +45,7 @@ public sealed class CustomSourceResolverUsageTests
                 """);
         var engine = CreateEngine(root, resolver);
 
-        await engine.BuildAsync(resolver.OpenSource("main.as"));
+        await engine.BuildAsync("main.as");
 
         ScriptAssert.Equal(42, TestWorkspace.Execute(engine.CreateDomain(), "run"));
         Assert.Contains("vfs://aurora-script-tests/app/main.as", resolver.OpenedPaths);
@@ -68,7 +70,7 @@ public sealed class CustomSourceResolverUsageTests
             .AddSource("feature/value.aurora", "@module(VALUE); export const number = 42;");
         var engine = CreateEngine(root, resolver, ".aurora");
 
-        await engine.BuildAsync(resolver.OpenSource("main.aurora"));
+        await engine.BuildAsync("main.aurora");
 
         ScriptAssert.Equal(42, TestWorkspace.Execute(engine.CreateDomain(), "run"));
         Assert.Contains("vfs://aurora-script-tests/custom-extension/feature/value.aurora", resolver.OpenedPaths);
@@ -90,11 +92,51 @@ public sealed class CustomSourceResolverUsageTests
                 """);
         var engine = CreateEngine(root, resolver);
 
-        var error = await Assert.ThrowsAsync<AuroraCompilationException>(() => engine.BuildAsync(resolver.OpenSource("main.as")));
+        var error = await Assert.ThrowsAsync<AuroraCompilationException>(() => engine.BuildAsync("main.as"));
 
         var diagnostic = Assert.Single(error.Diagnostics);
         Assert.Contains("Import file not found", diagnostic.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("./missing", diagnostic.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task BuildsAllSourcesFromConfiguredResolver()
+    {
+        const string root = "vfs://aurora-script-tests/all";
+        var resolver = new VirtualFileSystemSourceResolver(root)
+            .AddSource("main.as", "@module(TEST); export func run() { return 42; }")
+            .AddSource("helper.as", "@module(HELPER); export const value = 1;");
+        var engine = CreateEngine(root, resolver);
+
+        await engine.BuildAsync();
+
+        ScriptAssert.Equal(42, TestWorkspace.Execute(engine.CreateDomain(), "run"));
+        Assert.Contains("vfs://aurora-script-tests/all/main.as", resolver.OpenedPaths);
+        Assert.Contains("vfs://aurora-script-tests/all/helper.as", resolver.OpenedPaths);
+    }
+
+    [Fact]
+    public async Task BuildAwaitsAsynchronousResolverOperations()
+    {
+        const string root = "vfs://aurora-script-tests/async";
+        var resolver = new AsyncVirtualFileSystemSourceResolver(root)
+            .AddSource(
+                "main.as",
+                """
+                @module(TEST);
+                import value from './value';
+                export func run() {
+                    return value.number;
+                }
+                """)
+            .AddSource("value.as", "@module(VALUE); export const number = 42;");
+        var engine = CreateEngine(root, resolver);
+
+        await engine.BuildAsync("main.as");
+
+        ScriptAssert.Equal(42, TestWorkspace.Execute(engine.CreateDomain(), "run"));
+        Assert.True(resolver.ResolveAwaitCount >= 2);
+        Assert.True(resolver.SourceAwaitCount >= 2);
     }
 
     private static AuroraEngine CreateEngine(
@@ -103,7 +145,7 @@ public sealed class CustomSourceResolverUsageTests
         string extension = ".as")
     {
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.Directory = root)
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithCompiler(compiler => compiler.ExtName = extension)
             .WithCompiler(compiler => compiler.SourceResolver = resolver)
@@ -133,37 +175,57 @@ public sealed class CustomSourceResolverUsageTests
         public ScriptSource OpenSource(string path)
         {
             var fullPath = ResolveFromDirectory(_root, path);
-            return Open(new ScriptSourceReference(_root, fullPath), Encoding.UTF8);
+            return GetSourceAsync(new ScriptSourceReference(_root, fullPath))
+                .AsTask()
+                .GetAwaiter()
+                .GetResult();
         }
 
-        public bool TryResolve(
-            string baseDirectory,
-            string currentSourcePath,
+        public string Root => _root;
+
+        public ValueTask<ScriptSourceReference?> ResolveAsync(
+            ScriptSourceReference? importer,
             string requestedPath,
-            string extension,
-            out ScriptSourceReference source)
+            ScriptResolveContext context,
+            CancellationToken cancellationToken = default)
         {
-            var currentDirectory = GetDirectory(currentSourcePath);
-            var fullPath = EnsureExtension(ResolveFromDirectory(currentDirectory, requestedPath), extension);
+            cancellationToken.ThrowIfCancellationRequested();
+            var currentSourcePath = importer?.FullPath ?? _root;
+            var currentDirectory = importer == null ? _root : GetDirectory(currentSourcePath);
+            var fullPath = EnsureExtension(ResolveFromDirectory(currentDirectory, requestedPath), context.Extension);
             if (_sources.ContainsKey(fullPath))
             {
-                source = new ScriptSourceReference(_root, fullPath);
-                return true;
+                return new ValueTask<ScriptSourceReference?>(new ScriptSourceReference(_root, fullPath));
             }
 
-            source = default;
-            return false;
+            return new ValueTask<ScriptSourceReference?>((ScriptSourceReference?)null);
         }
 
-        public ScriptSource Open(ScriptSourceReference source, Encoding encoding)
+        public ValueTask<ScriptSource> GetSourceAsync(
+            ScriptSourceReference source,
+            CancellationToken cancellationToken = default)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (!_sources.TryGetValue(source.FullPath, out var text))
             {
                 throw new FileNotFoundException("Virtual script source not found.", source.FullPath);
             }
 
             _openedPaths.Add(source.FullPath);
-            return new MemoryScriptSource(source.BaseDirectory, source.FullPath, text);
+            return new ValueTask<ScriptSource>(new MemorySource(source.BaseDirectory, source.FullPath, text));
+        }
+
+        public async IAsyncEnumerable<ScriptSource> GetAllSourcesAsync(
+            ScriptSourceQuery query,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            foreach (var pair in _sources)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await Task.Yield();
+                _openedPaths.Add(pair.Key);
+                yield return new MemorySource(_root, pair.Key, pair.Value);
+            }
         }
 
         private static string NormalizeRoot(string root)
@@ -224,6 +286,61 @@ public sealed class CustomSourceResolverUsageTests
             }
 
             return path + extension;
+        }
+    }
+
+    private sealed class AsyncVirtualFileSystemSourceResolver : IScriptSourceResolver
+    {
+        private readonly VirtualFileSystemSourceResolver _inner;
+        private int _resolveAwaitCount;
+        private int _sourceAwaitCount;
+
+        public AsyncVirtualFileSystemSourceResolver(string root)
+        {
+            _inner = new VirtualFileSystemSourceResolver(root);
+        }
+
+        public int ResolveAwaitCount => Volatile.Read(ref _resolveAwaitCount);
+
+        public int SourceAwaitCount => Volatile.Read(ref _sourceAwaitCount);
+
+        public string Root => _inner.Root;
+
+        public AsyncVirtualFileSystemSourceResolver AddSource(string path, string source)
+        {
+            _inner.AddSource(path, source);
+            return this;
+        }
+
+        public async ValueTask<ScriptSourceReference?> ResolveAsync(
+            ScriptSourceReference? importer,
+            string requestedPath,
+            ScriptResolveContext context,
+            CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(1, cancellationToken).ConfigureAwait(false);
+            Interlocked.Increment(ref _resolveAwaitCount);
+            return await _inner.ResolveAsync(importer, requestedPath, context, cancellationToken).ConfigureAwait(false);
+        }
+
+        public async ValueTask<ScriptSource> GetSourceAsync(
+            ScriptSourceReference source,
+            CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(1, cancellationToken).ConfigureAwait(false);
+            Interlocked.Increment(ref _sourceAwaitCount);
+            return await _inner.GetSourceAsync(source, cancellationToken).ConfigureAwait(false);
+        }
+
+        public async IAsyncEnumerable<ScriptSource> GetAllSourcesAsync(
+            ScriptSourceQuery query,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await foreach (var source in _inner.GetAllSourcesAsync(query, cancellationToken).ConfigureAwait(false))
+            {
+                await Task.Delay(1, cancellationToken).ConfigureAwait(false);
+                yield return source;
+            }
         }
     }
 }

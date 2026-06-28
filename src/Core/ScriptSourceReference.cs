@@ -1,7 +1,7 @@
 namespace AuroraScript.Core
 {
     /// <summary>
-    /// Identifies a resolved script source before it is opened by an <see cref="IScriptSourceResolver"/>.
+    /// Identifies a resolved script source in a script source resolver.
     /// </summary>
     public readonly struct ScriptSourceReference
     {

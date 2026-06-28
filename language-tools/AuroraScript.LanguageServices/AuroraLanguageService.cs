@@ -25,7 +25,7 @@ namespace AuroraScript.LanguageServices;
 public sealed class AuroraLanguageService
 {
     private readonly AuroraLanguageServiceOptions _options;
-    private readonly AuroraParseService _parseService;
+    private AuroraParseService _parseService;
     private AuroraWorkspace _workspace;
     private readonly BuiltinApiCatalog _builtins;
     private BuiltinDefinitionDocuments _builtinDocuments;
@@ -73,6 +73,10 @@ public sealed class AuroraLanguageService
             }
 
             _workspace = _workspace.Rebase(normalized);
+            if (!_options.HasExplicitSourceResolver)
+            {
+                _parseService = new AuroraParseService(_options.ToEngineOptions(normalized));
+            }
             _workspaceIndexCache.Clear();
         }
     }
@@ -548,8 +552,7 @@ public sealed class AuroraLanguageService
 
     private IEnumerable<string> EnumerateWorkspaceScriptFiles(string baseDirectory)
     {
-        if (!ReferenceEquals(_options.SourceResolver, FileScriptSourceResolver.Instance) ||
-            string.IsNullOrWhiteSpace(baseDirectory) ||
+        if (string.IsNullOrWhiteSpace(baseDirectory) ||
             !Directory.Exists(baseDirectory))
         {
             yield break;

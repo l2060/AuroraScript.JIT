@@ -41,7 +41,7 @@ public sealed class ConcurrentRuntimeTests
     {
         using var workspace = new TestWorkspace();
         var engine = workspace.CreateEngine();
-        await engine.BuildAsync(engine.MemorySource(
+        await engine.BuildAsync(workspace.MemorySource(
             "main.as",
             "@module(TEST); var count = 0; export func increment() { count++; return count; }"));
         var domains = Enumerable.Range(0, 32).Select(_ => engine.CreateDomain()).ToArray();

@@ -3,12 +3,12 @@ using AuroraScript.Compiler.Analyzer;
 using AuroraScript.Compiler.Backend;
 using AuroraScript.Compiler.Backend.Builders;
 using AuroraScript.Compiler.Backend.Emission;
-using AuroraScript.Core;
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Extensions;
 using AuroraScript.Runtime.Interop;
 using AuroraScript.Runtime.Types;
 using AuroraScript.Runtime.Types.TypeConstruct;
+using AuroraScript.Source;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -112,43 +112,17 @@ namespace AuroraScript
         }
 
         /// <summary>
-        /// Creates a script source from a string in memory.
+        /// Enumerates all script sources from the configured source resolver.
         /// </summary>
-        /// <param name="file">The filename or virtual path for the source.</param>
-        /// <param name="code">The script code string.</param>
-        /// <returns>A <see cref="ScriptSource"/> representing the memory-based content.</returns>
-        public ScriptSource MemorySource(string file, string code)
+        private async Task<ScriptSource[]> SearchAllSourceAsync(Encoding encoding = null, CancellationToken cancellationToken = default)
         {
-            return new MemoryScriptSource(Options.Compiler.BaseDirectory, file, code);
-        }
-
-        /// <summary>
-        /// Creates a script source from a file on disk.
-        /// </summary>
-        /// <param name="file">The path to the script file.</param>
-        /// <param name="encoding">The file encoding.</param>
-        /// <returns>A <see cref="ScriptSource"/> representing the file-based content.</returns>
-        public ScriptSource FileSource(string file, Encoding encoding)
-        {
-            return new FileSource(Options.Compiler.BaseDirectory, file, encoding);
-        }
-
-        /// <summary>
-        /// Searches all script files in the base directory and returns them as an array of script sources.
-        /// </summary>
-        /// <param name="encoding">The file encoding to use.</param>
-        /// <returns>An array of <see cref="ScriptSource"/> objects.</returns>
-        /// <exception cref="AuroraException">Thrown if the base directory is invalid.</exception>
-        public ScriptSource[] SearchAllFileSource(Encoding encoding)
-        {
-            if (string.IsNullOrEmpty(Options.Compiler.BaseDirectory) || !Directory.Exists(Options.Compiler.BaseDirectory))
+            var query = new ScriptSourceQuery(Options.Compiler.ExtName, encoding ?? Encoding.UTF8);
+            var sources = new List<ScriptSource>();
+            await foreach (var source in Options.Compiler.SourceResolver.GetAllSourcesAsync(query, cancellationToken).ConfigureAwait(false))
             {
-                throw new AuroraException($"The Directory “{Options.Compiler.BaseDirectory}” field of the parameter options is not a valid directory");
+                sources.Add(source);
             }
-            var files = Directory.GetFiles(Options.Compiler.BaseDirectory, "*" + Options.Compiler.ExtName, SearchOption.AllDirectories);
-            return files
-                .Select(file => new FileSource(Options.Compiler.BaseDirectory, file, encoding))
-                .OfType<ScriptSource>().ToArray();
+            return sources.ToArray();
         }
 
         /// <summary>
@@ -161,6 +135,59 @@ namespace AuroraScript
         public Task BuildAsync(params ScriptSource[] sources)
         {
             return BuildAsync(CancellationToken.None, sources);
+        }
+
+        /// <summary>
+        /// Compiles all sources exposed by the configured source resolver.
+        /// </summary>
+        public async Task BuildAsync(CancellationToken cancellationToken = default)
+        {
+            var sources = await SearchAllSourceAsync(Encoding.UTF8, cancellationToken).ConfigureAwait(false);
+            await BuildAsync(cancellationToken, sources).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Compiles one entry source and its imports/includes through the configured source resolver.
+        /// </summary>
+        public Task BuildAsync(string entryPath, CancellationToken cancellationToken = default)
+        {
+            return BuildAsync([entryPath], cancellationToken);
+        }
+
+        /// <summary>
+        /// Compiles entry sources and their imports/includes through the configured source resolver.
+        /// </summary>
+        public async Task BuildAsync(IEnumerable<string> entryPaths, CancellationToken cancellationToken = default)
+        {
+            if (entryPaths == null)
+            {
+                throw new ArgumentNullException(nameof(entryPaths));
+            }
+
+            var context = new ScriptResolveContext(Options.Compiler.ExtName, Encoding.UTF8);
+            var sources = new List<ScriptSource>();
+            foreach (var entryPath in entryPaths)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (string.IsNullOrWhiteSpace(entryPath))
+                {
+                    throw new ArgumentException("Entry source paths cannot be empty.", nameof(entryPaths));
+                }
+
+                var reference = await Options.Compiler.SourceResolver
+                    .ResolveAsync(null, entryPath, context, cancellationToken)
+                    .ConfigureAwait(false);
+                if (reference == null)
+                {
+                    throw new FileNotFoundException("Entry script source not found.", entryPath);
+                }
+
+                sources.Add(await Options.Compiler.SourceResolver
+                    .GetSourceAsync(reference.Value, cancellationToken)
+                    .ConfigureAwait(false));
+            }
+
+            await BuildAsync(cancellationToken, sources.ToArray()).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -223,6 +250,22 @@ namespace AuroraScript
         /// Compiles a lightweight script block as an anonymous function body.
         /// </summary>
         /// <param name="source">The script block source.</param>
+        /// <param name="parameters">Names of positional arguments exposed as local variables in the compiled block.</param>
+        /// <returns>A compiled block that can be invoked directly.</returns>
+        public CompiledBlock CompileBlock(string source, string[] parameters)
+        {
+            if (parameters == null)
+            {
+                throw new ArgumentNullException(nameof(parameters));
+            }
+
+            return CompileBlock(source, new CompileBlockOptions { Parameters = parameters });
+        }
+
+        /// <summary>
+        /// Compiles a lightweight script block as an anonymous function body.
+        /// </summary>
+        /// <param name="source">The script block source.</param>
         /// <param name="options">The block compilation options.</param>
         /// <returns>A compiled block that can be invoked directly.</returns>
         public CompiledBlock CompileBlock(string source, CompileBlockOptions options = null)
@@ -235,10 +278,10 @@ namespace AuroraScript
             options ??= new CompileBlockOptions();
             ValidateCompileBlockParameters(options.Parameters);
             var sourceName = string.IsNullOrWhiteSpace(options.SourceName) ? "__compile_block__.as" : options.SourceName;
-            var scriptSource = MemorySource(sourceName, source);
+            var scriptSource = new MemorySource("mem://compile-block/", sourceName, source);
             try
             {
-                var lexer = new AuroraLexer(Options.Compiler.BaseDirectory, scriptSource);
+                var lexer = new AuroraLexer(scriptSource.BaseDirectory, scriptSource);
                 var parser = new AuroraParser(lexer, Options);
                 var block = parser.ParseBlockBody();
 

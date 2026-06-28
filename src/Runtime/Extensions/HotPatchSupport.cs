@@ -31,8 +31,7 @@ namespace AuroraScript.Runtime.Extensions
             {
                 patchType = patchType | HotPatchType.IgnoreDepends;
             }
-            var engine = ctx.Engine;
-            ctx.Domain.DynamicPatch(engine.MemorySource(modulePath, script), patchType);
+            ctx.Domain.DynamicPatch(modulePath, script, patchType);
         }
 
 
@@ -52,8 +51,7 @@ namespace AuroraScript.Runtime.Extensions
             {
                 patchType = patchType | HotPatchType.IgnoreDepends;
             }
-            var engine = ctx.Engine;
-            ctx.Domain.DynamicPatch(engine.MemorySource(modulePath, script), patchType);
+            ctx.Domain.DynamicPatch(modulePath, script, patchType);
         }
 
     }

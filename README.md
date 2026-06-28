@@ -9,7 +9,7 @@
 # AuroraScript
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-2.1.1-orange.svg)](src/AuroraScript.csproj)
+[![Version](https://img.shields.io/badge/version-3.0.0-orange.svg)](src/AuroraScript.csproj)
 [![Target](https://img.shields.io/badge/.NET-8.0%20%7C%209.0%20%7C%2010.0-blueviolet.svg)](src/AuroraScript.csproj)
 
 AuroraScript 是一个面向 .NET 宿主程序的轻量脚本引擎。脚本会被编译为 CIL，并通过 .NET 运行时执行，适合把规则、业务逻辑、配置化流程、热修复逻辑和小型表达式嵌入到 C# 应用中。
@@ -23,7 +23,7 @@ AuroraScript 的语法借鉴了 JavaScript 的表达式、对象、数组、闭�
 
 NuGet 包名：`AuroraScript.JIT`
 
-当前 `2.1.1` 包发布为多目标框架：
+当前 `3.0.0` 包发布为多目标框架：
 
 | 目标框架 | 支持情况 |
 |---|---|
@@ -66,13 +66,13 @@ dotnet build src/AuroraScript.csproj -c Release
 
 ```csharp
 using AuroraScript;
+using AuroraScript.Core;
 using AuroraScript.Runtime;
-using System.Text;
 
 var options = EngineOptions.Default
     .WithCompiler(compiler =>
     {
-        compiler.Directory = "./scripts";
+        compiler.SourceResolver = ScriptSources.FileSystem("./scripts");
         compiler.Mode = CompilationMode.Dynamic;
     })
     .WithOptimization(optimization => optimization.Level = OptimizeOptions.Release);
@@ -80,14 +80,14 @@ var options = EngineOptions.Default
 var engine = new AuroraEngine(options);
 engine.RegisterType(typeof(Math), "Math2");
 
-await engine.BuildAsync(engine.SearchAllFileSource(Encoding.UTF8));
+await engine.BuildAsync();
 
 var domain = engine.CreateDomain();
 var result = domain.Execute("MAIN", "main", ScriptDatum.FromNumber(20));
 Console.WriteLine(result);
 ```
 
-> 兼容性：旧的扁平配置 API（例如 `WithBaseDirectory`、`WithCompilationMode`、`WithEnableHotReload`、`EnableHotReload`）仍保留为转发层，并已标记为 `[Obsolete]`。旧代码可以继续编译运行；新代码建议使用 `WithRuntime`、`WithCompiler`、`WithOptimization`、`WithOutput` 分组 API。
+> 3.0 变更：脚本输入不再通过 `compiler.Directory`、`BaseDirectory` 或 `SearchAllFileSource` 配置。请通过 `compiler.SourceResolver` 提供脚本来源，并使用 `BuildAsync()`、`BuildAsync("main.as")` 或 `BuildAsync(params ScriptSource[])` 编译。
 
 ### 脚本代码
 
@@ -158,13 +158,70 @@ export func run() {
 }
 ```
 
+## Script Source Resolver
+
+3.0 起，脚本加载统一通过 `IScriptSourceResolver` 扩展。Resolver 只负责三件事：把 import/include 的原始路径重定位为稳定引用、按引用读取源码、枚举所有源码。源码是否已经打开、来自文件系统、内存、数据库、对象存储或虚拟目录，都由 resolver 自己决定。
+
+常用工厂位于 `AuroraScript.Core.ScriptSources`：
+
+```csharp
+using AuroraScript.Core;
+
+var options = EngineOptions.Default.WithCompiler(compiler =>
+{
+    compiler.SourceResolver = ScriptSources.FileSystem("./scripts");
+});
+```
+
+`BuildAsync()` 会从当前 resolver 的 `GetAllSourcesAsync` 枚举所有脚本；`BuildAsync("main.as")` 会先通过 `ResolveAsync(null, "main.as", ...)` 找到入口，再由模块图构建过程解析它的 `import` / `include` 依赖：
+
+```csharp
+await engine.BuildAsync();          // 编译 resolver 暴露的所有脚本
+await engine.BuildAsync("main.as"); // 只从入口和依赖构建模块图
+```
+
+内存源码适合测试、动态生成脚本或插件脚本：
+
+```csharp
+var memory = ScriptSources.Memory("mem://app/")
+    .Add("main.as", """
+        @module(MAIN);
+        import lib from './lib';
+        export func run() { return lib.value; }
+        """)
+    .Add("lib.as", """
+        @module(LIB);
+        export const value = 42;
+        """);
+
+var engine = new AuroraEngine(
+    EngineOptions.Default.WithCompiler(compiler => compiler.SourceResolver = memory));
+
+await engine.BuildAsync("main.as");
+```
+
+需要在文件系统基础上叠加内存脚本时，使用 `Composite`。顺序越靠前优先级越高，同名源码以前面的 resolver 为准：
+
+```csharp
+var resolver = ScriptSources.Composite(
+    ScriptSources.Memory("mem://app/")
+        .Add("generated.as", "@module(GEN); export const value = 42;"),
+    ScriptSources.FileSystem("./scripts"));
+
+var options = EngineOptions.Default.WithCompiler(compiler =>
+{
+    compiler.SourceResolver = resolver;
+});
+```
+
+自定义来源只需要实现 `IScriptSourceResolver`。`ResolveAsync` 应保留导入者上下文，让 `import lib from './lib';` 和 `include '../shared';` 相对导入者自身路径解析，而不是相对某个全局编译目录。
+
 ## CompileBlock
 
 `CompileBlock` 会把源码当作匿名函数体编译，不创建模块，也不参与热重载。它适合公式、规则、过滤器和需要频繁调用的小段逻辑。
 
 ```csharp
-var engine = new AuroraEngine(
-    EngineOptions.Default.WithCompiler(compiler => compiler.BaseDirectory = "."));
+var engine = new AuroraEngine(EngineOptions.Default);
 
 var block = engine.CompileBlock("""
 func clamp(v, min, max) {
@@ -174,16 +231,12 @@ func clamp(v, min, max) {
 }
 
 return clamp(x, 0, 100);
-""", new CompileBlockOptions
-{
-    Parameters = ["x"],
-    SourceName = "rules/clamp.as"
-});
+""", ["x"]);
 
 var result = block.Invoke(ScriptDatum.FromNumber(125));
 ```
 
-参数名通过 `CompileBlockOptions.Parameters` 声明，运行时按位置传入。参数名不能为空、不能重复，且不能使用 `global`、`$args`、`$state`。
+参数名可以通过 `CompileBlock(source, string[] parameters)` 直接声明，运行时按位置传入。需要指定诊断源码名时，使用 `CompileBlockOptions.SourceName`。参数名不能为空、不能重复，且不能使用 `global`、`$args`、`$state`。
 
 `CompiledBlock` 无引用后会通过 GC finalizer 自动释放编译期间注册的动态 delegate；需要确定性释放时也可以显式调用 `Dispose()`。
 
@@ -198,7 +251,8 @@ var result = block.Invoke(ScriptDatum.FromNumber(125));
 限制：
 
 - `Persistence` 需要 `net9.0` 或更高版本；`net8.0` 下调用会抛出 `PlatformNotSupportedException`。
-- Visual Studio 源码级脚本调试依赖 `Persistence` 模式和 Debug 优化设置。
+- `Persistence` 在 `Output.AssemblyFile` 为空时不会写 DLL，但仍会序列化为内存 PE 并通过 `Assembly.Load(byte[])` 加载，以保留 Debug 模式下的 embedded PDB/sequence point 语义。
+- Visual Studio 源码级脚本调试依赖 `Persistence` 模式和 Debug 优化设置；`OnlyRun` 是可回收动态程序集运行模式，不提供同等源码级调试符号。
 
 ## 热修复
 
@@ -207,9 +261,8 @@ var result = block.Invoke(ScriptDatum.FromNumber(125));
 宿主侧：
 
 ```csharp
-domain.DynamicPatch(
-    engine.MemorySource("main.as", "@module(MAIN); export func run() { return 42; }"),
-    HotPatchType.Replace);
+domain.ReplacePatch("main.as", "@module(MAIN); export func run() { return 42; }");
+domain.IncrementalPatch("main.as", "export func added() { return 1; }");
 ```
 
 脚本侧：
@@ -676,31 +729,32 @@ export func run() {
 
 测试项目：`tests/AuroraScript.Tests`
 
-当前 `net10.0` test discovery 共发现 **395** 个测试用例。按测试类统计：
+当前 `net10.0` 测试覆盖矩阵：
 
-| 测试类 | 用例数 | 覆盖重点 |
-|---|---:|---|
-| `LexerTests` | 37 | 词法、数字/字符串/正则、注释、错误 token |
-| `ParserSyntaxTests` | 85 | 语法分支、模块声明、import/include/export、函数注解、错误语法诊断 |
-| `ExpressionExecutionTests` | 38 | 表达式、运算符、成员/索引访问、spread、赋值 |
-| `StatementExecutionTests` | 7 | 控制流、循环、闭包、递归、异常、Domain 隔离 |
-| `LanguageFeatureExecutionTests` | 16 | enum、Lambda、稀疏数组、truthiness、模板、赋值语义 |
-| `ModuleCompilationTests` | 12 | 模块依赖、并行编译、循环依赖、错误聚合、取消 |
-| `CompilerBackendPlanTests` | 80 | backend plan、direct call、闭包/upvalue、slot/lowering、控制流和常量折叠计划 |
-| `CompileBlockTests` | 23 | CompileBlock 参数、调用方式、错误输入、诊断和动态 delegate 生命周期 |
-| `CompilationModeTests` | 6 | Dynamic/OnlyRun/Persistence 行为和热重载开关 |
-| `RuntimeApiAndErrorTests` | 11 | 运行时 API、错误路径、`$state`、释放后行为 |
-| `BuiltInLibraryTests` | 12 | Math、String、Array、JSON、HashMap、Regex、StringBuffer、Console |
-| `AdvancedRuntimeTypeTests` | 6 | 构造器、Object、freeze、Date、Proxy |
-| `ClrInteropTests` | 9 | CLR 构造/属性/字段/方法/重载/访问限制 |
-| `SerializationTests` | 9 | JSON 序列化/反序列化、循环引用、异常 JSON |
-| `ScriptDatumTests` | 4 | Datum payload、相等性、CLR 集合转换、Span helper |
-| `HotReloadTests` | 4 | 热重载禁用、增量补丁、替换补丁、Domain 隔离 |
-| `ConcurrentRuntimeTests` | 3 | 同域/多域并发、detached closure 并发 |
-| `ReleaseRegressionTests` | 9 | Release 直连调用、闭包槽位、栈平衡、混淆、空模块 |
-| `ClosureFunctionContextTests` | 3 | 上下文池生命周期和 detached 调用 |
-| `EngineOptionsAndSourceTests` | 10 | EngineOptions、Source 路径、扩展名、并行度、空输入 |
-| `CoreSemanticsRegressionTests` | 11 | 基础语义、null 加法、coercion、短路逻辑、数组容量/索引、对象属性、闭包/循环 |
+| 测试类 | 覆盖重点 |
+|---|---|
+| `LexerTests` | 词法、数字/字符串/正则、注释、错误 token |
+| `ParserSyntaxTests` | 语法分支、模块声明、import/include/export、函数注解、错误语法诊断 |
+| `ExpressionExecutionTests` | 表达式、运算符、成员/索引访问、spread、赋值 |
+| `StatementExecutionTests` | 控制流、循环、闭包、递归、异常、Domain 隔离 |
+| `LanguageFeatureExecutionTests` | enum、Lambda、稀疏数组、truthiness、模板、赋值语义 |
+| `ModuleCompilationTests` | 模块依赖、并行编译、循环依赖、错误聚合、取消 |
+| `CompilerBackendPlanTests` | backend plan、direct call、闭包/upvalue、slot/lowering、控制流和常量折叠计划 |
+| `CompileBlockTests` | CompileBlock 参数、调用方式、错误输入、诊断和动态 delegate 生命周期 |
+| `CompilationModeTests` | Dynamic/OnlyRun/Persistence 行为和热重载开关 |
+| `RuntimeApiAndErrorTests` | 运行时 API、错误路径、`$state`、释放后行为 |
+| `BuiltInLibraryTests` | Math、String、Array、JSON、HashMap、Regex、StringBuffer、Console |
+| `AdvancedRuntimeTypeTests` | 构造器、Object、freeze、Date、Proxy |
+| `ClrInteropTests` | CLR 构造/属性/字段/方法/重载/访问限制 |
+| `SerializationTests` | JSON 序列化/反序列化、循环引用、异常 JSON |
+| `ScriptDatumTests` | Datum payload、相等性、CLR 集合转换、Span helper |
+| `HotReloadTests` | 热重载禁用、增量补丁、替换补丁、Domain 隔离 |
+| `ConcurrentRuntimeTests` | 同域/多域并发、detached closure 并发 |
+| `ReleaseRegressionTests` | Release 直连调用、闭包槽位、栈平衡、混淆、空模块 |
+| `ClosureFunctionContextTests` | 上下文池生命周期和 detached 调用 |
+| `EngineOptionsAndSourceTests` | EngineOptions、SourceResolver、扩展名、并行度、空输入 |
+| `CustomSourceResolverUsageTests` | 自定义 resolver、虚拟路径、内存/文件组合和入口解析 |
+| `CoreSemanticsRegressionTests` | 基础语义、null 加法、coercion、短路逻辑、数组容量/索引、对象属性、闭包/循环 |
 
 覆盖范围摘要：
 
@@ -719,7 +773,7 @@ export func run() {
 运行测试：
 
 ```bash
-dotnet test tests/AuroraScript.Tests.csproj
+dotnet test tests/AuroraScript.Tests/AuroraScript.Tests.csproj
 ```
 
 当前测试项目多目标到 `net8.0;net9.0;net10.0`。运行对应测试需要本机安装相应 .NET runtime。
@@ -822,16 +876,14 @@ dotnet run --project benchmark/Benchmark.csproj -c Release -- --compare
 - [tests/AuroraScript.Tests](tests/AuroraScript.Tests)：推荐作为行为规格参考。
 - [benchmark/scripts/runtime.as](benchmark/scripts/runtime.as)：运行时性能指标脚本。
 
-## VS Code 插件
+## 语言工具
 
-`vscode-extension` 目录包含 VS Code 插件工程，当前主要提供语法高亮和基础编辑体验。可进入该目录执行：
+语言工具位于 `language-tools/`：
 
-```bash
-npm install
-npm run package
-```
-
-然后安装生成的 `.vsix`。
+- `AuroraScript.LanguageServices`：解析、语义索引、诊断、定义跳转等共享服务。
+- `AuroraScript.LanguageServer`：LSP 服务器。
+- `AuroraScript.VisualStudio`：Visual Studio VSIX 工程，打包语言服务器和 TextMate 语法。
+- `AuroraScript.Mcp`：面向 AI 工具的 MCP 服务器，提供 `documents` 文档、schema、示例和脚本校验能力。
 
 ---
 

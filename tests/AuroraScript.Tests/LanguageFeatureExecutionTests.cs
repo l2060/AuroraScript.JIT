@@ -84,7 +84,7 @@ public sealed class LanguageFeatureExecutionTests
     {
         using var workspace = new TestWorkspace();
         var engine = workspace.CreateEngine(enableModuleConstInlining: true);
-        await engine.BuildAsync(engine.MemorySource(
+        await engine.BuildAsync(workspace.MemorySource(
             "main.as",
             """
             @module(TEST);

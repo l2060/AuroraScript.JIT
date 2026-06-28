@@ -193,7 +193,7 @@ public sealed class ReleaseRegressionTests
         for (var i = 0; i < 64; i++)
         {
             var engine = workspace.CreateEngine();
-            var source = engine.MemorySource(
+            var source = workspace.MemorySource(
                 $"module-{i}.as",
                 $"@module(M{i}); export func value() {{ return 'value-{i}'; }}");
             await engine.BuildAsync(source);
@@ -236,8 +236,8 @@ public sealed class ReleaseRegressionTests
         using var workspace = new TestWorkspace();
         var engine = workspace.CreateEngine();
         await engine.BuildAsync(
-            engine.MemorySource("empty.as", "@module(EMPTY);"),
-            engine.MemorySource("test.as", "@module(TEST); export func run() { return 42; }"));
+            workspace.MemorySource("empty.as", "@module(EMPTY);"),
+            workspace.MemorySource("test.as", "@module(TEST); export func run() { return 42; }"));
 
         var domain = engine.CreateDomain();
         Assert.NotSame(AuroraScript.Runtime.Types.ScriptObject.Null, domain.GetModule("EMPTY"));

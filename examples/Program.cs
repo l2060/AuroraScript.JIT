@@ -17,14 +17,21 @@ namespace Examples
 
     public class Program
     {
+        private static readonly string scriptDirectory = Path.Combine(AppContext.BaseDirectory, "tests");
 
         private static readonly EngineOptions engineOptions = EngineOptions.Default
         .WithCompiler(compiler =>
         {
-            compiler.Directory = Path.Combine(AppContext.BaseDirectory, "tests");
+            compiler.SourceResolver = ScriptSources.Composite(
+                // load script from memory, override file system script
+                ScriptSources.Memory().Add("seed.as", "console.log('load from mem://'); export func go(){ console.log('seed from memory...');  }"),
+                // load script from file system
+                ScriptSources.FileSystem(scriptDirectory, Encoding.UTF8)
+            );
+
             compiler.MaxDegreeOfParallelism = 0;
             compiler.ExtName = "as";
-            compiler.Mode = CompilationMode.Persistence;
+            compiler.Mode = CompilationMode.Dynamic;
         })
         .WithOutput(output =>
         {
@@ -73,11 +80,8 @@ namespace Examples
             engine.RegisterType(typeof(Math), "Math2");
             try
             {
-                var sources = engine.SearchAllFileSource(Encoding.UTF8);
-                var s1 = engine.MemorySource("mmmmm1.as", "console.log('qwertyuiop');");
-
                 var time = Stopwatch.StartNew();
-                await engine.BuildAsync([s1, .. sources]);
+                await engine.BuildAsync();
                 var elapsed = time.ElapsedMilliseconds;
                 Console.WriteLine($"BuildAsync {elapsed}ms");
                 Console.WriteLine();
@@ -121,33 +125,33 @@ namespace Examples
                 return;
             }
             // version 1
-            domain.DynamicPatch(engine.MemorySource("testPatch", "func good(){ console.log('version:1'); }"), HotPatchType.Replace);
+            domain.ReplacePatch("testPatch", "func good(){ console.log('version:1'); }");
             domain.Execute("testPatch", "good");
             // version 2
-            domain.DynamicPatch(engine.MemorySource("testPatch", "func good(){ console.log('version:2'); }"), HotPatchType.Replace);
+            domain.ReplacePatch("testPatch", "func good(){ console.log('version:2'); }");
             domain.Execute("testPatch", "good");
             // version 3
-            domain.DynamicPatch(engine.MemorySource("testPatch", "func good(){ console.log('version:3'); }"), HotPatchType.Replace);
+            domain.ReplacePatch("testPatch", "func good(){ console.log('version:3'); }");
             domain.Execute("testPatch", "good");
 
 
             // 1. Initial Load
             Console.WriteLine("[1] Initial Load");
-            domain.DynamicPatch(engine.MemorySource("test.as", "@module(test);import l123 from 'l123'; func hello() { return 'v1'; } var x = 10;"), HotPatchType.Incremental | HotPatchType.IgnoreDepends);
+            domain.IncrementalPatch("test.as", "@module(test);import l123 from 'l123'; func hello() { return 'v1'; } var x = 10;", ignoreDepends: true);
             var r1 = domain.Execute("test", "hello");
             var x1 = domain.GetModule("test").GetPropertyValue("x");
             Console.WriteLine($"hello() -> {r1}, x -> {x1}");
 
             // 2. Incremental Patch (Method Replacement)
             Console.WriteLine("[2] Incremental Patch (Method Replacement)");
-            domain.DynamicPatch(engine.MemorySource("test.as", "@module(test); func hello() { return 'v2'; }"), HotPatchType.Incremental);
+            domain.IncrementalPatch("test.as", "@module(test); func hello() { return 'v2'; }");
             var r2 = domain.Execute("test", "hello");
             var x2 = domain.GetModule("test").GetPropertyValue("x");
             Console.WriteLine($"hello() -> {r2}, x -> {x2} (x should still be 10)");
 
             // 3. Incremental Patch (Add Method & Property)
             Console.WriteLine("[3] Incremental Patch (Add Method & Property)");
-            domain.DynamicPatch(engine.MemorySource("test.as", "@module(test); func world() { return 'world'; } var y = 20;"), HotPatchType.Incremental);
+            domain.IncrementalPatch("test.as", "@module(test); func world() { return 'world'; } var y = 20;");
             var rw = domain.Execute("test", "world");
             var y3 = domain.GetModule("test").GetPropertyValue("y");
             Console.WriteLine($"world() -> {rw}, y -> {y3}");
@@ -155,13 +159,13 @@ namespace Examples
             // 4. Replace Patch
             Console.WriteLine("\n[4] Replace Patch");
             domain.GetModule("l123").SetPropertyValue("FValue", NumberValue.Of(128.456));
-            domain.DynamicPatch(engine.MemorySource("test.as", "@module(test); import l123 from 'l123'; func reset() { return 'reset'; }"), HotPatchType.Replace);
+            domain.ReplacePatch("test.as", "@module(test); import l123 from 'l123'; func reset() { return 'reset'; }");
             try
             {
                 domain.Execute("test", "hello");
                 Console.WriteLine("Error: hello() should not exist after Replace!");
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 Console.WriteLine("hello() is gone (Expected)");
             }

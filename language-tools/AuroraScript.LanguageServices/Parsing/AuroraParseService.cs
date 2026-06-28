@@ -1,8 +1,10 @@
 using AuroraScript.Compiler.Analyzer;
+using AuroraScript.Compiler.Ast;
 using AuroraScript.Core;
 using AuroraScript.LanguageServices.Diagnostics;
 using AuroraScript.LanguageServices.Text;
 using AuroraScript.LanguageServices.Workspace;
+using AuroraScript.Source;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -39,14 +41,14 @@ public sealed class AuroraParseService
         ArgumentException.ThrowIfNullOrWhiteSpace(sourceName);
         ArgumentNullException.ThrowIfNull(sourceText);
 
-        baseDirectory ??= workspaceSnapshot?.BaseDirectory ?? _options.Compiler.BaseDirectory;
+        baseDirectory ??= workspaceSnapshot?.BaseDirectory;
         if (string.IsNullOrWhiteSpace(baseDirectory))
         {
             baseDirectory = Directory.GetCurrentDirectory();
         }
 
         var fullPath = ScriptPath.GetFullPath(baseDirectory, sourceName);
-        var source = new MemoryScriptSource(baseDirectory, fullPath, sourceText);
+        var source = new MemorySource(baseDirectory, fullPath, sourceText);
         var options = workspaceSnapshot == null
             ? _options
             : _options.WithCompiler(compiler => compiler.WithSourceResolver(
@@ -56,12 +58,62 @@ public sealed class AuroraParseService
         {
             using var lexer = new AuroraLexer(baseDirectory, source);
             var parser = new AuroraParser(lexer, options);
-            return new AuroraParseResult(parser.Parse(), Array.Empty<LanguageDiagnostic>());
+            var module = parser.Parse();
+            var diagnostics = ResolveImports(module, source, options);
+            return new AuroraParseResult(module, diagnostics);
         }
         catch (AuroraCompilationException ex)
         {
             return new AuroraParseResult(null, ConvertDiagnostics(ex));
         }
+    }
+
+    private static IReadOnlyList<LanguageDiagnostic> ResolveImports(
+        ModuleDeclaration module,
+        ScriptSource source,
+        EngineOptions options)
+    {
+        if (module.Imports.Count == 0)
+        {
+            return Array.Empty<LanguageDiagnostic>();
+        }
+
+        var diagnostics = new List<LanguageDiagnostic>();
+        var importer = new ScriptSourceReference(source.BaseDirectory, source.FullPath, source.SourcePath);
+        var context = new ScriptResolveContext(options.Compiler.ExtName);
+        for (var i = 0; i < module.Imports.Count; i++)
+        {
+            var import = module.Imports[i];
+            var requestedPath = import.File?.Value;
+            if (string.IsNullOrWhiteSpace(requestedPath))
+            {
+                continue;
+            }
+
+            var resolved = options.Compiler.SourceResolver
+                .ResolveAsync(importer, requestedPath, context)
+                .AsTask()
+                .GetAwaiter()
+                .GetResult();
+            if (resolved == null)
+            {
+                var message = import.Include
+                    ? $"include file not found: {requestedPath}"
+                    : $"Import file not found: {requestedPath}";
+                diagnostics.Add(new LanguageDiagnostic(
+                    "AURORA-IMPORT-NOT-FOUND",
+                    message,
+                    TextRange.FromSourceSpan(import.File != null ? import.File.Range : import.Range),
+                    LanguageDiagnosticSeverity.Error));
+                continue;
+            }
+
+            import.FullPath = resolved.Value.FullPath;
+            import.ModulePath = resolved.Value.ModulePath;
+            import.Reference = resolved.Value;
+        }
+
+        return diagnostics;
     }
 
     private static IReadOnlyList<LanguageDiagnostic> ConvertDiagnostics(AuroraCompilationException exception)

@@ -4,6 +4,7 @@ using AuroraScript.Core;
 using AuroraScript.LanguageServices.Parsing;
 using AuroraScript.LanguageServices.Text;
 using AuroraScript.LanguageServices.Workspace;
+using AuroraScript.Source;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -218,9 +219,11 @@ internal sealed class AuroraWorkspaceIndex
         {
             try
             {
-                var source = _parseService.SourceResolver.Open(
-                    new ScriptSourceReference(_snapshot.BaseDirectory, path),
-                    Encoding.UTF8);
+                var source = _parseService.SourceResolver
+                    .GetSourceAsync(new ScriptSourceReference(_snapshot.BaseDirectory, path))
+                    .AsTask()
+                    .GetAwaiter()
+                    .GetResult();
                 text = source.ReadSource();
                 return true;
             }

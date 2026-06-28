@@ -1,7 +1,11 @@
 using AuroraScript.Core;
+using AuroraScript.Source;
 using System;
+using System.Collections.Generic;
 using System.IO;
-using System.Text;
+using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace AuroraScript.LanguageServices.Workspace;
 
@@ -16,38 +20,72 @@ internal sealed class WorkspaceScriptSourceResolver : IScriptSourceResolver
         _fallback = fallback ?? FileScriptSourceResolver.Instance;
     }
 
-    public bool TryResolve(
-        string baseDirectory,
-        string currentSourcePath,
+    public string Root => _snapshot.BaseDirectory;
+
+    public async ValueTask<ScriptSourceReference?> ResolveAsync(
+        ScriptSourceReference? importer,
         string requestedPath,
-        string extension,
-        out ScriptSourceReference source)
+        ScriptResolveContext context,
+        CancellationToken cancellationToken = default)
     {
-        var currentDirectory = ScriptPath.GetDirectoryName(currentSourcePath);
-        var fullPath = ScriptPath.EnsureExtension(ScriptPath.Combine(currentDirectory, requestedPath), extension);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var baseDirectory = importer?.BaseDirectory ?? _snapshot.BaseDirectory;
+        var currentPath = ResolveCurrentPath(importer, baseDirectory);
+        var currentDirectory = importer == null ? baseDirectory : ScriptPath.GetDirectoryName(currentPath);
+        var fullPath = ScriptPath.EnsureExtension(ScriptPath.Combine(currentDirectory, requestedPath), context?.Extension);
         if (_snapshot.TryGetDocument(fullPath, out _))
         {
-            source = new ScriptSourceReference(baseDirectory, fullPath);
-            return true;
+            return new ScriptSourceReference(baseDirectory, fullPath, ScriptPath.GetModulePath(baseDirectory, fullPath));
         }
 
-        if (_fallback.TryResolve(baseDirectory, currentSourcePath, requestedPath, extension, out var fallbackSource))
-        {
-            source = fallbackSource;
-            return true;
-        }
-
-        source = default;
-        return false;
+        return await _fallback.ResolveAsync(importer, requestedPath, context, cancellationToken).ConfigureAwait(false);
     }
 
-    public ScriptSource Open(ScriptSourceReference source, Encoding encoding)
+    private string ResolveCurrentPath(ScriptSourceReference? importer, string baseDirectory)
     {
-        if (_snapshot.TryGetDocument(source.FullPath, out var document))
+        if (importer == null)
         {
-            return new MemoryScriptSource(source.BaseDirectory, document.Path, document.Text);
+            return baseDirectory;
         }
 
-        return _fallback.Open(source, encoding);
+        return ScriptPath.GetFullPath(baseDirectory, importer.Value.ModulePath);
+    }
+
+    public async ValueTask<ScriptSource> GetSourceAsync(
+        ScriptSourceReference reference,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (_snapshot.TryGetDocument(reference.FullPath, out var document))
+        {
+            return new MemorySource(reference.BaseDirectory, document.Path, document.Text);
+        }
+
+        return await _fallback.GetSourceAsync(reference, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async IAsyncEnumerable<ScriptSource> GetAllSourcesAsync(
+        ScriptSourceQuery query,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var seen = new HashSet<string>(ScriptPath.Comparer);
+        foreach (var document in _snapshot.Documents.Values)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (seen.Add(document.Path))
+            {
+                yield return new MemorySource(_snapshot.BaseDirectory, document.Path, document.Text);
+            }
+        }
+
+        await foreach (var source in _fallback.GetAllSourcesAsync(query, cancellationToken).ConfigureAwait(false))
+        {
+            if (seen.Add(source.FullPath))
+            {
+                yield return source;
+            }
+        }
     }
 }

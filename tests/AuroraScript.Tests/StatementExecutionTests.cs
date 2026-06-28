@@ -175,7 +175,7 @@ public sealed class StatementExecutionTests
             var count = 0;
             export func next() { count++; return count; }
             """);
-        await engine.BuildAsync(engine.FileSource(path, System.Text.Encoding.UTF8));
+        await engine.BuildAsync(path);
         var firstDomain = engine.CreateDomain();
         var secondDomain = engine.CreateDomain();
 

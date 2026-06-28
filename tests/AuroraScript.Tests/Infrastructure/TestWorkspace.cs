@@ -1,10 +1,12 @@
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Types;
+using AuroraScript.Core;
 using System;
 using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using AuroraScript.Source;
 
 namespace AuroraScript.Tests.Infrastructure;
 
@@ -30,6 +32,11 @@ internal sealed class TestWorkspace : IDisposable
         return path;
     }
 
+    public ScriptSource MemorySource(string relativePath, string source)
+    {
+        return new MemorySource(Root, relativePath, source);
+    }
+
     public AuroraEngine CreateEngine(
         CompilationMode mode = CompilationMode.Dynamic,
         bool enableHotReload = false,
@@ -41,7 +48,7 @@ internal sealed class TestWorkspace : IDisposable
         bool stackTrace = true)
     {
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(Root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(Root))
             .WithCompiler(compiler => compiler.Mode = mode)
             .WithOptimization(optimization => optimization.Level = OptimizeOptions.Release)
             .WithRuntime(runtime => runtime.HotReload = enableHotReload)
@@ -70,8 +77,8 @@ internal sealed class TestWorkspace : IDisposable
     {
         var assemblyOut = mode == CompilationMode.Persistence ? Path.Combine(Root, "test-output.dll") : null;
         var engine = CreateEngine(mode, enableHotReload, enableConfused, maxDegreeOfParallelism, assemblyOut);
-        var mainPath = WriteSource("main.as", source);
-        await engine.BuildAsync(cancellationToken, engine.FileSource(mainPath, Encoding.UTF8));
+        WriteSource("main.as", source);
+        await engine.BuildAsync(["main.as"], cancellationToken);
         var domain = configureGlobal == null ? engine.CreateDomain() : engine.CreateDomain(configureGlobal);
         return (engine, domain);
     }

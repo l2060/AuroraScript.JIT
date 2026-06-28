@@ -19,7 +19,7 @@ Contents:
 
 Recommended public deployment:
 
-1. Include this directory in the AuroraScript NuGet package under `.language/`.
+1. Include this directory in the AuroraScript NuGet package under `documents/`.
 2. Publish `llms.txt` at the documentation site root.
 3. Publish the MCP server as a .NET tool package.
 4. Keep examples and tests aligned with every language semantics change.

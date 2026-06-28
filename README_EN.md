@@ -9,7 +9,7 @@
 # AuroraScript
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-2.1.1-orange.svg)](src/AuroraScript.csproj)
+[![Version](https://img.shields.io/badge/version-3.0.0-orange.svg)](src/AuroraScript.csproj)
 [![Target](https://img.shields.io/badge/.NET-8.0%20%7C%209.0%20%7C%2010.0-blueviolet.svg)](src/AuroraScript.csproj)
 
 AuroraScript is a lightweight scripting engine for .NET host applications. Scripts are compiled to CIL and executed by the .NET runtime, making the engine suitable for embedded rules, business logic, configurable workflows, hot fixes, and small expressions.
@@ -23,7 +23,7 @@ AuroraScript borrows familiar syntax from JavaScript, including expressions, obj
 
 NuGet package: `AuroraScript.JIT`
 
-The current `2.1.1` package targets:
+The current `3.0.0` package targets:
 
 | Target framework | Support |
 |---|---|
@@ -66,13 +66,13 @@ dotnet build src/AuroraScript.csproj -c Release
 
 ```csharp
 using AuroraScript;
+using AuroraScript.Core;
 using AuroraScript.Runtime;
-using System.Text;
 
 var options = EngineOptions.Default
     .WithCompiler(compiler =>
     {
-        compiler.BaseDirectory = "./scripts";
+        compiler.SourceResolver = ScriptSources.FileSystem("./scripts");
         compiler.Mode = CompilationMode.Dynamic;
     })
     .WithOptimization(optimization => optimization.Level = OptimizeOptions.Release);
@@ -80,14 +80,14 @@ var options = EngineOptions.Default
 var engine = new AuroraEngine(options);
 engine.RegisterType(typeof(Math), "Math2");
 
-await engine.BuildAsync(engine.SearchAllFileSource(Encoding.UTF8));
+await engine.BuildAsync();
 
 var domain = engine.CreateDomain();
 var result = domain.Execute("MAIN", "main", ScriptDatum.FromNumber(20));
 Console.WriteLine(result);
 ```
 
-> Compatibility: the former flat configuration API, such as `WithBaseDirectory`, `WithCompilationMode`, `WithEnableHotReload`, and `EnableHotReload`, remains as a forwarding layer and is marked `[Obsolete]`. Existing code can still compile and run; new code should use the grouped `WithRuntime`, `WithCompiler`, `WithOptimization`, and `WithOutput` APIs.
+> 3.0 change: script input is no longer configured through `compiler.Directory`, `BaseDirectory`, or `SearchAllFileSource`. Configure `compiler.SourceResolver` and build with `BuildAsync()`, `BuildAsync("main.as")`, or `BuildAsync(params ScriptSource[])`.
 
 ### Script Code
 
@@ -158,13 +158,70 @@ export func run() {
 }
 ```
 
+## Script Source Resolver
+
+Starting with 3.0, script loading is extended through `IScriptSourceResolver`. A resolver has three responsibilities: relocate raw import/include paths into stable references, read a source by reference, and enumerate all visible sources. Whether the source comes from the file system, memory, a database, object storage, or a virtual directory is entirely resolver-defined.
+
+Common factories live in `AuroraScript.Core.ScriptSources`:
+
+```csharp
+using AuroraScript.Core;
+
+var options = EngineOptions.Default.WithCompiler(compiler =>
+{
+    compiler.SourceResolver = ScriptSources.FileSystem("./scripts");
+});
+```
+
+`BuildAsync()` enumerates all scripts exposed by the current resolver through `GetAllSourcesAsync`; `BuildAsync("main.as")` resolves the entry first and then lets module graph building follow its `import` / `include` dependencies:
+
+```csharp
+await engine.BuildAsync();          // compile every source exposed by the resolver
+await engine.BuildAsync("main.as"); // compile from one entry and its dependencies
+```
+
+In-memory sources are useful for tests, generated scripts, and plugin scripts:
+
+```csharp
+var memory = ScriptSources.Memory("mem://app/")
+    .Add("main.as", """
+        @module(MAIN);
+        import lib from './lib';
+        export func run() { return lib.value; }
+        """)
+    .Add("lib.as", """
+        @module(LIB);
+        export const value = 42;
+        """);
+
+var engine = new AuroraEngine(
+    EngineOptions.Default.WithCompiler(compiler => compiler.SourceResolver = memory));
+
+await engine.BuildAsync("main.as");
+```
+
+Use `Composite` when you want memory sources on top of file-system sources. Earlier resolvers have higher priority, so duplicate source paths are taken from the first matching resolver:
+
+```csharp
+var resolver = ScriptSources.Composite(
+    ScriptSources.Memory("mem://app/")
+        .Add("generated.as", "@module(GEN); export const value = 42;"),
+    ScriptSources.FileSystem("./scripts"));
+
+var options = EngineOptions.Default.WithCompiler(compiler =>
+{
+    compiler.SourceResolver = resolver;
+});
+```
+
+Custom stores only need to implement `IScriptSourceResolver`. `ResolveAsync` should preserve importer context so `import lib from './lib';` and `include '../shared';` resolve relative to the importer itself, not to a global compiler directory.
+
 ## CompileBlock
 
 `CompileBlock` treats source text as an anonymous function body. It does not create a module and does not participate in hot reload. It is intended for formulas, rules, filters, and small snippets that are invoked frequently.
 
 ```csharp
-var engine = new AuroraEngine(
-    EngineOptions.Default.WithCompiler(compiler => compiler.BaseDirectory = "."));
+var engine = new AuroraEngine(EngineOptions.Default);
 
 var block = engine.CompileBlock("""
 func clamp(v, min, max) {
@@ -174,16 +231,12 @@ func clamp(v, min, max) {
 }
 
 return clamp(x, 0, 100);
-""", new CompileBlockOptions
-{
-    Parameters = ["x"],
-    SourceName = "rules/clamp.as"
-});
+""", ["x"]);
 
 var result = block.Invoke(ScriptDatum.FromNumber(125));
 ```
 
-Parameter names are declared through `CompileBlockOptions.Parameters`; runtime values are passed positionally. Parameter names cannot be empty, duplicated, or equal to `global`, `$args`, or `$state`.
+Parameter names can be declared directly with `CompileBlock(source, string[] parameters)`; runtime values are passed positionally. Use `CompileBlockOptions.SourceName` when diagnostics need a custom source name. Parameter names cannot be empty, duplicated, or equal to `global`, `$args`, or `$state`.
 
 After a `CompiledBlock` becomes unreachable, its GC finalizer automatically releases dynamic delegates registered during compilation. Call `Dispose()` only when deterministic release is needed.
 
@@ -198,7 +251,8 @@ After a `CompiledBlock` becomes unreachable, its GC finalizer automatically rele
 Limitations:
 
 - `Persistence` requires `net9.0` or later. On `net8.0`, using it throws `PlatformNotSupportedException`.
-- Visual Studio source-level script debugging depends on `Persistence` mode and debug optimization settings.
+- When `Output.AssemblyFile` is empty, `Persistence` does not write a DLL, but it still serializes an in-memory PE and loads it through `Assembly.Load(byte[])` so Debug embedded PDB/sequence point semantics are preserved.
+- Visual Studio source-level script debugging depends on `Persistence` mode and debug optimization settings. `OnlyRun` is a collectible dynamic-assembly mode and does not provide equivalent source-level debug symbols.
 
 ## Hot Patching
 
@@ -207,9 +261,8 @@ Hot patching is controlled by `EngineOptions.Runtime.EnableHotReload` and is ena
 Host side:
 
 ```csharp
-domain.DynamicPatch(
-    engine.MemorySource("main.as", "@module(MAIN); export func run() { return 42; }"),
-    HotPatchType.Replace);
+domain.ReplacePatch("main.as", "@module(MAIN); export func run() { return 42; }");
+domain.IncrementalPatch("main.as", "export func added() { return 1; }");
 ```
 
 Script side:
@@ -676,31 +729,32 @@ Tested capabilities:
 
 Test project: `tests/AuroraScript.Tests`
 
-Current `net10.0` test discovery finds **395** test cases. Breakdown by test class:
+Current `net10.0` coverage matrix:
 
-| Test class | Cases | Focus |
-|---|---:|---|
-| `LexerTests` | 37 | Lexing, numbers/strings/regex, comments, malformed tokens |
-| `ParserSyntaxTests` | 85 | Grammar branches, modules, import/include/export, function annotations, syntax diagnostics |
-| `ExpressionExecutionTests` | 38 | Expressions, operators, member/index access, spread, assignment |
-| `StatementExecutionTests` | 7 | Control flow, loops, closures, recursion, exceptions, domain isolation |
-| `LanguageFeatureExecutionTests` | 16 | enum, lambdas, sparse arrays, truthiness, templates, assignment semantics |
-| `ModuleCompilationTests` | 12 | Dependencies, parallel compile, cycles, error aggregation, cancellation |
-| `CompilerBackendPlanTests` | 80 | Backend plans, direct call, closures/upvalues, slots/lowering, control flow and constant folding plans |
-| `CompileBlockTests` | 23 | CompileBlock parameters, invocation modes, invalid inputs, diagnostics, dynamic delegate lifetime |
-| `CompilationModeTests` | 6 | Dynamic/OnlyRun/Persistence behavior and hot-reload settings |
-| `RuntimeApiAndErrorTests` | 11 | Runtime APIs, error paths, `$state`, disposed domains |
-| `BuiltInLibraryTests` | 12 | Math, String, Array, JSON, HashMap, Regex, StringBuffer, Console |
-| `AdvancedRuntimeTypeTests` | 6 | Constructors, Object, freeze, Date, Proxy |
-| `ClrInteropTests` | 9 | CLR constructors/properties/fields/methods/overloads/access restrictions |
-| `SerializationTests` | 9 | JSON serialization/deserialization, circular references, malformed JSON |
-| `ScriptDatumTests` | 4 | Datum payloads, equality, CLR collection conversion, Span helpers |
-| `HotReloadTests` | 4 | Disabled hot reload, incremental patch, replacement patch, domain isolation |
-| `ConcurrentRuntimeTests` | 3 | Same-domain/multi-domain concurrency, detached closure concurrency |
-| `ReleaseRegressionTests` | 9 | Release direct calls, closure slots, stack balance, confusion, empty modules |
-| `ClosureFunctionContextTests` | 3 | Context pool lifetime and detached invocation |
-| `EngineOptionsAndSourceTests` | 10 | EngineOptions, source paths, extensions, parallelism, null input |
-| `CoreSemanticsRegressionTests` | 11 | Core semantics, null addition, coercion, short-circuit logic, array capacity/indexing, object properties, closures/loops |
+| Test class | Focus |
+|---|---|
+| `LexerTests` | Lexing, numbers/strings/regex, comments, malformed tokens |
+| `ParserSyntaxTests` | Grammar branches, modules, import/include/export, function annotations, syntax diagnostics |
+| `ExpressionExecutionTests` | Expressions, operators, member/index access, spread, assignment |
+| `StatementExecutionTests` | Control flow, loops, closures, recursion, exceptions, domain isolation |
+| `LanguageFeatureExecutionTests` | enum, lambdas, sparse arrays, truthiness, templates, assignment semantics |
+| `ModuleCompilationTests` | Dependencies, parallel compile, cycles, error aggregation, cancellation |
+| `CompilerBackendPlanTests` | Backend plans, direct call, closures/upvalues, slots/lowering, control flow and constant folding plans |
+| `CompileBlockTests` | CompileBlock parameters, invocation modes, invalid inputs, diagnostics, dynamic delegate lifetime |
+| `CompilationModeTests` | Dynamic/OnlyRun/Persistence behavior and hot-reload settings |
+| `RuntimeApiAndErrorTests` | Runtime APIs, error paths, `$state`, disposed domains |
+| `BuiltInLibraryTests` | Math, String, Array, JSON, HashMap, Regex, StringBuffer, Console |
+| `AdvancedRuntimeTypeTests` | Constructors, Object, freeze, Date, Proxy |
+| `ClrInteropTests` | CLR constructors/properties/fields/methods/overloads/access restrictions |
+| `SerializationTests` | JSON serialization/deserialization, circular references, malformed JSON |
+| `ScriptDatumTests` | Datum payloads, equality, CLR collection conversion, Span helpers |
+| `HotReloadTests` | Disabled hot reload, incremental patch, replacement patch, domain isolation |
+| `ConcurrentRuntimeTests` | Same-domain/multi-domain concurrency, detached closure concurrency |
+| `ReleaseRegressionTests` | Release direct calls, closure slots, stack balance, confusion, empty modules |
+| `ClosureFunctionContextTests` | Context pool lifetime and detached invocation |
+| `EngineOptionsAndSourceTests` | EngineOptions, SourceResolver, extensions, parallelism, null input |
+| `CustomSourceResolverUsageTests` | Custom resolvers, virtual paths, memory/file composition, and entry resolution |
+| `CoreSemanticsRegressionTests` | Core semantics, null addition, coercion, short-circuit logic, array capacity/indexing, object properties, closures/loops |
 
 Coverage summary:
 
@@ -719,7 +773,7 @@ Coverage summary:
 Run tests:
 
 ```bash
-dotnet test tests/AuroraScript.Tests.csproj
+dotnet test tests/AuroraScript.Tests/AuroraScript.Tests.csproj
 ```
 
 The test project targets `net8.0;net9.0;net10.0`. Running each target requires the matching .NET runtime on the machine.
@@ -822,16 +876,14 @@ Observed hotspots:
 - [tests/AuroraScript.Tests](tests/AuroraScript.Tests): recommended behavioral specification.
 - [benchmark/scripts/runtime.as](benchmark/scripts/runtime.as): runtime benchmark script.
 
-## VS Code Extension
+## Language Tools
 
-The `vscode-extension` directory contains the VS Code extension project. It currently focuses on syntax highlighting and basic editing support.
+Language tooling lives under `language-tools/`:
 
-```bash
-npm install
-npm run package
-```
-
-Then install the generated `.vsix`.
+- `AuroraScript.LanguageServices`: shared parsing, semantic indexing, diagnostics, and definition services.
+- `AuroraScript.LanguageServer`: LSP server.
+- `AuroraScript.VisualStudio`: Visual Studio VSIX project that packages the language server and TextMate grammar.
+- `AuroraScript.Mcp`: MCP server for AI tools, exposing `documents` docs, schema, examples, and script validation.
 
 ---
 

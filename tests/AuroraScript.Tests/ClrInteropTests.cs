@@ -15,7 +15,7 @@ public sealed class ClrInteropTests
         using var workspace = new TestWorkspace();
         var engine = workspace.CreateEngine();
         engine.RegisterType<HostCalculator>("Calculator");
-        await engine.BuildAsync(engine.MemorySource(
+        await engine.BuildAsync(workspace.MemorySource(
             "main.as",
             """
             @module(TEST);
@@ -84,7 +84,7 @@ public sealed class ClrInteropTests
         using var workspace = new TestWorkspace();
         var engine = workspace.CreateEngine();
         engine.RegisterType<HostOverloads>();
-        await engine.BuildAsync(engine.MemorySource(
+        await engine.BuildAsync(workspace.MemorySource(
             "main.as",
             """
             @module(TEST);
@@ -104,7 +104,7 @@ public sealed class ClrInteropTests
         using var workspace = new TestWorkspace();
         var engine = workspace.CreateEngine();
         engine.RegisterType<HostOverloads>();
-        await engine.BuildAsync(engine.MemorySource(
+        await engine.BuildAsync(workspace.MemorySource(
             "main.as",
             """
             @module(TEST);
@@ -122,7 +122,7 @@ public sealed class ClrInteropTests
         using var workspace = new TestWorkspace();
         var engine = workspace.CreateEngine();
         engine.RegisterType<HostOverloads>();
-        await engine.BuildAsync(engine.MemorySource(
+        await engine.BuildAsync(workspace.MemorySource(
             "main.as",
             """
             @module(TEST);
@@ -140,7 +140,7 @@ public sealed class ClrInteropTests
         using var workspace = new TestWorkspace();
         var engine = workspace.CreateEngine();
         engine.RegisterType<HostOverloads>();
-        await engine.BuildAsync(engine.MemorySource(
+        await engine.BuildAsync(workspace.MemorySource(
             "main.as",
             """
             @module(TEST);
@@ -159,14 +159,14 @@ public sealed class ClrInteropTests
         using var workspace = new TestWorkspace();
         var constructorOnly = workspace.CreateEngine();
         constructorOnly.RegisterType<HostCalculator>("ConstructorOnly", TypeAccess.Constructor);
-        await constructorOnly.BuildAsync(constructorOnly.MemorySource(
+        await constructorOnly.BuildAsync(workspace.MemorySource(
             "constructor.as",
             "@module(TEST); export func run() { return ConstructorOnly.Multiply(2, 3); }"));
         Assert.ThrowsAny<Exception>(() => TestWorkspace.Execute(constructorOnly.CreateDomain(), "run"));
 
         var staticOnly = workspace.CreateEngine();
         staticOnly.RegisterType<HostCalculator>("StaticOnly", TypeAccess.Static);
-        await staticOnly.BuildAsync(staticOnly.MemorySource(
+        await staticOnly.BuildAsync(workspace.MemorySource(
             "static.as",
             "@module(TEST); export func run() { return new StaticOnly(1); }"));
         Assert.ThrowsAny<Exception>(() => TestWorkspace.Execute(staticOnly.CreateDomain(), "run"));

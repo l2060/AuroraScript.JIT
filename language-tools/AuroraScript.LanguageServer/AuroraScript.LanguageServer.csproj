@@ -14,7 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="..\..\.language\schema\runtime-api.json"
+    <EmbeddedResource Include="..\..\documents\schema\runtime-api.json"
                       LogicalName="AuroraScript.LanguageServer.Resources.runtime-api.json" />
   </ItemGroup>
 

@@ -1,4 +1,5 @@
 using AuroraScript;
+using AuroraScript.Core;
 using AuroraScript.Runtime;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
@@ -35,7 +36,7 @@ namespace AuroraBenchmark
         {
             var scriptDirectory = Path.Combine(AppContext.BaseDirectory, "scripts");
             var options = EngineOptions.Default
-                .WithCompiler(compiler => compiler.WithDirectory(scriptDirectory))
+                .WithCompiler(compiler => compiler.SourceResolver = ScriptSources.FileSystem(scriptDirectory, Encoding.UTF8))
                 .WithRuntime(runtime => runtime.ConsoleStdOut = TextWriter.Null)
                 .WithRuntime(runtime => runtime.ConsoleErrorOut = TextWriter.Null)
                 .WithRuntime(runtime => runtime.DateTimeFormat = "yyyy-MM-dd HH:mm:ss")
@@ -46,7 +47,7 @@ namespace AuroraBenchmark
 
             engine = new AuroraEngine(options);
             engine.RegisterType<HostObject>();
-            await engine.BuildAsync(engine.SearchAllFileSource(Encoding.UTF8));
+            await engine.BuildAsync();
             domain = engine.CreateDomain(global => global.SetPropertyValue("host", new HostObject()));
             iterationsDatum = ScriptDatum.FromNumber(Iterations);
         }

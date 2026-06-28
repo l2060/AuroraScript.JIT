@@ -1,9 +1,11 @@
-namespace AuroraScript.Core
+using AuroraScript.Core;
+
+namespace AuroraScript.Source
 {
     /// <summary>
     /// Represents a script source backed by an in-memory string.
     /// </summary>
-    public sealed class MemoryScriptSource : ScriptSource
+    public sealed class MemorySource : ScriptSource
     {
         /// <summary>
         /// Initializes a new in-memory script source.
@@ -11,7 +13,7 @@ namespace AuroraScript.Core
         /// <param name="baseDirectory">The source root used to compute relative module paths.</param>
         /// <param name="fullPath">The absolute file path or virtual source identifier.</param>
         /// <param name="text">The script text.</param>
-        public MemoryScriptSource(string baseDirectory, string fullPath, string text)
+        public MemorySource(string baseDirectory, string fullPath, string text)
         {
             BaseDirectory = ScriptPath.NormalizeBaseDirectory(baseDirectory);
             FullPath = ScriptPath.GetFullPath(BaseDirectory, fullPath);

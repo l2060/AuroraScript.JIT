@@ -26,9 +26,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\..\.language\**\*.*">
+    <None Include="..\..\documents\**\*.*">
 		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		<Link>.language\%(RecursiveDir)%(Filename)%(Extension)</Link>
+		<Link>documents\%(RecursiveDir)%(Filename)%(Extension)</Link>
     </None>
   </ItemGroup>
 	

@@ -82,7 +82,7 @@ public sealed class RuntimeApiAndErrorTests
     {
         using var workspace = new TestWorkspace();
         var engine = workspace.CreateEngine();
-        await engine.BuildAsync(engine.MemorySource(
+        await engine.BuildAsync(workspace.MemorySource(
             "main.as",
             "@module(TEST); export func read() { return $state.Value; }"));
 
@@ -103,7 +103,7 @@ public sealed class RuntimeApiAndErrorTests
     {
         using var workspace = new TestWorkspace();
         var engine = workspace.CreateEngine();
-        await engine.BuildAsync(engine.MemorySource(
+        await engine.BuildAsync(workspace.MemorySource(
             "main.as",
             """
             @module(TEST);
@@ -128,7 +128,7 @@ public sealed class RuntimeApiAndErrorTests
     {
         using var workspace = new TestWorkspace();
         var engine = workspace.CreateEngine();
-        await engine.BuildAsync(engine.MemorySource(
+        await engine.BuildAsync(workspace.MemorySource(
             "main.as",
             """
             @module(TEST);

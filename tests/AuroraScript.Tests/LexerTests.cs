@@ -1,6 +1,6 @@
 using AuroraScript.Compiler;
 using AuroraScript.Compiler.Analyzer;
-using AuroraScript.Core;
+using AuroraScript.Source;
 using AuroraScript.Tokens;
 using System;
 using System.Collections.Generic;
@@ -211,7 +211,7 @@ public sealed class LexerTests
         var path = Path.Combine(root, "diagnostic-lexer.as");
 
         var error = Assert.Throws<AuroraCompilationException>(
-            () => new AuroraLexer(root, new MemoryScriptSource(root, path, "\n\n  §")));
+            () => new AuroraLexer(root, new MemorySource(root, path, "\n\n  §")));
 
         Assert.Contains("diagnostic-lexer.as", error.FileName, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(3, error.LineNumber);
@@ -248,7 +248,7 @@ public sealed class LexerTests
     private static AuroraLexer CreateLexer(string source)
     {
         var root = Path.GetTempPath();
-        return new AuroraLexer(root, new MemoryScriptSource(root, Path.Combine(root, "lexer-test.as"), source));
+        return new AuroraLexer(root, new MemorySource(root, Path.Combine(root, "lexer-test.as"), source));
     }
 
     private static List<string> ReadValues(AuroraLexer lexer)

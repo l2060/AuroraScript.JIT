@@ -163,7 +163,7 @@ public sealed class BuiltInLibraryTests
     {
         using var workspace = new TestWorkspace();
         var engine = new AuroraEngine(EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(workspace.Root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(workspace.Root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithOptimization(optimization => optimization.Level = OptimizeOptions.Release)
             .WithRuntime(runtime => runtime.HotReload = false)
@@ -180,7 +180,7 @@ public sealed class BuiltInLibraryTests
                 return map.get("k1");
             }
             """);
-        await engine.BuildAsync(engine.FileSource(sourcePath, Encoding.UTF8));
+        await engine.BuildAsync(sourcePath);
         var domain = engine.CreateDomain();
 
         Assert.Equal(42d, TestWorkspace.Execute(domain, "run"));
@@ -249,7 +249,7 @@ public sealed class BuiltInLibraryTests
         using var workspace = new TestWorkspace();
         using var output = new System.IO.StringWriter();
         var engine = workspace.CreateEngine(output: output);
-        await engine.BuildAsync(engine.MemorySource(
+        await engine.BuildAsync(workspace.MemorySource(
             "main.as",
             "@module(TEST); export func run() { console.log('value', 42); console.error('failure'); }"));
 

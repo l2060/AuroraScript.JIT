@@ -5,6 +5,7 @@ using AuroraScript.Compiler.Backend;
 using AuroraScript.Compiler.Backend.Builders;
 using AuroraScript.Compiler.Backend.Emission;
 using AuroraScript.Core;
+using AuroraScript.Source;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Mathematics;
@@ -141,7 +142,7 @@ namespace AuroraBenchmark
         {
             var options = CreateOptions();
             var engine = new AuroraEngine(options);
-            await engine.BuildAsync(new MemoryScriptSource(baseDirectory, Path.Combine(baseDirectory, "single.as"), largeSource));
+            await engine.BuildAsync(new MemorySource(baseDirectory, Path.Combine(baseDirectory, "single.as"), largeSource));
         }
 
         [BenchmarkCategory("compile")]
@@ -150,7 +151,7 @@ namespace AuroraBenchmark
         {
             var options = CreateOptions();
             var engine = new AuroraEngine(options);
-            await engine.BuildAsync(engine.FileSource(multiModuleMainPath, Encoding.UTF8));
+            await engine.BuildAsync("main.as");
         }
 
         [BenchmarkCategory("compile")]
@@ -169,7 +170,7 @@ namespace AuroraBenchmark
         private AuroraLexer CreateLexer(string fileName, string source)
         {
             var fullPath = Path.Combine(baseDirectory, fileName);
-            return new AuroraLexer(baseDirectory, new MemoryScriptSource(baseDirectory, fullPath, source));
+            return new AuroraLexer(baseDirectory, new MemorySource(baseDirectory, fullPath, source));
         }
 
         private int Lex(string fileName, string source)
@@ -188,7 +189,7 @@ namespace AuroraBenchmark
         private EngineOptions CreateOptions()
         {
             return EngineOptions.Default
-                .WithCompiler(compiler => compiler.WithDirectory(baseDirectory))
+                .WithCompiler(compiler => compiler.SourceResolver = ScriptSources.FileSystem(baseDirectory, Encoding.UTF8))
                 .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
                 .WithOptimization(optimization => optimization.Level = OptimizeOptions.Release)
                 .WithRuntime(runtime => runtime.ConsoleStdOut = TextWriter.Null)

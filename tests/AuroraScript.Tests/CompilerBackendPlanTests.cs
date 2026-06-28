@@ -3,14 +3,14 @@ using AuroraScript.Compiler.Analyzer;
 using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Backend;
 using AuroraScript.Compiler.Backend.Binding;
+using AuroraScript.Compiler.Backend.Builders;
 using AuroraScript.Compiler.Backend.Emission;
 using AuroraScript.Compiler.Backend.Lowering;
 using AuroraScript.Compiler.Backend.Plans;
 using AuroraScript.Compiler.Backend.Traversal;
-using AuroraScript.Compiler.Backend.Builders;
-using AuroraScript.Core;
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Types;
+using AuroraScript.Source;
 using AuroraScript.Tokens;
 using System;
 using System.Collections.Generic;
@@ -30,7 +30,7 @@ public sealed class CompilerBackendPlanTests
     {
         var root = Path.GetTempPath();
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -94,7 +94,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         main.Imports.Single(import => import.Include).Module = included;
-        var options = EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(root)).WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var options = EngineOptions.Default.WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root)).WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
 
         var session = backend.CreateModulePlans([main]);
@@ -122,7 +122,7 @@ public sealed class CompilerBackendPlanTests
             func value() { return 3; }
             """,
             root);
-        var options = EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(root)).WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var options = EngineOptions.Default.WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root)).WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
 
         var error = Assert.Throws<AuroraCompilationException>(() => backend.CreateModulePlans([module]));
@@ -142,7 +142,7 @@ public sealed class CompilerBackendPlanTests
             export func testTextTemplate(n) { return n; }
             """,
             root);
-        var options = EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(root)).WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var options = EngineOptions.Default.WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root)).WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
 
         var error = Assert.Throws<AuroraCompilationException>(() => backend.CreateModulePlans([module]));
@@ -164,7 +164,7 @@ public sealed class CompilerBackendPlanTests
             }
             """,
             root);
-        var options = EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(root)).WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var options = EngineOptions.Default.WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root)).WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
 
         var error = Assert.Throws<AuroraCompilationException>(() => backend.CreateModulePlans([module]));
@@ -179,7 +179,7 @@ public sealed class CompilerBackendPlanTests
     [InlineData("const a = 123; a++;")]
     public void CompileBlockRejectsConstAssignment(string body)
     {
-        var options = EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(Path.GetTempPath()));
+        var options = EngineOptions.Default.WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(Path.GetTempPath()));
         var engine = new AuroraEngine(options);
 
         var error = Assert.Throws<AuroraCompilationException>(() => engine.CompileBlock(body));
@@ -190,7 +190,7 @@ public sealed class CompilerBackendPlanTests
     [Fact]
     public void CompileBlockRejectsDuplicateDeclarationInSameBlock()
     {
-        var options = EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(Path.GetTempPath()));
+        var options = EngineOptions.Default.WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(Path.GetTempPath()));
         var engine = new AuroraEngine(options);
 
         var error = Assert.Throws<AuroraCompilationException>(() => engine.CompileBlock(
@@ -205,7 +205,7 @@ public sealed class CompilerBackendPlanTests
     [Fact]
     public void CompileBlockRejectsDeclarationShadowingVisibleOuterConst()
     {
-        var options = EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(Path.GetTempPath()));
+        var options = EngineOptions.Default.WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(Path.GetTempPath()));
         var engine = new AuroraEngine(options);
 
         var error = Assert.Throws<AuroraCompilationException>(() => engine.CompileBlock(
@@ -222,7 +222,7 @@ public sealed class CompilerBackendPlanTests
     [Fact]
     public void CompileBlockAllowsSameDeclarationNameInSiblingBlocks()
     {
-        var options = EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(Path.GetTempPath()));
+        var options = EngineOptions.Default.WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(Path.GetTempPath()));
         var engine = new AuroraEngine(options);
 
         var block = engine.CompileBlock(
@@ -241,7 +241,7 @@ public sealed class CompilerBackendPlanTests
     [Fact]
     public void CompileBlockAllowsDeclarationShadowingVisibleOuterVar()
     {
-        var options = EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(Path.GetTempPath()));
+        var options = EngineOptions.Default.WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(Path.GetTempPath()));
         var engine = new AuroraEngine(options);
 
         var block = engine.CompileBlock(
@@ -259,7 +259,7 @@ public sealed class CompilerBackendPlanTests
     [Fact]
     public void CompileBlockRejectsAssignmentToBlockScopedConst()
     {
-        var options = EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(Path.GetTempPath()));
+        var options = EngineOptions.Default.WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(Path.GetTempPath()));
         var engine = new AuroraEngine(options);
 
         var error = Assert.Throws<AuroraCompilationException>(() => engine.CompileBlock(
@@ -289,7 +289,7 @@ public sealed class CompilerBackendPlanTests
             }
             """,
             root);
-        var options = EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(root)).WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var options = EngineOptions.Default.WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root)).WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
 
         var error = Assert.Throws<AuroraCompilationException>(() => backend.CreateModulePlans([module]));
@@ -316,7 +316,7 @@ public sealed class CompilerBackendPlanTests
             }
             """,
             root);
-        var options = EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(root)).WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var options = EngineOptions.Default.WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root)).WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
 
         var error = Assert.Throws<AuroraCompilationException>(() => backend.CreateModulePlans([module]));
@@ -342,7 +342,7 @@ public sealed class CompilerBackendPlanTests
             }
             """,
             root);
-        var options = EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(root)).WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var options = EngineOptions.Default.WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root)).WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
 
         var session = backend.CreateModulePlans([module]);
@@ -362,7 +362,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = false);
@@ -389,7 +389,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = false);
@@ -437,7 +437,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -464,7 +464,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -496,7 +496,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = true)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = false);
@@ -526,7 +526,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
 
@@ -554,7 +554,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -584,7 +584,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
@@ -618,7 +618,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
@@ -644,7 +644,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
@@ -677,7 +677,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
@@ -717,7 +717,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
@@ -759,7 +759,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
@@ -787,7 +787,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
@@ -820,7 +820,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
@@ -866,7 +866,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
@@ -894,7 +894,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = true)
             .WithOptimization(optimization => optimization.ModuleConstInlining = true);
@@ -932,7 +932,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithOptimization(optimization => optimization.ModuleConstInlining = true);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
@@ -971,7 +971,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithOptimization(optimization => optimization.ModuleConstInlining = true);
         var builder = new RecordingBuilder(options);
@@ -1000,7 +1000,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithOptimization(optimization => optimization.ModuleConstInlining = true);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
@@ -1029,7 +1029,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithOptimization(optimization => optimization.ModuleConstInlining = true);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
@@ -1063,7 +1063,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithOptimization(optimization => optimization.ModuleConstInlining = true);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
@@ -1090,7 +1090,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithOptimization(optimization => optimization.ModuleConstInlining = true);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
@@ -1125,7 +1125,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -1156,7 +1156,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
@@ -1197,7 +1197,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
@@ -1251,7 +1251,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
@@ -1298,7 +1298,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
@@ -1340,7 +1340,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
@@ -1369,7 +1369,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
@@ -1415,7 +1415,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -1454,7 +1454,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false);
         var builder = new DynamicBuilder(options);
@@ -1480,7 +1480,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false);
         var builder = new DynamicBuilder(options);
@@ -1510,7 +1510,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false);
         var builder = new DynamicBuilder(options);
@@ -1541,7 +1541,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false);
         var builder = new DynamicBuilder(options);
@@ -1571,7 +1571,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false);
         var builder = new DynamicBuilder(options);
@@ -1606,7 +1606,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false);
         var builder = new DynamicBuilder(options);
@@ -1638,7 +1638,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false);
         var builder = new DynamicBuilder(options);
@@ -1670,7 +1670,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false);
         var builder = new DynamicBuilder(options);
@@ -1702,7 +1702,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -1738,7 +1738,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -1774,7 +1774,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false);
         var builder = new DynamicBuilder(options);
@@ -1808,7 +1808,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false);
         var builder = new DynamicBuilder(options);
@@ -1847,7 +1847,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false);
         var builder = new DynamicBuilder(options);
@@ -1888,7 +1888,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false);
         var builder = new DynamicBuilder(options);
@@ -1927,7 +1927,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false);
         var builder = new DynamicBuilder(options);
@@ -1959,7 +1959,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -2006,7 +2006,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -2052,7 +2052,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -2095,7 +2095,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -2129,7 +2129,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -2170,7 +2170,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -2203,7 +2203,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -2234,7 +2234,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -2276,7 +2276,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -2325,7 +2325,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -2371,7 +2371,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -2418,7 +2418,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -2450,7 +2450,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -2481,7 +2481,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -2515,7 +2515,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -2549,7 +2549,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -2581,7 +2581,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -2615,7 +2615,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -2647,7 +2647,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -2677,7 +2677,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -2708,7 +2708,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -2740,7 +2740,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -2771,7 +2771,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -2804,7 +2804,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -2837,7 +2837,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -2876,7 +2876,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -2912,7 +2912,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -2949,7 +2949,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -2980,7 +2980,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -3010,7 +3010,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false);
         var builder = new DynamicBuilder(options);
@@ -3039,7 +3039,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = true);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
@@ -3069,7 +3069,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = false);
@@ -3121,7 +3121,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -3147,7 +3147,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -3173,7 +3173,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -3198,7 +3198,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -3226,7 +3226,7 @@ public sealed class CompilerBackendPlanTests
             """,
             root);
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.WithDirectory(root))
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
@@ -3260,15 +3260,15 @@ public sealed class CompilerBackendPlanTests
 
     private static ModuleDeclaration Parse(string source, string root)
     {
-        using var lexer = new AuroraLexer(root, new MemoryScriptSource(root, Path.Combine(root, "backend-plan-test.as"), source));
-        var parser = new AuroraParser(lexer, EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(root)));
+        using var lexer = new AuroraLexer(root, new MemorySource(root, Path.Combine(root, "backend-plan-test.as"), source));
+        var parser = new AuroraParser(lexer, EngineOptions.Default.WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root)));
         return parser.Parse();
     }
 
     private static AuroraScript.Compiler.Ast.Statements.BlockStatement ParseBlock(string source, string root)
     {
-        using var lexer = new AuroraLexer(root, new MemoryScriptSource(root, Path.Combine(root, "backend-block-test.as"), source));
-        var parser = new AuroraParser(lexer, EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(root)));
+        using var lexer = new AuroraLexer(root, new MemorySource(root, Path.Combine(root, "backend-block-test.as"), source));
+        var parser = new AuroraParser(lexer, EngineOptions.Default.WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root)));
         return parser.ParseBlockBody();
     }
 

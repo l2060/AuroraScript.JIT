@@ -44,6 +44,16 @@ public sealed class CompileBlockTests
     }
 
     [Fact]
+    public void CanCompileBlockWithParameterArrayOverload()
+    {
+        using var workspace = new TestWorkspace();
+        var engine = workspace.CreateEngine();
+        var block = engine.CompileBlock("return left + right;", ["left", "right"]);
+
+        ScriptAssert.Equal(42, block.Invoke(ScriptDatum.FromNumber(20), ScriptDatum.FromNumber(22)));
+    }
+
+    [Fact]
     public void DisposeUnregistersCompileBlockDynamicDelegates()
     {
         using var workspace = new TestWorkspace();
@@ -113,6 +123,15 @@ public sealed class CompileBlockTests
         var engine = workspace.CreateEngine();
 
         Assert.Throws<ArgumentNullException>(() => engine.CompileBlock(null!));
+    }
+
+    [Fact]
+    public void RejectsNullParameterArray()
+    {
+        using var workspace = new TestWorkspace();
+        var engine = workspace.CreateEngine();
+
+        Assert.Throws<ArgumentNullException>(() => engine.CompileBlock("return 1;", (string[])null!));
     }
 
     [Theory]

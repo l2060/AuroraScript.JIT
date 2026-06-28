@@ -1,5 +1,6 @@
 using AuroraScript.Common;
 using AuroraScript.Core;
+using AuroraScript.Source;
 using AuroraScript.Tokens;
 using System;
 using System.Buffers;

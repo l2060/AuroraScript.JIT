@@ -1,5 +1,5 @@
 ﻿using AuroraScript.Runtime.Serialization;
-using AuroraScript.Core;
+using AuroraScript.Source;
 using System;
 using System.IO;
 
@@ -70,8 +70,6 @@ namespace AuroraScript
     /// </summary>
     public record EngineOptions
     {
-        private const string LegacyApiMessage = "Use the grouped EngineOptions API: WithRuntime, WithCompiler, WithOptimization, or WithOutput.";
-
         private RuntimeOptions _runtime = RuntimeOptions.Default;
         private CompilerOptions _compiler = CompilerOptions.Default;
         private OptimizationOptions _optimization = OptimizationOptions.Default;
@@ -118,155 +116,6 @@ namespace AuroraScript
             init => _output = value ?? throw new ArgumentNullException(nameof(value));
         }
 
-        /// <summary>
-        /// Gets the base directory path used for resolving relative script files.
-        /// </summary>
-        [Obsolete(LegacyApiMessage)]
-        public string BaseDirectory
-        {
-            get => Compiler.BaseDirectory;
-            init => _compiler = ConfigureCompiler(Compiler, compiler => compiler.Directory = value);
-        }
-
-        /// <summary>
-        /// Gets the compilation mode, determining how the engine processes script sources.
-        /// </summary>
-        [Obsolete(LegacyApiMessage)]
-        public CompilationMode CompilationMode
-        {
-            get => Compiler.Mode;
-            init => _compiler = Compiler with { Mode = value };
-        }
-
-        /// <summary>
-        /// Gets the optimization level used during code generation.
-        /// </summary>
-        [Obsolete(LegacyApiMessage)]
-        public OptimizeOptions OptimizeOption
-        {
-            get => Optimization.Level;
-            init => _optimization = Optimization with { Level = value };
-        }
-
-        /// <summary>
-        /// Gets a value indicating whether runtime hot reload and dynamic patching are enabled.
-        /// </summary>
-        [Obsolete(LegacyApiMessage)]
-        public bool EnableHotReload
-        {
-            get => Runtime.EnableHotReload;
-            init => _runtime = Runtime with { EnableHotReload = value };
-        }
-
-        /// <summary>
-        /// Gets a value indicating whether same-module direct-call inference is enabled.
-        /// </summary>
-        [Obsolete(LegacyApiMessage)]
-        public bool EnableAutoModuleDirectCall
-        {
-            get => Optimization.EnableAutoModuleDirectCall;
-            init => _optimization = Optimization with { EnableAutoModuleDirectCall = value };
-        }
-
-        /// <summary>
-        /// Gets a value indicating whether eligible module-level const reads may be inlined.
-        /// </summary>
-        [Obsolete(LegacyApiMessage)]
-        public bool EnableModuleConstInlining
-        {
-            get => Optimization.EnableModuleConstInlining;
-            init => _optimization = Optimization with { EnableModuleConstInlining = value };
-        }
-
-        /// <summary>
-        /// Gets a value indicating whether obfuscation (confusion) is enabled.
-        /// </summary>
-        [Obsolete(LegacyApiMessage)]
-        public bool EnableConfused
-        {
-            get => Output.EnableConfused;
-            init => _output = Output with { EnableConfused = value };
-        }
-
-        /// <summary>
-        /// Gets the JSON serializer used for script data serialization.
-        /// </summary>
-        [Obsolete(LegacyApiMessage)]
-        public ScriptJsonSerializer JsonSerializer
-        {
-            get => Runtime.JsonSerializer;
-            init => _runtime = ConfigureRuntime(Runtime, runtime => runtime.JsonSerializer = value);
-        }
-
-        /// <summary>
-        /// Gets the standard date and time format string used within the engine.
-        /// </summary>
-        [Obsolete(LegacyApiMessage)]
-        public string DateTimeFormat
-        {
-            get => Runtime.DateTimeFormat;
-            init => _runtime = ConfigureRuntime(Runtime, runtime => runtime.DateTimeFormat = value);
-        }
-
-        /// <summary>
-        /// Gets the writer used for standard console output.
-        /// </summary>
-        [Obsolete(LegacyApiMessage)]
-        public TextWriter ConsoleStdOut
-        {
-            get => Runtime.ConsoleStdOut;
-            init => _runtime = ConfigureRuntime(Runtime, runtime => runtime.ConsoleStdOut = value);
-        }
-
-        /// <summary>
-        /// Gets the writer used for error console output.
-        /// </summary>
-        [Obsolete(LegacyApiMessage)]
-        public TextWriter ConsoleErrorOut
-        {
-            get => Runtime.ConsoleErrorOut;
-            init => _runtime = ConfigureRuntime(Runtime, runtime => runtime.ConsoleErrorOut = value);
-        }
-
-        /// <summary>
-        /// Gets the target path for the generated script assembly when using Persistence mode.
-        /// </summary>
-        [Obsolete(LegacyApiMessage)]
-        public string AssemblyOut
-        {
-            get => Output.AssemblyFile;
-            init => _output = ConfigureOutput(Output, output => output.AssemblyFile = value);
-        }
-
-        /// <summary>
-        /// Gets or sets the script file extension. Defaults to ".as".
-        /// </summary>
-        [Obsolete(LegacyApiMessage)]
-        public string ExtName
-        {
-            get => Compiler.ExtName;
-            set => _compiler = ConfigureCompiler(Compiler, compiler => compiler.ExtName = value);
-        }
-
-        /// <summary>
-        /// Gets the strategy for allocating script string wrapper objects.
-        /// </summary>
-        [Obsolete(LegacyApiMessage)]
-        public StringPoolingStrategy StringPooling
-        {
-            get => Runtime.StringPooling;
-            init => _runtime = Runtime with { StringPooling = value };
-        }
-
-        /// <summary>
-        /// Gets the maximum number of modules that may be parsed concurrently.
-        /// </summary>
-        [Obsolete(LegacyApiMessage)]
-        public int MaxDegreeOfParallelism
-        {
-            get => Compiler.MaxDegreeOfParallelism;
-            init => _compiler = ConfigureCompiler(Compiler, compiler => compiler.MaxDegreeOfParallelism = value);
-        }
 
         /// <summary>
         /// Configures runtime behavior and returns a new immutable options instance.
@@ -302,140 +151,6 @@ namespace AuroraScript
             return this with { Output = ConfigureOutput(Output, configure) };
         }
 
-        /// <summary>
-        /// Configures the base directory and returns a new options instance.
-        /// </summary>
-        [Obsolete(LegacyApiMessage)]
-        public EngineOptions WithBaseDirectory(string value)
-        {
-            return WithCompiler(compiler => compiler.Directory = value);
-        }
-
-        /// <summary>
-        /// Configures the compilation mode and returns a new options instance.
-        /// </summary>
-        [Obsolete(LegacyApiMessage)]
-        public EngineOptions WithCompilationMode(CompilationMode value)
-        {
-            return WithCompiler(compiler => compiler.Mode = value);
-        }
-
-        /// <summary>
-        /// Configures the optimization level and returns a new options instance.
-        /// </summary>
-        [Obsolete(LegacyApiMessage)]
-        public EngineOptions WithOptimizeOption(OptimizeOptions value)
-        {
-            return WithOptimization(optimization => optimization.Level = value);
-        }
-
-        /// <summary>
-        /// Sets whether runtime hot reload and dynamic patching are enabled and returns a new options instance.
-        /// </summary>
-        [Obsolete(LegacyApiMessage)]
-        public EngineOptions WithEnableHotReload(bool value)
-        {
-            return WithRuntime(runtime => runtime.HotReload = value);
-        }
-
-        /// <summary>
-        /// Sets whether same-module direct-call inference is enabled and returns a new options instance.
-        /// </summary>
-        [Obsolete(LegacyApiMessage)]
-        public EngineOptions WithEnableAutoModuleDirectCall(bool value)
-        {
-            return WithOptimization(optimization => optimization.AutoModuleDirectCall = value);
-        }
-
-        /// <summary>
-        /// Sets whether eligible module-level const reads may be inlined and returns a new options instance.
-        /// </summary>
-        [Obsolete(LegacyApiMessage)]
-        public EngineOptions WithEnableModuleConstInlining(bool value)
-        {
-            return WithOptimization(optimization => optimization.ModuleConstInlining = value);
-        }
-
-        /// <summary>
-        /// Configures the JSON serializer and returns a new options instance.
-        /// </summary>
-        [Obsolete(LegacyApiMessage)]
-        public EngineOptions WithJsonSerializer(ScriptJsonSerializer value)
-        {
-            return WithRuntime(runtime => runtime.JsonSerializer = value);
-        }
-
-        /// <summary>
-        /// Configures the date time format and returns a new options instance.
-        /// </summary>
-        [Obsolete(LegacyApiMessage)]
-        public EngineOptions WithDateTimeFormat(string value)
-        {
-            return WithRuntime(runtime => runtime.DateTimeFormat = value);
-        }
-
-        /// <summary>
-        /// Configures the standard output writer and returns a new options instance.
-        /// </summary>
-        [Obsolete(LegacyApiMessage)]
-        public EngineOptions WithConsoleStdOut(TextWriter value)
-        {
-            return WithRuntime(runtime => runtime.ConsoleStdOut = value);
-        }
-
-        /// <summary>
-        /// Configures the error output writer and returns a new options instance.
-        /// </summary>
-        [Obsolete(LegacyApiMessage)]
-        public EngineOptions WithConsoleErrorOut(TextWriter value)
-        {
-            return WithRuntime(runtime => runtime.ConsoleErrorOut = value);
-        }
-
-        /// <summary>
-        /// Configures the assembly output path and returns a new options instance.
-        /// </summary>
-        [Obsolete(LegacyApiMessage)]
-        public EngineOptions WithAssemblyOut(string value)
-        {
-            return WithOutput(output => output.AssemblyFile = value);
-        }
-
-        /// <summary>
-        /// Sets whether obfuscation/confusion is enabled and returns a new options instance.
-        /// </summary>
-        [Obsolete(LegacyApiMessage)]
-        public EngineOptions WithEnableConfused(bool value)
-        {
-            return WithOutput(output => output.Confused = value);
-        }
-
-        /// <summary>
-        /// Configures the script file extension and returns a new options instance.
-        /// </summary>
-        [Obsolete(LegacyApiMessage)]
-        public EngineOptions WithExtName(string value)
-        {
-            return WithCompiler(compiler => compiler.ExtName = value);
-        }
-
-        /// <summary>
-        /// Configures the string pooling strategy and returns a new options instance.
-        /// </summary>
-        [Obsolete(LegacyApiMessage)]
-        public EngineOptions WithStringPooling(StringPoolingStrategy value)
-        {
-            return WithRuntime(runtime => runtime.StringPooling = value);
-        }
-
-        /// <summary>
-        /// Configures the maximum number of concurrently parsed modules.
-        /// </summary>
-        [Obsolete(LegacyApiMessage)]
-        public EngineOptions WithMaxDegreeOfParallelism(int value)
-        {
-            return WithCompiler(compiler => compiler.MaxDegreeOfParallelism = value);
-        }
 
         private static RuntimeOptions ConfigureRuntime(RuntimeOptions options, Action<RuntimeOptionsBuilder> configure)
         {
@@ -665,11 +380,6 @@ namespace AuroraScript
         public static readonly CompilerOptions Default = new();
 
         /// <summary>
-        /// Gets the base directory path used for resolving relative script file or resource locations.
-        /// </summary>
-        public string BaseDirectory { get; init; } = string.Empty;
-
-        /// <summary>
         /// Gets the compilation mode, determining how the engine processes script sources.
         /// </summary>
         public CompilationMode Mode { get; init; } = CompilationMode.OnlyRun;
@@ -697,7 +407,6 @@ namespace AuroraScript
     /// </summary>
     public sealed class CompilerOptionsBuilder
     {
-        private string _baseDirectory;
         private string _extName;
         private int _maxDegreeOfParallelism;
         private IScriptSourceResolver _sourceResolver;
@@ -709,20 +418,10 @@ namespace AuroraScript
         {
             if (options == null) throw new ArgumentNullException(nameof(options));
 
-            _baseDirectory = options.BaseDirectory;
             Mode = options.Mode;
             _extName = options.ExtName;
             _maxDegreeOfParallelism = options.MaxDegreeOfParallelism;
             _sourceResolver = options.SourceResolver ?? FileScriptSourceResolver.Instance;
-        }
-
-        /// <summary>
-        /// Gets or sets the base directory path used for resolving relative script files.
-        /// </summary>
-        public string Directory
-        {
-            get => _baseDirectory;
-            set => _baseDirectory = ScriptPath.NormalizeBaseDirectory(value);
         }
 
         /// <summary>
@@ -774,15 +473,6 @@ namespace AuroraScript
         }
 
         /// <summary>
-        /// Sets the base directory path used for resolving relative script files.
-        /// </summary>
-        public CompilerOptionsBuilder WithDirectory(string value)
-        {
-            Directory = value;
-            return this;
-        }
-
-        /// <summary>
         /// Sets the compilation mode.
         /// </summary>
         public CompilerOptionsBuilder WithMode(CompilationMode value)
@@ -822,7 +512,6 @@ namespace AuroraScript
         {
             return new CompilerOptions
             {
-                BaseDirectory = Directory,
                 Mode = Mode,
                 ExtName = ExtName,
                 MaxDegreeOfParallelism = MaxDegreeOfParallelism,

@@ -1,7 +1,8 @@
-﻿using System.IO;
+﻿using AuroraScript.Core;
+using System.IO;
 using System.Text;
 
-namespace AuroraScript.Core
+namespace AuroraScript.Source
 {
     /// <summary>
     /// Represents a script source loaded from the filesystem.

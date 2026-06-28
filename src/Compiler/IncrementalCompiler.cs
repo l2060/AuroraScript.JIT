@@ -5,10 +5,13 @@ using AuroraScript.Compiler.Backend.Builders;
 using AuroraScript.Compiler.Backend.Emission;
 using AuroraScript.Core;
 using AuroraScript.Runtime;
+using AuroraScript.Source;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace AuroraScript.Compiler
 {
@@ -27,11 +30,14 @@ namespace AuroraScript.Compiler
         // forceImport = true  时强制编译替换依赖模块
         // 修补已存在的module时需要保持源module的引用。
         // 根据domain 分析哪些模块已经加载，哪些未加载， 哪些需要强制加载
-        public DynamicCallMethod BuildPatch(ScriptSource source, HotPatchType patchType)
+        public async Task<DynamicCallMethod> BuildPatchAsync(
+            ScriptSource source,
+            HotPatchType patchType,
+            CancellationToken cancellationToken = default)
         {
             var sourcePath = source.SourcePath;
             var moduleMap = Domain.Global.modulePathHash.Values.ToDictionary(k => k.ModulePath, v => v.ModuleName);
-            var moduleSyntaxTrees = BuildSyntaxTree(source);
+            var moduleSyntaxTrees = await BuildSyntaxTreeAsync(source, cancellationToken).ConfigureAwait(false);
             if ((patchType & HotPatchType.IgnoreDepends) != 0)
             {
                 moduleSyntaxTrees.RemoveAll(e => e.ModulePath != sourcePath && moduleMap.ContainsKey(e.ModulePath));
@@ -75,7 +81,9 @@ namespace AuroraScript.Compiler
             }
         }
 
-        public List<ModuleDeclaration> BuildSyntaxTree(ScriptSource source)
+        public async Task<List<ModuleDeclaration>> BuildSyntaxTreeAsync(
+            ScriptSource source,
+            CancellationToken cancellationToken = default)
         {
             Queue<ScriptSource> padding = new Queue<ScriptSource>();
             HashSet<String> visited = new HashSet<string>();
@@ -83,24 +91,64 @@ namespace AuroraScript.Compiler
             List<ModuleDeclaration> modules = new List<ModuleDeclaration>();
             while (padding.Count > 0)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 source = padding.Dequeue();
                 var lexer = new AuroraLexer(source.BaseDirectory, source);
                 var parser = new AuroraParser(lexer, Options);
                 var syntaxTree = parser.Parse();
+                await ResolveImportsAsync(source, syntaxTree, cancellationToken).ConfigureAwait(false);
                 foreach (var dep in syntaxTree.Imports)
                 {
                     if (!visited.Contains(dep.FullPath))
                     {
-                        source = Options.Compiler.SourceResolver.Open(
-                            new ScriptSourceReference(source.BaseDirectory, dep.FullPath, dep.ModulePath),
-                            Encoding.UTF8);
-                        padding.Enqueue(source);
+                        var dependencySource = await Options.Compiler.SourceResolver
+                            .GetSourceAsync(dep.Reference, cancellationToken)
+                            .ConfigureAwait(false);
+                        padding.Enqueue(dependencySource);
                         visited.Add(dep.FullPath);
                     }
                 }
                 modules.Add(syntaxTree);
             }
             return modules;
+        }
+
+        private async Task ResolveImportsAsync(
+            ScriptSource source,
+            ModuleDeclaration syntaxTree,
+            CancellationToken cancellationToken)
+        {
+            if (syntaxTree.Imports.Count == 0)
+            {
+                return;
+            }
+
+            var importer = new ScriptSourceReference(source.BaseDirectory, source.FullPath, source.SourcePath);
+            var context = new ScriptResolveContext(Options.Compiler.ExtName, Encoding.UTF8);
+            for (var i = 0; i < syntaxTree.Imports.Count; i++)
+            {
+                var import = syntaxTree.Imports[i];
+                var requestedPath = import.File?.Value;
+                if (string.IsNullOrWhiteSpace(requestedPath))
+                {
+                    continue;
+                }
+
+                var resolved = await Options.Compiler.SourceResolver
+                    .ResolveAsync(importer, requestedPath, context, cancellationToken)
+                    .ConfigureAwait(false);
+                if (resolved == null)
+                {
+                    var message = import.Include
+                        ? $"include file not found: {requestedPath}"
+                        : $"Import file not found: {requestedPath}";
+                    throw new AuroraCompilationException(AuroraCompilationStage.Binding, import.File.Range, message);
+                }
+
+                import.FullPath = resolved.Value.FullPath;
+                import.ModulePath = resolved.Value.ModulePath;
+                import.Reference = resolved.Value;
+            }
         }
     }
 }

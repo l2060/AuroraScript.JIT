@@ -3,10 +3,13 @@ using AuroraScript.LanguageServices;
 using AuroraScript.LanguageServices.Builtins;
 using AuroraScript.LanguageServices.Text;
 using AuroraScript.LanguageServices.Workspace;
+using AuroraScript.Source;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading;
 using Xunit;
 
 namespace AuroraScript.LanguageServices.Tests;
@@ -900,32 +903,50 @@ public sealed class DefinitionFeatureTests : IDisposable
             _sources = sources;
         }
 
-        public bool TryResolve(
-            string baseDirectory,
-            string currentSourcePath,
+        public string Root => _baseDirectory;
+
+        public ValueTask<ScriptSourceReference?> ResolveAsync(
+            ScriptSourceReference? importer,
             string requestedPath,
-            string extension,
-            out ScriptSourceReference source)
+            ScriptResolveContext context,
+            CancellationToken cancellationToken = default)
         {
-            var fullPath = WithExtension(Resolve(currentSourcePath, requestedPath), extension);
+            cancellationToken.ThrowIfCancellationRequested();
+            var currentSourcePath = importer?.FullPath ?? _baseDirectory;
+            var fullPath = WithExtension(importer == null
+                ? ResolveFromRoot(_baseDirectory, requestedPath)
+                : Resolve(currentSourcePath, requestedPath), context.Extension);
             if (!_sources.ContainsKey(fullPath))
             {
-                source = default;
-                return false;
+                return new ValueTask<ScriptSourceReference?>((ScriptSourceReference?)null);
             }
 
-            source = new ScriptSourceReference(_baseDirectory, fullPath);
-            return true;
+            return new ValueTask<ScriptSourceReference?>(new ScriptSourceReference(_baseDirectory, fullPath));
         }
 
-        public ScriptSource Open(ScriptSourceReference source, Encoding encoding)
+        public ValueTask<ScriptSource> GetSourceAsync(
+            ScriptSourceReference source,
+            CancellationToken cancellationToken = default)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (!_sources.TryGetValue(source.FullPath, out var text))
             {
                 throw new FileNotFoundException("Script source not found.", source.FullPath);
             }
 
-            return new MemoryScriptSource(source.BaseDirectory, source.FullPath, text);
+            return new ValueTask<ScriptSource>(new MemorySource(source.BaseDirectory, source.FullPath, text));
+        }
+
+        public async IAsyncEnumerable<ScriptSource> GetAllSourcesAsync(
+            ScriptSourceQuery query,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            foreach (var pair in _sources)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await Task.Yield();
+                yield return new MemorySource(_baseDirectory, pair.Key, pair.Value);
+            }
         }
 
         private static string Resolve(string currentSourcePath, string requestedPath)
@@ -933,6 +954,12 @@ public sealed class DefinitionFeatureTests : IDisposable
             var slash = currentSourcePath.LastIndexOf('/');
             var currentDirectory = slash >= 0 ? currentSourcePath.Substring(0, slash + 1) : currentSourcePath + "/";
             return new Uri(new Uri(currentDirectory, UriKind.Absolute), requestedPath.Replace('\\', '/')).ToString();
+        }
+
+        private static string ResolveFromRoot(string root, string requestedPath)
+        {
+            root = root.EndsWith("/", StringComparison.Ordinal) ? root : root + "/";
+            return new Uri(new Uri(root, UriKind.Absolute), requestedPath.Replace('\\', '/')).ToString();
         }
 
         private static string WithExtension(string path, string extension)

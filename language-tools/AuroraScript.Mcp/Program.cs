@@ -1,5 +1,6 @@
 using AuroraScript;
-using System.Collections.Concurrent;
+using AuroraScript.Core;
+using AuroraScript.Source;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -261,7 +262,7 @@ internal sealed class AuroraMcpServer
         var options = EngineOptions.Default
             .WithCompiler(compiler =>
             {
-                compiler.Directory = baseDirectory;
+                compiler.SourceResolver = ScriptSources.FileSystem(baseDirectory, Encoding.UTF8);
                 compiler.Mode = CompilationMode.Dynamic;
             })
             .WithRuntime(runtime => runtime.HotReload = false)
@@ -282,7 +283,7 @@ internal sealed class AuroraMcpServer
             }
             else
             {
-                await engine.BuildAsync(engine.MemorySource(sourceName, source)).ConfigureAwait(false);
+                await engine.BuildAsync(new MemorySource(baseDirectory, sourceName, source)).ConfigureAwait(false);
             }
 
             return new JsonObject
@@ -457,10 +458,10 @@ internal sealed class AuroraMcpServer
     {
         var candidates = new[]
         {
-            Path.Combine(AppContext.BaseDirectory, ".language"),
-            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", ".language")),
-            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".language")),
-            Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), ".language"))
+            Path.Combine(AppContext.BaseDirectory, "documents"),
+            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "documents")),
+            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "documents")),
+            Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "documents"))
         };
 
         for (var i = 0; i < candidates.Length; i++)
@@ -471,7 +472,7 @@ internal sealed class AuroraMcpServer
             }
         }
 
-        throw new DirectoryNotFoundException("Could not locate .language directory.");
+        throw new DirectoryNotFoundException("Could not locate documents directory.");
     }
 
     private sealed record LanguageResource(

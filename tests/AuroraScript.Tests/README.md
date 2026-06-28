@@ -30,15 +30,15 @@ This project is the executable specification for AuroraScript compiler and runti
 Run the suite only after all test generation and implementation work is complete:
 
 ```powershell
-dotnet restore tests\AuroraScript.Tests.csproj --ignore-failed-sources
-dotnet build tests\AuroraScript.Tests.csproj -c Release --no-restore
-dotnet test tests\AuroraScript.Tests.csproj -c Release --no-build --logger "console;verbosity=normal"
+dotnet restore tests\AuroraScript.Tests\AuroraScript.Tests.csproj --ignore-failed-sources
+dotnet build tests\AuroraScript.Tests\AuroraScript.Tests.csproj -c Release --no-restore
+dotnet test tests\AuroraScript.Tests\AuroraScript.Tests.csproj -c Release --no-build --logger "console;verbosity=normal"
 ```
 
 Coverage collection:
 
 ```powershell
-dotnet test tests\AuroraScript.Tests.csproj -c Release --no-build --settings tests\coverlet.runsettings --collect:"XPlat Code Coverage"
+dotnet test tests\AuroraScript.Tests\AuroraScript.Tests.csproj -c Release --no-build --settings tests\coverlet.runsettings --collect:"XPlat Code Coverage"
 ```
 
 Release acceptance requires:

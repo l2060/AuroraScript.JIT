@@ -138,7 +138,7 @@ public sealed class BuiltinApiCatalogTests
         var directory = AppContext.BaseDirectory;
         for (var i = 0; i < 8; i++)
         {
-            var candidate = Path.GetFullPath(Path.Combine(directory, ".language", "schema", "runtime-api.json"));
+            var candidate = Path.GetFullPath(Path.Combine(directory, "documents", "schema", "runtime-api.json"));
             if (File.Exists(candidate))
             {
                 return candidate;

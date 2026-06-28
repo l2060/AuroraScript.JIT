@@ -1,8 +1,8 @@
-using AuroraScript.Compiler;
 using AuroraScript.Compiler.Analyzer;
 using AuroraScript.Core;
 using AuroraScript.LanguageServices.Builtins;
 using AuroraScript.LanguageServices.Features.SemanticTokens;
+using AuroraScript.Source;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -28,7 +28,7 @@ internal static class SemanticTokenScanner
         var fullPath = ScriptPath.GetFullPath(baseDirectory, sourceName);
         try
         {
-            using var lexer = new AuroraLexer(baseDirectory, new MemoryScriptSource(baseDirectory, fullPath, sourceText));
+            using var lexer = new AuroraLexer(baseDirectory, new MemorySource(baseDirectory, fullPath, sourceText));
             var tokenInfos = new AuroraLexer.LexerTokenInfo[lexer.TokenCount];
             for (var i = 0; i < tokenInfos.Length; i++)
             {

@@ -1,4 +1,5 @@
 using AuroraScript;
+using AuroraScript.Core;
 using System;
 using System.IO;
 using System.Text;
@@ -43,8 +44,7 @@ namespace AuroraBenchmark
             File.WriteAllText(Path.Combine(directory, "main.as"), main.ToString(), Encoding.UTF8);
 
             var engine = CreateEngine(directory, maxDegreeOfParallelism: 4);
-            var source = engine.FileSource("main.as", Encoding.UTF8);
-            await engine.BuildAsync(source, source);
+            await engine.BuildAsync("main.as");
             engine.CreateDomain();
         }
 
@@ -59,7 +59,7 @@ namespace AuroraBenchmark
             File.WriteAllText(Path.Combine(directory, "second.as"), "@module(ERROR_SECOND);\nfunc ( {\n", Encoding.UTF8);
 
             var engine = CreateEngine(directory, maxDegreeOfParallelism: 4);
-            var compile = engine.BuildAsync(engine.FileSource("main.as", Encoding.UTF8));
+            var compile = engine.BuildAsync("main.as");
             var completed = await Task.WhenAny(compile, Task.Delay(TimeSpan.FromSeconds(10)));
             if (!ReferenceEquals(completed, compile))
             {
@@ -85,7 +85,7 @@ namespace AuroraBenchmark
             var engine = CreateEngine(directory, maxDegreeOfParallelism: 2);
             try
             {
-                await engine.BuildAsync(engine.FileSource("a.as", Encoding.UTF8));
+                await engine.BuildAsync("a.as");
                 throw new InvalidOperationException("Circular dependencies compiled successfully.");
             }
             catch (AuroraCompilationException ex) when (ex.Message.Contains("Circular module dependency", StringComparison.Ordinal))
@@ -102,7 +102,7 @@ namespace AuroraBenchmark
             cancellation.Cancel();
             try
             {
-                await engine.BuildAsync(cancellation.Token, engine.FileSource("main.as", Encoding.UTF8));
+                await engine.BuildAsync(["main.as"], cancellation.Token);
                 throw new InvalidOperationException("A canceled compilation completed successfully.");
             }
             catch (OperationCanceledException)
@@ -113,7 +113,7 @@ namespace AuroraBenchmark
         private static AuroraEngine CreateEngine(string directory, int maxDegreeOfParallelism)
         {
             var options = EngineOptions.Default
-                .WithCompiler(compiler => compiler.WithDirectory(directory))
+                .WithCompiler(compiler => compiler.SourceResolver = ScriptSources.FileSystem(directory, Encoding.UTF8))
                 .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
                 .WithRuntime(runtime => runtime.HotReload = false)
                 .WithCompiler(compiler => compiler.MaxDegreeOfParallelism = maxDegreeOfParallelism)

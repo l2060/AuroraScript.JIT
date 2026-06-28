@@ -1,6 +1,7 @@
 using AuroraScript.Compiler.Analyzer;
 using AuroraScript.Compiler.Ast;
 using AuroraScript.Core;
+using AuroraScript.Source;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -19,7 +20,6 @@ namespace AuroraScript.Compiler
             ? StringComparer.OrdinalIgnoreCase
             : StringComparer.Ordinal;
 
-        private readonly string _baseDirectory;
         private readonly ConcurrentDictionary<string, ScriptSource> _sourcesByPath = new(PathComparer);
         private readonly ConcurrentDictionary<string, ModuleDeclaration> _modulesByPath = new(PathComparer);
         private readonly Channel<ScriptSource> _compileQueue = Channel.CreateUnbounded<ScriptSource>(
@@ -42,7 +42,6 @@ namespace AuroraScript.Compiler
         public ScriptCompiler(EngineOptions options)
         {
             _options = options;
-            _baseDirectory = ScriptPath.NormalizeBaseDirectory(_options.Compiler.BaseDirectory);
         }
 
         public async Task<ModuleDeclaration[]> BuildModuleGraphAsync(ScriptSource[] sources, CancellationToken cancellationToken = default)
@@ -116,7 +115,7 @@ namespace AuroraScript.Compiler
                 try
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    BuildSyntaxTree(source);
+                    await BuildSyntaxTreeAsync(source).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
@@ -227,26 +226,68 @@ namespace AuroraScript.Compiler
             }
         }
 
-        private void BuildSyntaxTree(ScriptSource source)
+        private async Task BuildSyntaxTreeAsync(ScriptSource source)
         {
             var fullPath = NormalizePath(source.FullPath);
-            var lexer = new AuroraLexer(_baseDirectory, source);
+            var lexer = new AuroraLexer(source.BaseDirectory, source);
             var parser = new AuroraParser(lexer, _options);
             var syntaxTree = parser.Parse();
+            await ResolveImportsAsync(source, syntaxTree).ConfigureAwait(false);
 
             if (!_modulesByPath.TryAdd(fullPath, syntaxTree))
             {
                 throw new InvalidOperationException($"Module '{fullPath}' was parsed more than once.");
             }
 
-            var dependencyEncoding = source is FileSource fileSource ? fileSource.Encoding : Encoding.UTF8;
             for (var i = 0; i < syntaxTree.Imports.Count; i++)
             {
                 var dependency = syntaxTree.Imports[i];
-                RegisterCompileModule(_options.Compiler.SourceResolver.Open(
-                    new ScriptSourceReference(source.BaseDirectory, dependency.FullPath, dependency.ModulePath),
-                    dependencyEncoding));
+                var dependencySource = await GetResolvedSourceAsync(dependency.Reference).ConfigureAwait(false);
+                RegisterCompileModule(dependencySource);
             }
+        }
+
+        private async Task ResolveImportsAsync(ScriptSource source, ModuleDeclaration syntaxTree)
+        {
+            if (syntaxTree.Imports.Count == 0)
+            {
+                return;
+            }
+
+            var importer = new ScriptSourceReference(source.BaseDirectory, source.FullPath, source.SourcePath);
+            var encoding = source is FileSource fileSource ? fileSource.Encoding : Encoding.UTF8;
+            var context = new ScriptResolveContext(_options.Compiler.ExtName, encoding);
+
+            for (var i = 0; i < syntaxTree.Imports.Count; i++)
+            {
+                var import = syntaxTree.Imports[i];
+                var requestedPath = import.File?.Value;
+                if (string.IsNullOrWhiteSpace(requestedPath))
+                {
+                    continue;
+                }
+
+                var resolved = await _options.Compiler.SourceResolver
+                    .ResolveAsync(importer, requestedPath, context, _compilationCancellationToken)
+                    .ConfigureAwait(false);
+                if (resolved == null)
+                {
+                    var message = import.Include
+                        ? $"include file not found: {requestedPath}"
+                        : $"Import file not found: {requestedPath}";
+                    throw new AuroraCompilationException(AuroraCompilationStage.Binding, import.File.Range, message);
+                }
+
+                import.FullPath = resolved.Value.FullPath;
+                import.ModulePath = resolved.Value.ModulePath;
+                import.Reference = resolved.Value;
+            }
+        }
+
+        private ValueTask<ScriptSource> GetResolvedSourceAsync(ScriptSourceReference reference)
+        {
+            return _options.Compiler.SourceResolver
+                .GetSourceAsync(reference, _compilationCancellationToken);
         }
 
         private void LinkModules(ModuleDeclaration[] modules)
@@ -260,12 +301,12 @@ namespace AuroraScript.Compiler
                     var dependencyPath = NormalizePath(import.FullPath);
                     if (!_modulesByPath.TryGetValue(dependencyPath, out var dependency))
                     {
-                    throw new AuroraCompilationException(
-                        AuroraCompilationStage.Linking,
-                        import.FullPath,
-                        1,
-                        1,
-                        $"Imported module was not compiled: {import.FullPath}");
+                        throw new AuroraCompilationException(
+                            AuroraCompilationStage.Linking,
+                            import.FullPath,
+                            1,
+                            1,
+                            $"Imported module was not compiled: {import.FullPath}");
                     }
                     import.Module = dependency;
                     import.ModuleName = dependency.ModuleName;

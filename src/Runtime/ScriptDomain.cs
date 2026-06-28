@@ -4,7 +4,10 @@ using AuroraScript.Core;
 using AuroraScript.Runtime.Interop;
 using AuroraScript.Runtime.Pool;
 using AuroraScript.Runtime.Types;
+using AuroraScript.Source;
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace AuroraScript.Runtime
 {
@@ -22,6 +25,8 @@ namespace AuroraScript.Runtime
     /// </summary>
     public sealed class ScriptDomain : IDisposable
     {
+        private const string HotPatchSourceRoot = "mem://hot-patch/";
+
         internal readonly ScriptContextPool ContextPool = new();
         /// <summary>
         /// The global environment for this script domain.
@@ -178,6 +183,55 @@ namespace AuroraScript.Runtime
         /// <param name="patchType">The type of hot patch to apply (e.g., Replace, Append).</param>
         public void DynamicPatch(ScriptSource source, HotPatchType patchType)
         {
+            DynamicPatchAsync(source, patchType)
+                .GetAwaiter()
+                .GetResult();
+        }
+
+        /// <summary>
+        /// Dynamically applies a hot patch from an in-memory source string.
+        /// </summary>
+        /// <param name="modulePath">The source path used for the patch module and relative import resolution.</param>
+        /// <param name="script">The patch script source text.</param>
+        /// <param name="patchType">The type of hot patch to apply.</param>
+        public void DynamicPatch(string modulePath, string script, HotPatchType patchType)
+        {
+            DynamicPatch(CreatePatchSource(modulePath, script), patchType);
+        }
+
+        /// <summary>
+        /// Replaces the target module with an in-memory patch source.
+        /// </summary>
+        /// <param name="modulePath">The source path used for the patch module and relative import resolution.</param>
+        /// <param name="script">The patch script source text.</param>
+        /// <param name="ignoreDepends">Whether already loaded dependencies should be skipped.</param>
+        public void ReplacePatch(string modulePath, string script, bool ignoreDepends = false)
+        {
+            DynamicPatch(modulePath, script, CreatePatchType(HotPatchType.Replace, ignoreDepends));
+        }
+
+        /// <summary>
+        /// Applies an incremental in-memory patch to the target module.
+        /// </summary>
+        /// <param name="modulePath">The source path used for the patch module and relative import resolution.</param>
+        /// <param name="script">The patch script source text.</param>
+        /// <param name="ignoreDepends">Whether already loaded dependencies should be skipped.</param>
+        public void IncrementalPatch(string modulePath, string script, bool ignoreDepends = false)
+        {
+            DynamicPatch(modulePath, script, CreatePatchType(HotPatchType.Incremental, ignoreDepends));
+        }
+
+        /// <summary>
+        /// Dynamically applies a hot patch to the script domain in memory.
+        /// </summary>
+        /// <param name="source">The script source containing the patch code.</param>
+        /// <param name="patchType">The type of hot patch to apply (e.g., Replace, Append).</param>
+        /// <param name="cancellationToken">Token used to cancel source resolution.</param>
+        public async Task DynamicPatchAsync(
+            ScriptSource source,
+            HotPatchType patchType,
+            CancellationToken cancellationToken = default)
+        {
             EngineOptions ExeOptions = Engine.Options;
             if (!ExeOptions.Runtime.EnableHotReload)
             {
@@ -188,7 +242,7 @@ namespace AuroraScript.Runtime
             DynamicCallMethod invoker;
             try
             {
-                invoker = compiler.BuildPatch(source, patchType);
+                invoker = await compiler.BuildPatchAsync(source, patchType, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex) when (AuroraEngine.IsCompilationPipelineException(ex))
             {
@@ -196,6 +250,82 @@ namespace AuroraScript.Runtime
             }
             var ctx = new ScriptContext(this);
             _ = invoker(ctx, []);
+        }
+
+        /// <summary>
+        /// Dynamically applies a hot patch from an in-memory source string.
+        /// </summary>
+        /// <param name="modulePath">The source path used for the patch module and relative import resolution.</param>
+        /// <param name="script">The patch script source text.</param>
+        /// <param name="patchType">The type of hot patch to apply.</param>
+        /// <param name="cancellationToken">Token used to cancel source resolution.</param>
+        public Task DynamicPatchAsync(
+            string modulePath,
+            string script,
+            HotPatchType patchType,
+            CancellationToken cancellationToken = default)
+        {
+            return DynamicPatchAsync(CreatePatchSource(modulePath, script), patchType, cancellationToken);
+        }
+
+        /// <summary>
+        /// Replaces the target module with an in-memory patch source.
+        /// </summary>
+        /// <param name="modulePath">The source path used for the patch module and relative import resolution.</param>
+        /// <param name="script">The patch script source text.</param>
+        /// <param name="ignoreDepends">Whether already loaded dependencies should be skipped.</param>
+        /// <param name="cancellationToken">Token used to cancel source resolution.</param>
+        public Task ReplacePatchAsync(
+            string modulePath,
+            string script,
+            bool ignoreDepends = false,
+            CancellationToken cancellationToken = default)
+        {
+            return DynamicPatchAsync(
+                modulePath,
+                script,
+                CreatePatchType(HotPatchType.Replace, ignoreDepends),
+                cancellationToken);
+        }
+
+        /// <summary>
+        /// Applies an incremental in-memory patch to the target module.
+        /// </summary>
+        /// <param name="modulePath">The source path used for the patch module and relative import resolution.</param>
+        /// <param name="script">The patch script source text.</param>
+        /// <param name="ignoreDepends">Whether already loaded dependencies should be skipped.</param>
+        /// <param name="cancellationToken">Token used to cancel source resolution.</param>
+        public Task IncrementalPatchAsync(
+            string modulePath,
+            string script,
+            bool ignoreDepends = false,
+            CancellationToken cancellationToken = default)
+        {
+            return DynamicPatchAsync(
+                modulePath,
+                script,
+                CreatePatchType(HotPatchType.Incremental, ignoreDepends),
+                cancellationToken);
+        }
+
+        private static ScriptSource CreatePatchSource(string modulePath, string script)
+        {
+            if (string.IsNullOrWhiteSpace(modulePath))
+            {
+                throw new ArgumentException("Patch module path cannot be empty.", nameof(modulePath));
+            }
+
+            if (script == null)
+            {
+                throw new ArgumentNullException(nameof(script));
+            }
+
+            return new MemorySource(HotPatchSourceRoot, modulePath, script);
+        }
+
+        private static HotPatchType CreatePatchType(HotPatchType patchType, bool ignoreDepends)
+        {
+            return ignoreDepends ? patchType | HotPatchType.IgnoreDepends : patchType;
         }
 
         /// <summary>

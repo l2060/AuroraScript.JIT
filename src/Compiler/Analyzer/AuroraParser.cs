@@ -2,10 +2,10 @@ using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Core;
+using AuroraScript.Source;
 using AuroraScript.Tokens;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
 
@@ -719,7 +719,7 @@ namespace AuroraScript.Compiler.Analyzer
                     if (!TryParseTemplateIdentifier(expressionSource, token.Range, out var expr))
                     {
                         string exprText = expressionSource.ToString();
-                        var subLexer = new AuroraLexer(this.Lexer.BaseDirectory, new MemoryScriptSource(this.Lexer.BaseDirectory, this.Lexer.FullPath, exprText));
+                        var subLexer = new AuroraLexer(this.Lexer.BaseDirectory, new MemorySource(this.Lexer.BaseDirectory, this.Lexer.FullPath, exprText));
                         var subParser = new AuroraParser(subLexer, _options);
                         expr = subParser.ParseExpression(0);
                         if (expr == null)
@@ -964,11 +964,7 @@ namespace AuroraScript.Compiler.Analyzer
             }
             StringToken fileToken = this.Lexer.NextOfKind<StringToken>();
             var closed = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
-            if (!TryResolveImportPath(fileToken.Value, out var source))
-            {
-                throw new AuroraCompilationException(AuroraCompilationStage.Binding, importRange, $"include file not found: {fileToken.Value}");
-            }
-            var import = new ImportDeclaration() { File = fileToken, FullPath = source.FullPath, ModulePath = source.ModulePath, Include = true };
+            var import = new ImportDeclaration() { File = fileToken, Include = true };
 
             return SetRange(import, importRange, closed);
         }
@@ -986,11 +982,7 @@ namespace AuroraScript.Compiler.Analyzer
             this.Lexer.Expect(Symbols.KW_FROM);
             StringToken fileToken = this.Lexer.NextOfKind<StringToken>();
             var closed = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
-            if (!TryResolveImportPath(fileToken.Value, out var source))
-            {
-                throw new AuroraCompilationException(AuroraCompilationStage.Binding, importRange, $"Import file not found: {fileToken.Value}");
-            }
-            var import = new ImportDeclaration() { Name = module, File = fileToken, FullPath = source.FullPath, ModulePath = source.ModulePath, Include = false };
+            var import = new ImportDeclaration() { Name = module, File = fileToken, Include = false };
 
             return SetRange(import, importRange, closed);
         }
@@ -1245,15 +1237,6 @@ namespace AuroraScript.Compiler.Analyzer
             return statement;
         }
 
-        private bool TryResolveImportPath(string path, out ScriptSourceReference source)
-        {
-            return _options.Compiler.SourceResolver.TryResolve(
-                this.Lexer.BaseDirectory,
-                this.Lexer.FullPath,
-                path,
-                _options.Compiler.ExtName,
-                out source);
-        }
         private Statement ParseForBlock()
         {
             using (scopeStack.Scope(ScopeType.FOR))

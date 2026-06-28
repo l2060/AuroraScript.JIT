@@ -1,5 +1,6 @@
 using AuroraScript.Core;
 using AuroraScript.LanguageServices.Builtins;
+using AuroraScript.Source;
 using System;
 using System.Globalization;
 using System.IO;
@@ -13,7 +14,7 @@ public sealed class AuroraLanguageServiceOptions
 {
     private string _baseDirectory;
     private string _extension;
-    private IScriptSourceResolver _sourceResolver;
+    private IScriptSourceResolver? _sourceResolver;
     private int _maxWorkspaceIndexFiles;
     private string _documentationLocale;
 
@@ -25,7 +26,6 @@ public sealed class AuroraLanguageServiceOptions
         Builtins = builtins ?? throw new ArgumentNullException(nameof(builtins));
         _baseDirectory = Directory.GetCurrentDirectory();
         _extension = ".as";
-        _sourceResolver = FileScriptSourceResolver.Instance;
         _maxWorkspaceIndexFiles = 2000;
         _documentationLocale = GetDefaultDocumentationLocale();
     }
@@ -65,10 +65,11 @@ public sealed class AuroraLanguageServiceOptions
 
     /// <summary>
     /// Gets the resolver used to load files that are not open in the workspace.
+    /// Defaults to a file-system resolver rooted at <see cref="BaseDirectory"/>.
     /// </summary>
     public IScriptSourceResolver SourceResolver
     {
-        get => _sourceResolver;
+        get => _sourceResolver ?? ScriptSources.FileSystem(BaseDirectory);
         init => _sourceResolver = value ?? throw new ArgumentNullException(nameof(value));
     }
 
@@ -103,13 +104,14 @@ public sealed class AuroraLanguageServiceOptions
         init => _documentationLocale = NormalizeDocumentationLocale(value);
     }
 
-    internal EngineOptions ToEngineOptions()
+    internal bool HasExplicitSourceResolver => _sourceResolver != null;
+
+    internal EngineOptions ToEngineOptions(string? baseDirectory = null)
     {
         return EngineOptions.Default.WithCompiler(compiler =>
         {
-            compiler.Directory = BaseDirectory;
             compiler.ExtName = Extension;
-            compiler.SourceResolver = SourceResolver;
+            compiler.SourceResolver = _sourceResolver ?? ScriptSources.FileSystem(baseDirectory ?? BaseDirectory);
         });
     }
 

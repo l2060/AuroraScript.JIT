@@ -1,6 +1,6 @@
 using AuroraScript.Compiler.Analyzer;
 using AuroraScript.Compiler.Ast;
-using AuroraScript.Core;
+using AuroraScript.Source;
 using AuroraScript.Tests.Infrastructure;
 using System;
 using System.IO;
@@ -175,14 +175,16 @@ public sealed class ParserSyntaxTests
     }
 
     [Fact]
-    public void RejectsMissingImportFile()
+    public void ParserKeepsMissingImportAsRawPath()
     {
         using var workspace = new TestWorkspace();
-        var exception = Record.Exception(() => Parse(
+        var module = Parse(
             "@module(TEST); import missing from 'does-not-exist';",
-            workspace.Root));
+            workspace.Root);
 
-        Assert.IsType<AuroraCompilationException>(exception);
+        var import = Assert.Single(module.Imports);
+        Assert.Equal("does-not-exist", import.File.Value);
+        Assert.Null(import.FullPath);
     }
 
     [Theory]
@@ -270,8 +272,8 @@ public sealed class ParserSyntaxTests
     private static ModuleDeclaration Parse(string source, string? root = null)
     {
         root ??= Path.GetTempPath();
-        using var lexer = new AuroraLexer(root, new MemoryScriptSource(root, Path.Combine(root, "parser-test.as"), source));
-        var parser = new AuroraParser(lexer, EngineOptions.Default.WithCompiler(compiler => compiler.WithDirectory(root)));
+        using var lexer = new AuroraLexer(root, new MemorySource(root, Path.Combine(root, "parser-test.as"), source));
+        var parser = new AuroraParser(lexer, EngineOptions.Default.WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root)));
         return parser.Parse();
     }
 }

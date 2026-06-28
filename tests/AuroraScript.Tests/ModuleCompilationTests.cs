@@ -1,10 +1,12 @@
 using AuroraScript.Core;
 using AuroraScript.Runtime;
+using AuroraScript.Source;
 using AuroraScript.Tests.Infrastructure;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -30,10 +32,43 @@ public sealed class ModuleCompilationTests
             """);
         var engine = workspace.CreateEngine(maxDegreeOfParallelism: 4);
 
-        await engine.BuildAsync(engine.FileSource(main, Encoding.UTF8));
+        await engine.BuildAsync(main);
         var domain = engine.CreateDomain();
 
         ScriptAssert.Equal(42, TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
+    public async Task ResolvesImportedSourceOutsideRootAndIncludesFromImportedDirectory()
+    {
+        using var workspace = new TestWorkspace();
+        var testsRoot = Path.Combine(workspace.Root, "tests");
+        workspace.WriteSource("tests/unit.as", """
+            @module(UNIT);
+            import debug_test from '../temp/debug_test';
+            export func run() { return debug_test.main(); }
+            """);
+        workspace.WriteSource("temp/debug_test.as", """
+            @module(DEBUG_TEST);
+            include 'debug_inc';
+            export func main() { return includedValue(); }
+            """);
+        workspace.WriteSource("temp/debug_inc.as", """
+            export func includedValue() { return 42; }
+            """);
+        var options = EngineOptions.Default
+            .WithCompiler(compiler => compiler.SourceResolver = ScriptSources.FileSystem(testsRoot, Encoding.UTF8))
+            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
+            .WithOptimization(optimization => optimization.Level = OptimizeOptions.Release);
+        var engine = new AuroraEngine(options);
+
+        await engine.BuildAsync("unit");
+        var domain = engine.CreateDomain();
+
+        ScriptAssert.Equal(42, domain.Execute("UNIT", "run"));
+        ScriptAssert.Equal(42, domain.Execute("DEBUG_TEST", "main"));
+        var debugModule = Assert.IsType<ScriptModule>(domain.GetModule("DEBUG_TEST"));
+        Assert.EndsWith("../temp/debug_test.as", debugModule.ModulePath, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -46,11 +81,11 @@ public sealed class ModuleCompilationTests
             ["memory://aurora-tests/shared.as"] = "export const INCLUDED = 2;"
         };
         var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.Directory = root)
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithCompiler(compiler => compiler.SourceResolver = new InMemoryResolver(root, files));
         var engine = new AuroraEngine(options);
-        var main = new MemoryScriptSource(
+        var main = new MemorySource(
             root,
             "memory://aurora-tests/main.as",
             """
@@ -80,7 +115,7 @@ public sealed class ModuleCompilationTests
             """);
         var engine = workspace.CreateEngine();
 
-        await engine.BuildAsync(engine.FileSource(main, Encoding.UTF8));
+        await engine.BuildAsync(main);
         var domain = engine.CreateDomain();
 
         ScriptAssert.Equal(2, TestWorkspace.Execute(domain, "visible"));
@@ -102,7 +137,7 @@ public sealed class ModuleCompilationTests
             """);
         var engine = workspace.CreateEngine();
 
-        var error = await Assert.ThrowsAsync<AuroraCompilationException>(() => engine.BuildAsync(engine.FileSource(main, Encoding.UTF8)));
+        var error = await Assert.ThrowsAsync<AuroraCompilationException>(() => engine.BuildAsync(main));
 
         var diagnostic = Assert.Single(error.Diagnostics);
         Assert.Contains("Duplicate declaration 'VALUE'", diagnostic.Message);
@@ -115,13 +150,12 @@ public sealed class ModuleCompilationTests
         workspace.WriteSource("base.as", "@module(BASE); export const value = 20;");
         workspace.WriteSource("left.as", "@module(LEFT); import b from 'base'; export const value = b.value + 1;");
         workspace.WriteSource("right.as", "@module(RIGHT); import b from 'base'; export const value = b.value + 1;");
-        var main = workspace.WriteSource(
+        workspace.WriteSource(
             "main.as",
             "@module(TEST); import l from 'left'; import r from 'right'; export func run() { return l.value + r.value; }");
         var engine = workspace.CreateEngine(maxDegreeOfParallelism: 8);
-        var source = engine.FileSource(main, Encoding.UTF8);
 
-        await engine.BuildAsync(source, source);
+        await engine.BuildAsync(["main.as", "main.as"]);
 
         ScriptAssert.Equal(42, TestWorkspace.Execute(engine.CreateDomain(), "run"));
     }
@@ -144,7 +178,7 @@ public sealed class ModuleCompilationTests
         var main = workspace.WriteSource("main.as", imports.Append(sum).ToString());
         var engine = workspace.CreateEngine(maxDegreeOfParallelism: 8);
 
-        await engine.BuildAsync(engine.FileSource(main, Encoding.UTF8));
+        await engine.BuildAsync(main);
 
         ScriptAssert.Equal(276, TestWorkspace.Execute(engine.CreateDomain(), "run"));
     }
@@ -158,7 +192,7 @@ public sealed class ModuleCompilationTests
         var engine = workspace.CreateEngine();
 
         var error = await Assert.ThrowsAsync<AuroraCompilationException>(
-            () => engine.BuildAsync(engine.FileSource(first, Encoding.UTF8)));
+            () => engine.BuildAsync(first));
 
         Assert.Contains("Circular", error.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -167,13 +201,11 @@ public sealed class ModuleCompilationTests
     public async Task RejectsDuplicateModuleNamesWithBothPathsInDiagnostic()
     {
         using var workspace = new TestWorkspace();
-        var first = workspace.WriteSource("first.as", "@module(CONFLICT);");
-        var second = workspace.WriteSource("second.as", "@module(CONFLICT);");
+        workspace.WriteSource("first.as", "@module(CONFLICT);");
+        workspace.WriteSource("second.as", "@module(CONFLICT);");
         var engine = workspace.CreateEngine();
 
-        var error = await Assert.ThrowsAsync<AuroraCompilationException>(() => engine.BuildAsync(
-            engine.FileSource(first, Encoding.UTF8),
-            engine.FileSource(second, Encoding.UTF8)));
+        var error = await Assert.ThrowsAsync<AuroraCompilationException>(() => engine.BuildAsync(["first.as", "second.as"]));
 
         Assert.Contains("first.as", error.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("second.as", error.Message, StringComparison.OrdinalIgnoreCase);
@@ -185,7 +217,7 @@ public sealed class ModuleCompilationTests
         using var workspace = new TestWorkspace();
         var moduleEngine = workspace.CreateEngine();
 
-        var moduleDuplicate = moduleEngine.MemorySource(
+        var moduleDuplicate = workspace.MemorySource(
             "duplicate-module.as",
             """
             @module(TEST);
@@ -198,7 +230,7 @@ public sealed class ModuleCompilationTests
         Assert.Contains("Duplicate declaration 'testTextTemplate'", moduleError.ToString());
 
         var localEngine = workspace.CreateEngine();
-        var localDuplicate = localEngine.MemorySource(
+        var localDuplicate = workspace.MemorySource(
             "duplicate-local.as",
             """
             @module(TEST2);
@@ -220,8 +252,8 @@ public sealed class ModuleCompilationTests
     public async Task ParallelBackendFailuresAreReportedAsCompileReport()
     {
         using var workspace = new TestWorkspace();
-        var valid = workspace.WriteSource("valid.as", "@module(VALID); export func ok() { return 1; }");
-        var invalid = workspace.WriteSource(
+        workspace.WriteSource("valid.as", "@module(VALID); export func ok() { return 1; }");
+        workspace.WriteSource(
             "invalid.as",
             """
             @module(INVALID);
@@ -232,9 +264,7 @@ public sealed class ModuleCompilationTests
             """);
         var engine = workspace.CreateEngine(maxDegreeOfParallelism: 8);
 
-        var error = await Assert.ThrowsAsync<AuroraCompilationException>(() => engine.BuildAsync(
-            engine.FileSource(valid, Encoding.UTF8),
-            engine.FileSource(invalid, Encoding.UTF8)));
+        var error = await Assert.ThrowsAsync<AuroraCompilationException>(() => engine.BuildAsync(["valid.as", "invalid.as"]));
 
         var diagnostic = Assert.Single(error.Diagnostics);
         Assert.Contains("Duplicate declaration 'n'", error.ToString());
@@ -245,8 +275,8 @@ public sealed class ModuleCompilationTests
     {
         using var workspace = new TestWorkspace();
         var engine = workspace.CreateEngine(maxDegreeOfParallelism: 8);
-        ScriptSource z = engine.MemorySource("z-error.as", "@module(Z); var z = ;");
-        ScriptSource a = engine.MemorySource("a-error.as", "@module(A); var a = ;");
+        ScriptSource z = workspace.MemorySource("z-error.as", "@module(Z); var z = ;");
+        ScriptSource a = workspace.MemorySource("a-error.as", "@module(A); var a = ;");
 
         var report = await Assert.ThrowsAsync<AuroraCompilationException>(() => engine.BuildAsync(z, a));
 
@@ -263,7 +293,7 @@ public sealed class ModuleCompilationTests
         var main = workspace.WriteSource("main.as", "@module(TEST); import missing from 'missing';");
         var engine = workspace.CreateEngine(maxDegreeOfParallelism: 8);
 
-        var build = engine.BuildAsync(engine.FileSource(main, Encoding.UTF8));
+        var build = engine.BuildAsync(main);
         var completed = await Task.WhenAny(build, Task.Delay(TimeSpan.FromSeconds(10)));
 
         Assert.Same(build, completed);
@@ -281,7 +311,7 @@ public sealed class ModuleCompilationTests
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => engine.BuildAsync(
             cancellation.Token,
-            engine.MemorySource("main.as", "@module(TEST);")));
+            workspace.MemorySource("main.as", "@module(TEST);")));
     }
 
     [Fact]
@@ -289,7 +319,7 @@ public sealed class ModuleCompilationTests
     {
         using var workspace = new TestWorkspace();
         var engine = workspace.CreateEngine(maxDegreeOfParallelism: 4);
-        var source = engine.MemorySource("main.as", "@module(TEST); export func run() { return 42; }");
+        var source = workspace.MemorySource("main.as", "@module(TEST); export func run() { return 42; }");
 
         await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => engine.BuildAsync(source)));
 
@@ -301,9 +331,9 @@ public sealed class ModuleCompilationTests
     {
         using var workspace = new TestWorkspace();
         var engine = workspace.CreateEngine();
-        await engine.BuildAsync(engine.MemorySource("valid.as", "@module(TEST); export func run() { return 42; }"));
+        await engine.BuildAsync(workspace.MemorySource("valid.as", "@module(TEST); export func run() { return 42; }"));
         await Assert.ThrowsAsync<AuroraCompilationException>(() => engine.BuildAsync(
-            engine.MemorySource("invalid.as", "@module(BROKEN); var value = ;")));
+            workspace.MemorySource("invalid.as", "@module(BROKEN); var value = ;")));
 
         ScriptAssert.Equal(42, TestWorkspace.Execute(engine.CreateDomain(), "run"));
     }
@@ -319,32 +349,50 @@ public sealed class ModuleCompilationTests
             _sources = sources;
         }
 
-        public bool TryResolve(
-            string baseDirectory,
-            string currentSourcePath,
+        public string Root => _baseDirectory;
+
+        public ValueTask<ScriptSourceReference?> ResolveAsync(
+            ScriptSourceReference? importer,
             string requestedPath,
-            string extension,
-            out ScriptSourceReference source)
+            ScriptResolveContext context,
+            CancellationToken cancellationToken = default)
         {
-            var fullPath = WithExtension(Resolve(currentSourcePath, requestedPath), extension);
+            cancellationToken.ThrowIfCancellationRequested();
+            var currentSourcePath = importer?.FullPath ?? _baseDirectory;
+            var fullPath = WithExtension(importer == null
+                ? ResolveFromRoot(_baseDirectory, requestedPath)
+                : Resolve(currentSourcePath, requestedPath), context.Extension);
             if (!_sources.ContainsKey(fullPath))
             {
-                source = default;
-                return false;
+                return new ValueTask<ScriptSourceReference?>((ScriptSourceReference?)null);
             }
 
-            source = new ScriptSourceReference(_baseDirectory, fullPath);
-            return true;
+            return new ValueTask<ScriptSourceReference?>(new ScriptSourceReference(_baseDirectory, fullPath));
         }
 
-        public ScriptSource Open(ScriptSourceReference source, Encoding encoding)
+        public ValueTask<ScriptSource> GetSourceAsync(
+            ScriptSourceReference source,
+            CancellationToken cancellationToken = default)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (!_sources.TryGetValue(source.FullPath, out var text))
             {
                 throw new FileNotFoundException("Script source not found.", source.FullPath);
             }
 
-            return new MemoryScriptSource(source.BaseDirectory, source.FullPath, text);
+            return new ValueTask<ScriptSource>(new MemorySource(source.BaseDirectory, source.FullPath, text));
+        }
+
+        public async IAsyncEnumerable<ScriptSource> GetAllSourcesAsync(
+            ScriptSourceQuery query,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            foreach (var pair in _sources)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await Task.Yield();
+                yield return new MemorySource(_baseDirectory, pair.Key, pair.Value);
+            }
         }
 
         private static string Resolve(string currentSourcePath, string requestedPath)
@@ -352,6 +400,12 @@ public sealed class ModuleCompilationTests
             var slash = currentSourcePath.LastIndexOf('/');
             var currentDirectory = slash >= 0 ? currentSourcePath.Substring(0, slash + 1) : currentSourcePath + "/";
             return new Uri(new Uri(currentDirectory, UriKind.Absolute), requestedPath.Replace('\\', '/')).ToString();
+        }
+
+        private static string ResolveFromRoot(string root, string requestedPath)
+        {
+            root = root.EndsWith("/", StringComparison.Ordinal) ? root : root + "/";
+            return new Uri(new Uri(root, UriKind.Absolute), requestedPath.Replace('\\', '/')).ToString();
         }
 
         private static string WithExtension(string path, string extension)
