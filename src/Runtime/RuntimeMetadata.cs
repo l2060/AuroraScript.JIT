@@ -29,7 +29,7 @@ namespace AuroraScript.Runtime
         public static readonly MethodInfo ScriptGlobal_EnsureModule = typeof(ScriptGlobal).GetMethod(nameof(ScriptGlobal.EnsureModule), BindingFlags.Instance | BindingFlags.NonPublic);
 
         // ScriptModule
-        public static readonly ConstructorInfo ScriptModule_Ctor = typeof(ScriptModule).GetConstructor(BindingFlags.Instance | BindingFlags.NonPublic, [typeof(string), typeof(string)]);
+        public static readonly ConstructorInfo ScriptModule_Ctor = typeof(ScriptModule).GetConstructor(BindingFlags.Instance | BindingFlags.NonPublic, [typeof(string), typeof(string), typeof(string)]);
 
         // ScriptObject
         public static readonly ConstructorInfo ScriptObject_Ctor = typeof(ScriptObject).GetConstructor([]);

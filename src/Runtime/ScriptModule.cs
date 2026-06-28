@@ -14,15 +14,20 @@ namespace AuroraScript.Runtime
         /// <summary> Gets the unique relative path that identifies this module. </summary>
         public readonly string ModulePath;
 
+        /// <summary> Gets the normalized absolute file path or virtual full path that identifies this module source. </summary>
+        public readonly string FullPath;
+
         /// <summary>
         /// Initializes a new instance of the <see cref="ScriptModule"/> class.
         /// </summary>
         /// <param name="moduleName">The name of the module.</param>
-        /// <param name="modulePath">The identifying path of the module.</param>
-        internal ScriptModule(string moduleName, string modulePath)
+        /// <param name="modulePath">The resolver-relative identifying path of the module.</param>
+        /// <param name="fullPath">The normalized absolute file path or virtual full path of the module source.</param>
+        internal ScriptModule(string moduleName, string modulePath, string fullPath)
         {
             Name = moduleName;
             ModulePath = modulePath;
+            FullPath = fullPath;
         }
 
         /// <summary>

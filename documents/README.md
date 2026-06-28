@@ -10,7 +10,7 @@ Contents:
 - `docs/script-authoring-best-practices.md`: recommended defaults for AI-generated AuroraScript modules and blocks.
 - `docs/language-reference.md`: human-readable language reference.
 - `docs/performance-best-practices.md`: compiler and runtime performance guidance.
-- `docs/host-integration.md`: .NET host API and advanced integration guide, including custom source resolvers.
+- `docs/host-integration.md`: .NET host API and advanced integration guide, including custom source resolver rules.
 - `schema/aurora-script.ebnf`: grammar summary.
 - `schema/*.schema.json`: JSON Schema files for tools.
 - `schema/language-features.json`: structured feature index.
@@ -19,7 +19,7 @@ Contents:
 - `examples/valid`: examples that should compile and run.
 - `examples/invalid`: examples that should fail compilation.
 - `examples/examples.manifest.json`: expected result metadata for examples.
-- `mcp`: AuroraScript MCP server project.
+- `language-tools/AuroraScript.Mcp/README.md`: MCP server usage, Codex configuration, and tool examples in the repository root.
 
 Recommended public deployment:
 

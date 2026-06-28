@@ -8,6 +8,7 @@ using AuroraScript.Compiler.Backend.Emission;
 using AuroraScript.Compiler.Backend.Lowering;
 using AuroraScript.Compiler.Backend.Plans;
 using AuroraScript.Compiler.Backend.Traversal;
+using AuroraScript.Core;
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Types;
 using AuroraScript.Source;
@@ -408,7 +409,7 @@ public sealed class CompilerBackendPlanTests
         var run = Assert.Single(moduleResult.Functions, function => function.Name == "run");
         var engine = new AuroraEngine(options);
         var domain = engine.CreateEmptyDomain(null);
-        var runtimeModule = new ScriptModule("TEST", root);
+        var runtimeModule = CreateRuntimeModule(root);
         var ctx = new ScriptContext(domain) { Module = runtimeModule };
 
         Assert.Equal(DirectCallDirective.PreserveClosure, helper.DirectCallDirective);
@@ -1979,7 +1980,7 @@ public sealed class CompilerBackendPlanTests
         Assert.Equal(FunctionCallConvention.Fast2, helperPlan.CallConvention);
         var engine = new AuroraEngine(options);
         var domain = engine.CreateEmptyDomain(null);
-        var ctx = new ScriptContext(domain) { Module = new ScriptModule("TEST", root) };
+        var ctx = new ScriptContext(domain) { Module = CreateRuntimeModule(root) };
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var runResult = runDel(ctx, new[] { ScriptDatum.FromNumber(5) });
         Assert.Equal(11, runResult.Number);
@@ -2022,7 +2023,7 @@ public sealed class CompilerBackendPlanTests
         var run = Assert.Single(moduleResult.Functions, function => function.Name == "run");
         var engine = new AuroraEngine(options);
         var domain = engine.CreateEmptyDomain(null);
-        var runtimeModule = new ScriptModule("TEST", root);
+        var runtimeModule = CreateRuntimeModule(root);
         var ctx = new ScriptContext(domain) { Module = runtimeModule };
 
         Assert.True(helperPlan.IsDirectCallCandidate);
@@ -2068,7 +2069,7 @@ public sealed class CompilerBackendPlanTests
         var helper = Assert.Single(moduleResult.Functions, function => function.Function.Equals(helperPlan.Id));
         var engine = new AuroraEngine(options);
         var domain = engine.CreateEmptyDomain(null);
-        var ctx = new ScriptContext(domain) { Module = new ScriptModule("TEST", root) };
+        var ctx = new ScriptContext(domain) { Module = CreateRuntimeModule(root) };
 
         Assert.True(run.HasExecutableSkeleton);
         Assert.True(helper.HasExecutableSkeleton);
@@ -2110,7 +2111,7 @@ public sealed class CompilerBackendPlanTests
         Assert.Equal(3, run.CilLocalCount);
         var engine = new AuroraEngine(options);
         var domain = engine.CreateEmptyDomain(null);
-        var ctx = new ScriptContext(domain) { Module = new ScriptModule("TEST", root) };
+        var ctx = new ScriptContext(domain) { Module = CreateRuntimeModule(root) };
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = del(ctx, Span<ScriptDatum>.Empty);
         Assert.Equal(4, result.Number);
@@ -2250,7 +2251,7 @@ public sealed class CompilerBackendPlanTests
         var lambda = Assert.Single(moduleResult.Functions, function => function.Function.Equals(lambdaPlan.Id));
         var engine = new AuroraEngine(options);
         var domain = engine.CreateEmptyDomain(null);
-        var ctx = new ScriptContext(domain) { Module = new ScriptModule("TEST", root) };
+        var ctx = new ScriptContext(domain) { Module = CreateRuntimeModule(root) };
         var callback = new BondingFunction(InvokeLambdaWithTwoNumbers);
 
         Assert.True(lambda.HasExecutableSkeleton);
@@ -2292,7 +2293,7 @@ public sealed class CompilerBackendPlanTests
         var run = Assert.Single(moduleResult.Functions, function => function.Name == "run");
         var engine = new AuroraEngine(options);
         var domain = engine.CreateEmptyDomain(null);
-        var runtimeModule = new ScriptModule("TEST", root);
+        var runtimeModule = CreateRuntimeModule(root);
         var ctx = new ScriptContext(domain) { Module = runtimeModule };
 
         Assert.True(addPlan.HasDefaultParameters);
@@ -2341,7 +2342,7 @@ public sealed class CompilerBackendPlanTests
         var run = Assert.Single(moduleResult.Functions, function => function.Name == "run");
         var engine = new AuroraEngine(options);
         var domain = engine.CreateEmptyDomain(null);
-        var runtimeModule = new ScriptModule("TEST", root);
+        var runtimeModule = CreateRuntimeModule(root);
         var ctx = new ScriptContext(domain) { Module = runtimeModule };
 
         Assert.True(countPlan.UsesArgumentsObject);
@@ -2387,7 +2388,7 @@ public sealed class CompilerBackendPlanTests
         var run = Assert.Single(moduleResult.Functions, function => function.Name == "run");
         var engine = new AuroraEngine(options);
         var domain = engine.CreateEmptyDomain(null);
-        var runtimeModule = new ScriptModule("TEST", root);
+        var runtimeModule = CreateRuntimeModule(root);
         var ctx = new ScriptContext(domain) { Module = runtimeModule };
 
         Assert.False(helperPlan.IsDirectCallCandidate);
@@ -3088,7 +3089,7 @@ public sealed class CompilerBackendPlanTests
         var run = Assert.Single(moduleResult.Functions, function => function.Name == "run");
         var engine = new AuroraEngine(options);
         var domain = engine.CreateEmptyDomain(null);
-        var runtimeModule = new ScriptModule("TEST", root);
+        var runtimeModule = CreateRuntimeModule(root);
         var ctx = new ScriptContext(domain) { Module = runtimeModule };
 
         Assert.False(call.DirectFunction.IsValid);
@@ -3263,6 +3264,13 @@ public sealed class CompilerBackendPlanTests
         using var lexer = new AuroraLexer(root, new MemorySource(root, Path.Combine(root, "backend-plan-test.as"), source));
         var parser = new AuroraParser(lexer, EngineOptions.Default.WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root)));
         return parser.Parse();
+    }
+
+    private static ScriptModule CreateRuntimeModule(string root, string moduleName = "TEST")
+    {
+        var fullPath = ScriptPath.GetFullPath(root, "backend-plan-test.as");
+        var modulePath = ScriptPath.GetModulePath(root, fullPath);
+        return new ScriptModule(moduleName, modulePath, fullPath);
     }
 
     private static AuroraScript.Compiler.Ast.Statements.BlockStatement ParseBlock(string source, string root)

@@ -11,6 +11,12 @@ namespace AuroraScript.Source
     /// <summary>
     /// In-memory script source resolver.
     /// </summary>
+    /// <remarks>
+    /// The root and source keys are normalized once when the resolver is built. This
+    /// resolver only resolves targets that are inside its root and present in the memory
+    /// table. In a composite resolver, placing memory before a file-system resolver lets
+    /// memory override any resolved target that falls under the memory root.
+    /// </remarks>
     public sealed class MemorySourceResolver : IScriptSourceResolver
     {
         private readonly Dictionary<string, string> _sources;
@@ -20,7 +26,7 @@ namespace AuroraScript.Source
         /// </summary>
         public MemorySourceResolver(string root = "mem://app/")
         {
-            Root = NormalizeRoot(root);
+            Root = ScriptPath.NormalizeBaseDirectory(string.IsNullOrWhiteSpace(root) ? "mem://app/" : root);
             _sources = new Dictionary<string, string>(StringComparer.Ordinal);
         }
 
@@ -30,9 +36,13 @@ namespace AuroraScript.Source
         /// <summary>
         /// Adds or replaces a memory source.
         /// </summary>
+        /// <remarks>
+        /// <paramref name="path"/> may be absolute or relative to <see cref="Root"/>.
+        /// It is normalized to a full source path with '/' separators before storage.
+        /// </remarks>
         public MemorySourceResolver Add(string path, string source)
         {
-            _sources[ResolveFromDirectory(Root, path)] = source ?? string.Empty;
+            _sources[ScriptPath.GetFullPath(Root, path)] = source ?? string.Empty;
             return this;
         }
 
@@ -46,8 +56,13 @@ namespace AuroraScript.Source
             cancellationToken.ThrowIfCancellationRequested();
 
             var currentPath = ResolveCurrentPath(importer);
-            var currentDirectory = importer == null ? Root : GetDirectory(currentPath);
-            var fullPath = EnsureExtension(ResolveFromDirectory(currentDirectory, requestedPath), context?.Extension);
+            var currentDirectory = importer == null ? Root : ScriptPath.GetDirectoryName(currentPath);
+            var fullPath = ScriptPath.EnsureExtension(ScriptPath.Combine(currentDirectory, requestedPath), context?.Extension);
+            if (!ScriptPath.IsWithinNormalizedRoot(Root, fullPath))
+            {
+                return new ValueTask<ScriptSourceReference?>((ScriptSourceReference?)null);
+            }
+
             if (!_sources.ContainsKey(fullPath))
             {
                 return new ValueTask<ScriptSourceReference?>((ScriptSourceReference?)null);
@@ -64,7 +79,7 @@ namespace AuroraScript.Source
                 return Root;
             }
 
-            return ResolveFromDirectory(Root, importer.Value.ModulePath);
+            return importer.Value.FullPath;
         }
 
         /// <inheritdoc />
@@ -73,6 +88,11 @@ namespace AuroraScript.Source
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            if (!ScriptPath.NormalizedRootsEqual(reference.BaseDirectory, Root))
+            {
+                throw new FileNotFoundException("Memory script source not found.", reference.FullPath);
+            }
 
             if (!_sources.TryGetValue(reference.FullPath, out var text))
             {
@@ -93,65 +113,6 @@ namespace AuroraScript.Source
                 await Task.Yield();
                 yield return new MemorySource(Root, pair.Key, pair.Value);
             }
-        }
-
-        private static string NormalizeRoot(string root)
-        {
-            if (string.IsNullOrWhiteSpace(root))
-            {
-                root = "mem://app/";
-            }
-
-            root = root.TrimEnd('/', '\\').Replace('\\', '/');
-            return root + "/";
-        }
-
-        private static string ResolveFromDirectory(string directory, string path)
-        {
-            if (string.IsNullOrWhiteSpace(path))
-            {
-                throw new ArgumentException("A source path is required.", nameof(path));
-            }
-
-            path = path.Replace('\\', '/');
-            if (Uri.TryCreate(path, UriKind.Absolute, out var absolute))
-            {
-                return absolute.ToString();
-            }
-
-            var baseUriText = directory.EndsWith("/", StringComparison.Ordinal) ? directory : directory + "/";
-            return new Uri(new Uri(baseUriText, UriKind.Absolute), path).ToString();
-        }
-
-        private static string GetDirectory(string path)
-        {
-            path = path.Replace('\\', '/');
-            var slash = path.LastIndexOf('/');
-            return slash < 0 ? path : path.Substring(0, slash + 1);
-        }
-
-        private static string EnsureExtension(string path, string extension)
-        {
-            if (string.IsNullOrWhiteSpace(extension))
-            {
-                return path;
-            }
-
-            if (extension[0] != '.')
-            {
-                extension = "." + extension;
-            }
-
-            var slash = path.LastIndexOf('/');
-            var dot = path.LastIndexOf('.');
-            if (dot > slash)
-            {
-                return string.Equals(path.Substring(dot), extension, StringComparison.Ordinal)
-                    ? path
-                    : path.Substring(0, dot) + extension;
-            }
-
-            return path + extension;
         }
     }
 

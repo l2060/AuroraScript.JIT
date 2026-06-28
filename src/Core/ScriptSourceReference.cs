@@ -3,12 +3,16 @@ namespace AuroraScript.Core
     /// <summary>
     /// Identifies a resolved script source in a script source resolver.
     /// </summary>
+    /// <remarks>
+    /// <see cref="BaseDirectory"/> is the resolver root that can read this reference.
+    /// <see cref="FullPath"/> is the normalized target path. Both use '/' separators.
+    /// </remarks>
     public readonly struct ScriptSourceReference
     {
         /// <summary>
         /// Initializes a new script source reference.
         /// </summary>
-        /// <param name="baseDirectory">The source root used to compute module-relative paths.</param>
+        /// <param name="baseDirectory">The resolver root used for source read routing and module-relative paths.</param>
         /// <param name="fullPath">The absolute file path or virtual source identifier.</param>
         public ScriptSourceReference(string baseDirectory, string fullPath)
             : this(baseDirectory, fullPath, null)
@@ -18,7 +22,7 @@ namespace AuroraScript.Core
         /// <summary>
         /// Initializes a new script source reference.
         /// </summary>
-        /// <param name="baseDirectory">The source root used to compute module-relative paths.</param>
+        /// <param name="baseDirectory">The resolver root used for source read routing and module-relative paths.</param>
         /// <param name="fullPath">The absolute file path or virtual source identifier.</param>
         /// <param name="modulePath">The module-relative path used by the compiler and runtime.</param>
         public ScriptSourceReference(string baseDirectory, string fullPath, string modulePath)
@@ -31,12 +35,12 @@ namespace AuroraScript.Core
         }
 
         /// <summary>
-        /// Gets the source root used to compute module-relative paths.
+        /// Gets the resolver root used for source read routing and module-relative paths.
         /// </summary>
         public string BaseDirectory { get; }
 
         /// <summary>
-        /// Gets the absolute file path or virtual source identifier.
+        /// Gets the normalized absolute file path or virtual source identifier.
         /// </summary>
         public string FullPath { get; }
 

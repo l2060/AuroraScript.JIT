@@ -8,8 +8,9 @@ namespace AuroraScript.Runtime
     /// Represents metadata for a script module, including its name and path.
     /// </summary>
     /// <param name="ModuleName">The name of the module.</param>
-    /// <param name="ModulePath">The file system or virtual path of the module.</param>
-    internal record ModuleMeta(string ModuleName, string ModulePath);
+    /// <param name="ModulePath">The resolver-relative path of the module.</param>
+    /// <param name="FullPath">The normalized absolute file path or virtual full path of the module source.</param>
+    internal record ModuleMeta(string ModuleName, string ModulePath, string FullPath);
 
     /// <summary>
     /// Represents the global execution object in AuroraScript.
@@ -119,18 +120,19 @@ namespace AuroraScript.Runtime
         /// Ensures a module exists in the global scope. If it doesn't, a new one is created.
         /// </summary>
         /// <param name="name">The name of the module.</param>
-        /// <param name="path">The path to the module.</param>
+        /// <param name="modulePath">The resolver-relative path of the module.</param>
+        /// <param name="fullPath">The normalized absolute file path or virtual full path of the module source.</param>
         /// <returns>The existing or newly created <see cref="ScriptModule"/>.</returns>
-        internal ScriptModule EnsureModule(string name, string path)
+        internal ScriptModule EnsureModule(string name, string modulePath, string fullPath)
         {
             var ext = Modules.GetPropertyValue(name);
             if (ext is ScriptModule mod)
             {
                 return mod;
             }
-            var newMod = new ScriptModule(name, path);
+            var newMod = new ScriptModule(name, modulePath, fullPath);
             Modules.Define(name, newMod, true, true);
-            modulePathHash[path.GetHashCode()] = new ModuleMeta(name, path);
+            modulePathHash[modulePath.GetHashCode()] = new ModuleMeta(name, modulePath, fullPath);
             return newMod;
         }
 
@@ -151,7 +153,7 @@ namespace AuroraScript.Runtime
                 throw new AuroraRuntimeException(null, null);
             }
             Modules.Define(name, module, true, true);
-            modulePathHash[hash] = new ModuleMeta(module.Name, module.ModulePath);
+            modulePathHash[hash] = new ModuleMeta(module.Name, module.ModulePath, module.FullPath);
         }
 
         /// <summary>

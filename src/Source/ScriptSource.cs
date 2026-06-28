@@ -4,20 +4,25 @@
     /// Represents a source of AuroraScript code, providing path resolution and content retrieval.
     /// Implementation can be file-based, memory-based, or custom.
     /// </summary>
+    /// <remarks>
+    /// <see cref="BaseDirectory"/> is the resolver root that produced the source.
+    /// <see cref="FullPath"/> is the normalized source identity used by the compiler.
+    /// Implementations should expose paths with '/' separators.
+    /// </remarks>
     public interface ScriptSource
     {
         /// <summary>
-        /// Gets the base directory used for resolving relative paths within this source.
+        /// Gets the resolver root used for read routing and module-relative paths.
         /// </summary>
         string BaseDirectory { get; }
 
         /// <summary>
-        /// Gets the relative source path of the script.
+        /// Gets the source path relative to the resolver root when available.
         /// </summary>
         string SourcePath { get; }
 
         /// <summary>
-        /// Gets the absolute full path to the script source on the filesystem or virtual storage.
+        /// Gets the normalized absolute full path or virtual identifier for the script source.
         /// </summary>
         string FullPath { get; }
 

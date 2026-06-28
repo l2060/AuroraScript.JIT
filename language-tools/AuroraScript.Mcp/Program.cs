@@ -284,7 +284,7 @@ internal sealed class AuroraMcpServer
                             ["sources"] = new JsonObject
                             {
                                 ["type"] = "object",
-                                ["description"] = "Optional in-memory overlay sources keyed by resolver-relative path. Overlay wins over file system."
+                                ["description"] = "Optional in-memory overlay sources keyed by rootDirectory-relative path. Use '/' separators. Overlay wins when the resolved target is under rootDirectory."
                             }
                         },
                         ["required"] = new JsonArray("rootDirectory", "entryPath")
@@ -306,7 +306,7 @@ internal sealed class AuroraMcpServer
                             ["sources"] = new JsonObject
                             {
                                 ["type"] = "object",
-                                ["description"] = "Optional in-memory overlay sources keyed by resolver-relative path. Overlay wins over file system."
+                                ["description"] = "Optional in-memory overlay sources keyed by rootDirectory-relative path. Use '/' separators. Overlay wins when the resolved target is under rootDirectory."
                             }
                         },
                         ["required"] = new JsonArray("rootDirectory", "entryPath", "moduleName")
@@ -324,7 +324,7 @@ internal sealed class AuroraMcpServer
                             ["sources"] = new JsonObject
                             {
                                 ["type"] = "object",
-                                ["description"] = "Optional in-memory overlay sources keyed by resolver-relative path. Overlay wins over file system."
+                                ["description"] = "Optional in-memory overlay sources keyed by rootDirectory-relative path. Use '/' separators. Overlay wins when the resolved target is under rootDirectory."
                             }
                         },
                         ["required"] = new JsonArray("rootDirectory")
@@ -998,7 +998,7 @@ internal sealed class AuroraMcpServer
             return fileSystem;
         }
 
-        var memory = ScriptSources.Memory(ToFileOverlayRoot(root));
+        var memory = ScriptSources.Memory(root);
         AddAdditionalSources(memory, overlaySources);
         return ScriptSources.Composite(memory, fileSystem);
     }
@@ -1019,18 +1019,6 @@ internal sealed class AuroraMcpServer
         }
 
         return NormalizeResourcePath(relative);
-    }
-
-    private static string ToFileOverlayRoot(string root)
-    {
-        var normalized = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-            .Replace('\\', '/');
-        if (!normalized.EndsWith("/", StringComparison.Ordinal))
-        {
-            normalized += "/";
-        }
-
-        return new Uri(normalized, UriKind.Absolute).ToString();
     }
 
     private static void AddAdditionalSources(MemorySourceResolver resolver, JsonObject? sources)

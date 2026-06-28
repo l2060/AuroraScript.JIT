@@ -177,6 +177,16 @@ Recommended AI workflow:
 4. Use `aurora_run_script` or `aurora_run_file` when a concrete result or console output should be verified.
 5. Use `aurora_validate_best_practices` to catch known poor patterns such as repeatedly reading `items.length` in loop conditions.
 
+## Resolver behavior in tools
+
+- `aurora_check_file` and `aurora_run_file` create a composite resolver with optional in-memory `sources` before the disk resolver rooted at `rootDirectory`.
+- Keys in `sources` are normalized with `/` and are resolved relative to `rootDirectory`.
+- The parser keeps import/include paths raw. The resolver resolves entry paths from `rootDirectory` and dependency paths from the importing file's full path.
+- Earlier resolvers win. A memory overlay can override a disk dependency only when the dependency's resolved full path falls under the memory root.
+- Different protocols or non-overlapping roots remain isolated; `mem://overlay/lib.as` does not override `d:/project/lib.as`.
+
+The underlying engine also supports parent-root overlays when a host constructs the resolver manually. For example, if memory is rooted at `d:/a/b/c` and disk is rooted at `d:/a/b/c/d`, a disk script importing `../test` can resolve to `d:/a/b/c/test.as` from memory when memory appears first.
+
 ## Resources
 
 - `aurora://docs/ai`

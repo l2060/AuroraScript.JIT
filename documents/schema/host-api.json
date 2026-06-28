@@ -457,19 +457,24 @@
         "FileSystem": {
           "kind": "factory",
           "signature": "FileSystemScriptSourceResolver FileSystem(string root, Encoding encoding = null)",
-          "summary": "Loads .as files from a file-system root."
+          "summary": "Creates a file-system resolver rooted at a directory."
         },
         "Memory": {
           "kind": "factory",
           "signature": "MemorySourceResolver Memory(string root = \"mem://\")",
-          "summary": "Creates an in-memory virtual source resolver."
+          "summary": "Creates an in-memory virtual source resolver rooted at the supplied source namespace."
         },
         "Composite": {
           "kind": "factory",
           "signature": "CompositeScriptSourceResolver Composite(params IScriptSourceResolver[] resolvers)",
-          "summary": "Composes multiple resolvers; earlier resolvers have higher priority."
+          "summary": "Creates an ordered resolver composition. The first resolver that resolves a target wins."
         }
-      }
+      },
+      "notes": [
+        "Built-in resolvers normalize roots and full paths to use '/' separators internally.",
+        "Entry paths resolve from the resolver root. Import/include dependencies resolve from the importing source full path.",
+        "Composite reads are routed by ScriptSourceReference.BaseDirectory and BuildAsync() enumeration is de-duplicated by normalized FullPath."
+      ]
     },
     "IScriptSourceResolver": {
       "kind": "interface",
@@ -479,24 +484,45 @@
         "Root": {
           "kind": "property",
           "signature": "string Root",
-          "summary": "Source root represented by this resolver."
+          "summary": "Normalized source root represented by this resolver.",
+          "notes": [
+            "The root is part of resolver identity. ScriptSourceReference.BaseDirectory must identify the resolver root that can later read the source."
+          ]
         },
         "ResolveAsync": {
           "kind": "method",
           "signature": "ValueTask<ScriptSourceReference?> ResolveAsync(ScriptSourceReference? importer, string requestedPath, ScriptResolveContext context, CancellationToken cancellationToken = default)",
-          "summary": "Resolves an import/include path to a stable source reference."
+          "summary": "Resolves an entry/import/include path to a stable source reference.",
+          "notes": [
+            "requestedPath is the raw path written in the script. The parser does not normalize it.",
+            "When importer is null, resolve requestedPath from Root as an entry path.",
+            "When importer is present, resolve requestedPath from the directory of importer.FullPath.",
+            "Return null when the source does not exist or the resolved target is not owned by this resolver namespace.",
+            "Normalize roots and indexed source keys when the resolver is built, not during every comparison."
+          ]
         },
         "GetSourceAsync": {
           "kind": "method",
           "signature": "ValueTask<ScriptSource> GetSourceAsync(ScriptSourceReference reference, CancellationToken cancellationToken = default)",
-          "summary": "Returns source text for a resolved reference."
+          "summary": "Returns source text for a resolved reference.",
+          "notes": [
+            "Read only references produced for this resolver root. Composite resolvers route by exact normalized BaseDirectory before calling GetSourceAsync."
+          ]
         },
         "GetAllSourcesAsync": {
           "kind": "method",
           "signature": "IAsyncEnumerable<ScriptSource> GetAllSourcesAsync(ScriptSourceQuery query, CancellationToken cancellationToken = default)",
-          "summary": "Enumerates sources visible to BuildAsync()."
+          "summary": "Enumerates sources visible to BuildAsync().",
+          "notes": [
+            "Returned sources should use normalized FullPath values so CompositeScriptSourceResolver can de-duplicate overlays by source identity."
+          ]
         }
-      }
+      },
+      "notes": [
+        "A resolver only defines the compiler source universe. It does not decide whether a source is open in an editor.",
+        "Use '/' internally for virtual paths and normalized file-system paths.",
+        "The build pipeline is parser raw path -> ModuleGraph ResolveAsync -> GetSourceAsync."
+      ]
     },
     "ScriptSource": {
       "kind": "interface",
@@ -505,7 +531,8 @@
       "members": {
         "BaseDirectory": {
           "kind": "property",
-          "signature": "string BaseDirectory"
+          "signature": "string BaseDirectory",
+          "summary": "Resolver root used for module-relative paths and source read routing."
         },
         "SourcePath": {
           "kind": "property",
@@ -572,11 +599,13 @@
         },
         "BaseDirectory": {
           "kind": "property",
-          "signature": "string BaseDirectory"
+          "signature": "string BaseDirectory",
+          "summary": "Resolver root that should read this reference."
         },
         "FullPath": {
           "kind": "property",
-          "signature": "string FullPath"
+          "signature": "string FullPath",
+          "summary": "Normalized absolute file path or virtual source identifier."
         },
         "ModulePath": {
           "kind": "property",
@@ -639,9 +668,17 @@
         "Add": {
           "kind": "method",
           "signature": "MemorySourceResolver Add(string path, string source)",
-          "summary": "Adds or replaces a virtual memory source."
+          "summary": "Adds or replaces a virtual memory source.",
+          "notes": [
+            "path may be absolute or relative to Root. It is normalized to a full source path with '/' separators before storage."
+          ]
         }
-      }
+      },
+      "notes": [
+        "ResolveAsync only returns sources that fall under Root and exist in the memory table.",
+        "Place memory before file system in Composite to override disk sources whose resolved target falls under the memory root.",
+        "A parent memory root can override a child file-system dependency when the resolved target is under the memory root."
+      ]
     },
     "FileSystemScriptSourceResolver": {
       "kind": "class",
@@ -658,7 +695,8 @@
         },
         "ResolveAsync": {
           "kind": "method",
-          "signature": "ValueTask<ScriptSourceReference?> ResolveAsync(ScriptSourceReference? importer, string requestedPath, ScriptResolveContext context, CancellationToken cancellationToken = default)"
+          "signature": "ValueTask<ScriptSourceReference?> ResolveAsync(ScriptSourceReference? importer, string requestedPath, ScriptResolveContext context, CancellationToken cancellationToken = default)",
+          "summary": "Resolves an entry from Root or a dependency from the importing file path."
         },
         "GetSourceAsync": {
           "kind": "method",
@@ -666,9 +704,14 @@
         },
         "GetAllSourcesAsync": {
           "kind": "method",
-          "signature": "IAsyncEnumerable<ScriptSource> GetAllSourcesAsync(ScriptSourceQuery query, CancellationToken cancellationToken = default)"
+          "signature": "IAsyncEnumerable<ScriptSource> GetAllSourcesAsync(ScriptSourceQuery query, CancellationToken cancellationToken = default)",
+          "summary": "Enumerates script files under Root for BuildAsync()."
         }
-      }
+      },
+      "notes": [
+        "Dependency resolution follows importer.FullPath and may resolve outside Root if the relative path points there and the file exists.",
+        "References returned by this resolver still use this resolver Root as BaseDirectory so GetSourceAsync routes back here."
+      ]
     },
     "FileScriptSourceResolver": {
       "kind": "class",
@@ -687,7 +730,7 @@
     "CompositeScriptSourceResolver": {
       "kind": "class",
       "namespace": "AuroraScript.Source",
-      "summary": "Ordered resolver composition. Earlier resolvers win for ResolveAsync and GetAllSourcesAsync de-duplicates by SourcePath.",
+      "summary": "Ordered resolver composition. Earlier resolvers have higher priority.",
       "members": {
         "Root": {
           "kind": "property",
@@ -695,9 +738,16 @@
         },
         "Add": {
           "kind": "method",
-          "signature": "CompositeScriptSourceResolver Add(IScriptSourceResolver resolver)"
+          "signature": "CompositeScriptSourceResolver Add(IScriptSourceResolver resolver)",
+          "summary": "Adds a resolver and caches its normalized root for later routing."
         }
-      }
+      },
+      "notes": [
+        "ResolveAsync tries resolvers in order with the original importer and requested path. The first non-null reference wins.",
+        "GetSourceAsync routes by exact normalized ScriptSourceReference.BaseDirectory, not by scanning target paths.",
+        "GetAllSourcesAsync de-duplicates by normalized ScriptSource.FullPath so earlier sources hide later sources with the same identity.",
+        "No ProviderId is required; resolver order and BaseDirectory identify the selected provider."
+      ]
     },
     "ScriptDomain": {
       "kind": "class",
@@ -738,6 +788,9 @@
           "overloads": [
             "void DynamicPatch(ScriptSource source, HotPatchType patchType)",
             "void DynamicPatch(string modulePath, string script, HotPatchType patchType)"
+          ],
+          "notes": [
+            "The string overload requires an absolute file path or virtual full path under the current SourceResolver root. Composite resolvers choose the longest matching root."
           ]
         },
         "DynamicPatchAsync": {
@@ -746,25 +799,40 @@
           "overloads": [
             "Task DynamicPatchAsync(ScriptSource source, HotPatchType patchType, CancellationToken cancellationToken = default)",
             "Task DynamicPatchAsync(string modulePath, string script, HotPatchType patchType, CancellationToken cancellationToken = default)"
+          ],
+          "notes": [
+            "The string overload requires an absolute file path or virtual full path under the current SourceResolver root. Composite resolvers choose the longest matching root."
           ]
         },
         "ReplacePatch": {
           "kind": "method",
           "signature": "void ReplacePatch(string modulePath, string script, bool ignoreDepends = false)",
-          "summary": "Replaces the target module with in-memory patch source."
+          "summary": "Replaces the target module with in-memory patch source.",
+          "notes": [
+            "modulePath must be an absolute file path or virtual full path under the current SourceResolver root."
+          ]
         },
         "IncrementalPatch": {
           "kind": "method",
           "signature": "void IncrementalPatch(string modulePath, string script, bool ignoreDepends = false)",
-          "summary": "Adds or updates members in the target module."
+          "summary": "Adds or updates members in the target module.",
+          "notes": [
+            "modulePath must be an absolute file path or virtual full path under the current SourceResolver root."
+          ]
         },
         "ReplacePatchAsync": {
           "kind": "method",
-          "signature": "Task ReplacePatchAsync(string modulePath, string script, bool ignoreDepends = false, CancellationToken cancellationToken = default)"
+          "signature": "Task ReplacePatchAsync(string modulePath, string script, bool ignoreDepends = false, CancellationToken cancellationToken = default)",
+          "notes": [
+            "modulePath must be an absolute file path or virtual full path under the current SourceResolver root."
+          ]
         },
         "IncrementalPatchAsync": {
           "kind": "method",
-          "signature": "Task IncrementalPatchAsync(string modulePath, string script, bool ignoreDepends = false, CancellationToken cancellationToken = default)"
+          "signature": "Task IncrementalPatchAsync(string modulePath, string script, bool ignoreDepends = false, CancellationToken cancellationToken = default)",
+          "notes": [
+            "modulePath must be an absolute file path or virtual full path under the current SourceResolver root."
+          ]
         },
         "GetModule": {
           "kind": "method",
@@ -927,7 +995,13 @@
         },
         "ModulePath": {
           "kind": "field",
-          "signature": "string ModulePath"
+          "signature": "string ModulePath",
+          "summary": "Resolver-relative module path."
+        },
+        "FullPath": {
+          "kind": "field",
+          "signature": "string FullPath",
+          "summary": "Normalized absolute file path or virtual full path of the module source."
         }
       }
     },
@@ -1923,7 +1997,7 @@
   "patterns": [
     {
       "id": "resolver.memory-overlay",
-      "summary": "Put MemorySourceResolver before FileSystemScriptSourceResolver in CompositeScriptSourceResolver to let generated or unsaved sources override disk files.",
+      "summary": "Put MemorySourceResolver before FileSystemScriptSourceResolver to let generated or unsaved sources override disk files whose resolved target falls under the memory root. Different protocols or non-overlapping roots are isolated.",
       "apis": ["ScriptSources.Memory", "ScriptSources.FileSystem", "ScriptSources.Composite"]
     },
     {

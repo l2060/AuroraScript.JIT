@@ -24,6 +24,15 @@ For default code generation style, also read `docs/script-authoring-best-practic
 - `include "path";` and `import Alias from "path";` must appear at the top of a module before ordinary declarations.
 - `export` is only valid at module scope.
 - `CompileBlock` accepts statement bodies only. It rejects module-only syntax such as `@module`, `import`, `include`, `export`, and `declare`.
+- Import/include paths are raw script text until the module graph asks the configured resolver to resolve them.
+- Relative imports are resolved from the importing file's full path, not from a global compiler directory.
+- Entry files are resolved from the resolver root. Do not assume the old `compiler.Directory` or `BaseDirectory` input model.
+- Use `/` in generated script paths and tool overlay paths, even on Windows.
+- In MCP `sources` overlays, keys are paths relative to the tool root/source root. They override disk or later resolver sources only when the resolved target path falls under the overlay root.
+- A parent memory overlay can override a child file-system dependency. For example, if memory is rooted at `d:/a/b/c` and disk is rooted at `d:/a/b/c/d`, a disk script importing `../test` can resolve to memory source `d:/a/b/c/test.as`.
+- Different protocols or non-overlapping roots are isolated script namespaces, such as `mem://overlay/` versus `d:/project/scripts/`.
+- Host-side `DynamicPatch` / `ReplacePatch` / `IncrementalPatch` string overloads require an absolute file path or virtual full path under the current resolver root.
+- Script-side `HotPatch.replace` and `HotPatch.incremental` should pass only `script` when patching the current module. If a module path is supplied, relative paths resolve from the current module full path.
 
 ## Statements
 

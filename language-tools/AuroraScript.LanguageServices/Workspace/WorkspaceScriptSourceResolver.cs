@@ -17,7 +17,9 @@ internal sealed class WorkspaceScriptSourceResolver : IScriptSourceResolver
     public WorkspaceScriptSourceResolver(AuroraWorkspaceSnapshot snapshot, IScriptSourceResolver fallback)
     {
         _snapshot = snapshot ?? new AuroraWorkspaceSnapshot(Array.Empty<AuroraWorkspaceDocument>());
-        _fallback = fallback ?? FileScriptSourceResolver.Instance;
+        _fallback = fallback == null || ReferenceEquals(fallback, FileScriptSourceResolver.Instance)
+            ? ScriptSources.FileSystem(_snapshot.BaseDirectory)
+            : fallback;
     }
 
     public string Root => _snapshot.BaseDirectory;
@@ -30,26 +32,25 @@ internal sealed class WorkspaceScriptSourceResolver : IScriptSourceResolver
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var baseDirectory = importer?.BaseDirectory ?? _snapshot.BaseDirectory;
-        var currentPath = ResolveCurrentPath(importer, baseDirectory);
-        var currentDirectory = importer == null ? baseDirectory : ScriptPath.GetDirectoryName(currentPath);
+        var currentPath = ResolveCurrentPath(importer);
+        var currentDirectory = importer == null ? _snapshot.BaseDirectory : ScriptPath.GetDirectoryName(currentPath);
         var fullPath = ScriptPath.EnsureExtension(ScriptPath.Combine(currentDirectory, requestedPath), context?.Extension);
         if (_snapshot.TryGetDocument(fullPath, out _))
         {
-            return new ScriptSourceReference(baseDirectory, fullPath, ScriptPath.GetModulePath(baseDirectory, fullPath));
+            return new ScriptSourceReference(_snapshot.BaseDirectory, fullPath, ScriptPath.GetModulePath(_snapshot.BaseDirectory, fullPath));
         }
 
         return await _fallback.ResolveAsync(importer, requestedPath, context, cancellationToken).ConfigureAwait(false);
     }
 
-    private string ResolveCurrentPath(ScriptSourceReference? importer, string baseDirectory)
+    private string ResolveCurrentPath(ScriptSourceReference? importer)
     {
         if (importer == null)
         {
-            return baseDirectory;
+            return _snapshot.BaseDirectory;
         }
 
-        return ScriptPath.GetFullPath(baseDirectory, importer.Value.ModulePath);
+        return importer.Value.FullPath;
     }
 
     public async ValueTask<ScriptSource> GetSourceAsync(
@@ -58,7 +59,8 @@ internal sealed class WorkspaceScriptSourceResolver : IScriptSourceResolver
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (_snapshot.TryGetDocument(reference.FullPath, out var document))
+        if (ScriptPath.NormalizedRootsEqual(reference.BaseDirectory, _snapshot.BaseDirectory) &&
+            _snapshot.TryGetDocument(reference.FullPath, out var document))
         {
             return new MemorySource(reference.BaseDirectory, document.Path, document.Text);
         }

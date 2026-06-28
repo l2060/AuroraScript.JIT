@@ -1190,55 +1190,41 @@
       "members": {
         "replace": {
           "kind": "method",
-          "parameters": [
-            {
-              "name": "modulePath",
-              "type": "string"
-            },
-            {
-              "name": "script",
-              "type": "string"
-            },
-            {
-              "name": "ignoreDepends",
-              "type": "boolean",
-              "optional": true
-            }
+          "overloads": [
+            "replace(script: string, ignoreDepends?: boolean)",
+            "replace(modulePath: string, script: string, ignoreDepends?: boolean)"
           ],
           "returns": "null",
           "notes": {
             "en": [
-              "Replaces a module using the supplied script source."
+              "Replaces a module using the supplied script source.",
+              "Passing only script patches the current module.",
+              "Relative modulePath values resolve from the current module FullPath directory."
             ],
             "zh-CN": [
-              "使用提供的脚本源码替换模块。"
+              "使用提供的脚本源码替换模块。",
+              "只传 script 时会修补当前模块。",
+              "相对 modulePath 会从当前模块 FullPath 所在目录解析。"
             ]
           }
         },
         "incremental": {
           "kind": "method",
-          "parameters": [
-            {
-              "name": "modulePath",
-              "type": "string"
-            },
-            {
-              "name": "script",
-              "type": "string"
-            },
-            {
-              "name": "ignoreDepends",
-              "type": "boolean",
-              "optional": true
-            }
+          "overloads": [
+            "incremental(script: string, ignoreDepends?: boolean)",
+            "incremental(modulePath: string, script: string, ignoreDepends?: boolean)"
           ],
           "returns": "null",
           "notes": {
             "en": [
-              "Applies an incremental module hot patch."
+              "Applies an incremental module hot patch.",
+              "Passing only script patches the current module.",
+              "Relative modulePath values resolve from the current module FullPath directory."
             ],
             "zh-CN": [
-              "应用增量模块热更新。"
+              "应用增量模块热更新。",
+              "只传 script 时会修补当前模块。",
+              "相对 modulePath 会从当前模块 FullPath 所在目录解析。"
             ]
           }
         }

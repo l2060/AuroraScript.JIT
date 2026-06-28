@@ -161,20 +161,20 @@ public sealed class CustomSourceResolverUsageTests
 
         public VirtualFileSystemSourceResolver(string root)
         {
-            _root = NormalizeRoot(root);
+            _root = ScriptPath.NormalizeBaseDirectory(root);
         }
 
         public IReadOnlyCollection<string> OpenedPaths => _openedPaths.ToArray();
 
         public VirtualFileSystemSourceResolver AddSource(string path, string source)
         {
-            _sources[ResolveFromDirectory(_root, path)] = source ?? string.Empty;
+            _sources[ScriptPath.GetFullPath(_root, path)] = source ?? string.Empty;
             return this;
         }
 
         public ScriptSource OpenSource(string path)
         {
-            var fullPath = ResolveFromDirectory(_root, path);
+            var fullPath = ScriptPath.GetFullPath(_root, path);
             return GetSourceAsync(new ScriptSourceReference(_root, fullPath))
                 .AsTask()
                 .GetAwaiter()
@@ -190,9 +190,15 @@ public sealed class CustomSourceResolverUsageTests
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var currentSourcePath = importer?.FullPath ?? _root;
-            var currentDirectory = importer == null ? _root : GetDirectory(currentSourcePath);
-            var fullPath = EnsureExtension(ResolveFromDirectory(currentDirectory, requestedPath), context.Extension);
+
+            var currentSourcePath = ResolveCurrentPath(importer);
+            var currentDirectory = importer == null ? _root : ScriptPath.GetDirectoryName(currentSourcePath);
+            var fullPath = ScriptPath.EnsureExtension(ScriptPath.Combine(currentDirectory, requestedPath), context.Extension);
+            if (!ScriptPath.IsWithinNormalizedRoot(_root, fullPath))
+            {
+                return new ValueTask<ScriptSourceReference?>((ScriptSourceReference?)null);
+            }
+
             if (_sources.ContainsKey(fullPath))
             {
                 return new ValueTask<ScriptSourceReference?>(new ScriptSourceReference(_root, fullPath));
@@ -206,6 +212,11 @@ public sealed class CustomSourceResolverUsageTests
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (!ScriptPath.IsWithinNormalizedRoot(_root, source.FullPath))
+            {
+                throw new FileNotFoundException("Virtual script source not found.", source.FullPath);
+            }
+
             if (!_sources.TryGetValue(source.FullPath, out var text))
             {
                 throw new FileNotFoundException("Virtual script source not found.", source.FullPath);
@@ -228,64 +239,14 @@ public sealed class CustomSourceResolverUsageTests
             }
         }
 
-        private static string NormalizeRoot(string root)
+        private string ResolveCurrentPath(ScriptSourceReference? importer)
         {
-            if (string.IsNullOrWhiteSpace(root))
+            if (importer == null)
             {
-                throw new ArgumentException("A virtual source root is required.", nameof(root));
+                return _root;
             }
 
-            return root.TrimEnd('/', '\\').Replace('\\', '/');
-        }
-
-        private static string ResolveFromDirectory(string directory, string path)
-        {
-            if (string.IsNullOrWhiteSpace(path))
-            {
-                throw new ArgumentException("A source path is required.", nameof(path));
-            }
-
-            path = path.Replace('\\', '/');
-            if (Uri.TryCreate(path, UriKind.Absolute, out var absolute))
-            {
-                return absolute.ToString();
-            }
-
-            var baseUriText = directory.EndsWith("/", StringComparison.Ordinal)
-                ? directory
-                : directory + "/";
-            return new Uri(new Uri(baseUriText, UriKind.Absolute), path).ToString();
-        }
-
-        private static string GetDirectory(string path)
-        {
-            path = path.Replace('\\', '/');
-            var slash = path.LastIndexOf('/');
-            return slash < 0 ? path : path.Substring(0, slash + 1);
-        }
-
-        private static string EnsureExtension(string path, string extension)
-        {
-            if (string.IsNullOrWhiteSpace(extension))
-            {
-                return path;
-            }
-
-            if (extension[0] != '.')
-            {
-                extension = "." + extension;
-            }
-
-            var slash = path.LastIndexOf('/');
-            var dot = path.LastIndexOf('.');
-            if (dot > slash)
-            {
-                return string.Equals(path.Substring(dot), extension, StringComparison.Ordinal)
-                    ? path
-                    : path.Substring(0, dot) + extension;
-            }
-
-            return path + extension;
+            return importer.Value.FullPath;
         }
     }
 

@@ -115,7 +115,7 @@ export func testHotPatch() {
     |> }
         ;
         console.log("patchFunc result", patchFunc());
-        HotPatch.incremental("unit", newCode);
+        HotPatch.incremental('unit.as', newCode);
         console.log("patchFunc result", patchFunc());
     }
 

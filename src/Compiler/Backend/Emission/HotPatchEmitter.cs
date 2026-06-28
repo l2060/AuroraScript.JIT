@@ -57,6 +57,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             il.Emit(OpCodes.Ldloc, globalLocal);
             _builder.LoadStringConstant(il, module.Name);
             _builder.LoadStringConstant(il, module.Path);
+            _builder.LoadStringConstant(il, module.FullPath);
             il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptGlobal_EnsureModule);
             if ((_patchType & HotPatchType.Replace) != 0)
             {

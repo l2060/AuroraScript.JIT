@@ -345,7 +345,7 @@ public sealed class ModuleCompilationTests
 
         public InMemoryResolver(string baseDirectory, IReadOnlyDictionary<string, string> sources)
         {
-            _baseDirectory = baseDirectory;
+            _baseDirectory = ScriptPath.NormalizeBaseDirectory(baseDirectory);
             _sources = sources;
         }
 
@@ -358,10 +358,15 @@ public sealed class ModuleCompilationTests
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var currentSourcePath = importer?.FullPath ?? _baseDirectory;
-            var fullPath = WithExtension(importer == null
-                ? ResolveFromRoot(_baseDirectory, requestedPath)
-                : Resolve(currentSourcePath, requestedPath), context.Extension);
+
+            var currentSourcePath = ResolveCurrentPath(importer);
+            var currentDirectory = importer == null ? _baseDirectory : ScriptPath.GetDirectoryName(currentSourcePath);
+            var fullPath = ScriptPath.EnsureExtension(ScriptPath.Combine(currentDirectory, requestedPath), context.Extension);
+            if (!ScriptPath.IsWithinNormalizedRoot(_baseDirectory, fullPath))
+            {
+                return new ValueTask<ScriptSourceReference?>((ScriptSourceReference?)null);
+            }
+
             if (!_sources.ContainsKey(fullPath))
             {
                 return new ValueTask<ScriptSourceReference?>((ScriptSourceReference?)null);
@@ -375,6 +380,11 @@ public sealed class ModuleCompilationTests
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (!ScriptPath.IsWithinNormalizedRoot(_baseDirectory, source.FullPath))
+            {
+                throw new FileNotFoundException("Script source not found.", source.FullPath);
+            }
+
             if (!_sources.TryGetValue(source.FullPath, out var text))
             {
                 throw new FileNotFoundException("Script source not found.", source.FullPath);
@@ -395,34 +405,14 @@ public sealed class ModuleCompilationTests
             }
         }
 
-        private static string Resolve(string currentSourcePath, string requestedPath)
+        private string ResolveCurrentPath(ScriptSourceReference? importer)
         {
-            var slash = currentSourcePath.LastIndexOf('/');
-            var currentDirectory = slash >= 0 ? currentSourcePath.Substring(0, slash + 1) : currentSourcePath + "/";
-            return new Uri(new Uri(currentDirectory, UriKind.Absolute), requestedPath.Replace('\\', '/')).ToString();
-        }
-
-        private static string ResolveFromRoot(string root, string requestedPath)
-        {
-            root = root.EndsWith("/", StringComparison.Ordinal) ? root : root + "/";
-            return new Uri(new Uri(root, UriKind.Absolute), requestedPath.Replace('\\', '/')).ToString();
-        }
-
-        private static string WithExtension(string path, string extension)
-        {
-            if (string.IsNullOrWhiteSpace(extension))
+            if (importer == null)
             {
-                return path;
+                return _baseDirectory;
             }
 
-            if (extension[0] != '.')
-            {
-                extension = "." + extension;
-            }
-
-            var slash = path.LastIndexOf('/');
-            var dot = path.LastIndexOf('.');
-            return dot > slash ? path.Substring(0, dot) + extension : path + extension;
+            return importer.Value.FullPath;
         }
     }
 }

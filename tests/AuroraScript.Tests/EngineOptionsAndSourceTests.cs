@@ -36,7 +36,7 @@ public sealed class EngineOptionsAndSourceTests
             .WithCompiler(compiler => compiler.MaxDegreeOfParallelism = 3);
 
         Assert.NotSame(original, configured);
-        Assert.Equal(Path.GetFullPath(workspace.Root), configured.Compiler.SourceResolver.Root);
+        Assert.Equal(ScriptPath.NormalizeBaseDirectory(workspace.Root), configured.Compiler.SourceResolver.Root);
         Assert.Equal(CompilationMode.Dynamic, configured.Compiler.Mode);
         Assert.Equal(OptimizeOptions.Release, configured.Optimization.Level);
         Assert.False(configured.Runtime.EnableHotReload);
@@ -75,8 +75,8 @@ public sealed class EngineOptionsAndSourceTests
         ScriptSource memory = workspace.MemorySource("nested/memory.as", "@module(MEMORY);");
         var file = new MemorySource(workspace.Root, "nested/file.as", "@module(FILE);");
 
-        Assert.Equal(Path.Combine(workspace.Root, "nested", "memory.as"), memory.FullPath);
-        Assert.Equal(Path.Combine(workspace.Root, "nested", "file.as"), file.FullPath);
+        Assert.Equal(ScriptPath.GetFullPath(workspace.Root, "nested/memory.as"), memory.FullPath);
+        Assert.Equal(ScriptPath.GetFullPath(workspace.Root, "nested/file.as"), file.FullPath);
     }
 
 
@@ -96,7 +96,7 @@ public sealed class EngineOptionsAndSourceTests
     }
 
     [Fact]
-    public async Task CompositeSourceResolverAllowsMemorySourcesToOverrideFileSystem()
+    public async Task CompositeSourceResolverDoesNotOverrideFileSystemWhenRootsDiffer()
     {
         using var workspace = new TestWorkspace();
         workspace.WriteSource("main.as", """
@@ -118,11 +118,11 @@ public sealed class EngineOptionsAndSourceTests
 
         await engine.BuildAsync("main.as");
 
-        ScriptAssert.Equal(42, TestWorkspace.Execute(engine.CreateDomain(), "run"));
+        ScriptAssert.Equal(1, TestWorkspace.Execute(engine.CreateDomain(), "run"));
     }
 
     [Fact]
-    public async Task CompositeSourceResolverBuildAllSourcesDeduplicatesByModulePath()
+    public async Task CompositeSourceResolverAllowsMemorySourcesToOverrideFileSystemWhenRootsMatch()
     {
         using var workspace = new TestWorkspace();
         workspace.WriteSource("main.as", """
@@ -132,7 +132,85 @@ public sealed class EngineOptionsAndSourceTests
             """);
         workspace.WriteSource("config.as", "@module(CONFIG); export const value = 1;");
 
+        var memory = ScriptSources.Memory(workspace.Root)
+            .Add("config.as", "@module(CONFIG); export const value = 42;");
+        var resolver = ScriptSources.Composite(
+            memory,
+            ScriptSources.FileSystem(workspace.Root, Encoding.UTF8));
+        var engine = new AuroraEngine(EngineOptions.Default
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(workspace.Root))
+            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
+            .WithCompiler(compiler => compiler.SourceResolver = resolver));
+
+        await engine.BuildAsync("main.as");
+
+        ScriptAssert.Equal(42, TestWorkspace.Execute(engine.CreateDomain(), "run"));
+    }
+
+    [Fact]
+    public async Task CompositeSourceResolverAllowsMemoryParentRootToOverrideRelativeFileSystemImport()
+    {
+        using var workspace = new TestWorkspace();
+        var fileSystemRoot = Path.Combine(workspace.Root, "d");
+        Directory.CreateDirectory(fileSystemRoot);
+        workspace.WriteSource("d/main.as", """
+            @module(TEST);
+            import value from '../test';
+            export func run() { return value.number; }
+            """);
+        workspace.WriteSource("test.as", "@module(VALUE); export const number = 1;");
+
+        var memory = ScriptSources.Memory(workspace.Root)
+            .Add("test.as", "@module(VALUE); export const number = 42;");
+        var resolver = ScriptSources.Composite(
+            memory,
+            ScriptSources.FileSystem(fileSystemRoot, Encoding.UTF8));
+        var engine = new AuroraEngine(EngineOptions.Default
+            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
+            .WithCompiler(compiler => compiler.SourceResolver = resolver));
+
+        await engine.BuildAsync("main.as");
+
+        ScriptAssert.Equal(42, TestWorkspace.Execute(engine.CreateDomain(), "run"));
+    }
+
+    [Fact]
+    public async Task CompositeSourceResolverBuildAllSourcesDeduplicatesOnlyWithinSameRoot()
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource("main.as", "@module(FILE_MAIN); export func run() { return 1; }");
+        workspace.WriteSource("config.as", "@module(FILE_CONFIG); export const value = 1;");
+
         var memory = ScriptSources.Memory("mem://override/")
+            .Add("config.as", "@module(MEM_CONFIG); export const value = 42;");
+        var resolver = ScriptSources.Composite(
+            memory,
+            ScriptSources.FileSystem(workspace.Root, Encoding.UTF8));
+        var engine = new AuroraEngine(EngineOptions.Default
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(workspace.Root))
+            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
+            .WithCompiler(compiler => compiler.SourceResolver = resolver));
+
+        await engine.BuildAsync();
+
+        var domain = engine.CreateDomain();
+        Assert.NotSame(AuroraScript.Runtime.Types.ScriptObject.Null, domain.GetModule("FILE_MAIN"));
+        Assert.NotSame(AuroraScript.Runtime.Types.ScriptObject.Null, domain.GetModule("FILE_CONFIG"));
+        Assert.NotSame(AuroraScript.Runtime.Types.ScriptObject.Null, domain.GetModule("MEM_CONFIG"));
+    }
+
+    [Fact]
+    public async Task CompositeSourceResolverBuildAllSourcesDeduplicatesMatchingRootsByModulePath()
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource("main.as", """
+            @module(TEST);
+            import config from './config';
+            export func run() { return config.value; }
+            """);
+        workspace.WriteSource("config.as", "@module(CONFIG); export const value = 1;");
+
+        var memory = ScriptSources.Memory(workspace.Root)
             .Add("config.as", "@module(CONFIG); export const value = 42;");
         var resolver = ScriptSources.Composite(
             memory,

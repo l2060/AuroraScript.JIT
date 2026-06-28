@@ -11,9 +11,10 @@ namespace AuroraScript.Core
 
         public static string NormalizeBaseDirectory(string baseDirectory)
         {
-            return string.IsNullOrWhiteSpace(baseDirectory)
+            var normalized = string.IsNullOrWhiteSpace(baseDirectory)
                 ? Directory.GetCurrentDirectory()
                 : NormalizeFullPath(baseDirectory);
+            return TrimTrailingSeparators(normalized);
         }
 
         public static string GetFullPath(string baseDirectory, string path)
@@ -40,7 +41,7 @@ namespace AuroraScript.Core
 
             return HasUriScheme(path)
                 ? NormalizeLogicalPath(path)
-                : Path.GetFullPath(path);
+                : NormalizeFileSystemPath(Path.GetFullPath(path));
         }
 
         public static string Combine(string basePath, string relativePath)
@@ -58,7 +59,7 @@ namespace AuroraScript.Core
             basePath = NormalizeBaseDirectory(basePath);
             if (!HasUriScheme(basePath))
             {
-                return Path.Combine(basePath, relativePath);
+                return NormalizeFileSystemPath(Path.Combine(basePath, relativePath));
             }
 
             var uriBase = basePath.EndsWith("/", StringComparison.Ordinal)
@@ -78,7 +79,7 @@ namespace AuroraScript.Core
             path = NormalizeFullPath(path);
             if (!HasUriScheme(path))
             {
-                return Path.GetDirectoryName(path) ?? string.Empty;
+                return NormalizeFileSystemPath(Path.GetDirectoryName(path) ?? string.Empty);
             }
 
             var lastSlash = path.LastIndexOf('/');
@@ -157,18 +158,43 @@ namespace AuroraScript.Core
             path = NormalizeFullPath(path);
             basePath = TrimTrailingSeparators(NormalizeBaseDirectory(basePath));
 
-            if (!path.StartsWith(basePath, PathComparison))
+            return IsWithinNormalizedRoot(basePath, path);
+        }
+
+        public static bool IsWithinNormalizedRoot(string normalizedRoot, string normalizedPath)
+        {
+            if (string.IsNullOrEmpty(normalizedRoot) || string.IsNullOrEmpty(normalizedPath))
             {
                 return false;
             }
 
-            if (path.Length == basePath.Length)
+            if (!normalizedPath.StartsWith(normalizedRoot, PathComparison))
+            {
+                return false;
+            }
+
+            if (normalizedPath.Length == normalizedRoot.Length)
             {
                 return true;
             }
 
-            var next = path[basePath.Length];
+            var next = normalizedPath[normalizedRoot.Length];
             return next == '/' || next == '\\';
+        }
+
+        public static bool NormalizedRootsEqual(string left, string right)
+        {
+            return Comparer.Equals(left, right);
+        }
+
+        public static bool IsPathRooted(string path)
+        {
+            return !string.IsNullOrWhiteSpace(path) && IsRooted(path);
+        }
+
+        public static bool RootsEqual(string left, string right)
+        {
+            return Comparer.Equals(NormalizeBaseDirectory(left), NormalizeBaseDirectory(right));
         }
 
         private static string GetExtension(string path)
@@ -187,7 +213,7 @@ namespace AuroraScript.Core
         {
             if (!HasUriScheme(path))
             {
-                return Path.ChangeExtension(path, extension);
+                return NormalizeFileSystemPath(Path.ChangeExtension(path, extension));
             }
 
             var lastSlash = path.LastIndexOf('/');
@@ -205,6 +231,11 @@ namespace AuroraScript.Core
         }
 
         private static string NormalizeLogicalPath(string path)
+        {
+            return path.Replace('\\', '/');
+        }
+
+        private static string NormalizeFileSystemPath(string path)
         {
             return path.Replace('\\', '/');
         }

@@ -6,6 +6,7 @@ using AuroraScript.Runtime.Pool;
 using AuroraScript.Runtime.Types;
 using AuroraScript.Source;
 using System;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -25,8 +26,6 @@ namespace AuroraScript.Runtime
     /// </summary>
     public sealed class ScriptDomain : IDisposable
     {
-        private const string HotPatchSourceRoot = "mem://hot-patch/";
-
         internal readonly ScriptContextPool ContextPool = new();
         /// <summary>
         /// The global environment for this script domain.
@@ -191,6 +190,11 @@ namespace AuroraScript.Runtime
         /// <summary>
         /// Dynamically applies a hot patch from an in-memory source string.
         /// </summary>
+        /// <remarks>
+        /// <paramref name="modulePath"/> must be an absolute file path or virtual full
+        /// path under the current source resolver. Composite resolvers use the longest
+        /// matching resolver root.
+        /// </remarks>
         /// <param name="modulePath">The source path used for the patch module and relative import resolution.</param>
         /// <param name="script">The patch script source text.</param>
         /// <param name="patchType">The type of hot patch to apply.</param>
@@ -202,6 +206,11 @@ namespace AuroraScript.Runtime
         /// <summary>
         /// Replaces the target module with an in-memory patch source.
         /// </summary>
+        /// <remarks>
+        /// <paramref name="modulePath"/> must be an absolute file path or virtual full
+        /// path under the current source resolver. Composite resolvers use the longest
+        /// matching resolver root.
+        /// </remarks>
         /// <param name="modulePath">The source path used for the patch module and relative import resolution.</param>
         /// <param name="script">The patch script source text.</param>
         /// <param name="ignoreDepends">Whether already loaded dependencies should be skipped.</param>
@@ -213,6 +222,11 @@ namespace AuroraScript.Runtime
         /// <summary>
         /// Applies an incremental in-memory patch to the target module.
         /// </summary>
+        /// <remarks>
+        /// <paramref name="modulePath"/> must be an absolute file path or virtual full
+        /// path under the current source resolver. Composite resolvers use the longest
+        /// matching resolver root.
+        /// </remarks>
         /// <param name="modulePath">The source path used for the patch module and relative import resolution.</param>
         /// <param name="script">The patch script source text.</param>
         /// <param name="ignoreDepends">Whether already loaded dependencies should be skipped.</param>
@@ -255,22 +269,33 @@ namespace AuroraScript.Runtime
         /// <summary>
         /// Dynamically applies a hot patch from an in-memory source string.
         /// </summary>
+        /// <remarks>
+        /// <paramref name="modulePath"/> must be an absolute file path or virtual full
+        /// path under the current source resolver. Composite resolvers use the longest
+        /// matching resolver root.
+        /// </remarks>
         /// <param name="modulePath">The source path used for the patch module and relative import resolution.</param>
         /// <param name="script">The patch script source text.</param>
         /// <param name="patchType">The type of hot patch to apply.</param>
         /// <param name="cancellationToken">Token used to cancel source resolution.</param>
-        public Task DynamicPatchAsync(
+        public async Task DynamicPatchAsync(
             string modulePath,
             string script,
             HotPatchType patchType,
             CancellationToken cancellationToken = default)
         {
-            return DynamicPatchAsync(CreatePatchSource(modulePath, script), patchType, cancellationToken);
+            var source = await CreatePatchSourceAsync(modulePath, script, cancellationToken).ConfigureAwait(false);
+            await DynamicPatchAsync(source, patchType, cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
         /// Replaces the target module with an in-memory patch source.
         /// </summary>
+        /// <remarks>
+        /// <paramref name="modulePath"/> must be an absolute file path or virtual full
+        /// path under the current source resolver. Composite resolvers use the longest
+        /// matching resolver root.
+        /// </remarks>
         /// <param name="modulePath">The source path used for the patch module and relative import resolution.</param>
         /// <param name="script">The patch script source text.</param>
         /// <param name="ignoreDepends">Whether already loaded dependencies should be skipped.</param>
@@ -291,6 +316,11 @@ namespace AuroraScript.Runtime
         /// <summary>
         /// Applies an incremental in-memory patch to the target module.
         /// </summary>
+        /// <remarks>
+        /// <paramref name="modulePath"/> must be an absolute file path or virtual full
+        /// path under the current source resolver. Composite resolvers use the longest
+        /// matching resolver root.
+        /// </remarks>
         /// <param name="modulePath">The source path used for the patch module and relative import resolution.</param>
         /// <param name="script">The patch script source text.</param>
         /// <param name="ignoreDepends">Whether already loaded dependencies should be skipped.</param>
@@ -308,7 +338,17 @@ namespace AuroraScript.Runtime
                 cancellationToken);
         }
 
-        private static ScriptSource CreatePatchSource(string modulePath, string script)
+        private ScriptSource CreatePatchSource(string modulePath, string script)
+        {
+            return CreatePatchSourceAsync(modulePath, script, CancellationToken.None)
+                .GetAwaiter()
+                .GetResult();
+        }
+
+        private async Task<ScriptSource> CreatePatchSourceAsync(
+            string modulePath,
+            string script,
+            CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(modulePath))
             {
@@ -320,7 +360,46 @@ namespace AuroraScript.Runtime
                 throw new ArgumentNullException(nameof(script));
             }
 
-            return new MemorySource(HotPatchSourceRoot, modulePath, script);
+            var reference = await ResolvePatchReferenceAsync(modulePath, cancellationToken).ConfigureAwait(false);
+            return new MemorySource(reference.BaseDirectory, reference.FullPath, script);
+        }
+
+        private async ValueTask<ScriptSourceReference> ResolvePatchReferenceAsync(
+            string modulePath,
+            CancellationToken cancellationToken)
+        {
+            var resolver = Engine.Options.Compiler.SourceResolver ?? FileScriptSourceResolver.Instance;
+            var context = new ScriptResolveContext(Engine.Options.Compiler.ExtName, Encoding.UTF8);
+
+            if (!ScriptPath.IsPathRooted(modulePath))
+            {
+                throw new ArgumentException(
+                    "Patch module path must be an absolute file path or virtual full path.",
+                    nameof(modulePath));
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            var fullPath = ScriptPath.EnsureExtension(modulePath, context.Extension);
+            if (TryFindResolverRoot(resolver, fullPath, out var root))
+            {
+                return new ScriptSourceReference(root, fullPath);
+            }
+
+            throw new ArgumentException(
+                "Patch module path is not under the current source resolver root.",
+                nameof(modulePath));
+        }
+
+        private static bool TryFindResolverRoot(IScriptSourceResolver resolver, string fullPath, out string root)
+        {
+            if (resolver is CompositeScriptSourceResolver composite &&
+                composite.TryFindLongestRoot(fullPath, out root))
+            {
+                return true;
+            }
+
+            root = ScriptPath.NormalizeBaseDirectory(resolver.Root);
+            return ScriptPath.IsWithinNormalizedRoot(root, fullPath);
         }
 
         private static HotPatchType CreatePatchType(HotPatchType patchType, bool ignoreDepends)

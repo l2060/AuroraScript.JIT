@@ -3,6 +3,7 @@ using AuroraScript.Core;
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Serialization;
 using AuroraScript.Runtime.Types;
+using AuroraScript.Source;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -18,17 +19,16 @@ namespace Examples
     public class Program
     {
         private static readonly string scriptDirectory = Path.Combine(AppContext.BaseDirectory, "tests");
+        // load script from memory, override file system script
+        private static readonly IScriptSourceResolver memorySource = ScriptSources.Memory(scriptDirectory).Add("seed.as", "console.log('load from memory overlay'); export func go(){ console.log('seed from memory...');  }");
+        // load script from file system
+        private static readonly IScriptSourceResolver fileSystemSource = ScriptSources.FileSystem(scriptDirectory, Encoding.UTF8);
+
 
         private static readonly EngineOptions engineOptions = EngineOptions.Default
         .WithCompiler(compiler =>
         {
-            compiler.SourceResolver = ScriptSources.Composite(
-                // load script from memory, override file system script
-                ScriptSources.Memory().Add("seed.as", "console.log('load from mem://'); export func go(){ console.log('seed from memory...');  }"),
-                // load script from file system
-                ScriptSources.FileSystem(scriptDirectory, Encoding.UTF8)
-            );
-
+            compiler.SourceResolver = ScriptSources.Composite(memorySource, fileSystemSource);
             compiler.MaxDegreeOfParallelism = 0;
             compiler.ExtName = "as";
             compiler.Mode = CompilationMode.Persistence;
@@ -125,33 +125,40 @@ namespace Examples
                 return;
             }
             // version 1
-            domain.ReplacePatch("testPatch", "func good(){ console.log('version:1'); }");
+            domain.ReplacePatch(PatchPath("testPatch.as"), "@module(testPatch); func good(){ console.log('version:1'); }");
             domain.Execute("testPatch", "good");
             // version 2
-            domain.ReplacePatch("testPatch", "func good(){ console.log('version:2'); }");
+            domain.ReplacePatch(PatchPath("testPatch.as"), "@module(testPatch); func good(){ console.log('version:2'); }");
             domain.Execute("testPatch", "good");
             // version 3
-            domain.ReplacePatch("testPatch", "func good(){ console.log('version:3'); }");
+            domain.ReplacePatch(PatchPath("testPatch.as"), "@module(testPatch); func good(){ console.log('version:3'); }");
             domain.Execute("testPatch", "good");
 
 
             // 1. Initial Load
             Console.WriteLine("[1] Initial Load");
-            domain.IncrementalPatch("test.as", "@module(test);import l123 from 'l123'; func hello() { return 'v1'; } var x = 10;", ignoreDepends: true);
+            domain.IncrementalPatch(
+                PatchPath("test.as"),
+                "@module(test);import l123 from 'l123'; func hello() { return 'v1'; } var x = 10;",
+                ignoreDepends: true);
             var r1 = domain.Execute("test", "hello");
             var x1 = domain.GetModule("test").GetPropertyValue("x");
             Console.WriteLine($"hello() -> {r1}, x -> {x1}");
 
             // 2. Incremental Patch (Method Replacement)
             Console.WriteLine("[2] Incremental Patch (Method Replacement)");
-            domain.IncrementalPatch("test.as", "@module(test); func hello() { return 'v2'; }");
+            domain.IncrementalPatch(
+                PatchPath("test.as"),
+                "@module(test); func hello() { return 'v2'; }");
             var r2 = domain.Execute("test", "hello");
             var x2 = domain.GetModule("test").GetPropertyValue("x");
             Console.WriteLine($"hello() -> {r2}, x -> {x2} (x should still be 10)");
 
             // 3. Incremental Patch (Add Method & Property)
             Console.WriteLine("[3] Incremental Patch (Add Method & Property)");
-            domain.IncrementalPatch("test.as", "@module(test); func world() { return 'world'; } var y = 20;");
+            domain.IncrementalPatch(
+                PatchPath("test.as"),
+                "@module(test); func world() { return 'world'; } var y = 20;");
             var rw = domain.Execute("test", "world");
             var y3 = domain.GetModule("test").GetPropertyValue("y");
             Console.WriteLine($"world() -> {rw}, y -> {y3}");
@@ -159,7 +166,9 @@ namespace Examples
             // 4. Replace Patch
             Console.WriteLine("\n[4] Replace Patch");
             domain.GetModule("l123").SetPropertyValue("FValue", NumberValue.Of(128.456));
-            domain.ReplacePatch("test.as", "@module(test); import l123 from 'l123'; func reset() { return 'reset'; }");
+            domain.ReplacePatch(
+                PatchPath("test.as"),
+                "@module(test); import l123 from 'l123'; func reset() { return 'reset'; }");
             try
             {
                 domain.Execute("test", "hello");
@@ -181,6 +190,11 @@ namespace Examples
 
 
 
+        }
+
+        private static string PatchPath(string modulePath)
+        {
+            return Path.GetFullPath(Path.Combine(scriptDirectory, modulePath));
         }
 
 

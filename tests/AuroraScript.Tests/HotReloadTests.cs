@@ -51,10 +51,26 @@ public sealed class HotReloadTests
             enableHotReload: true);
 
         domain.IncrementalPatch(
-            "patch.as",
+            System.IO.Path.Combine(workspace.Root, "patch.as"),
             "@module(TEST); export func version() { return 2; }");
 
         ScriptAssert.Equal(2, TestWorkspace.Execute(domain, "version"));
+    }
+
+    [Fact]
+    public async Task StringPatchRejectsRelativeModulePath()
+    {
+        using var workspace = new TestWorkspace();
+        var (engine, domain) = await workspace.CompileModuleAsync(
+            "@module(TEST); export func version() { return 1; }",
+            enableHotReload: true);
+
+        var error = Assert.Throws<ArgumentException>(() => domain.IncrementalPatch(
+            "patch.as",
+            "@module(TEST); export func version() { return 2; }"));
+
+        Assert.Contains("absolute", error.Message, StringComparison.OrdinalIgnoreCase);
+        ScriptAssert.Equal(1, TestWorkspace.Execute(domain, "version"));
     }
 
     [Fact]
@@ -93,6 +109,69 @@ public sealed class HotReloadTests
     }
 
     [Fact]
+    public async Task StringPatchFullPathUsesResolverRootForDependencyImports()
+    {
+        using var workspace = new TestWorkspace();
+        var engine = workspace.CreateEngine(enableHotReload: true);
+        workspace.WriteSource("l123.as", "@module(l123); export const value = 1;");
+        await engine.BuildAsync("l123.as");
+        var domain = engine.CreateDomain();
+
+        domain.IncrementalPatch(
+            System.IO.Path.Combine(workspace.Root, "test.as"),
+            "@module(test); import l123 from 'l123'; export func hello() { return l123.value; }",
+            ignoreDepends: true);
+
+        ScriptAssert.Equal(1, domain.Execute("test", "hello"));
+    }
+
+    [Fact]
+    public async Task ScriptHotPatchSingleArgumentUsesCurrentModuleFullPath()
+    {
+        using var workspace = new TestWorkspace();
+        var (engine, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func version() { return 1; }
+            export func patchSelf() {
+                var patch =
+                |> @module(TEST);
+                |> export func version() { return 2; }
+                    ;
+                HotPatch.incremental(patch);
+            }
+            """,
+            enableHotReload: true);
+
+        TestWorkspace.Execute(domain, "patchSelf");
+
+        ScriptAssert.Equal(2, TestWorkspace.Execute(domain, "version"));
+    }
+
+    [Fact]
+    public async Task ScriptHotPatchRelativePathResolvesFromCurrentModuleFullPath()
+    {
+        using var workspace = new TestWorkspace();
+        var (engine, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func version() { return 1; }
+            export func patchSelf() {
+                var patch =
+                |> @module(TEST);
+                |> export func version() { return 3; }
+                    ;
+                HotPatch.incremental('./main', patch);
+            }
+            """,
+            enableHotReload: true);
+
+        TestWorkspace.Execute(domain, "patchSelf");
+
+        ScriptAssert.Equal(3, TestWorkspace.Execute(domain, "version"));
+    }
+
+    [Fact]
     public async Task ReplacePatchCanUseModulePathAndSourceText()
     {
         using var workspace = new TestWorkspace();
@@ -101,7 +180,7 @@ public sealed class HotReloadTests
             enableHotReload: true);
 
         domain.ReplacePatch(
-            "replace.as",
+            System.IO.Path.Combine(workspace.Root, "replace.as"),
             "@module(TEST); export func keep() { return 3; }");
 
         Assert.Null(domain.GetMethod("TEST", "old"));

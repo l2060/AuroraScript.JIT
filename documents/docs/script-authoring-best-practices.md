@@ -116,9 +116,14 @@ Rules:
 - Use relative paths from the importing file: `./lib`, `../shared/util`.
 - Omit `.as` unless the user explicitly writes it; the resolver can add the configured extension.
 - Do not place imports after variables or functions.
-- Do not assume file-system roots. Path resolution is resolver-owned.
+- Do not assume file-system roots, `compiler.Directory`, or a process working directory. Path resolution is resolver-owned.
+- The parser preserves raw paths; the module graph calls `ResolveAsync`, then loads the returned reference with `GetSourceAsync`.
+- Entry paths resolve from the resolver root. Dependency paths resolve from the directory of the importing file's full path.
+- Use `/` in paths that you generate, including on Windows.
 - Prefer one module per file. Give each imported file its own `@module(NAME);`.
-- In examples for MCP validation, include dependency text in the `sources` object using the same relative paths the resolver will see.
+- In examples for MCP validation, include dependency text in the `sources` object using paths relative to the tool root/source root.
+- Memory overlays only override later sources when the resolved target falls under the memory root; otherwise different roots or protocols remain isolated.
+- If a file under `d:/a/b/c/d` imports `../test`, the resolved target is `d:/a/b/c/test.as`. A memory overlay rooted at `d:/a/b/c` can provide that source when it is ordered before the file-system resolver.
 
 ## Declarations And Scope
 
@@ -385,6 +390,8 @@ If a module may be patched:
 - Prefer small functions over large monolithic functions.
 - Keep module-level mutable state minimal and explicit.
 - Avoid hiding behavior in `include` files unless the patch process intentionally includes them.
+- In scripts, prefer `HotPatch.replace(script)` or `HotPatch.incremental(script)` when patching the current module.
+- If a script supplies a patch module path, relative paths are resolved from the current module full path. Host-side patch APIs still require an absolute file path or virtual full path.
 
 ## Validation Examples
 

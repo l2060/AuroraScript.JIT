@@ -48,7 +48,7 @@ public sealed class DefinitionFeatureTests : IDisposable
             new[] { new AuroraWorkspaceDocument(libPath, lib) });
 
         Assert.NotNull(definition);
-        Assert.Equal(Path.GetFullPath(libPath), definition!.Path);
+        Assert.Equal(ScriptPath.NormalizeFullPath(libPath), definition!.Path);
         Assert.Equal(0, definition.Range.Start.Line);
         Assert.True(definition.Range.Start.Character > 0);
     }
@@ -76,7 +76,7 @@ public sealed class DefinitionFeatureTests : IDisposable
             new[] { new AuroraWorkspaceDocument(libPath, lib) });
 
         Assert.NotNull(definition);
-        Assert.Equal(Path.GetFullPath(libPath), definition!.Path);
+        Assert.Equal(ScriptPath.NormalizeFullPath(libPath), definition!.Path);
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public sealed class DefinitionFeatureTests : IDisposable
         var definition = service.GetDefinition(mainPath, PositionOf(main, "value"));
 
         Assert.NotNull(definition);
-        Assert.Equal(Path.GetFullPath(libPath), definition!.Path);
+        Assert.Equal(ScriptPath.NormalizeFullPath(libPath), definition!.Path);
     }
 
     [Fact]
@@ -228,7 +228,7 @@ public sealed class DefinitionFeatureTests : IDisposable
             new[] { new AuroraWorkspaceDocument(sharedPath, shared) });
 
         Assert.NotNull(definition);
-        Assert.Equal(Path.GetFullPath(sharedPath), definition!.Path);
+        Assert.Equal(ScriptPath.NormalizeFullPath(sharedPath), definition!.Path);
     }
 
     [Fact]
@@ -248,7 +248,7 @@ public sealed class DefinitionFeatureTests : IDisposable
         var definition = service.GetDefinition(mainPath, main, PositionOfLast(main, "value"));
 
         Assert.NotNull(definition);
-        Assert.Equal(Path.GetFullPath(mainPath), definition!.Path);
+        Assert.Equal(ScriptPath.NormalizeFullPath(mainPath), definition!.Path);
         Assert.Equal(1, definition.Range.Start.Line);
     }
 
@@ -413,7 +413,7 @@ public sealed class DefinitionFeatureTests : IDisposable
             new[] { new AuroraWorkspaceDocument(constantPath, constant) });
 
         Assert.NotNull(definition);
-        Assert.Equal(Path.GetFullPath(mainPath), definition!.Path);
+        Assert.Equal(ScriptPath.NormalizeFullPath(mainPath), definition!.Path);
         Assert.Equal(3, definition.Range.Start.Line);
     }
 
@@ -439,10 +439,10 @@ public sealed class DefinitionFeatureTests : IDisposable
         var countDefinition = service.GetDefinition(mainPath, main, PositionOfLast(main, "count"));
 
         Assert.NotNull(resetDefinition);
-        Assert.Equal(Path.GetFullPath(mainPath), resetDefinition!.Path);
+        Assert.Equal(ScriptPath.NormalizeFullPath(mainPath), resetDefinition!.Path);
         Assert.Equal(3, resetDefinition.Range.Start.Line);
         Assert.NotNull(countDefinition);
-        Assert.Equal(Path.GetFullPath(mainPath), countDefinition!.Path);
+        Assert.Equal(ScriptPath.NormalizeFullPath(mainPath), countDefinition!.Path);
         Assert.Equal(4, countDefinition.Range.Start.Line);
     }
 
@@ -464,7 +464,7 @@ public sealed class DefinitionFeatureTests : IDisposable
         var definition = service.GetDefinition(mainPath, main, PositionOfLast(main, "reset"));
 
         Assert.NotNull(definition);
-        Assert.Equal(Path.GetFullPath(mainPath), definition!.Path);
+        Assert.Equal(ScriptPath.NormalizeFullPath(mainPath), definition!.Path);
         Assert.Equal(3, definition.Range.Start.Line);
     }
 
@@ -511,10 +511,10 @@ public sealed class DefinitionFeatureTests : IDisposable
             new[] { new AuroraWorkspaceDocument(timerPath, timer) });
 
         Assert.NotNull(resetDefinition);
-        Assert.Equal(Path.GetFullPath(timerPath), resetDefinition!.Path);
+        Assert.Equal(ScriptPath.NormalizeFullPath(timerPath), resetDefinition!.Path);
         Assert.Equal(4, resetDefinition.Range.Start.Line);
         Assert.NotNull(countDefinition);
-        Assert.Equal(Path.GetFullPath(timerPath), countDefinition!.Path);
+        Assert.Equal(ScriptPath.NormalizeFullPath(timerPath), countDefinition!.Path);
         Assert.Equal(3, countDefinition.Range.Start.Line);
     }
 
@@ -543,10 +543,10 @@ public sealed class DefinitionFeatureTests : IDisposable
         var passedDefinition = service.GetDefinition(mainPath, main, PositionOfLast(main, "passed"));
 
         Assert.NotNull(failuresDefinition);
-        Assert.Equal(Path.GetFullPath(mainPath), failuresDefinition!.Path);
+        Assert.Equal(ScriptPath.NormalizeFullPath(mainPath), failuresDefinition!.Path);
         Assert.Equal(3, failuresDefinition.Range.Start.Line);
         Assert.NotNull(passedDefinition);
-        Assert.Equal(Path.GetFullPath(mainPath), passedDefinition!.Path);
+        Assert.Equal(ScriptPath.NormalizeFullPath(mainPath), passedDefinition!.Path);
         Assert.Equal(4, passedDefinition.Range.Start.Line);
     }
 
@@ -577,7 +577,7 @@ public sealed class DefinitionFeatureTests : IDisposable
         var definition = service.GetDefinition(mainPath, main, PositionOfLast(main, "passed"));
 
         Assert.NotNull(definition);
-        Assert.Equal(Path.GetFullPath(mainPath), definition!.Path);
+        Assert.Equal(ScriptPath.NormalizeFullPath(mainPath), definition!.Path);
         Assert.Equal(5, definition.Range.Start.Line);
     }
 
@@ -768,7 +768,7 @@ public sealed class DefinitionFeatureTests : IDisposable
         var definition = service.GetDefinition(mainPath, main, PositionOfLast(main, "Math"));
 
         Assert.NotNull(definition);
-        Assert.Equal(Path.GetFullPath(mainPath), definition!.Path);
+        Assert.Equal(ScriptPath.NormalizeFullPath(mainPath), definition!.Path);
         Assert.Equal(2, definition.Range.Start.Line);
     }
 
@@ -899,7 +899,7 @@ public sealed class DefinitionFeatureTests : IDisposable
 
         public InMemoryResolver(string baseDirectory, IReadOnlyDictionary<string, string> sources)
         {
-            _baseDirectory = baseDirectory;
+            _baseDirectory = ScriptPath.NormalizeBaseDirectory(baseDirectory);
             _sources = sources;
         }
 
@@ -912,10 +912,15 @@ public sealed class DefinitionFeatureTests : IDisposable
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var currentSourcePath = importer?.FullPath ?? _baseDirectory;
-            var fullPath = WithExtension(importer == null
-                ? ResolveFromRoot(_baseDirectory, requestedPath)
-                : Resolve(currentSourcePath, requestedPath), context.Extension);
+
+            var currentSourcePath = ResolveCurrentPath(importer);
+            var currentDirectory = importer == null ? _baseDirectory : ScriptPath.GetDirectoryName(currentSourcePath);
+            var fullPath = ScriptPath.EnsureExtension(ScriptPath.Combine(currentDirectory, requestedPath), context.Extension);
+            if (!ScriptPath.IsWithinNormalizedRoot(_baseDirectory, fullPath))
+            {
+                return new ValueTask<ScriptSourceReference?>((ScriptSourceReference?)null);
+            }
+
             if (!_sources.ContainsKey(fullPath))
             {
                 return new ValueTask<ScriptSourceReference?>((ScriptSourceReference?)null);
@@ -929,6 +934,11 @@ public sealed class DefinitionFeatureTests : IDisposable
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (!ScriptPath.IsWithinNormalizedRoot(_baseDirectory, source.FullPath))
+            {
+                throw new FileNotFoundException("Script source not found.", source.FullPath);
+            }
+
             if (!_sources.TryGetValue(source.FullPath, out var text))
             {
                 throw new FileNotFoundException("Script source not found.", source.FullPath);
@@ -949,34 +959,14 @@ public sealed class DefinitionFeatureTests : IDisposable
             }
         }
 
-        private static string Resolve(string currentSourcePath, string requestedPath)
+        private string ResolveCurrentPath(ScriptSourceReference? importer)
         {
-            var slash = currentSourcePath.LastIndexOf('/');
-            var currentDirectory = slash >= 0 ? currentSourcePath.Substring(0, slash + 1) : currentSourcePath + "/";
-            return new Uri(new Uri(currentDirectory, UriKind.Absolute), requestedPath.Replace('\\', '/')).ToString();
-        }
-
-        private static string ResolveFromRoot(string root, string requestedPath)
-        {
-            root = root.EndsWith("/", StringComparison.Ordinal) ? root : root + "/";
-            return new Uri(new Uri(root, UriKind.Absolute), requestedPath.Replace('\\', '/')).ToString();
-        }
-
-        private static string WithExtension(string path, string extension)
-        {
-            if (string.IsNullOrWhiteSpace(extension))
+            if (importer == null)
             {
-                return path;
+                return _baseDirectory;
             }
 
-            if (extension[0] != '.')
-            {
-                extension = "." + extension;
-            }
-
-            var slash = path.LastIndexOf('/');
-            var dot = path.LastIndexOf('.');
-            return dot > slash ? path.Substring(0, dot) + extension : path + extension;
+            return importer.Value.FullPath;
         }
     }
 }

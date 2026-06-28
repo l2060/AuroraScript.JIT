@@ -200,13 +200,15 @@ var engine = new AuroraEngine(
 await engine.BuildAsync("main.as");
 ```
 
-需要在文件系统基础上叠加内存脚本时，使用 `Composite`。顺序越靠前优先级越高，同名源码以前面的 resolver 为准：
+需要在文件系统基础上叠加内存脚本时，使用 `Composite`。顺序越靠前优先级越高；只要 import/include 解析后的目标路径落在前面 resolver 的 root 范围内，就可以被前面的 resolver 覆盖。不同协议或不相交 root 仍是隔离的脚本命名空间。脚本路径建议统一使用 `/`：
 
 ```csharp
+var scriptRoot = Path.GetFullPath("./scripts");
+
 var resolver = ScriptSources.Composite(
-    ScriptSources.Memory("mem://app/")
+    ScriptSources.Memory(scriptRoot)
         .Add("generated.as", "@module(GEN); export const value = 42;"),
-    ScriptSources.FileSystem("./scripts"));
+    ScriptSources.FileSystem(scriptRoot));
 
 var options = EngineOptions.Default.WithCompiler(compiler =>
 {
@@ -214,7 +216,18 @@ var options = EngineOptions.Default.WithCompiler(compiler =>
 });
 ```
 
-自定义来源只需要实现 `IScriptSourceResolver`。`ResolveAsync` 应保留导入者上下文，让 `import lib from './lib';` 和 `include '../shared';` 相对导入者自身路径解析，而不是相对某个全局编译目录。
+如果 `Memory("d:/a/b/c")` 放在 `FileSystem("d:/a/b/c/d")` 前面，文件系统脚本中的 `import '../test'` 会先解析成 `d:/a/b/c/test.as`，因此可以由父级 Memory root 覆盖。自定义来源只需要实现 `IScriptSourceResolver`。`ResolveAsync` 应保留导入者上下文，让 `import lib from './lib';` 和 `include '../shared';` 相对导入者自身路径解析，而不是相对某个全局编译目录；随后再判断解析后的目标路径是否属于当前 resolver 的 root。
+
+Resolver 规则：
+
+- Parser 只保留脚本里写的原始路径；模块图构建阶段负责调用 `ResolveAsync`。
+- `ResolveAsync(null, entryPath, ...)` 从 resolver 的 `Root` 解析入口；依赖解析从 `importer.FullPath` 所在目录解析。
+- `Composite` 按 resolver 顺序解析，谁先返回引用谁优先，不需要额外的 `ProviderId`。
+- `MemorySourceResolver` 只解析落在自身 root 内且已添加的源码；因此只有目标路径落在 Memory root 下时才能覆盖后面的 resolver。
+- `FileSystemScriptSourceResolver` 的 `BuildAsync()` 枚举 root 下文件；依赖解析会跟随导入者路径，文件存在时可解析到 root 外，返回引用仍由该 FileSystem resolver 读取。
+- `GetSourceAsync` 按 `ScriptSourceReference.BaseDirectory` 精确路由到对应 resolver，不会重新按目标路径搜索。
+- `BuildAsync()` 通过 `GetAllSourcesAsync` 枚举源码；`Composite` 按规范化后的 `FullPath` 去重，前面的源码覆盖后面的同路径源码。
+- Resolver 内部路径应在构建/添加源码时规范化，并统一使用 `/` 分隔，避免每次比较时重复归一化。
 
 ## CompileBlock
 
@@ -261,16 +274,21 @@ var result = block.Invoke(ScriptDatum.FromNumber(125));
 宿主侧：
 
 ```csharp
-domain.ReplacePatch("main.as", "@module(MAIN); export func run() { return 42; }");
-domain.IncrementalPatch("main.as", "export func added() { return 1; }");
+var mainPath = Path.GetFullPath(Path.Combine(scriptRoot, "main.as"));
+domain.ReplacePatch(mainPath, "@module(MAIN); export func run() { return 42; }");
+domain.IncrementalPatch(mainPath, "export func added() { return 1; }");
 ```
+
+宿主侧字符串重载要求传入绝对文件路径或虚拟 full path。路径必须落在当前 `SourceResolver` 的某个 root 下；`Composite` 会选择最长匹配 root。这样补丁里的 `import` / `include` 会继续按同一个 resolver 命名空间解析依赖，不会被放进错误的独立空间。
 
 脚本侧：
 
 ```javascript
-HotPatch.replace("main.as", "@module(MAIN); export func run() { return 42; }");
-HotPatch.incremental("main.as", "export func added() { return 1; }");
+HotPatch.replace("@module(MAIN); export func run() { return 42; }");
+HotPatch.incremental("./main", "export func added() { return 1; }");
 ```
+
+脚本侧只传 `script` 时会修补当前模块；传入相对 `modulePath` 时，会从当前模块的 `FullPath` 所在目录解析。
 
 注意：
 

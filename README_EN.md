@@ -200,13 +200,15 @@ var engine = new AuroraEngine(
 await engine.BuildAsync("main.as");
 ```
 
-Use `Composite` when you want memory sources on top of file-system sources. Earlier resolvers have higher priority, so duplicate source paths are taken from the first matching resolver:
+Use `Composite` when you want memory sources on top of file-system sources. Earlier resolvers have higher priority; when the resolved import/include target falls under an earlier resolver root, that resolver can override it. Different protocols or non-overlapping roots remain isolated script namespaces. Prefer `/` in script paths:
 
 ```csharp
+var scriptRoot = Path.GetFullPath("./scripts");
+
 var resolver = ScriptSources.Composite(
-    ScriptSources.Memory("mem://app/")
+    ScriptSources.Memory(scriptRoot)
         .Add("generated.as", "@module(GEN); export const value = 42;"),
-    ScriptSources.FileSystem("./scripts"));
+    ScriptSources.FileSystem(scriptRoot));
 
 var options = EngineOptions.Default.WithCompiler(compiler =>
 {
@@ -214,7 +216,18 @@ var options = EngineOptions.Default.WithCompiler(compiler =>
 });
 ```
 
-Custom stores only need to implement `IScriptSourceResolver`. `ResolveAsync` should preserve importer context so `import lib from './lib';` and `include '../shared';` resolve relative to the importer itself, not to a global compiler directory.
+If `Memory("d:/a/b/c")` is placed before `FileSystem("d:/a/b/c/d")`, a file-system script importing `../test` first resolves to `d:/a/b/c/test.as`, so the parent memory root can override it. Custom stores only need to implement `IScriptSourceResolver`. `ResolveAsync` should preserve importer context so `import lib from './lib';` and `include '../shared';` resolve relative to the importer itself, not to a global compiler directory; then check whether the resolved target belongs to the current resolver root.
+
+Resolver rules:
+
+- The parser keeps the raw path written in the script; module graph building calls `ResolveAsync`.
+- `ResolveAsync(null, entryPath, ...)` resolves an entry from the resolver `Root`; dependency resolution starts from the directory of `importer.FullPath`.
+- `Composite` resolves in resolver order. The first resolver that returns a reference wins; no extra `ProviderId` is needed.
+- `MemorySourceResolver` only resolves sources that fall under its root and have been added to the memory table, so it can override later resolvers only when the resolved target is under the memory root.
+- `FileSystemScriptSourceResolver` enumerates files under its root for `BuildAsync()`. Dependency resolution follows the importer path and may resolve outside the root when the file exists; the returned reference still routes back to that file-system resolver.
+- `GetSourceAsync` routes by exact `ScriptSourceReference.BaseDirectory`, not by searching target paths again.
+- `BuildAsync()` enumerates through `GetAllSourcesAsync`; `Composite` de-duplicates by normalized `FullPath`, so earlier sources hide later sources with the same identity.
+- Resolver implementations should normalize roots/source keys when they are built or added, use `/` internally, and avoid repeated normalization in hot comparisons.
 
 ## CompileBlock
 
@@ -261,16 +274,21 @@ Hot patching is controlled by `EngineOptions.Runtime.EnableHotReload` and is ena
 Host side:
 
 ```csharp
-domain.ReplacePatch("main.as", "@module(MAIN); export func run() { return 42; }");
-domain.IncrementalPatch("main.as", "export func added() { return 1; }");
+var mainPath = Path.GetFullPath(Path.Combine(scriptRoot, "main.as"));
+domain.ReplacePatch(mainPath, "@module(MAIN); export func run() { return 42; }");
+domain.IncrementalPatch(mainPath, "export func added() { return 1; }");
 ```
+
+Host-side string overloads require an absolute file path or virtual full path. The path must fall under one of the current `SourceResolver` roots; `Composite` chooses the longest matching root. Imports/includes inside the patch then continue resolving in the same resolver namespace instead of being assigned to an unrelated root.
 
 Script side:
 
 ```javascript
-HotPatch.replace("main.as", "@module(MAIN); export func run() { return 42; }");
-HotPatch.incremental("main.as", "export func added() { return 1; }");
+HotPatch.replace("@module(MAIN); export func run() { return 42; }");
+HotPatch.incremental("./main", "export func added() { return 1; }");
 ```
+
+On the script side, passing only `script` patches the current module. When a relative `modulePath` is supplied, it resolves from the current module `FullPath` directory.
 
 Notes:
 

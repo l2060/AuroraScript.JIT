@@ -9,7 +9,7 @@ Use these documents when writing, reviewing, or fixing AuroraScript code.
 - [Script authoring best practices](docs/script-authoring-best-practices.md): recommended defaults for AI-generated modules, CompileBlock bodies, imports, data shapes, and validation.
 - [Language reference](docs/language-reference.md): complete language feature reference.
 - [Performance best practices](docs/performance-best-practices.md): compiler and runtime optimization guidance.
-- [Host integration guide](docs/host-integration.md): .NET host API, custom resolvers, CLR interop, domains, and hot patch usage.
+- [Host integration guide](docs/host-integration.md): .NET host API, custom resolver rules, CLR interop, domains, and hot patch usage.
 
 ## Machine-Readable Files
 
@@ -30,7 +30,7 @@ Use these documents when writing, reviewing, or fixing AuroraScript code.
 
 ## MCP
 
-- [AuroraScript MCP server](mcp/README.md)
+- [AuroraScript MCP server](../language-tools/AuroraScript.Mcp/README.md)
 
 When uncertain, prefer `aurora_check_script` from the MCP server over guessing.
 

@@ -11,6 +11,14 @@ namespace AuroraScript.Source
     /// <summary>
     /// Default script source resolver that loads scripts from the file system.
     /// </summary>
+    /// <remarks>
+    /// The root is normalized once at construction and all internal paths use '/'
+    /// separators. <c>BuildAsync()</c> enumerates files under <see cref="Root"/>. Entry
+    /// paths resolve from <see cref="Root"/>, while dependency paths resolve from the
+    /// importing file's full path. A dependency can therefore point outside
+    /// <see cref="Root"/> when the relative path and file system allow it; the returned
+    /// reference still uses this resolver root so reads route back here.
+    /// </remarks>
     public sealed class FileSystemScriptSourceResolver : IScriptSourceResolver
     {
         private readonly Encoding _encoding;
@@ -56,12 +64,7 @@ namespace AuroraScript.Source
                 return baseDirectory;
             }
 
-            if (ScriptPath.Comparer.Equals(importer.Value.BaseDirectory, baseDirectory))
-            {
-                return importer.Value.FullPath;
-            }
-
-            return ScriptPath.GetFullPath(baseDirectory, importer.Value.ModulePath);
+            return importer.Value.FullPath;
         }
 
         /// <inheritdoc />
@@ -70,6 +73,11 @@ namespace AuroraScript.Source
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            if (!ScriptPath.NormalizedRootsEqual(reference.BaseDirectory, Root))
+            {
+                throw new FileNotFoundException("Script source not found.", reference.FullPath);
+            }
 
             if (!File.Exists(reference.FullPath))
             {
