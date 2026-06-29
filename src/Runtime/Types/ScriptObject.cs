@@ -19,6 +19,8 @@ namespace AuroraScript.Runtime.Types
         Frozen = 1,
         /// <summary> The object is immutable (typically used for built-in constants). </summary>
         Immutable = 2,
+        /// <summary> The object participates in custom value equality for == and Object.equal. </summary>
+        ValueEquality = 4,
     }
 
     /// <summary>
@@ -46,6 +48,8 @@ namespace AuroraScript.Runtime.Types
         /// Gets a value indicating whether the object is immutable.
         /// </summary>
         public bool Immutable => (flags & ObjectFlags.Immutable) == ObjectFlags.Immutable;
+
+        internal bool HasValueEquality => (flags & ObjectFlags.ValueEquality) == ObjectFlags.ValueEquality;
 
         /// <summary>
         /// Initializes an internal immutable object with a specific prototype.
@@ -89,6 +93,19 @@ namespace AuroraScript.Runtime.Types
         public void Frozen()
         {
             flags |= ObjectFlags.Frozen;
+        }
+
+        /// <summary>
+        /// Enables custom value equality for this object when compared by == and Object.equal.
+        /// </summary>
+        protected void EnableValueEquality()
+        {
+            flags |= ObjectFlags.ValueEquality;
+        }
+
+        internal virtual bool ValueEquals(ScriptObject other)
+        {
+            return false;
         }
 
         /// <summary>

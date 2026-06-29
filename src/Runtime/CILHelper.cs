@@ -269,7 +269,19 @@ namespace AuroraScript.Runtime
                     case ValueKind.Boolean: return a.Boolean == b.Boolean;
                     case ValueKind.Number: return a.Number == b.Number;
                     case ValueKind.String: return a.String.Value == b.String.Value;
-                    default: return ReferenceEquals(a.Object, b.Object);
+                    default:
+                        {
+                            var left = a.Object;
+                            var right = b.Object;
+                            if (ReferenceEquals(left, right))
+                            {
+                                return true;
+                            }
+
+                            return left != null &&
+                                left.HasValueEquality &&
+                                left.ValueEquals(right);
+                        }
                 }
             }
             if (ScriptDatum.TryToNumber(a, out var na) && ScriptDatum.TryToNumber(b, out var nb))

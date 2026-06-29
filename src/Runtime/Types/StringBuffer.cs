@@ -94,7 +94,7 @@ namespace AuroraScript.Runtime.Types
         /// </summary>
         public StringBuffer() : base(Prototypes.StringBufferPrototype)
         {
-
+            EnableValueEquality();
         }
 
         /// <summary>
@@ -103,7 +103,14 @@ namespace AuroraScript.Runtime.Types
         /// <param name="initialValue">The initial string value to add to the buffer.</param>
         public StringBuffer(String initialValue) : base(Prototypes.StringBufferPrototype)
         {
+            EnableValueEquality();
             _builder = Borrow(initialValue);
+        }
+
+        internal override bool ValueEquals(ScriptObject other)
+        {
+            return other is StringBuffer buffer &&
+                string.Equals(ToString(), buffer.ToString(), StringComparison.Ordinal);
         }
 
         /// <summary>

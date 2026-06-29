@@ -13,12 +13,14 @@ namespace AuroraScript.Runtime.Types
         internal ScriptPathValue(string root, Span<ScriptDatum> segments, int segmentStart = 0)
             : base(Prototypes.PathPrototype)
         {
+            EnableValueEquality();
             _value = PathText.Build(root, segments, segmentStart);
         }
 
         internal ScriptPathValue(string value)
             : base(Prototypes.PathPrototype)
         {
+            EnableValueEquality();
             _value = PathText.Normalize(value);
         }
 
@@ -53,6 +55,11 @@ namespace AuroraScript.Runtime.Types
         public override string ToString()
         {
             return Value;
+        }
+
+        internal override bool ValueEquals(ScriptObject other)
+        {
+            return other is ScriptPathValue path && PathText.AreEqual(Value, path.Value);
         }
 
         internal static bool TryGetPathString(Span<ScriptDatum> args, int index, out string value)
@@ -346,6 +353,16 @@ namespace AuroraScript.Runtime.Types
             path = NormalizeSeparators(path);
             var colon = path.IndexOf(':');
             return colon > 1 && HasUriScheme(path) ? path.Substring(0, colon) : string.Empty;
+        }
+
+        public static bool AreEqual(string left, string right)
+        {
+            left ??= string.Empty;
+            right ??= string.Empty;
+            var comparison = UsesOrdinalIgnoreCase(left, right)
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+            return string.Equals(left, right, comparison);
         }
 
         public static bool IsUnderRoot(string root, string path)

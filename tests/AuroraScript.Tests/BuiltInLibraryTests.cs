@@ -244,6 +244,41 @@ public sealed class BuiltInLibraryTests
     }
 
     [Fact]
+    public async Task ValueEqualitySupportsStringBufferAndDate()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func run() {
+                var leftBuffer = new StringBuffer('A');
+                leftBuffer.append('B');
+                var sameBuffer = new StringBuffer('AB');
+                var otherBuffer = new StringBuffer('AC');
+                var date = Date.parse('2020-01-02');
+                var sameDate = new Date('2020-01-02');
+                var otherDate = Date.parse('2020-01-03');
+                return [
+                    leftBuffer == sameBuffer,
+                    leftBuffer != otherBuffer,
+                    Object.equal(leftBuffer, sameBuffer),
+                    Object.deepEqual(leftBuffer, sameBuffer),
+                    Object.equal$(leftBuffer, sameBuffer),
+                    date == sameDate,
+                    date != otherDate,
+                    Object.equal(date, sameDate),
+                    Object.deepEqual(date, sameDate),
+                    Object.equal$(date, sameDate)
+                ];
+            }
+            """);
+
+        ScriptAssert.Equal(
+            new object?[] { true, true, true, true, false, true, true, true, true, true },
+            TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
     public async Task PathSupportsProtocolAwareMutableValues()
     {
         using var workspace = new TestWorkspace();
@@ -256,6 +291,7 @@ public sealed class BuiltInLibraryTests
                 path.ensureExtension('.as');
                 constructed.ensureExtension('as');
                 var clone = path.clone().append('..', 'generated', './config');
+                var same = new Path('mem://app/shared/main.as');
                 return [
                     Path.isPath(path),
                     Path.isPath(constructed),
@@ -272,7 +308,14 @@ public sealed class BuiltInLibraryTests
                     Path.ensureExtension('res://pkg/modules/main', 'as'),
                     Path.isRooted('mem://app/main.as'),
                     Path.isUnderRoot('mem://app', 'mem://app/shared/main.as'),
-                    Path.isUnderRoot('mem://app', 'mem://app2/shared/main.as')
+                    Path.isUnderRoot('mem://app', 'mem://app2/shared/main.as'),
+                    path == same,
+                    path != same,
+                    path == constructed,
+                    Object.equal(path, same),
+                    Object.deepEqual(path, same),
+                    Object.equal$(path, same),
+                    Object.equal(path, constructed)
                 ];
             }
             """);
@@ -295,6 +338,13 @@ public sealed class BuiltInLibraryTests
                 "res://pkg/modules/main.as",
                 true,
                 true,
+                false,
+                true,
+                false,
+                false,
+                true,
+                true,
+                false,
                 false
             },
             TestWorkspace.Execute(domain, "run"));

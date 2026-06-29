@@ -13,6 +13,7 @@ namespace AuroraScript.Runtime.Types
 
         private ScriptDate() : base(Prototypes.DatePrototype)
         {
+            EnableValueEquality();
         }
 
         /// <summary>
@@ -64,6 +65,11 @@ namespace AuroraScript.Runtime.Types
         public long Ticks => DateTime.Ticks;
 
 
+
+        internal override bool ValueEquals(ScriptObject other)
+        {
+            return other is ScriptDate date && DateTime.Equals(date.DateTime);
+        }
 
 
 

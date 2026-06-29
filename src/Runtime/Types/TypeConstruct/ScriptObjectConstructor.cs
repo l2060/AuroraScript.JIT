@@ -141,7 +141,17 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
                 return true;
             }
 
-            if (left == null || right == null || left.GetType() != right.GetType())
+            if (left == null || right == null)
+            {
+                return false;
+            }
+
+            if (left.HasValueEquality)
+            {
+                return left.ValueEquals(right);
+            }
+
+            if (left.GetType() != right.GetType())
             {
                 return false;
             }
@@ -219,7 +229,17 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
                 return true;
             }
 
-            if (left == null || right == null || left.GetType() != right.GetType())
+            if (left == null || right == null)
+            {
+                return false;
+            }
+
+            if (left.HasValueEquality)
+            {
+                return left.ValueEquals(right);
+            }
+
+            if (left.GetType() != right.GetType())
             {
                 return false;
             }
