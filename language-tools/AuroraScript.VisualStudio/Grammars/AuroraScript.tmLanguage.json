@@ -91,7 +91,7 @@
       "patterns": [
         {
           "name": "support.type.aurora",
-          "match": "\\b(?:Array|Boolean|Date|Error|Function|HashMap|Number|Object|Proxy|Regex|String|StringBuffer)\\b"
+          "match": "\\b(?:Array|Boolean|Date|Error|Function|HashMap|Number|Object|Path|Proxy|Regex|String|StringBuffer)\\b"
         },
         {
           "name": "support.type.builtin.object.aurora",

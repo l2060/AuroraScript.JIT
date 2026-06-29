@@ -84,6 +84,7 @@ namespace AuroraScript
             Global.Define("console", new ConsoleSupport(), writeable: false, enumerable: false);
             Global.Define("JSON", new JsonSupport(), writeable: false, enumerable: false);
             Global.Define("Math", new MathSupport(), writeable: false, enumerable: false);
+            Global.Define("Path", PathConstructor.INSTANCE, writeable: false, enumerable: false);
 
             // Hot patch support
             Global.Define("HotPatch", HotPatchSupport.INSTANCE, writeable: false, enumerable: false);

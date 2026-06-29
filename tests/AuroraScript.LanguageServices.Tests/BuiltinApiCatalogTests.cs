@@ -72,6 +72,7 @@ public sealed class BuiltinApiCatalogTests
             ["console"] = Path.Combine(runtimeRoot, "Extensions", "ConsoleSupport.cs"),
             ["JSON"] = Path.Combine(runtimeRoot, "Extensions", "JsonSupport.cs"),
             ["Math"] = Path.Combine(runtimeRoot, "Extensions", "MathSupport.cs"),
+            ["Path"] = Path.Combine(runtimeRoot, "Types", "TypeConstruct", "PathConstructor.cs"),
             ["HotPatch"] = Path.Combine(runtimeRoot, "Extensions", "HotPatchSupport.cs"),
             ["Array"] = Path.Combine(runtimeRoot, "Types", "TypeConstruct", "ArrayConstructor.cs"),
             ["String"] = Path.Combine(runtimeRoot, "Types", "TypeConstruct", "StringConstructor.cs"),
@@ -110,7 +111,8 @@ public sealed class BuiltinApiCatalogTests
             ["NumberValuePrototype"] = "Number",
             ["ScriptArrayPrototype"] = "Array",
             ["StringValuePrototype"] = "String",
-            ["StringBufferPrototype"] = "StringBuffer"
+            ["StringBufferPrototype"] = "StringBuffer",
+            ["PathPrototype"] = "Path"
         };
 
         foreach (Match match in PrototypeDefinePattern.Matches(source))

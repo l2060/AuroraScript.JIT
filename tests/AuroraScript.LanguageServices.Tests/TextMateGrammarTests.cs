@@ -16,6 +16,7 @@ public sealed class TextMateGrammarTests
         var repository = document.RootElement.GetProperty("repository");
 
         Assert.Equal("source.aurora", document.RootElement.GetProperty("scopeName").GetString());
+        AssertPattern(repository, "builtins", "support.type.aurora", "Path");
         AssertPattern(repository, "builtins", "support.type.builtin.object.aurora", "JSON console Math HotPatch");
         AssertPattern(repository, "builtins", "variable.language.aurora", "$args $state global");
         AssertPattern(repository, "function-calls", "entity.name.function.member.aurora", ".log(");

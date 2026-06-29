@@ -244,6 +244,63 @@ public sealed class BuiltInLibraryTests
     }
 
     [Fact]
+    public async Task PathSupportsProtocolAwareMutableValues()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func run() {
+                var path = Path.of('mem://app/scripts', '../shared', 'main');
+                var constructed = new Path('res://pkg/modules', './runtime');
+                path.ensureExtension('.as');
+                constructed.ensureExtension('as');
+                var clone = path.clone().append('..', 'generated', './config');
+                return [
+                    Path.isPath(path),
+                    Path.isPath(constructed),
+                    typeof path,
+                    constructed.toString(),
+                    path.toString(),
+                    path.directoryName(),
+                    path.fileName(),
+                    path.protocol(),
+                    Path.protocol('asset://pkg/textures/ui.png'),
+                    Path.protocol('C:/scripts/main.as'),
+                    clone.toString(),
+                    Path.join('asset://pkg/textures', './ui', 'button.png'),
+                    Path.ensureExtension('res://pkg/modules/main', 'as'),
+                    Path.isRooted('mem://app/main.as'),
+                    Path.isUnderRoot('mem://app', 'mem://app/shared/main.as'),
+                    Path.isUnderRoot('mem://app', 'mem://app2/shared/main.as')
+                ];
+            }
+            """);
+
+        ScriptAssert.Equal(
+            new object?[]
+            {
+                true,
+                true,
+                "object",
+                "res://pkg/modules/runtime.as",
+                "mem://app/shared/main.as",
+                "mem://app/shared",
+                "main.as",
+                "mem",
+                "asset",
+                "",
+                "mem://app/shared/generated/config",
+                "asset://pkg/textures/ui/button.png",
+                "res://pkg/modules/main.as",
+                true,
+                true,
+                false
+            },
+            TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
     public async Task ConsoleWritesToConfiguredOutput()
     {
         using var workspace = new TestWorkspace();

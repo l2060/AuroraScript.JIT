@@ -1185,6 +1185,243 @@
         ]
       }
     },
+    "Path": {
+      "kind": "constructor",
+      "members": {
+        "of": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "root",
+              "type": "string"
+            },
+            {
+              "name": "segments",
+              "type": "string",
+              "variadic": true
+            }
+          ],
+          "returns": "Path",
+          "notes": {
+            "en": [
+              "Creates a mutable path value from a root and optional path segments."
+            ],
+            "zh-CN": [
+              "根据根路径和可选路径片段创建可变路径值。"
+            ]
+          }
+        },
+        "isPath": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "any"
+            }
+          ],
+          "returns": "boolean",
+          "notes": {
+            "en": [
+              "Returns whether the value is a Path object."
+            ],
+            "zh-CN": [
+              "返回值是否为 Path 对象。"
+            ]
+          }
+        },
+        "join": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "root",
+              "type": "string"
+            },
+            {
+              "name": "segments",
+              "type": "string",
+              "variadic": true
+            }
+          ],
+          "returns": "string",
+          "notes": {
+            "en": [
+              "Joins and normalizes path segments without touching the file system."
+            ],
+            "zh-CN": [
+              "拼接并规范化路径片段，不访问文件系统。"
+            ]
+          }
+        },
+        "normalize": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "string"
+            }
+          ],
+          "returns": "string",
+          "notes": {
+            "en": [
+              "Normalizes separators and dot segments."
+            ],
+            "zh-CN": [
+              "规范化分隔符和点路径片段。"
+            ]
+          }
+        },
+        "directoryName": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "string"
+            }
+          ],
+          "returns": "string",
+          "notes": {
+            "en": [
+              "Returns the parent directory path."
+            ],
+            "zh-CN": [
+              "返回父目录路径。"
+            ]
+          }
+        },
+        "fileName": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "string"
+            }
+          ],
+          "returns": "string",
+          "notes": {
+            "en": [
+              "Returns the final path segment."
+            ],
+            "zh-CN": [
+              "返回最后一个路径片段。"
+            ]
+          }
+        },
+        "protocol": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "string"
+            }
+          ],
+          "returns": "string",
+          "notes": {
+            "en": [
+              "Returns the protocol scheme without the trailing separator, or an empty string for non-protocol paths."
+            ],
+            "zh-CN": [
+              "返回不含分隔符的协议 scheme；非协议路径返回空字符串。"
+            ]
+          }
+        },
+        "ensureExtension": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "string"
+            },
+            {
+              "name": "extension",
+              "type": "string"
+            }
+          ],
+          "returns": "string",
+          "notes": {
+            "en": [
+              "Ensures the path has the requested extension."
+            ],
+            "zh-CN": [
+              "确保路径具有指定扩展名。"
+            ]
+          }
+        },
+        "isRooted": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "string"
+            }
+          ],
+          "returns": "boolean",
+          "notes": {
+            "en": [
+              "Returns whether the path is rooted or has a protocol scheme."
+            ],
+            "zh-CN": [
+              "返回路径是否为根路径或包含协议 scheme。"
+            ]
+          }
+        },
+        "isUnderRoot": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "root",
+              "type": "string"
+            },
+            {
+              "name": "path",
+              "type": "string"
+            }
+          ],
+          "returns": "boolean",
+          "notes": {
+            "en": [
+              "Returns whether a normalized path is under a normalized root."
+            ],
+            "zh-CN": [
+              "返回规范化路径是否位于规范化根路径下。"
+            ]
+          }
+        },
+        "currentFile": {
+          "kind": "method",
+          "parameters": [],
+          "returns": "string",
+          "notes": {
+            "en": [
+              "Returns the current module full path, or null outside a module context."
+            ],
+            "zh-CN": [
+              "返回当前模块完整路径；没有模块上下文时返回 null。"
+            ]
+          }
+        },
+        "currentDirectory": {
+          "kind": "method",
+          "parameters": [],
+          "returns": "string",
+          "notes": {
+            "en": [
+              "Returns the current module directory, or null outside a module context."
+            ],
+            "zh-CN": [
+              "返回当前模块目录；没有模块上下文时返回 null。"
+            ]
+          }
+        }
+      },
+      "notes": {
+        "en": [
+          "Path constructor and protocol-aware path manipulation API."
+        ],
+        "zh-CN": [
+          "Path 构造器和支持协议路径的路径处理 API。"
+        ]
+      }
+    },
     "HotPatch": {
       "kind": "object",
       "members": {
@@ -2179,6 +2416,133 @@
           ],
           "zh-CN": [
             "返回当前缓冲区内容。"
+          ]
+        }
+      }
+    },
+    "Path": {
+      "append": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "segments",
+            "type": "string",
+            "variadic": true
+          }
+        ],
+        "returns": "Path",
+        "notes": {
+          "en": [
+            "Appends path segments in place and returns this Path."
+          ],
+          "zh-CN": [
+            "原地追加路径片段并返回当前 Path。"
+          ]
+        }
+      },
+      "reset": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "root",
+            "type": "string"
+          },
+          {
+            "name": "segments",
+            "type": "string",
+            "variadic": true
+          }
+        ],
+        "returns": "Path",
+        "notes": {
+          "en": [
+            "Replaces the current path with a root and optional segments."
+          ],
+          "zh-CN": [
+            "使用根路径和可选片段替换当前路径。"
+          ]
+        }
+      },
+      "ensureExtension": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "extension",
+            "type": "string"
+          }
+        ],
+        "returns": "Path",
+        "notes": {
+          "en": [
+            "Ensures the current path has the requested extension."
+          ],
+          "zh-CN": [
+            "确保当前路径具有指定扩展名。"
+          ]
+        }
+      },
+      "directoryName": {
+        "kind": "method",
+        "parameters": [],
+        "returns": "string",
+        "notes": {
+          "en": [
+            "Returns the parent directory path."
+          ],
+          "zh-CN": [
+            "返回父目录路径。"
+          ]
+        }
+      },
+      "fileName": {
+        "kind": "method",
+        "parameters": [],
+        "returns": "string",
+        "notes": {
+          "en": [
+            "Returns the final path segment."
+          ],
+          "zh-CN": [
+            "返回最后一个路径片段。"
+          ]
+        }
+      },
+      "protocol": {
+        "kind": "method",
+        "parameters": [],
+        "returns": "string",
+        "notes": {
+          "en": [
+            "Returns the current path protocol scheme without the trailing separator, or an empty string for non-protocol paths."
+          ],
+          "zh-CN": [
+            "返回当前路径不含分隔符的协议 scheme；非协议路径返回空字符串。"
+          ]
+        }
+      },
+      "clone": {
+        "kind": "method",
+        "parameters": [],
+        "returns": "Path",
+        "notes": {
+          "en": [
+            "Returns a new Path with the same current text."
+          ],
+          "zh-CN": [
+            "返回包含相同路径文本的新 Path。"
+          ]
+        }
+      },
+      "toString": {
+        "kind": "method",
+        "parameters": [],
+        "returns": "string",
+        "notes": {
+          "en": [
+            "Returns the normalized path text."
+          ],
+          "zh-CN": [
+            "返回规范化后的路径文本。"
           ]
         }
       }

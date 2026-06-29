@@ -310,6 +310,7 @@ public sealed class BuiltinLanguageFeatureTests
         var completions = service.GetCompletions("test.as", source, PositionOf(source, "Ma"));
 
         Assert.Contains(completions.Items, item => item.Label == "Math" && item.Kind == CompletionItemKind.Object);
+        Assert.Contains(completions.Items, item => item.Label == "Path" && item.Kind == CompletionItemKind.Constructor);
         Assert.Contains(completions.Items, item => item.Label == "console" && item.Kind == CompletionItemKind.Object);
         Assert.Contains(completions.Items, item => item.Label == "global" && item.Kind == CompletionItemKind.Object);
     }

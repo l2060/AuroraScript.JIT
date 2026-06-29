@@ -30,6 +30,8 @@ namespace AuroraScript.Runtime.Types
         public static readonly ScriptObject HashMapPrototype = new ScriptObject(Prototypes.ObjectPrototype);
         /// <summary> The prototype for hash StringBuffer objects. </summary>
         public static readonly ScriptObject StringBufferPrototype = new ScriptObject(Prototypes.ObjectPrototype);
+        /// <summary> The prototype for path value objects. </summary>
+        public static readonly ScriptObject PathPrototype = new ScriptObject(Prototypes.ObjectPrototype);
         /// <summary>
         /// Forces pre-loading of prototypes.
         /// </summary>
@@ -153,6 +155,17 @@ namespace AuroraScript.Runtime.Types
             StringBufferPrototype.Define("release", ScriptDatum.FromBonding(StringBuffer.RELEASE), writeable: false, enumerable: false);
             StringBufferPrototype.Define("stringAndRelease", ScriptDatum.FromBonding(StringBuffer.STRINGANDRELEASE), writeable: false, enumerable: false);
             StringBufferPrototype.Frozen();
+
+            // --- Path ---
+            PathPrototype.Define("toString", ScriptDatum.FromBonding(ScriptPathValue.TO_STRING), writeable: false, enumerable: false);
+            PathPrototype.Define("append", ScriptDatum.FromBonding(ScriptPathValue.APPEND), writeable: false, enumerable: false);
+            PathPrototype.Define("reset", ScriptDatum.FromBonding(ScriptPathValue.RESET), writeable: false, enumerable: false);
+            PathPrototype.Define("ensureExtension", ScriptDatum.FromBonding(ScriptPathValue.ENSURE_EXTENSION), writeable: false, enumerable: false);
+            PathPrototype.Define("directoryName", ScriptDatum.FromBonding(ScriptPathValue.DIRECTORY_NAME), writeable: false, enumerable: false);
+            PathPrototype.Define("fileName", ScriptDatum.FromBonding(ScriptPathValue.FILE_NAME), writeable: false, enumerable: false);
+            PathPrototype.Define("protocol", ScriptDatum.FromBonding(ScriptPathValue.PROTOCOL), writeable: false, enumerable: false);
+            PathPrototype.Define("clone", ScriptDatum.FromBonding(ScriptPathValue.CLONE), writeable: false, enumerable: false);
+            PathPrototype.Frozen();
         }
     }
 }
