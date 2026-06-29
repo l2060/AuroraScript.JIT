@@ -39,6 +39,11 @@ internal static class SemanticTokenScanner
             for (var i = 0; i < tokenInfos.Length; i++)
             {
                 var token = tokenInfos[i];
+                if (TryAddStringBlockTokens(sourceText, token, tokens))
+                {
+                    continue;
+                }
+
                 var type = GetSemanticType(tokenInfos, i, builtins);
                 if (type < 0 || token.Range.Length <= 0 || token.Range.StartLine != token.Range.EndLine)
                 {
@@ -60,6 +65,92 @@ internal static class SemanticTokenScanner
         {
             return new SemanticTokensResult(Array.Empty<SemanticToken>());
         }
+    }
+
+    private static bool TryAddStringBlockTokens(
+        string sourceText,
+        AuroraLexer.LexerTokenInfo token,
+        List<SemanticToken> tokens)
+    {
+        if (token.Kind != AuroraLexer.LexTokenKind.String ||
+            token.Range.Length < 3 ||
+            token.Range.Offset < 0 ||
+            token.Range.Offset + token.Range.Length > sourceText.Length ||
+            sourceText[token.Range.Offset] != '|' ||
+            sourceText[token.Range.Offset + 1] != '>' ||
+            sourceText[token.Range.Offset + 2] != ' ')
+        {
+            return false;
+        }
+
+        var line = token.Range.StartLine - 1;
+        var character = token.Range.StartColumn - 1;
+        var offset = token.Range.Offset;
+        var end = token.Range.Offset + token.Range.Length;
+
+        while (offset < end)
+        {
+            var lineStart = offset;
+            while (offset < end && sourceText[offset] != '\r' && sourceText[offset] != '\n')
+            {
+                offset++;
+            }
+
+            AddStringBlockLineToken(sourceText, lineStart, offset, line, character, tokens);
+
+            if (offset < end)
+            {
+                if (sourceText[offset] == '\r' && offset + 1 < end && sourceText[offset + 1] == '\n')
+                {
+                    offset += 2;
+                }
+                else
+                {
+                    offset++;
+                }
+
+                line++;
+                character = 0;
+                while (offset < end && (sourceText[offset] == ' ' || sourceText[offset] == '\t'))
+                {
+                    offset++;
+                    character++;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private static void AddStringBlockLineToken(
+        string sourceText,
+        int lineStart,
+        int lineEnd,
+        int line,
+        int character,
+        List<SemanticToken> tokens)
+    {
+        if (lineEnd - lineStart < 3 ||
+            sourceText[lineStart] != '|' ||
+            sourceText[lineStart + 1] != '>' ||
+            sourceText[lineStart + 2] != ' ')
+        {
+            return;
+        }
+
+        var textStart = lineStart + 3;
+        var length = lineEnd - textStart;
+        if (length <= 0)
+        {
+            return;
+        }
+
+        tokens.Add(new SemanticToken(
+            line,
+            character + 3,
+            length,
+            AuroraSemanticTokenTypes.String,
+            0));
     }
 
     private static int GetSemanticType(

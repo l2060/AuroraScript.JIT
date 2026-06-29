@@ -78,14 +78,14 @@ public sealed class TextMateGrammarTests
         Assert.False(Regex.Match(invalidSample, beginPattern, RegexOptions.CultureInvariant).Success);
 
         var captures = blockPattern.GetProperty("beginCaptures");
-        Assert.Equal("punctuation.definition.string.block.aurora", captures.GetProperty("2").GetProperty("name").GetString());
+        Assert.Equal("keyword.operator.block-string.aurora", captures.GetProperty("2").GetProperty("name").GetString());
 
         var prefixPattern = blockPattern.GetProperty("patterns").EnumerateArray().First(pattern =>
             pattern.TryGetProperty("captures", out var patternCaptures) &&
             patternCaptures.TryGetProperty("1", out var capture) &&
-            capture.GetProperty("name").GetString() == "punctuation.definition.string.block.aurora");
+            capture.GetProperty("name").GetString() == "keyword.operator.block-string.aurora");
         var prefixCaptures = prefixPattern.GetProperty("captures");
-        Assert.Equal("punctuation.definition.string.block.aurora", prefixCaptures.GetProperty("1").GetProperty("name").GetString());
+        Assert.Equal("keyword.operator.block-string.aurora", prefixCaptures.GetProperty("1").GetProperty("name").GetString());
         Assert.Equal("|>", Regex.Match(validSample, prefixPattern.GetProperty("match").GetString()!, RegexOptions.CultureInvariant).Groups[1].Value);
 
         var contentPattern = blockPattern.GetProperty("patterns").EnumerateArray().First(pattern =>

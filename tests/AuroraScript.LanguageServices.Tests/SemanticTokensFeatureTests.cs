@@ -70,6 +70,9 @@ public sealed class SemanticTokensFeatureTests
         var result = service.GetSemanticTokens("main.as", source);
 
         Assert.Equal(3, result.Tokens.Count(token => token.Type == AuroraSemanticTokenTypes.Keyword && TokenText(source, token) == "typeof"));
+        AssertToken(source, result, "line 1", AuroraSemanticTokenTypes.String);
+        AssertToken(source, result, "line 2", AuroraSemanticTokenTypes.String);
+        AssertNoToken(source, result, "|>", AuroraSemanticTokenTypes.String);
         Assert.DoesNotContain(result.Tokens, token => TokenText(source, token) == ", type");
     }
 

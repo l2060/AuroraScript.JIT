@@ -345,7 +345,7 @@
         {
           "begin": "^([ \\t]*)(\\|>)( )",
           "beginCaptures": {
-            "2": { "name": "punctuation.definition.string.block.aurora" },
+            "2": { "name": "keyword.operator.block-string.aurora" },
             "3": { "name": "punctuation.whitespace.string.block.aurora" }
           },
           "end": "^(?![ \\t]*\\|> )",
@@ -353,7 +353,7 @@
             {
               "match": "^[ \\t]*(\\|>)",
               "captures": {
-                "1": { "name": "punctuation.definition.string.block.aurora" }
+                "1": { "name": "keyword.operator.block-string.aurora" }
               }
             },
             {
