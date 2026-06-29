@@ -79,12 +79,12 @@ namespace AuroraScript
             Global.Define("Regex", ScriptRegexConstructor.INSTANCE, writeable: false, enumerable: false);
             Global.Define("Proxy", ScriptProxyConstructor.INSTANCE, writeable: false, enumerable: false);
             Global.Define("StringBuffer", StringBufferConstructor.INSTANCE, writeable: false, enumerable: false);
+            Global.Define("Path", PathConstructor.INSTANCE, writeable: false, enumerable: false);
 
             // Optional standard libraries
             Global.Define("console", new ConsoleSupport(), writeable: false, enumerable: false);
             Global.Define("JSON", new JsonSupport(), writeable: false, enumerable: false);
             Global.Define("Math", new MathSupport(), writeable: false, enumerable: false);
-            Global.Define("Path", PathConstructor.INSTANCE, writeable: false, enumerable: false);
 
             // Hot patch support
             Global.Define("HotPatch", HotPatchSupport.INSTANCE, writeable: false, enumerable: false);

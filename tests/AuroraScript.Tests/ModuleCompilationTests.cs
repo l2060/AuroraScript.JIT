@@ -72,6 +72,38 @@ public sealed class ModuleCompilationTests
     }
 
     [Fact]
+    public async Task PathBaseModuleResolvesFromCurrentModuleDirectory()
+    {
+        using var workspace = new TestWorkspace();
+        var main = workspace.WriteSource(
+            "app/main.as",
+            """
+            @module(TEST);
+            export func run() {
+                return [
+                    Path.baseModule('../assets', './config'),
+                    Path.baseModule(),
+                    Path.join(Path.currentDirectory(), './local')
+                ];
+            }
+            """);
+        var engine = workspace.CreateEngine();
+
+        await engine.BuildAsync(main);
+        var domain = engine.CreateDomain();
+
+        var mainDirectory = ScriptPath.GetDirectoryName(ScriptPath.GetFullPath(workspace.Root, "app/main.as"));
+        ScriptAssert.Equal(
+            new object?[]
+            {
+                ScriptPath.GetFullPath(mainDirectory, "../assets/config"),
+                mainDirectory,
+                ScriptPath.GetFullPath(mainDirectory, "local")
+            },
+            TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
     public async Task ResolvesDependenciesThroughCustomSourceResolver()
     {
         const string root = "memory://aurora-tests";
@@ -92,12 +124,14 @@ public sealed class ModuleCompilationTests
             @module(TEST);
             import value from './lib/value';
             include './shared';
-            export func run() { return value.number + INCLUDED; }
+            export func run() { return [value.number + INCLUDED, Path.baseModule('assets', 'config')]; }
             """);
 
         await engine.BuildAsync(main);
 
-        ScriptAssert.Equal(42, TestWorkspace.Execute(engine.CreateDomain(), "run"));
+        ScriptAssert.Equal(
+            new object?[] { 42, "memory://aurora-tests/assets/config" },
+            TestWorkspace.Execute(engine.CreateDomain(), "run"));
     }
 
     [Fact]

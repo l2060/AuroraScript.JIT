@@ -1252,6 +1252,25 @@
             ]
           }
         },
+        "baseModule": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "segments",
+              "type": "string",
+              "variadic": true
+            }
+          ],
+          "returns": "string",
+          "notes": {
+            "en": [
+              "Joins and normalizes path segments from the current module source directory, or returns null outside a module context."
+            ],
+            "zh-CN": [
+              "从当前模块源文件所在目录拼接并规范化路径片段；没有模块上下文时返回 null。"
+            ]
+          }
+        },
         "normalize": {
           "kind": "method",
           "parameters": [
