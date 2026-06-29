@@ -13,11 +13,13 @@ func testStr2() {
 
 
 func testInput() {
-	INPUT_NUMBER('��������', '����һ��0-99��ֵ', 'number', input_change);
 
-	INPUT_NUMBER('��������', '����һ��0-99��ֵ', 'number', (value) => {
+
+	INPUT_NUMBER('购买数量', '输入一个0-99的值', 'number', input_change);
+
+	INPUT_NUMBER('购买数量', '输入一个0-99的值', 'number', (value) => {
 			GIVE("esd", value);
-			console.log(`����ֵ=${ value }`);
+			console.log(`输入值=${ value }`);
 		});
 	console.log(testTextTemplate());
 }

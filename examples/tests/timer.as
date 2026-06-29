@@ -66,7 +66,7 @@ export function createTimer(callback, interval = 521) {
 	log(
 		|> 111
 		|> 1. 这是一个特殊的字符串模板
-		|> 2. 支持多行文本\n123
+		|> 2. 支持多行文本\n 123
 		|> 3. 它会让代码看起来更舒服
 		|> 4. <Buy/@Buy> <Close/@Close>
 		|> 5. <Buys/@Buys:input-number>

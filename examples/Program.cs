@@ -31,7 +31,7 @@ namespace Examples
             compiler.SourceResolver = ScriptSources.Composite(memorySource, fileSystemSource);
             compiler.MaxDegreeOfParallelism = 0;
             compiler.ExtName = "as";
-            compiler.Mode = CompilationMode.Persistence;
+            compiler.Mode = CompilationMode.Dynamic;
         })
         .WithOutput(output =>
         {

@@ -10,6 +10,7 @@
     { "include": "#regex" },
     { "include": "#annotations" },
     { "include": "#declarations" },
+    { "include": "#map-keys" },
     { "include": "#keywords" },
     { "include": "#constants" },
     { "include": "#numbers" },
@@ -73,6 +74,7 @@
             { "include": "#regex" },
             { "include": "#annotations" },
             { "include": "#declarations" },
+            { "include": "#map-keys" },
             { "include": "#keywords" },
             { "include": "#constants" },
             { "include": "#numbers" },
@@ -209,6 +211,7 @@
         { "include": "#regex" },
         { "include": "#annotations" },
         { "include": "#declarations" },
+        { "include": "#map-keys" },
         { "include": "#keywords" },
         { "include": "#constants" },
         { "include": "#numbers" },
@@ -256,6 +259,34 @@
         }
       ]
     },
+    "map-keys": {
+      "patterns": [
+        {
+          "name": "meta.object-literal.key.identifier.aurora",
+          "match": "([\\p{L}_$][\\p{L}\\p{N}_$]*)(\\s*)(:)",
+          "captures": {
+            "1": { "name": "variable.other.member.map-key.aurora" },
+            "3": { "name": "punctuation.separator.key-value.aurora" }
+          }
+        },
+        {
+          "name": "meta.object-literal.key.string.aurora",
+          "match": "((?:\"(?:\\\\.|[^\"\\\\\\r\\n])*\"|'(?:\\\\.|[^'\\\\\\r\\n])*'))(\\s*)(:)",
+          "captures": {
+            "1": { "name": "variable.other.member.map-key.aurora" },
+            "3": { "name": "punctuation.separator.key-value.aurora" }
+          }
+        },
+        {
+          "name": "meta.object-literal.key.literal.aurora",
+          "match": "\\b((?:0[xX][0-9A-Fa-f]+|\\d(?:_?\\d)*(?:\\.\\d(?:_?\\d)*)?|true|false|null))(\\s*)(:)",
+          "captures": {
+            "1": { "name": "variable.other.member.map-key.aurora" },
+            "3": { "name": "punctuation.separator.key-value.aurora" }
+          }
+        }
+      ]
+    },
     "keywords": {
       "patterns": [
         {
@@ -268,11 +299,19 @@
         },
         {
           "name": "keyword.control.exception.aurora",
-          "match": "\\b(?:catch|finally|throw|try)\\b"
+          "match": "\\b(?:catch|finally|try)\\b"
+        },
+        {
+          "name": "keyword.control.throw.aurora",
+          "match": "\\bthrow\\b"
+        },
+        {
+          "name": "keyword.control.return.aurora",
+          "match": "\\breturn\\b"
         },
         {
           "name": "keyword.control.flow.aurora",
-          "match": "\\b(?:debugger|delete|return)\\b"
+          "match": "\\b(?:debugger|delete)\\b"
         },
         {
           "name": "keyword.control.import.aurora",
@@ -308,7 +347,7 @@
       "patterns": [
         {
           "name": "keyword.operator.aurora",
-          "match": "\\.\\.\\.|>>>|=>|==|!=|<=|>=|\\+\\+|--|\\+=|-=|\\*=|/=|%=|&&|\\|\\||<<|>>|[+\\-*/%<>=!~&|^?:]"
+          "match": "\\.\\.\\.|>>>|=>|==|!=|<=|>=|\\+\\+|--|\\+=|-=|\\*=|/=|%=|&&|\\|\\||<<|>>|[+\\-*/%<>=!~&|^?]"
         }
       ]
     },
@@ -327,8 +366,20 @@
           "match": "\\."
         },
         {
-          "name": "punctuation.section.aurora",
-          "match": "[{}\\[\\]()]"
+          "name": "punctuation.separator.key-value.aurora",
+          "match": ":"
+        },
+        {
+          "name": "punctuation.section.brace.aurora",
+          "match": "[{}]"
+        },
+        {
+          "name": "punctuation.section.bracket.aurora",
+          "match": "[\\[\\]]"
+        },
+        {
+          "name": "punctuation.section.parenthesis.aurora",
+          "match": "[()]"
         }
       ]
     },

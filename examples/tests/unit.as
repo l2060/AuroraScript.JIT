@@ -110,10 +110,10 @@ export func testHotPatch() {
 	}
 	var newCode =
 	|> @module(UNIT_LIB);
-    |> export func patchFunc() {
-    |>  return "fixed";
-    |> }
-        ;
+	|> export func patchFunc() {
+	|>  return "fixed";
+	|> }
+	;
 	console.log("patchFunc result", patchFunc());
 	HotPatch.incremental(Path.baseModule('unit.as'), newCode);
 	console.log("patchFunc result", patchFunc());

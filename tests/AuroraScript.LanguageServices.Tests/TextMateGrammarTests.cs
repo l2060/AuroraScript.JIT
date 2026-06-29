@@ -26,6 +26,14 @@ public sealed class TextMateGrammarTests
         AssertPattern(repository, "comments", "comment.line.double-slash.aurora", "// comment");
         AssertBeginPattern(repository, "comments", "comment.block.aurora", "/* comment */");
         AssertPattern(repository, "keywords", "keyword.operator.word.aurora", "typeof value in obj");
+        AssertPattern(repository, "keywords", "keyword.control.return.aurora", "return value");
+        AssertPattern(repository, "keywords", "keyword.control.throw.aurora", "throw error");
+        AssertPattern(repository, "map-keys", "variable.other.member.map-key.aurora", "name: value");
+        AssertPattern(repository, "map-keys", "meta.object-literal.key.string.aurora", "\"path\": value");
+        AssertPattern(repository, "map-keys", "meta.object-literal.key.literal.aurora", "3: value");
+        AssertPattern(repository, "punctuation", "punctuation.section.brace.aurora", "{");
+        AssertPattern(repository, "punctuation", "punctuation.section.bracket.aurora", "[");
+        AssertPattern(repository, "punctuation", "punctuation.section.parenthesis.aurora", "(");
         AssertBlockStringPattern(repository, "  |> text", "  |>错误");
         AssertBeginPattern(repository, "strings", "meta.string.template.aurora", "`hello ${abc()}`");
         AssertNestedBeginPattern(repository, "strings", "meta.embedded.expression.aurora", "${abc()}");
