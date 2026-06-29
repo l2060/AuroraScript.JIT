@@ -8,6 +8,12 @@ namespace AuroraScript.VisualStudio.Language;
 
 internal sealed class AuroraLanguageServerMiddleLayer : ILanguageClientMiddleLayer
 {
+    private const string DefinitionMethodName = "textDocument/definition";
+    private const string SemanticTokensFullMethodName = "textDocument/semanticTokens/full";
+    private const string SemanticTokensRangeMethodName = "textDocument/semanticTokens/range";
+    private const int SemanticTokenDataStride = 5;
+    private const int NumberSemanticTokenType = 12;
+
     private readonly BuiltinDocumentManager _builtinDocuments;
     private readonly JoinableTaskContext _joinableTaskContext;
 
@@ -21,7 +27,8 @@ internal sealed class AuroraLanguageServerMiddleLayer : ILanguageClientMiddleLay
 
     public bool CanHandle(string methodName)
     {
-        return string.Equals(methodName, "textDocument/definition", StringComparison.Ordinal) ||
+        return string.Equals(methodName, DefinitionMethodName, StringComparison.Ordinal) ||
+            IsSemanticTokensRequest(methodName) ||
             string.Equals(methodName, "textDocument/didOpen", StringComparison.Ordinal) ||
             string.Equals(methodName, "textDocument/didChange", StringComparison.Ordinal) ||
             string.Equals(methodName, "textDocument/didClose", StringComparison.Ordinal);
@@ -44,12 +51,77 @@ internal sealed class AuroraLanguageServerMiddleLayer : ILanguageClientMiddleLay
     {
         RewriteBuiltinCacheRequest(methodParam);
         var result = await sendRequest(methodParam).ConfigureAwait(false);
-        if (!string.Equals(methodName, "textDocument/definition", StringComparison.Ordinal))
+        if (IsSemanticTokensRequest(methodName))
+        {
+            return RemoveNumberSemanticTokens(result);
+        }
+
+        if (!string.Equals(methodName, DefinitionMethodName, StringComparison.Ordinal))
         {
             return result;
         }
 
         return await RewriteBuiltinDefinitionAsync(result).ConfigureAwait(false);
+    }
+
+    private static bool IsSemanticTokensRequest(string methodName)
+    {
+        return string.Equals(methodName, SemanticTokensFullMethodName, StringComparison.Ordinal) ||
+            string.Equals(methodName, SemanticTokensRangeMethodName, StringComparison.Ordinal);
+    }
+
+    private static JToken? RemoveNumberSemanticTokens(JToken? result)
+    {
+        if (result is not JObject response ||
+            response["data"] is not JArray data ||
+            data.Count == 0 ||
+            data.Count % SemanticTokenDataStride != 0)
+        {
+            return result;
+        }
+
+        var kept = new JArray();
+        var line = 0;
+        var character = 0;
+        var previousKeptLine = 0;
+        var previousKeptCharacter = 0;
+
+        for (var i = 0; i < data.Count; i += SemanticTokenDataStride)
+        {
+            var deltaLine = data[i]!.Value<int>();
+            var deltaStart = data[i + 1]!.Value<int>();
+            var length = data[i + 2]!.Value<int>();
+            var tokenType = data[i + 3]!.Value<int>();
+            var modifiers = data[i + 4]!.Value<int>();
+
+            if (deltaLine == 0)
+            {
+                character += deltaStart;
+            }
+            else
+            {
+                line += deltaLine;
+                character = deltaStart;
+            }
+
+            if (tokenType == NumberSemanticTokenType)
+            {
+                continue;
+            }
+
+            var keptDeltaLine = line - previousKeptLine;
+            kept.Add(keptDeltaLine);
+            kept.Add(keptDeltaLine == 0 ? character - previousKeptCharacter : character);
+            kept.Add(length);
+            kept.Add(tokenType);
+            kept.Add(modifiers);
+
+            previousKeptLine = line;
+            previousKeptCharacter = character;
+        }
+
+        response["data"] = kept;
+        return response;
     }
 
     private void RewriteBuiltinCacheRequest(JToken methodParam)

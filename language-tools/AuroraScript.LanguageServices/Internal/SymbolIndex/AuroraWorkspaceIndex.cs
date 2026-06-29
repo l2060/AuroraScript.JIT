@@ -131,7 +131,7 @@ internal sealed class AuroraWorkspaceIndex
                 case VariableDeclaration variable when variable.Name != null:
                     module.AddSymbol(new AuroraSymbolInfo(
                         variable.Name.Value,
-                        AuroraSymbolKind.Variable,
+                        variable.IsConst ? AuroraSymbolKind.Constant : AuroraSymbolKind.Variable,
                         declaration.ModulePath ?? module.Path,
                         module.Path,
                         TextRange.FromSourceSpan(variable.Name.Range),
@@ -182,7 +182,8 @@ internal sealed class AuroraWorkspaceIndex
             module.AddImport(new AuroraImportInfo(
                 alias,
                 targetPath,
-                TextRange.FromSourceSpan((import.Name ?? import.File)?.Range ?? import.Range),
+                TextRange.FromSourceSpan(import.Name?.Range ?? import.Range),
+                TextRange.FromSourceSpan(import.File?.Range ?? import.Range),
                 import.Include));
         }
     }

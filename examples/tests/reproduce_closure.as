@@ -122,7 +122,7 @@ func closure1() {
 }
 
 func empty(a = 1, b = 2, c) {
-	//debugger;
+	// debugger;
 	console.log(a, b, c);
 }
 

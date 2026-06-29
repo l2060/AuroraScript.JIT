@@ -4,6 +4,7 @@ internal enum AuroraSymbolKind
 {
     Function,
     Variable,
+    Constant,
     Enum,
     ImportAlias
 }

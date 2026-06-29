@@ -31,8 +31,13 @@ public sealed class TextMateGrammarTests
         AssertPattern(repository, "map-keys", "variable.other.member.map-key.aurora", "name: value");
         AssertPattern(repository, "map-keys", "meta.object-literal.key.string.aurora", "\"path\": value");
         AssertPattern(repository, "map-keys", "meta.object-literal.key.literal.aurora", "3: value");
+        AssertPattern(repository, "map-keys", "meta.object-literal.key.literal.aurora", "0xFDE5380C: value");
+        AssertPattern(repository, "numbers", "constant.numeric.hex.aurora", "0xFDE5380C");
+        AssertPattern(repository, "numbers", "constant.numeric.decimal.aurora", "123");
+        AssertPattern(repository, "numbers", "constant.numeric.decimal.aurora", "12.34");
         AssertPattern(repository, "punctuation", "punctuation.section.brace.aurora", "{");
         AssertPattern(repository, "punctuation", "punctuation.section.bracket.aurora", "[");
+        AssertPattern(repository, "punctuation", "punctuation.section.bracket.aurora", "]");
         AssertPattern(repository, "punctuation", "punctuation.section.parenthesis.aurora", "(");
         AssertBlockStringPattern(repository, "  |> text", "  |>错误");
         AssertBeginPattern(repository, "strings", "meta.string.template.aurora", "`hello ${abc()}`");

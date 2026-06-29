@@ -41,7 +41,11 @@ public sealed class SemanticTokensFeatureTests
                 JSON.stringify(Math.PI);
                 HotPatch.apply();
                 String.fromCharCode(65);
+                const hex = 0xFDE5380C;
+                const integer = 123;
+                const decimal = 12.34;
                 local.log();
+                const array = [1, 2.5, 0x10];
                 const indexed = local["path"];
                 return `total: ${10}`;
             }
@@ -63,6 +67,11 @@ public sealed class SemanticTokensFeatureTests
         AssertToken(source, result, "$state", AuroraSemanticTokenTypes.BuiltinVariable);
         AssertToken(source, result, "String", AuroraSemanticTokenTypes.Type);
         AssertToken(source, result, "fromCharCode", AuroraSemanticTokenTypes.MethodCall);
+        AssertToken(source, result, "0xFDE5380C", AuroraSemanticTokenTypes.Number);
+        AssertToken(source, result, "123", AuroraSemanticTokenTypes.Number);
+        AssertToken(source, result, "12.34", AuroraSemanticTokenTypes.Number);
+        AssertToken(source, result, "2.5", AuroraSemanticTokenTypes.Number);
+        AssertToken(source, result, "0x10", AuroraSemanticTokenTypes.Number);
         AssertToken(source, result, "log()", "log", AuroraSemanticTokenTypes.MethodCall);
         AssertToken(source, result, "modules", AuroraSemanticTokenTypes.Property);
         AssertToken(source, result, "PI", AuroraSemanticTokenTypes.Property);
@@ -82,6 +91,10 @@ public sealed class SemanticTokensFeatureTests
         AssertToken(source, result, "catch", AuroraSemanticTokenTypes.Exception);
         AssertToken(source, result, "finally", AuroraSemanticTokenTypes.Exception);
         AssertToken(source, result, "export", AuroraSemanticTokenTypes.ImportExport);
+        AssertToken(source, result, "[1, 2.5, 0x10]", "[", AuroraSemanticTokenTypes.Bracket);
+        AssertToken(source, result, "[1, 2.5, 0x10]", "]", AuroraSemanticTokenTypes.Bracket);
+        AssertToken(source, result, "local[\"path\"]", "[", AuroraSemanticTokenTypes.Bracket);
+        AssertToken(source, result, "local[\"path\"]", "]", AuroraSemanticTokenTypes.Bracket);
         Assert.Contains(result.Tokens, token => token.Type == AuroraSemanticTokenTypes.Parenthesis);
         Assert.Contains(result.Tokens, token => token.Type == AuroraSemanticTokenTypes.Bracket);
         Assert.Contains(result.Tokens, token => token.Type == AuroraSemanticTokenTypes.BraceLevel1);

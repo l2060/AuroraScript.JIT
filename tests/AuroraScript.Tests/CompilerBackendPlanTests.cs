@@ -1115,6 +1115,42 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
+    public void ModuleConstInliningDoesNotFoldDotPropertyNamesButKeepsElementIndexes()
+    {
+        var root = Path.GetTempPath();
+        var module = Parse(
+            """
+            @module(TEST);
+            const width = 8;
+            export func run(obj, arr) {
+                return [obj.width, arr[width]];
+            }
+            """,
+            root);
+        var options = EngineOptions.Default
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
+            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
+            .WithOptimization(optimization => optimization.ModuleConstInlining = true);
+        var backend = new BackendCompiler(new DynamicBuilder(options), options);
+
+        var session = backend.CreateModulePlans([module]);
+        var modulePlan = Assert.Single(session.Modules);
+        var returned = GetSingleReturnExpression(modulePlan, "run");
+        var array = Assert.IsType<LoweredArrayLiteralExpression>(returned);
+        var property = Assert.IsType<LoweredGetPropertyExpression>(array.Elements[0]);
+        var propertyName = Assert.IsType<LoweredNameExpression>(property.Property);
+        var element = Assert.IsType<LoweredGetElementExpression>(array.Elements[1]);
+        var index = Assert.IsType<LoweredLiteralExpression>(element.Index);
+        var indexNumber = Assert.IsType<NumberToken>(index.Token);
+
+        Assert.Equal("width", propertyName.Name);
+        Assert.False(propertyName.LocalSlot.IsValid);
+        Assert.False(propertyName.UpvalueSlot.IsValid);
+        Assert.False(propertyName.ModuleSymbol.IsValid);
+        Assert.Equal(8, indexNumber.NumberValue);
+    }
+
+    [Fact]
     public void LoweringMarksModuleDirectCallTarget()
     {
         var root = Path.GetTempPath();

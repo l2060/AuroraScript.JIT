@@ -38,6 +38,36 @@ internal sealed class AuroraLocalSymbolIndex
         return _references.ContainsKey(name);
     }
 
+    public IReadOnlyList<LocalSymbolInfo> GetVisibleSymbols(TextPosition position)
+    {
+        if (!TryGetScope(position, out var scope))
+        {
+            return Array.Empty<LocalSymbolInfo>();
+        }
+
+        var result = new List<LocalSymbolInfo>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (var current = scope; current != null; current = current.Parent)
+        {
+            foreach (var pair in current.Declarations)
+            {
+                if (!seen.Add(pair.Key))
+                {
+                    continue;
+                }
+
+                var symbol = pair.Value;
+                result.Add(new LocalSymbolInfo(
+                    symbol.Name,
+                    symbol.DeclarationRange,
+                    symbol.HasDeclarationRange,
+                    symbol.Kind));
+            }
+        }
+
+        return result;
+    }
+
     public bool TryGetReferences(
         TextPosition position,
         bool includeDeclaration,
@@ -134,6 +164,22 @@ internal sealed class AuroraLocalSymbolIndex
         return false;
     }
 
+    private bool TryGetScope(TextPosition position, out LocalScope scope)
+    {
+        scope = null!;
+        foreach (var pair in _scopesByOwner)
+        {
+            if (pair.Key.Range.IsValid() &&
+                pair.Key.Range.Contains(position) &&
+                (scope == null || Contains(scope.Owner?.Range ?? SourceSpan.None, pair.Key.Range)))
+            {
+                scope = pair.Value;
+            }
+        }
+
+        return scope != null;
+    }
+
     private void BuildModule(ModuleDeclaration module)
     {
         for (var i = 0; i < module.Statements.Count; i++)
@@ -161,7 +207,7 @@ internal sealed class AuroraLocalSymbolIndex
 
         if (function.Name != null && function.Flags == FunctionFlags.Lambda)
         {
-            Declare(rootScope, function.Name.Value, TextRange.FromSourceSpan(function.Name.Range));
+            Declare(rootScope, function.Name.Value, TextRange.FromSourceSpan(function.Name.Range), LocalSymbolKind.Function);
         }
 
         for (var i = 0; i < function.Parameters.Count; i++)
@@ -169,7 +215,7 @@ internal sealed class AuroraLocalSymbolIndex
             var parameter = function.Parameters[i];
             if (parameter.Name != null)
             {
-                Declare(rootScope, parameter.Name.Value, TextRange.FromSourceSpan(parameter.Name.Range));
+                Declare(rootScope, parameter.Name.Value, TextRange.FromSourceSpan(parameter.Name.Range), LocalSymbolKind.Variable);
             }
         }
 
@@ -224,7 +270,7 @@ internal sealed class AuroraLocalSymbolIndex
             case FunctionDeclaration function:
                 if (function.Flags != FunctionFlags.Declare && function.Name != null)
                 {
-                    Declare(scope, function.Name.Value, TextRange.FromSourceSpan(function.Name.Range));
+                    Declare(scope, function.Name.Value, TextRange.FromSourceSpan(function.Name.Range), LocalSymbolKind.Function);
                 }
                 BuildFunction(function, scope);
                 return;
@@ -259,7 +305,7 @@ internal sealed class AuroraLocalSymbolIndex
         }
 
         var catchScope = CreateScope(scope, statement.CatchBody ?? statement);
-        Declare(catchScope, statement.CatchVariable, null);
+        Declare(catchScope, statement.CatchVariable, null, LocalSymbolKind.Variable);
         if (statement.CatchBody is BlockStatement block)
         {
             for (var i = 0; i < block.Functions.Count; i++)
@@ -278,42 +324,43 @@ internal sealed class AuroraLocalSymbolIndex
 
     private void DeclarePattern(LocalScope scope, VariableDeclaration variable)
     {
+        var kind = variable.IsConst ? LocalSymbolKind.Constant : LocalSymbolKind.Variable;
         if (variable.Name != null)
         {
-            Declare(scope, variable.Name.Value, TextRange.FromSourceSpan(variable.Name.Range));
+            Declare(scope, variable.Name.Value, TextRange.FromSourceSpan(variable.Name.Range), kind);
             return;
         }
 
-        DeclarePattern(scope, variable.Pattern);
+        DeclarePattern(scope, variable.Pattern, kind);
     }
 
-    private void DeclarePattern(LocalScope scope, Expression? pattern)
+    private void DeclarePattern(LocalScope scope, Expression? pattern, LocalSymbolKind kind = LocalSymbolKind.Variable)
     {
         switch (pattern)
         {
             case NameExpression name:
-                Declare(scope, name.Identifier.Value, TextRange.FromSourceSpan(name.Identifier.Range));
+                Declare(scope, name.Identifier.Value, TextRange.FromSourceSpan(name.Identifier.Range), kind);
                 return;
             case SpreadExpression { Expression: NameExpression spreadName }:
-                Declare(scope, spreadName.Identifier.Value, TextRange.FromSourceSpan(spreadName.Identifier.Range));
+                Declare(scope, spreadName.Identifier.Value, TextRange.FromSourceSpan(spreadName.Identifier.Range), kind);
                 return;
             case ObjectDestructuringPattern objectPattern:
                 for (var i = 0; i < objectPattern.Properties.Count; i++)
                 {
                     var property = objectPattern.Properties[i];
-                    Declare(scope, property.Value, TextRange.FromSourceSpan(property.Range));
+                    Declare(scope, property.Value, TextRange.FromSourceSpan(property.Range), kind);
                 }
                 return;
             case ArrayDestructuringPattern arrayPattern:
                 for (var i = 0; i < arrayPattern.Elements.Count; i++)
                 {
-                    DeclarePattern(scope, arrayPattern.Elements[i]);
+                    DeclarePattern(scope, arrayPattern.Elements[i], kind);
                 }
                 return;
         }
     }
 
-    private void Declare(LocalScope scope, string name, TextRange? declarationRange)
+    private void Declare(LocalScope scope, string name, TextRange? declarationRange, LocalSymbolKind kind)
     {
         if (string.IsNullOrEmpty(name) ||
             scope.Declarations.ContainsKey(name))
@@ -321,7 +368,7 @@ internal sealed class AuroraLocalSymbolIndex
             return;
         }
 
-        var symbol = new LocalSymbol(_nextSymbolId++, name, declarationRange)
+        var symbol = new LocalSymbol(_nextSymbolId++, name, kind, declarationRange)
         {
             Scope = scope
         };
@@ -537,6 +584,44 @@ internal sealed class AuroraLocalSymbolIndex
         return true;
     }
 
+    private static bool Contains(SourceSpan outer, SourceSpan inner)
+    {
+        if (!outer.IsValid() || !inner.IsValid())
+        {
+            return false;
+        }
+
+        if (inner.StartLine < outer.StartLine || inner.EndLine > outer.EndLine)
+        {
+            return false;
+        }
+
+        if (inner.StartLine == outer.StartLine && inner.StartColumn < outer.StartColumn)
+        {
+            return false;
+        }
+
+        if (inner.EndLine == outer.EndLine && inner.EndColumn > outer.EndColumn)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    internal readonly record struct LocalSymbolInfo(
+        string Name,
+        TextRange DeclarationRange,
+        bool HasDeclarationRange,
+        LocalSymbolKind Kind);
+
+    internal enum LocalSymbolKind
+    {
+        Variable,
+        Constant,
+        Function
+    }
+
     private sealed class LocalScope
     {
         public LocalScope(LocalScope? parent, AstNode? owner = null)
@@ -552,16 +637,18 @@ internal sealed class AuroraLocalSymbolIndex
 
     private sealed class LocalSymbol
     {
-        public LocalSymbol(int id, string name, TextRange? declarationRange)
+        public LocalSymbol(int id, string name, LocalSymbolKind kind, TextRange? declarationRange)
         {
             Id = id;
             Name = name;
+            Kind = kind;
             DeclarationRange = declarationRange.GetValueOrDefault();
             HasDeclarationRange = declarationRange.HasValue;
         }
 
         public int Id { get; }
         public string Name { get; }
+        public LocalSymbolKind Kind { get; }
         public TextRange DeclarationRange { get; }
         public bool HasDeclarationRange { get; }
         public LocalScope Scope { get; set; } = null!;

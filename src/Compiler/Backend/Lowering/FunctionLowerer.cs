@@ -375,9 +375,9 @@ namespace AuroraScript.Compiler.Backend.Lowering
                     UnaryExpression unary => new LoweredUnaryExpression(unary, LowerUnaryOperand(unary)),
                     InExpression inExpression => LowerIn(inExpression),
                     IncludedExpression included => LowerIncluded(included),
-                    GetPropertyExpression property => new LoweredGetPropertyExpression(property, LowerExpression(property.Object), LowerExpression(property.Property)),
+                    GetPropertyExpression property => new LoweredGetPropertyExpression(property, LowerExpression(property.Object), LowerPropertyName(property.Property)),
                     GetElementExpression element => new LoweredGetElementExpression(element, LowerExpression(element.Object), LowerExpression(element.Index)),
-                    SetPropertyExpression property => new LoweredSetPropertyExpression(property, LowerExpression(property.Object), LowerExpression(property.Property), LowerExpression(property.Value)),
+                    SetPropertyExpression property => new LoweredSetPropertyExpression(property, LowerExpression(property.Object), LowerPropertyName(property.Property), LowerExpression(property.Value)),
                     SetElementExpression element => new LoweredSetElementExpression(element, LowerExpression(element.Object), LowerExpression(element.Index), LowerExpression(element.Value)),
                     ArrayLiteralExpression array => LowerArrayLiteral(array),
                     MapExpression map => LowerMap(map),
@@ -418,6 +418,13 @@ namespace AuroraScript.Compiler.Backend.Lowering
                 }
 
                 return LowerExpression(unary.Expression);
+            }
+
+            private LoweredExpression LowerPropertyName(Expression expression)
+            {
+                return expression is NameExpression name
+                    ? new LoweredNameExpression(name, LocalSlotId.Invalid, UpvalueSlotId.Invalid, SymbolId.Invalid)
+                    : LowerExpression(expression);
             }
 
             private LoweredCallExpression LowerCall(FunctionCallExpression call)

@@ -16,7 +16,7 @@ function throwMethod() {
 
 @directCall()
 function RotateLeft(lValue, iShiftBits) {
-	return(lValue << iShiftBits) |(lValue >>>(32 - iShiftBits));
+	return(lValue << iShiftBits) | (lValue >>> (32 - iShiftBits));
 }
 
 @directCall()
@@ -27,11 +27,11 @@ function AddUnsigned(lX, lY) {
 	var lX8;
 	var lY8;
 	var lResult;
-	lX8 =(lX & 0x80000000);
-	lY8 =(lY & 0x80000000);
-	lX4 =(lX & 0x40000000);
-	lY4 =(lY & 0x40000000);
-	lResult =(lX & 0x3FFFFFFF) +(lY & 0x3FFFFFFF);
+	lX8 = (lX & 0x80000000);
+	lY8 = (lY & 0x80000000);
+	lX4 = (lX & 0x40000000);
+	lY4 = (lY & 0x40000000);
+	lResult = (lX & 0x3FFFFFFF) + (lY & 0x3FFFFFFF);
 	if (lX4 & lY4) {
 		return(lResult ^ 0x80000000 ^ lX8 ^ lY8);
 	}
@@ -46,10 +46,10 @@ function AddUnsigned(lX, lY) {
 	}
 }
 
-function F(x, y, z) { return(x & y) |((~x) & z); }
-function G(x, y, z) { return(x & z) |(y &(~z)); }
+function F(x, y, z) { return(x & y) | ((~x) & z); }
+function G(x, y, z) { return(x & z) | (y & (~z)); }
 function H(x, y, z) { return(x ^ y ^ z); }
-function I(x, y, z) { return(y ^(x |(~z))); }
+function I(x, y, z) { return(y ^ (x | (~z))); }
 
 function FF(a, b, c, d, x, s, ac) {
 	a = AddUnsigned(a, AddUnsigned(AddUnsigned(F(b, c, d), x), ac));
@@ -75,25 +75,25 @@ function ConvertToWordArray(str) {
 	var lWordCount;
 	var lMessageLength = str.length;
 	var lNumberOfWords_temp1 = lMessageLength + 8;
-	var lNumberOfWords_temp2 =(lNumberOfWords_temp1 -(lNumberOfWords_temp1 % 64)) / 64;
-	var lNumberOfWords =(lNumberOfWords_temp2 + 1) * 16;
+	var lNumberOfWords_temp2 = (lNumberOfWords_temp1 - (lNumberOfWords_temp1 % 64)) / 64;
+	var lNumberOfWords = (lNumberOfWords_temp2 + 1) * 16;
 	var lWordArray = Array(lNumberOfWords - 1);
 	var lBytePosition = 0;
 	var lByteCount = 0;
 	while (lByteCount < lMessageLength) {
-		lWordCount =(lByteCount -(lByteCount % 4)) / 4;
-		lBytePosition =(lByteCount % 4) * 8;
+		lWordCount = (lByteCount - (lByteCount % 4)) / 4;
+		lBytePosition = (lByteCount % 4) * 8;
 
 		var aa = lWordArray[lWordCount];
 		var bb = str.charCodeAt(lByteCount);
 		var cc = lBytePosition;
 
-		lWordArray[lWordCount] =(aa |(bb << cc));
+		lWordArray[lWordCount] = (aa | (bb << cc));
 		lByteCount++;
 	}
-	lWordCount =(lByteCount -(lByteCount % 4)) / 4;
-	lBytePosition =(lByteCount % 4) * 8;
-	lWordArray[lWordCount] = lWordArray[lWordCount] |(0x80 << lBytePosition);
+	lWordCount = (lByteCount - (lByteCount % 4)) / 4;
+	lBytePosition = (lByteCount % 4) * 8;
+	lWordArray[lWordCount] = lWordArray[lWordCount] | (0x80 << lBytePosition);
 	lWordArray[lNumberOfWords - 2] = lMessageLength << 3;
 	lWordArray[lNumberOfWords - 1] = lMessageLength >> 29;
 	return lWordArray;
@@ -107,12 +107,13 @@ function WordToHex(lValue) {
 	var lByte;
 	var lCount;
 	for (lCount = 0; lCount <= 3; lCount++) {
-		lByte =(lValue >>(lCount * 8)) & 255;
+		lByte = (lValue >> (lCount * 8)) & 255;
 		WordToHexValue_temp = "0" + lByte.toString(16);
-		WordToHexValue +=(WordToHexValue_temp.substring(WordToHexValue_temp.length - 2, 2));
+		WordToHexValue += (WordToHexValue_temp.substring(WordToHexValue_temp.length - 2, 2));
 	}
 	return WordToHexValue;
 };
+
 
 
 
@@ -125,16 +126,16 @@ function Utf8Encode(string) {
 		var c = string.charCodeAt(n);
 
 		if (c < 128) {
-			utfText +=(String.fromCharCode(c));
+			utfText += (String.fromCharCode(c));
 		}
-		else if ((c > 127) &&(c < 2048)) {
-			utfText +=(String.fromCharCode((c >> 6) | 192));
-			utfText +=(String.fromCharCode((c & 63) | 128));
+		else if ((c > 127) && (c < 2048)) {
+			utfText += (String.fromCharCode((c >> 6) | 192));
+			utfText += (String.fromCharCode((c & 63) | 128));
 		}
 		else {
-			utfText +=(String.fromCharCode((c >> 12) | 224));
-			utfText +=(String.fromCharCode(((c >> 6) & 63) | 128));
-			utfText +=(String.fromCharCode((c & 63) | 128));
+			utfText += (String.fromCharCode((c >> 12) | 224));
+			utfText += (String.fromCharCode(((c >> 6) & 63) | 128));
+			utfText += (String.fromCharCode((c & 63) | 128));
 		}
 	}
 	return utfText;
@@ -147,7 +148,7 @@ function WordToHex_str(lValue) {
 	var lByte;
 	var lCount;
 	for (lCount = 0; lCount <= 3; lCount++) {
-		lByte =(lValue >>(lCount * 8)) & 255;
+		lByte = (lValue >> (lCount * 8)) & 255;
 		WordToHexValue_temp = "0" + lByte.toString(16);
 		WordToHexValue = WordToHexValue + WordToHexValue_temp.substring(WordToHexValue_temp.length - 2, 2);
 	}
@@ -164,7 +165,7 @@ function Utf8Encode_str(string) {
 		if (c < 128) {
 			utfText += String.fromCharCode(c);
 		}
-		else if ((c > 127) &&(c < 2048)) {
+		else if ((c > 127) && (c < 2048)) {
 			utfText += String.fromCharCode((c >> 6) | 192);
 			utfText += String.fromCharCode((c & 63) | 128);
 		}

@@ -351,6 +351,106 @@ public sealed class BuiltinLanguageFeatureTests
     }
 
     [Fact]
+    public void CompletionReturnsCurrentScopeSymbols()
+    {
+        const string source =
+            """
+            @module(TEST);
+            const moduleConst = 1;
+            func helper() {
+                return 1;
+            }
+            export func run(input) {
+                var localValue = input;
+                const localConst = 2;
+                zz
+            }
+            """;
+        var service = CreateService();
+
+        var completions = service.GetCompletions("test.as", source, PositionAfter(source, "zz"));
+
+        Assert.Contains(completions.Items, item => item.Label == "localValue" && item.Kind == CompletionItemKind.Variable);
+        Assert.Contains(completions.Items, item => item.Label == "localConst" && item.Kind == CompletionItemKind.Constant && item.ReadOnly);
+        Assert.Contains(completions.Items, item => item.Label == "input" && item.Kind == CompletionItemKind.Variable);
+        Assert.Contains(completions.Items, item => item.Label == "helper" && item.Kind == CompletionItemKind.Function);
+        Assert.Contains(completions.Items, item => item.Label == "moduleConst" && item.Kind == CompletionItemKind.Constant);
+        Assert.Contains(completions.Items, item => item.Label == "Math" && item.Kind == CompletionItemKind.Object);
+    }
+
+    [Fact]
+    public void CompletionReturnsImportAliases()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "aurora-completion-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var mainPath = Path.Combine(root, "main.as");
+            var libPath = Path.Combine(root, "lib.as");
+            var main =
+                """
+                @module(MAIN);
+                import lib from './lib';
+                export func run() {
+                    zz
+                }
+                """;
+            var lib = "@module(LIB); export const value = 42;";
+            var service = CreateService();
+            service.OpenOrUpdateDocument(mainPath, main);
+            service.OpenOrUpdateDocument(libPath, lib);
+
+            var completions = service.GetCompletions(mainPath, PositionAfter(main, "zz"));
+
+            Assert.Contains(completions.Items, item => item.Label == "lib" && item.Kind == CompletionItemKind.Module);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void CompletionReturnsImportedModuleMembers()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "aurora-completion-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var mainPath = Path.Combine(root, "main.as");
+            var libPath = Path.Combine(root, "lib.as");
+            var main =
+                """
+                @module(MAIN);
+                import lib from './lib';
+                export func run() {
+                    lib.
+                }
+                """;
+            var lib =
+                """
+                @module(LIB);
+                export const value = 42;
+                export func compute(input) {
+                    return input;
+                }
+                """;
+            var service = CreateService();
+            service.OpenOrUpdateDocument(mainPath, main);
+            service.OpenOrUpdateDocument(libPath, lib);
+
+            var completions = service.GetCompletions(mainPath, new TextPosition(3, 8));
+
+            Assert.Contains(completions.Items, item => item.Label == "value" && item.Kind == CompletionItemKind.Constant && item.ReadOnly);
+            Assert.Contains(completions.Items, item => item.Label == "compute" && item.Kind == CompletionItemKind.Method);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void SignatureHelpReturnsBuiltinMethodSignature()
     {
         const string source =
@@ -384,37 +484,25 @@ public sealed class BuiltinLanguageFeatureTests
     {
         var offset = source.IndexOf(needle, StringComparison.Ordinal);
         Assert.True(offset >= 0, $"Needle '{needle}' not found.");
-        var line = 0;
-        var character = 0;
-        for (var i = 0; i < offset; i++)
-        {
-            if (source[i] == '\r')
-            {
-                if (i + 1 < offset && source[i + 1] == '\n')
-                {
-                    i++;
-                }
-                line++;
-                character = 0;
-            }
-            else if (source[i] == '\n')
-            {
-                line++;
-                character = 0;
-            }
-            else
-            {
-                character++;
-            }
-        }
+        return PositionAtOffset(source, offset);
+    }
 
-        return new TextPosition(line, character);
+    private static TextPosition PositionAfter(string source, string needle)
+    {
+        var offset = source.IndexOf(needle, StringComparison.Ordinal);
+        Assert.True(offset >= 0, $"Needle '{needle}' not found.");
+        return PositionAtOffset(source, offset + needle.Length);
     }
 
     private static TextPosition PositionOfLast(string source, string needle)
     {
         var offset = source.LastIndexOf(needle, StringComparison.Ordinal);
         Assert.True(offset >= 0, $"Needle '{needle}' not found.");
+        return PositionAtOffset(source, offset);
+    }
+
+    private static TextPosition PositionAtOffset(string source, int offset)
+    {
         var line = 0;
         var character = 0;
         for (var i = 0; i < offset; i++)

@@ -5,8 +5,11 @@ public enum CompletionItemKind
     Text,
     Function,
     Method,
+    Variable,
     Property,
     Constant,
     Constructor,
-    Object
+    Object,
+    Module,
+    Enum
 }

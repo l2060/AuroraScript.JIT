@@ -346,12 +346,12 @@ internal static class AuroraDelimiterClassificationDefinitions
 
     [Export(typeof(ClassificationTypeDefinition))]
     [Name(AuroraDelimiterClassificationTypes.Bracket)]
-    [BaseDefinition("text")]
+    [BaseDefinition("punctuation")]
     internal static ClassificationTypeDefinition? AuroraBracketClassificationType;
 
     [Export(typeof(ClassificationTypeDefinition))]
     [Name(AuroraDelimiterClassificationTypes.Parenthesis)]
-    [BaseDefinition("text")]
+    [BaseDefinition("punctuation")]
     internal static ClassificationTypeDefinition? AuroraParenthesisClassificationType;
 }
 
@@ -442,7 +442,7 @@ internal sealed class AuroraBracketFormat : ClassificationFormatDefinition
     public AuroraBracketFormat()
     {
         DisplayName = "AuroraScript Bracket";
-        ForegroundColor = Color.FromRgb(0xD4, 0xD4, 0xD4);
+        ForegroundColor = Color.FromRgb(0x56, 0x9C, 0xD6);
     }
 }
 
@@ -455,6 +455,6 @@ internal sealed class AuroraParenthesisFormat : ClassificationFormatDefinition
     public AuroraParenthesisFormat()
     {
         DisplayName = "AuroraScript Parenthesis";
-        ForegroundColor = Color.FromRgb(0xD4, 0xD4, 0xD4);
+        ForegroundColor = Color.FromRgb(0xD7, 0xBA, 0x7D);
     }
 }

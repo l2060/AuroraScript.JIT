@@ -99,6 +99,9 @@ internal static class AstQuery
             case PrefixUnaryExpression prefixUnary:
                 Visit(prefixUnary.Expression, state);
                 return;
+            case UnaryExpression unary:
+                Visit(unary.Expression, state);
+                return;
             case GetElementExpression getElement:
                 Visit(getElement.Object, state);
                 Visit(getElement.Index, state);

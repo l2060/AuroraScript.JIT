@@ -227,33 +227,71 @@ public sealed class AuroraLanguageService
 
     public CompletionResult GetCompletions(string sourceName, string sourceText, TextPosition position, string? baseDirectory = null)
     {
+        var completionSourceText = GetCompletionSourceText(sourceText, position);
         if (LightweightCompletionQuery.TryGetMemberOwner(sourceText, position, out var ownerName))
         {
             var memberCompletions = BuiltinQuery.GetMemberCompletions(_builtins, ownerName, DocumentationLocale);
-            if (memberCompletions.Items.Count != 0)
+            var scriptMemberCompletions = GetScriptMemberCompletions(sourceName, completionSourceText, ownerName, baseDirectory);
+            var mergedMemberCompletions = MergeCompletions(memberCompletions, scriptMemberCompletions);
+            if (mergedMemberCompletions.Items.Count != 0)
             {
-                return memberCompletions;
+                return mergedMemberCompletions;
             }
         }
 
         var parseResult = ParseText(sourceName, sourceText, baseDirectory);
+        if (parseResult.Module == null && !string.Equals(completionSourceText, sourceText, StringComparison.Ordinal))
+        {
+            parseResult = ParseText(sourceName, completionSourceText, baseDirectory);
+        }
+
         if (parseResult.Module == null)
         {
             return BuiltinQuery.GetCompletions(_builtins, null, DocumentationLocale);
         }
 
         var context = AstQuery.Find(parseResult.Module, position);
-        return BuiltinQuery.GetCompletions(_builtins, context, DocumentationLocale);
+        var builtinCompletions = BuiltinQuery.GetCompletions(_builtins, context, DocumentationLocale);
+        var scriptCompletions = GetScriptCompletions(sourceName, completionSourceText, position, baseDirectory);
+        return MergeCompletions(scriptCompletions, builtinCompletions);
     }
 
     public CompletionResult GetCompletions(string path, TextPosition position)
     {
-        if (!TryGetWorkspaceText(path, out _, out var text))
+        if (!TryGetWorkspaceText(path, out var normalizedPath, out var text))
         {
             return BuiltinQuery.GetCompletions(_builtins, null, DocumentationLocale);
         }
 
-        return GetCompletions(path, text, position, _workspace.BaseDirectory);
+        var completionText = GetCompletionSourceText(text, position);
+        if (LightweightCompletionQuery.TryGetMemberOwner(text, position, out var ownerName))
+        {
+            var memberCompletions = BuiltinQuery.GetMemberCompletions(_builtins, ownerName, DocumentationLocale);
+            var index = GetWorkspaceCompletionIndex(normalizedPath, completionText);
+            var scriptMemberCompletions = AuroraCompletionResolver.GetMemberCompletions(index, normalizedPath, ownerName);
+            var mergedMemberCompletions = MergeCompletions(memberCompletions, scriptMemberCompletions);
+            if (mergedMemberCompletions.Items.Count != 0)
+            {
+                return mergedMemberCompletions;
+            }
+        }
+
+        var parseResult = _parseService.ParseText(normalizedPath, text, _workspace.BaseDirectory, _workspace.CreateSnapshot());
+        if (parseResult.Module == null && !string.Equals(completionText, text, StringComparison.Ordinal))
+        {
+            parseResult = _parseService.ParseText(normalizedPath, completionText, _workspace.BaseDirectory, _workspace.CreateSnapshot());
+        }
+
+        if (parseResult.Module == null)
+        {
+            return BuiltinQuery.GetCompletions(_builtins, null, DocumentationLocale);
+        }
+
+        var context = AstQuery.Find(parseResult.Module, position);
+        var builtinCompletions = BuiltinQuery.GetCompletions(_builtins, context, DocumentationLocale);
+        var workspaceIndex = GetWorkspaceCompletionIndex(normalizedPath, completionText);
+        var scriptCompletions = AuroraCompletionResolver.GetCompletions(workspaceIndex, normalizedPath, position);
+        return MergeCompletions(scriptCompletions, builtinCompletions);
     }
 
     public SignatureHelpResult? GetSignatureHelp(string sourceName, string sourceText, TextPosition position, string? baseDirectory = null)
@@ -478,14 +516,101 @@ public sealed class AuroraLanguageService
         return default;
     }
 
+    private CompletionResult GetScriptCompletions(
+        string sourceName,
+        string sourceText,
+        TextPosition position,
+        string? baseDirectory)
+    {
+        var snapshot = CreateWorkspaceSnapshot(sourceName, sourceText, null, out var normalizedSource, baseDirectory);
+        var index = AuroraWorkspaceIndex.Build(_parseService, snapshot, normalizedSource);
+        return AuroraCompletionResolver.GetCompletions(index, normalizedSource, position);
+    }
+
+    private CompletionResult GetScriptMemberCompletions(
+        string sourceName,
+        string sourceText,
+        string ownerName,
+        string? baseDirectory)
+    {
+        var snapshot = CreateWorkspaceSnapshot(sourceName, sourceText, null, out var normalizedSource, baseDirectory);
+        var index = AuroraWorkspaceIndex.Build(_parseService, snapshot, normalizedSource);
+        return AuroraCompletionResolver.GetMemberCompletions(index, normalizedSource, ownerName);
+    }
+
+    private static CompletionResult MergeCompletions(params CompletionResult[] results)
+    {
+        var items = new List<CompletionItem>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var result in results)
+        {
+            if (result == null)
+            {
+                continue;
+            }
+
+            for (var i = 0; i < result.Items.Count; i++)
+            {
+                var item = result.Items[i];
+                if (seen.Add(item.Label))
+                {
+                    items.Add(item);
+                }
+            }
+        }
+
+        return new CompletionResult(items);
+    }
+
+    private static string GetCompletionSourceText(string sourceText, TextPosition position)
+    {
+        var offset = TextPositionMapper.ToOffset(sourceText, position);
+        if (offset < 0 || offset > sourceText.Length)
+        {
+            return sourceText;
+        }
+
+        var previous = PreviousNonWhitespace(sourceText, offset);
+        if (previous >= 0 && sourceText[previous] == '.')
+        {
+            return sourceText.Insert(offset, "__completion__;");
+        }
+
+        if (previous >= 0 &&
+            sourceText[previous] != ';' &&
+            sourceText[previous] != '{' &&
+            sourceText[previous] != '}')
+        {
+            return sourceText.Insert(offset, ";");
+        }
+
+        return sourceText;
+    }
+
+    private static int PreviousNonWhitespace(string text, int offset)
+    {
+        for (var i = Math.Min(offset, text.Length) - 1; i >= 0; i--)
+        {
+            if (!char.IsWhiteSpace(text[i]))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
     private static AuroraWorkspaceSnapshot CreateWorkspaceSnapshot(
         string sourceName,
         string sourceText,
         IEnumerable<AuroraWorkspaceDocument>? workspaceDocuments,
-        out string normalizedSource)
+        out string normalizedSource,
+        string? baseDirectory = null)
     {
         var documents = new List<AuroraWorkspaceDocument>();
-        normalizedSource = AuroraWorkspaceIndex.NormalizePath(sourceName);
+        normalizedSource = string.IsNullOrWhiteSpace(baseDirectory)
+            ? AuroraWorkspaceIndex.NormalizePath(sourceName)
+            : AuroraWorkspaceSnapshot.NormalizePath(sourceName, baseDirectory);
         documents.Add(new AuroraWorkspaceDocument(normalizedSource, sourceText));
         if (workspaceDocuments != null)
         {
@@ -537,6 +662,12 @@ public sealed class AuroraLanguageService
         }
     }
 
+    private AuroraWorkspaceIndex GetWorkspaceCompletionIndex(string rootPath, string sourceText)
+    {
+        var snapshot = CreateCompletionSnapshot(rootPath, sourceText);
+        return AuroraWorkspaceIndex.Build(_parseService, snapshot, rootPath);
+    }
+
     private AuroraWorkspaceSnapshot CreateIndexSnapshot()
     {
         var workspaceSnapshot = _workspace.CreateSnapshot();
@@ -561,6 +692,33 @@ public sealed class AuroraLanguageService
             catch (Exception ex) when (IsFileReadFailure(ex))
             {
             }
+        }
+
+        return new AuroraWorkspaceSnapshot(documents, _workspace.BaseDirectory, workspaceSnapshot.Version);
+    }
+
+    private AuroraWorkspaceSnapshot CreateCompletionSnapshot(string rootPath, string sourceText)
+    {
+        var workspaceSnapshot = _workspace.CreateSnapshot();
+        var documents = new List<AuroraWorkspaceDocument>();
+        var normalizedRoot = AuroraWorkspaceIndex.NormalizePath(rootPath);
+        var foundRoot = false;
+        foreach (var document in workspaceSnapshot.Documents.Values)
+        {
+            if (string.Equals(document.Path, normalizedRoot, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+            {
+                documents.Add(new AuroraWorkspaceDocument(document.Path, sourceText, document.Version));
+                foundRoot = true;
+            }
+            else
+            {
+                documents.Add(document);
+            }
+        }
+
+        if (!foundRoot)
+        {
+            documents.Add(new AuroraWorkspaceDocument(normalizedRoot, sourceText));
         }
 
         return new AuroraWorkspaceSnapshot(documents, _workspace.BaseDirectory, workspaceSnapshot.Version);

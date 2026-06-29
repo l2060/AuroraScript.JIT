@@ -292,7 +292,7 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
         string type,
         out ITagSpan<ClassificationTag> tag)
     {
-        if (length <= 0 || !Intersects(spans, start))
+        if (length <= 0 || !Intersects(spans, start, length))
         {
             tag = null!;
             return false;
@@ -710,17 +710,18 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
         return start;
     }
 
-    private static bool Intersects(NormalizedSnapshotSpanCollection spans, int position)
+    private static bool Intersects(NormalizedSnapshotSpanCollection spans, int start, int length)
     {
+        var end = start + length;
         for (var i = 0; i < spans.Count; i++)
         {
             var span = spans[i];
-            if (position >= span.Start.Position && position < span.End.Position)
+            if (start < span.End.Position && end > span.Start.Position)
             {
                 return true;
             }
 
-            if (position < span.Start.Position)
+            if (end <= span.Start.Position)
             {
                 return false;
             }
@@ -906,7 +907,7 @@ internal sealed class AuroraControlFlowFormat : AuroraSyntaxFormatDefinition
 [UserVisible(true)]
 internal sealed class AuroraReturnFormat : AuroraSyntaxFormatDefinition
 {
-    public AuroraReturnFormat() : base("AuroraScript Return", 0xD1, 0x69, 0x69) { }
+    public AuroraReturnFormat() : base("AuroraScript Return", 0xC5, 0x86, 0xC0) { }
 }
 
 [Export(typeof(EditorFormatDefinition))]
@@ -915,7 +916,7 @@ internal sealed class AuroraReturnFormat : AuroraSyntaxFormatDefinition
 [UserVisible(true)]
 internal sealed class AuroraThrowFormat : AuroraSyntaxFormatDefinition
 {
-    public AuroraThrowFormat() : base("AuroraScript Throw", 0xD1, 0x69, 0x69) { }
+    public AuroraThrowFormat() : base("AuroraScript Throw", 0xC5, 0x86, 0xC0) { }
 }
 
 [Export(typeof(EditorFormatDefinition))]

@@ -279,7 +279,7 @@
         },
         {
           "name": "meta.object-literal.key.literal.aurora",
-          "match": "\\b((?:0[xX][0-9A-Fa-f]+|\\d(?:_?\\d)*(?:\\.\\d(?:_?\\d)*)?|true|false|null))(\\s*)(:)",
+          "match": "\\b((?:0[xX][0-9A-Fa-f](?:_?[0-9A-Fa-f])*|\\d(?:_?\\d)*(?:\\.\\d(?:_?\\d)*)?|true|false|null))(\\s*)(:)",
           "captures": {
             "1": { "name": "variable.other.member.map-key.aurora" },
             "3": { "name": "punctuation.separator.key-value.aurora" }
@@ -335,7 +335,7 @@
       "patterns": [
         {
           "name": "constant.numeric.hex.aurora",
-          "match": "\\b0[xX][0-9A-Fa-f]+\\b"
+          "match": "\\b0[xX][0-9A-Fa-f](?:_?[0-9A-Fa-f])*\\b"
         },
         {
           "name": "constant.numeric.decimal.aurora",

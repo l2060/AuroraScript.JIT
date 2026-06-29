@@ -33,7 +33,7 @@ func astarHeapPush(heapNodes, heapScores, heapTies, heapLength, node, score, tie
 
 	while (i > 0) {
 		var parent = i - 1;
-		parent =(parent -(parent % 2)) / 2;
+		parent = (parent - (parent % 2)) / 2;
 
 		var parentScore = heapScores[parent];
 		var parentTie = heapTies[parent];
@@ -383,7 +383,7 @@ export func findPathInto(astar, startX, startY, goalX, goalY, outPath, allowDiag
 		}
 
 		var currentX = current % width;
-		var currentY =(current - currentX) / width;
+		var currentY = (current - currentX) / width;
 		var baseG = gScore[current];
 
 		if (currentX > 0) {
@@ -556,30 +556,42 @@ export func findPath(astar, startX, startY, goalX, goalY, allowDiagonal = true, 
 	for (var i = 0; i < count; i++) {
 		var index = indexes[i];
 		var x = index % width;
-		var y =(index - x) / width;
+		var y = (index - x) / width;
 		result.push({ x: x, y: y });
 	}
 
 	return result;
 }
 
-export func runExample() {
-	var width = 8;
-	var height = 6;
-	var map = Array.withCapacity(width * height);
+// examples
+// 
+const width = 8;
+const height = 6;
+var map  = [];
+var astar = null;
+
+func init() {
+
+	var _map = Array.withCapacity(width * height);
 
 	for (var i = 0; i < width * height; i++) {
-		map.push(1);
+		_map.push(1);
 	}
 
-	map[10] = 0;
-	map[18] = 0;
-	map[26] = 0;
-	map[34] = 0;
+	_map[10] = 0;
+	_map[18] = 0;
+	_map[26] = 0;
+	_map[34] = 0;
+	map = _map;
+	astar = createAStar(width, height, map, null);
+}
 
-	var astar = createAStar(width, height, map, null);
+
+init();
+
+export func runExample() {
+
 	var path = findPath(astar, 1, 1, 6, 4, true, true);
-
 	console.log(astar.expanded, path);
 	return {
 		path: path,

@@ -440,6 +440,12 @@ internal static class AuroraDocumentFormatter
             return true;
         }
 
+        if (current.SymbolId == Symbols.PT_LEFTPARENTHESIS.Id && IsOperator(previous))
+        {
+            requiredSpace = !IsTightPrefixOperator(previous.SymbolId);
+            return true;
+        }
+
         if (current.SymbolId == Symbols.PT_LEFTPARENTHESIS.Id)
         {
             requiredSpace = false;
@@ -560,6 +566,20 @@ internal static class AuroraDocumentFormatter
             symbolId == Symbols.OP_UNSIGNEDRIGHTSHIFT.Id ||
             symbolId == Symbols.OP_IN.Id ||
             symbolId == Symbols.PT_LAMBDA.Id;
+    }
+
+    private static bool IsOperator(FormatToken token)
+    {
+        return token.Kind == SyntaxTokenKind.Operator ||
+            token.SymbolId == Symbols.OP_TYPEOF.Id ||
+            token.SymbolId == Symbols.KW_NEW.Id ||
+            token.SymbolId == Symbols.KW_DELETE.Id;
+    }
+
+    private static bool IsTightPrefixOperator(int symbolId)
+    {
+        return symbolId == Symbols.OP_LOGICALNOT.Id ||
+            symbolId == Symbols.OP_BIT_NOT.Id;
     }
 
     private static bool IsUnaryOperatorUse(FormatToken? beforeOperator, FormatToken operatorToken)

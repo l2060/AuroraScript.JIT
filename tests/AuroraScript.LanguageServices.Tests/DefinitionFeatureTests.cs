@@ -104,6 +104,100 @@ public sealed class DefinitionFeatureTests : IDisposable
     }
 
     [Fact]
+    public void ResolvesImportPathDefinitionToTargetDocument()
+    {
+        var appDirectory = Path.Combine(_root, "app");
+        var tempDirectory = Path.Combine(_root, "temp");
+        Directory.CreateDirectory(appDirectory);
+        Directory.CreateDirectory(tempDirectory);
+        var mainPath = Path.Combine(appDirectory, "main.as");
+        var targetPath = Path.Combine(tempDirectory, "debug_test.as");
+        var main =
+            """
+            @module(MAIN);
+            import debug_test from '../temp/debug_test';
+            export func run() {
+                return debug_test.value;
+            }
+            """;
+        var target = "@module(DEBUG_TEST); export const value = 42;";
+        var service = CreateService();
+
+        var definition = service.GetDefinition(
+            mainPath,
+            main,
+            PositionOf(main, "../temp/debug_test"),
+            new[] { new AuroraWorkspaceDocument(targetPath, target) });
+
+        Assert.NotNull(definition);
+        Assert.Equal(ScriptPath.NormalizeFullPath(targetPath), definition!.Path);
+        Assert.Equal(TextPosition.Zero, definition.Range.Start);
+        Assert.Equal(TextPosition.Zero, definition.Range.End);
+    }
+
+    [Fact]
+    public void ResolvesImportAliasDeclarationDefinitionToImportDeclaration()
+    {
+        var appDirectory = Path.Combine(_root, "app");
+        var tempDirectory = Path.Combine(_root, "temp");
+        Directory.CreateDirectory(appDirectory);
+        Directory.CreateDirectory(tempDirectory);
+        var mainPath = Path.Combine(appDirectory, "main.as");
+        var targetPath = Path.Combine(tempDirectory, "debug_test.as");
+        var main =
+            """
+            @module(MAIN);
+            import debug_test from '../temp/debug_test';
+            export func run() {
+                return debug_test.value;
+            }
+            """;
+        var target = "@module(DEBUG_TEST); export const value = 42;";
+        var service = CreateService();
+
+        var definition = service.GetDefinition(
+            mainPath,
+            main,
+            PositionOf(main, "debug_test"),
+            new[] { new AuroraWorkspaceDocument(targetPath, target) });
+
+        Assert.NotNull(definition);
+        Assert.Equal(ScriptPath.NormalizeFullPath(mainPath), definition!.Path);
+        Assert.Equal(PositionOf(main, "debug_test"), definition.Range.Start);
+    }
+
+    [Fact]
+    public void ResolvesImportAliasUsageDefinitionToImportDeclaration()
+    {
+        var appDirectory = Path.Combine(_root, "app");
+        var tempDirectory = Path.Combine(_root, "temp");
+        Directory.CreateDirectory(appDirectory);
+        Directory.CreateDirectory(tempDirectory);
+        var mainPath = Path.Combine(appDirectory, "main.as");
+        var targetPath = Path.Combine(tempDirectory, "debug_test.as");
+        var main =
+            """
+            @module(MAIN);
+            import debug_test from '../temp/debug_test';
+            export func run() {
+                return debug_test.value;
+            }
+            """;
+        var target = "@module(DEBUG_TEST); export const value = 42;";
+        var service = CreateService();
+
+        var definition = service.GetDefinition(
+            mainPath,
+            main,
+            PositionOfLast(main, "debug_test"),
+            new[] { new AuroraWorkspaceDocument(targetPath, target) });
+
+        Assert.NotNull(definition);
+        Assert.Equal(ScriptPath.NormalizeFullPath(mainPath), definition!.Path);
+        Assert.Equal(PositionOf(main, "debug_test"), definition.Range.Start);
+    }
+
+    [Fact]
     public void WorkspaceIndexCacheInvalidatesWhenDocumentChanges()
     {
         var mainPath = Path.Combine(_root, "main.as");
@@ -249,6 +343,93 @@ public sealed class DefinitionFeatureTests : IDisposable
 
         Assert.NotNull(definition);
         Assert.Equal(ScriptPath.NormalizeFullPath(mainPath), definition!.Path);
+        Assert.Equal(1, definition.Range.Start.Line);
+    }
+
+    [Fact]
+    public void ResolvesModuleLevelVariableDefinitionWhenUsedAsPropertyOwner()
+    {
+        var mainPath = Path.Combine(_root, "main.as");
+        var main =
+            """
+            @module(MAIN);
+            var state = { count: 1 };
+            export func run() {
+                return state.count;
+            }
+            """;
+        var service = CreateService();
+
+        var definition = service.GetDefinition(mainPath, main, PositionOfLast(main, "state"));
+
+        Assert.NotNull(definition);
+        Assert.Equal(ScriptPath.NormalizeFullPath(mainPath), definition!.Path);
+        Assert.Equal(1, definition.Range.Start.Line);
+    }
+
+    [Fact]
+    public void ResolvesModuleLevelVariablesUsedInUnaryAndMemberExpressions()
+    {
+        var mainPath = Path.Combine(_root, "main.as");
+        var main =
+            """
+            @module(MAIN);
+            export var resetCount = 0;
+            var timeCount = 0;
+            export var timers = [0,, 1, 2, 3, 4, 5];
+            export func run(timer) {
+                resetCount++;
+                timeCount++;
+                const timerInfo = { timeId: timeCount++ };
+                timers.push(timer);
+            }
+            """;
+        var service = CreateService();
+
+        var resetDefinition = service.GetDefinition(mainPath, main, PositionOfLast(main, "resetCount"));
+        var timeDefinition = service.GetDefinition(mainPath, main, PositionOfLast(main, "timeCount"));
+        var timersDefinition = service.GetDefinition(mainPath, main, PositionOfLast(main, "timers"));
+
+        Assert.NotNull(resetDefinition);
+        Assert.Equal(ScriptPath.NormalizeFullPath(mainPath), resetDefinition!.Path);
+        Assert.Equal(1, resetDefinition.Range.Start.Line);
+        Assert.NotNull(timeDefinition);
+        Assert.Equal(ScriptPath.NormalizeFullPath(mainPath), timeDefinition!.Path);
+        Assert.Equal(2, timeDefinition.Range.Start.Line);
+        Assert.NotNull(timersDefinition);
+        Assert.Equal(ScriptPath.NormalizeFullPath(mainPath), timersDefinition!.Path);
+        Assert.Equal(3, timersDefinition.Range.Start.Line);
+    }
+
+    [Fact]
+    public void ResolvesIncludedModuleLevelVariableDefinitionWhenUsedAsPropertyOwner()
+    {
+        var mainPath = Path.Combine(_root, "main.as");
+        var sharedPath = Path.Combine(_root, "shared.as");
+        var main =
+            """
+            @module(MAIN);
+            include './shared';
+            export func run() {
+                return state.count;
+            }
+            """;
+        var shared =
+            """
+            @module(SHARED);
+            export var state = { count: 1 };
+            """;
+        File.WriteAllText(sharedPath, shared);
+        var service = CreateService();
+
+        var definition = service.GetDefinition(
+            mainPath,
+            main,
+            PositionOfLast(main, "state"),
+            new[] { new AuroraWorkspaceDocument(sharedPath, shared) });
+
+        Assert.NotNull(definition);
+        Assert.Equal(ScriptPath.NormalizeFullPath(sharedPath), definition!.Path);
         Assert.Equal(1, definition.Range.Start.Line);
     }
 

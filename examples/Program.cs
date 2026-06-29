@@ -31,7 +31,7 @@ namespace Examples
             compiler.SourceResolver = ScriptSources.Composite(memorySource, fileSystemSource);
             compiler.MaxDegreeOfParallelism = 0;
             compiler.ExtName = "as";
-            compiler.Mode = CompilationMode.Dynamic;
+            compiler.Mode = CompilationMode.Persistence;
         })
         .WithOutput(output =>
         {
@@ -52,7 +52,7 @@ namespace Examples
             optimization.StackTrace = true;
             optimization.ModuleConstInlining = true;
             optimization.AutoModuleDirectCall = true;
-            optimization.Level = OptimizeOptions.Release;
+            optimization.Level = OptimizeOptions.Debug;
         });
 
 
@@ -275,6 +275,8 @@ namespace Examples
             BenchmarkScript(domain, "UNIT_LIB", "testDraw");
             BenchmarkScript(domain, "UNIT_LIB", "testFor", new NumberValue(10000_0000));
 
+            BenchmarkScript(domain, "ASTAR", "runExample");
+            BenchmarkScript(domain, "ASTAR", "runExample");
             BenchmarkScript(domain, "ASTAR", "runExample");
             BenchmarkScript(domain, "ASTAR", "runExample");
 

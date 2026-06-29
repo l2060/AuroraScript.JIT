@@ -17,6 +17,11 @@ internal static class AuroraDefinitionResolver
             return null;
         }
 
+        if (TryResolveImportDefinition(index, module, position, out var importDefinition))
+        {
+            return importDefinition;
+        }
+
         var context = AstQuery.Find(module.Module, position);
         if (context == null)
         {
@@ -50,6 +55,27 @@ internal static class AuroraDefinitionResolver
             return ToLocation(importedMember);
         }
 
+        if (context.PropertyAccess != null &&
+            context.IsOnPropertyOwner &&
+            context.PropertyAccess.Object is NameExpression propertyOwner)
+        {
+            var ownerName = propertyOwner.Identifier.Value;
+            if (module.ImportsByAlias.TryGetValue(ownerName, out var ownerImport))
+            {
+                return new DefinitionLocation(module.Path, ownerImport.AliasRange);
+            }
+
+            if (module.Symbols.TryGetValue(ownerName, out var ownerSymbol))
+            {
+                return ToLocation(ownerSymbol);
+            }
+
+            if (TryResolveIncludedExport(index, module, ownerName, out var includedOwner))
+            {
+                return ToLocation(includedOwner);
+            }
+        }
+
         if (context.PropertyAccess != null && context.IsOnPropertyName)
         {
             return null;
@@ -66,7 +92,7 @@ internal static class AuroraDefinitionResolver
 
             if (module.ImportsByAlias.TryGetValue(name, out var importAlias))
             {
-                return new DefinitionLocation(importAlias.TargetPath, importAlias.AliasRange);
+                return new DefinitionLocation(module.Path, importAlias.AliasRange);
             }
 
             if (TryResolveIncludedExport(index, module, name, out var included))
@@ -76,6 +102,48 @@ internal static class AuroraDefinitionResolver
         }
 
         return null;
+    }
+
+    private static bool TryResolveImportDefinition(
+        AuroraWorkspaceIndex index,
+        AuroraModuleIndex module,
+        TextPosition position,
+        out DefinitionLocation definition)
+    {
+        foreach (var import in module.ImportsByAlias.Values)
+        {
+            if (Contains(import.PathRange, position))
+            {
+                definition = new DefinitionLocation(import.TargetPath, GetDocumentStartRange(index, import.TargetPath));
+                return true;
+            }
+
+            if (Contains(import.AliasRange, position))
+            {
+                definition = new DefinitionLocation(module.Path, import.AliasRange);
+                return true;
+            }
+        }
+
+        for (var i = 0; i < module.Includes.Count; i++)
+        {
+            var include = module.Includes[i];
+            if (Contains(include.PathRange, position))
+            {
+                definition = new DefinitionLocation(include.TargetPath, GetDocumentStartRange(index, include.TargetPath));
+                return true;
+            }
+        }
+
+        definition = null!;
+        return false;
+    }
+
+    private static TextRange GetDocumentStartRange(AuroraWorkspaceIndex index, string path)
+    {
+        var module = index.TryGetModule(path);
+        var normalizedPath = module?.Path ?? path;
+        return new TextRange(normalizedPath, TextPosition.Zero, TextPosition.Zero);
     }
 
     private static bool TryResolveConstructedObjectMember(
@@ -499,6 +567,26 @@ internal static class AuroraDefinitionResolver
     private static DefinitionLocation ToLocation(AuroraSymbolInfo symbol)
     {
         return new DefinitionLocation(symbol.FilePath, symbol.NameRange);
+    }
+
+    private static bool Contains(TextRange range, TextPosition position)
+    {
+        if (position.Line < range.Start.Line || position.Line > range.End.Line)
+        {
+            return false;
+        }
+
+        if (position.Line == range.Start.Line && position.Character < range.Start.Character)
+        {
+            return false;
+        }
+
+        if (position.Line == range.End.Line && position.Character > range.End.Character)
+        {
+            return false;
+        }
+
+        return true;
     }
 
     private static bool SameRange(TextRange left, TextRange right)

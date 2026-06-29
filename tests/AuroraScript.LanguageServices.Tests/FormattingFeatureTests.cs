@@ -101,6 +101,37 @@ public sealed class FormattingFeatureTests
     }
 
     [Fact]
+    public void FormatsOperatorParenthesisSpacing()
+    {
+        const string source =
+            "@module(TEST);\n" +
+            "export func run() {\n" +
+            "const plus = left + (right);\n" +
+            "const positive = + (value);\n" +
+            "const negative = - (value);\n" +
+            "const not = ! (flag);\n" +
+            "const bitNot = ~ (mask);\n" +
+            "total += (delta);\n" +
+            "}\n";
+        const string expected =
+            "@module(TEST);\n" +
+            "export func run() {\n" +
+            "    const plus = left + (right);\n" +
+            "    const positive = + (value);\n" +
+            "    const negative = - (value);\n" +
+            "    const not = !(flag);\n" +
+            "    const bitNot = ~(mask);\n" +
+            "    total += (delta);\n" +
+            "}\n";
+        var service = CreateService();
+
+        var result = service.FormatDocument("test.as", source, new FormattingOptions());
+
+        var edit = Assert.Single(result.Edits);
+        Assert.Equal(expected, edit.NewText);
+    }
+
+    [Fact]
     public void ReturnsNoEditsWhenDocumentAlreadyMatchesFormatting()
     {
         const string source = "@module(TEST);\nexport func run() {\n    return 1;\n}\n";
