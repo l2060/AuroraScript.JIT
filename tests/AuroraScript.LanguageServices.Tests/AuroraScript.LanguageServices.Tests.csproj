@@ -23,6 +23,9 @@
       <Link>visualstudio-extension\AuroraScript.VisualStudio\Grammars\AuroraScript.tmLanguage.json</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="FormattingFixtures\**\*.as">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <ItemGroup>

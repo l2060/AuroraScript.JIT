@@ -343,16 +343,22 @@
     "strings": {
       "patterns": [
         {
-          "name": "string.quoted.block.aurora",
-          "begin": "^([ \\t]*)(\\|>)( ?)",
+          "begin": "^([ \\t]*)(\\|>)( )",
           "beginCaptures": {
-            "2": { "name": "punctuation.definition.string.block.aurora" }
+            "2": { "name": "punctuation.definition.string.block.aurora" },
+            "3": { "name": "punctuation.whitespace.string.block.aurora" }
           },
-          "end": "^(?![ \\t]*\\|>)",
+          "end": "^(?![ \\t]*\\|> )",
           "patterns": [
             {
-              "name": "punctuation.definition.string.block.aurora",
-              "match": "^[ \\t]*\\|> ?"
+              "match": "^[ \\t]*(\\|>)",
+              "captures": {
+                "1": { "name": "punctuation.definition.string.block.aurora" }
+              }
+            },
+            {
+              "name": "string.quoted.block.aurora",
+              "match": "(?<=\\|> ).*$"
             }
           ]
         },

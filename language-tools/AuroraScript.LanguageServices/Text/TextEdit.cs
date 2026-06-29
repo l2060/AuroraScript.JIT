@@ -1,7 +1,6 @@
-using AuroraScript.LanguageServices.Text;
 using System;
 
-namespace AuroraScript.LanguageServices.Features.Rename;
+namespace AuroraScript.LanguageServices.Text;
 
 public sealed class TextEdit
 {

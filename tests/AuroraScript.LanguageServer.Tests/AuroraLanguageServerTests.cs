@@ -52,6 +52,7 @@ public sealed class AuroraLanguageServerTests
         Assert.NotNull(capabilities["completionProvider"]);
         Assert.NotNull(capabilities["signatureHelpProvider"]);
         Assert.True(capabilities["renameProvider"]!.GetValue<bool>());
+        Assert.True(capabilities["documentFormattingProvider"]!.GetValue<bool>());
         Assert.NotNull(capabilities["semanticTokensProvider"]);
     }
 
@@ -678,6 +679,31 @@ public sealed class AuroraLanguageServerTests
         var data = semanticTokens["data"]!.AsArray();
         Assert.NotEmpty(data);
         Assert.Equal(0, data.Count % 5);
+    }
+
+    [Fact]
+    public async Task FormattingReturnsTextEdits()
+    {
+        var server = CreateServer();
+        const string source = "@module(TEST);\nexport func run() {\nreturn 1;   \n}\n";
+        await DidOpen(server, source);
+
+        var result = await Request(server, 9, "textDocument/formatting", new JsonObject
+        {
+            ["textDocument"] = TextDocument(),
+            ["options"] = new JsonObject
+            {
+                ["tabSize"] = 2,
+                ["insertSpaces"] = true
+            }
+        });
+
+        var edits = result.Response!.Result!.AsArray();
+        var edit = Assert.Single(edits);
+        Assert.NotNull(edit);
+        var text = edit!.AsObject()["newText"]!.GetValue<string>();
+        Assert.Contains("  return 1;", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("1;   ", text, StringComparison.Ordinal);
     }
 
     private static AuroraLanguageServer CreateServer()

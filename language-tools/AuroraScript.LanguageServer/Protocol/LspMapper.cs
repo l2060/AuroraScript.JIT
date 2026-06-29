@@ -1,12 +1,14 @@
 using AuroraScript.LanguageServices.Diagnostics;
 using AuroraScript.LanguageServices.Features.Completion;
 using AuroraScript.LanguageServices.Features.Definition;
+using AuroraScript.LanguageServices.Features.Formatting;
 using AuroraScript.LanguageServices.Features.Hover;
 using AuroraScript.LanguageServices.Features.References;
 using AuroraScript.LanguageServices.Features.Rename;
 using AuroraScript.LanguageServices.Features.SemanticTokens;
 using AuroraScript.LanguageServices.Features.SignatureHelp;
 using AuroraScript.LanguageServices.Text;
+using System;
 using System.Collections.Generic;
 using System.Text.Json.Nodes;
 
@@ -34,6 +36,32 @@ internal static class LspMapper
     public static string ReadTextDocumentUri(JsonObject parameters)
     {
         return parameters["textDocument"]!.AsObject()["uri"]!.GetValue<string>();
+    }
+
+    public static FormattingOptions ReadFormattingOptions(JsonObject parameters)
+    {
+        var tabSize = 4;
+        var insertSpaces = true;
+        if (parameters.TryGetPropertyValue("options", out var optionsNode) &&
+            optionsNode is JsonObject options)
+        {
+            if (options.TryGetPropertyValue("tabSize", out var tabSizeNode) &&
+                tabSizeNode != null &&
+                tabSizeNode.GetValueKind() == System.Text.Json.JsonValueKind.Number)
+            {
+                tabSize = Math.Max(1, tabSizeNode.GetValue<int>());
+            }
+
+            if (options.TryGetPropertyValue("insertSpaces", out var insertSpacesNode) &&
+                insertSpacesNode != null &&
+                (insertSpacesNode.GetValueKind() == System.Text.Json.JsonValueKind.True ||
+                 insertSpacesNode.GetValueKind() == System.Text.Json.JsonValueKind.False))
+            {
+                insertSpaces = insertSpacesNode.GetValue<bool>();
+            }
+        }
+
+        return new FormattingOptions(tabSize, insertSpaces);
     }
 
     public static JsonObject Range(TextRange range)
@@ -182,6 +210,22 @@ internal static class LspMapper
         }
 
         return editObject;
+    }
+
+    public static JsonArray TextEdits(IReadOnlyList<TextEdit> edits)
+    {
+        var array = new JsonArray();
+        for (var i = 0; i < edits.Count; i++)
+        {
+            var edit = edits[i];
+            array.Add(new JsonObject
+            {
+                ["range"] = Range(edit.Range),
+                ["newText"] = edit.NewText
+            });
+        }
+
+        return array;
     }
 
     public static JsonObject SemanticTokenLegend()

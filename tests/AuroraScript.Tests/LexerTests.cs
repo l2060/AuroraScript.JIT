@@ -183,6 +183,15 @@ public sealed class LexerTests
     }
 
     [Fact]
+    public void StringBlockRequiresSpaceAfterPrefix()
+    {
+        using var lexer = CreateLexer("|> line\n|> next\n;");
+
+        var block = Assert.IsType<StringToken>(lexer.Next());
+        Assert.Equal("line" + Environment.NewLine + "next" + Environment.NewLine, block.Value);
+    }
+
+    [Fact]
     public void StringTokensAdvanceFollowingTokenColumns()
     {
         const string source = "expectTrue(ctx, typeof timer.reset == \"function\", \"Timer exposes reset function\", typeof timer.reset, \"function\");";
@@ -240,6 +249,10 @@ public sealed class LexerTests
     [InlineData("\"bad\\q\"")]
     [InlineData("`bad\\q`")]
     [InlineData("/* nested /* unterminated")]
+    [InlineData("|>")]
+    [InlineData("|>\n")]
+    [InlineData("|>missing-space")]
+    [InlineData("|> line\n|>missing-space")]
     public void InvalidLexemesReportLexicalError(string source)
     {
         Assert.Throws<AuroraCompilationException>(() => CreateLexer(source));

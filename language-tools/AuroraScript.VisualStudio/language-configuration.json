@@ -55,7 +55,7 @@
       }
     },
     {
-      "beforeText": "^(\\s*)\\|>.*$",
+      "beforeText": "^(\\s*)\\|> .*$",
       "action": {
         "indentAction": "None",
         "appendText": "|> "

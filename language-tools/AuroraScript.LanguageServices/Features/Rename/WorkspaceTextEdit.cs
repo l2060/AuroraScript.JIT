@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using AuroraScript.LanguageServices.Text;
 
 namespace AuroraScript.LanguageServices.Features.Rename;
 

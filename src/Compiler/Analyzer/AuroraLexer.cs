@@ -612,7 +612,7 @@ namespace AuroraScript.Compiler.Analyzer
                 return ScanPunctuator(span, out result);
             }
 
-            if (c == '|' && span.Length > 2 && span[1] == '>')
+            if (c == '|' && span.Length > 1 && span[1] == '>')
             {
                 return ScanStringBlock(span, out result);
             }
@@ -1004,12 +1004,14 @@ namespace AuroraScript.Compiler.Analyzer
             int currentLineCount = 0;
             int currentColumn = this.ColumnNumber + 2;
             var sb = new StringBuilder();
-            int i = 2;
-            if (i < span.Length && span[i] == ' ')
+            if (span.Length < 3 || span[2] != ' ')
             {
-                i++;
-                currentColumn++;
+                result = default;
+                return false;
             }
+
+            int i = 3;
+            currentColumn++;
 
             while (i < span.Length)
             {
@@ -1040,15 +1042,10 @@ namespace AuroraScript.Compiler.Analyzer
                         }
                     }
 
-                    if (i + 1 < span.Length && span[i] == '|' && span[i + 1] == '>')
+                    if (i + 2 < span.Length && span[i] == '|' && span[i + 1] == '>' && span[i + 2] == ' ')
                     {
-                        i += 2;
-                        currentColumn += 2;
-                        if (i < span.Length && span[i] == ' ')
-                        {
-                            i++;
-                            currentColumn++;
-                        }
+                        i += 3;
+                        currentColumn += 3;
                         continue;
                     }
 

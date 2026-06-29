@@ -4,6 +4,7 @@ using AuroraScript.LanguageServices.Builtins;
 using AuroraScript.LanguageServices.Diagnostics;
 using AuroraScript.LanguageServices.Features.Completion;
 using AuroraScript.LanguageServices.Features.Definition;
+using AuroraScript.LanguageServices.Features.Formatting;
 using AuroraScript.LanguageServices.Features.Hover;
 using AuroraScript.LanguageServices.Features.References;
 using AuroraScript.LanguageServices.Features.Rename;
@@ -387,6 +388,21 @@ public sealed class AuroraLanguageService
         }
 
         return GetSemanticTokens(path, text, _workspace.BaseDirectory);
+    }
+
+    public FormattingResult FormatDocument(string sourceName, string sourceText, FormattingOptions options)
+    {
+        return AuroraDocumentFormatter.Format(sourceName, sourceText, options);
+    }
+
+    public FormattingResult FormatDocument(string path, FormattingOptions options)
+    {
+        if (!TryGetWorkspaceText(path, out var normalizedPath, out var text))
+        {
+            return FormattingResult.Empty;
+        }
+
+        return FormatDocument(normalizedPath, text, options);
     }
 
     private bool TryGetUserSymbolHover(

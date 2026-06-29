@@ -1,9 +1,9 @@
 ﻿
 
 export enum EnumTest {
-    Alpha = 1,
-    Beta = 2,
-    Gamma = 3
+	Alpha = 1,
+	Beta = 2,
+	Gamma = 3
 }
 
 export const NUM = 3.141592678987654321;
@@ -16,7 +16,7 @@ export const TEMPLATE = STR + BASE + '_' + TAG;
 
 
 export func log() {
-    console.log(...$args);
+	console.log(...$args);
 }
 
 

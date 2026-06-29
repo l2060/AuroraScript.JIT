@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Xunit;
@@ -25,7 +26,7 @@ public sealed class TextMateGrammarTests
         AssertPattern(repository, "comments", "comment.line.double-slash.aurora", "// comment");
         AssertBeginPattern(repository, "comments", "comment.block.aurora", "/* comment */");
         AssertPattern(repository, "keywords", "keyword.operator.word.aurora", "typeof value in obj");
-        AssertBeginPattern(repository, "strings", "string.quoted.block.aurora", "  |> text");
+        AssertBlockStringPattern(repository, "  |> text", "  |>错误");
         AssertBeginPattern(repository, "strings", "meta.string.template.aurora", "`hello ${abc()}`");
         AssertNestedBeginPattern(repository, "strings", "meta.embedded.expression.aurora", "${abc()}");
     }
@@ -64,6 +65,33 @@ public sealed class TextMateGrammarTests
         Assert.NotNull(pattern);
         var match = Regex.Match(sample, pattern!.Value.GetProperty("begin").GetString()!, RegexOptions.CultureInvariant);
         Assert.True(match.Success, $"{scopeName} did not begin-match '{sample}'.");
+    }
+
+    private static void AssertBlockStringPattern(JsonElement repository, string validSample, string invalidSample)
+    {
+        var strings = repository.GetProperty("strings");
+        var blockPattern = strings.GetProperty("patterns").EnumerateArray().First(pattern =>
+            pattern.TryGetProperty("begin", out var begin) &&
+            begin.GetString()!.Contains("\\|>"));
+        var beginPattern = blockPattern.GetProperty("begin").GetString()!;
+        Assert.True(Regex.Match(validSample, beginPattern, RegexOptions.CultureInvariant).Success);
+        Assert.False(Regex.Match(invalidSample, beginPattern, RegexOptions.CultureInvariant).Success);
+
+        var captures = blockPattern.GetProperty("beginCaptures");
+        Assert.Equal("punctuation.definition.string.block.aurora", captures.GetProperty("2").GetProperty("name").GetString());
+
+        var prefixPattern = blockPattern.GetProperty("patterns").EnumerateArray().First(pattern =>
+            pattern.TryGetProperty("captures", out var patternCaptures) &&
+            patternCaptures.TryGetProperty("1", out var capture) &&
+            capture.GetProperty("name").GetString() == "punctuation.definition.string.block.aurora");
+        var prefixCaptures = prefixPattern.GetProperty("captures");
+        Assert.Equal("punctuation.definition.string.block.aurora", prefixCaptures.GetProperty("1").GetProperty("name").GetString());
+        Assert.Equal("|>", Regex.Match(validSample, prefixPattern.GetProperty("match").GetString()!, RegexOptions.CultureInvariant).Groups[1].Value);
+
+        var contentPattern = blockPattern.GetProperty("patterns").EnumerateArray().First(pattern =>
+            pattern.TryGetProperty("name", out var name) &&
+            name.GetString() == "string.quoted.block.aurora");
+        Assert.True(Regex.Match(validSample, contentPattern.GetProperty("match").GetString()!, RegexOptions.CultureInvariant).Success);
     }
 
     private static JsonElement? FindPattern(JsonElement section, string scopeName)

@@ -62,6 +62,8 @@ public sealed class AuroraLanguageServer
                 return Respond(id, HandleReferences(parameters));
             case "textDocument/rename":
                 return Respond(id, HandleRename(parameters));
+            case "textDocument/formatting":
+                return Respond(id, HandleFormatting(parameters));
             case "textDocument/semanticTokens/full":
                 return Respond(id, HandleSemanticTokens(parameters));
             case "aurora/builtinDocument":
@@ -183,6 +185,13 @@ public sealed class AuroraLanguageServer
         var uri = LspMapper.ReadTextDocumentUri(parameters);
         var result = _languageService.GetSemanticTokens(SourceName(uri));
         return LspMapper.SemanticTokens(result);
+    }
+
+    private JsonNode HandleFormatting(JsonObject parameters)
+    {
+        var uri = LspMapper.ReadTextDocumentUri(parameters);
+        var result = _languageService.FormatDocument(SourceName(uri), LspMapper.ReadFormattingOptions(parameters));
+        return LspMapper.TextEdits(result.Edits);
     }
 
     private JsonNode? HandleBuiltinDocument(JsonObject parameters)
@@ -329,6 +338,7 @@ public sealed class AuroraLanguageServer
                 ["definitionProvider"] = true,
                 ["referencesProvider"] = true,
                 ["renameProvider"] = true,
+                ["documentFormattingProvider"] = true,
                 ["semanticTokensProvider"] = new JsonObject
                 {
                     ["legend"] = LspMapper.SemanticTokenLegend(),
