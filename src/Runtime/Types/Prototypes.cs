@@ -160,9 +160,10 @@ namespace AuroraScript.Runtime.Types
             PathPrototype.Define("toString", ScriptDatum.FromBonding(ScriptPathValue.TO_STRING), writeable: false, enumerable: false);
             PathPrototype.Define("append", ScriptDatum.FromBonding(ScriptPathValue.APPEND), writeable: false, enumerable: false);
             PathPrototype.Define("reset", ScriptDatum.FromBonding(ScriptPathValue.RESET), writeable: false, enumerable: false);
-            PathPrototype.Define("ensureExtension", ScriptDatum.FromBonding(ScriptPathValue.ENSURE_EXTENSION), writeable: false, enumerable: false);
+            PathPrototype.Define("changeExt", ScriptDatum.FromBonding(ScriptPathValue.CHANGE_EXT), writeable: false, enumerable: false);
             PathPrototype.Define("directoryName", ScriptDatum.FromBonding(ScriptPathValue.DIRECTORY_NAME), writeable: false, enumerable: false);
             PathPrototype.Define("fileName", ScriptDatum.FromBonding(ScriptPathValue.FILE_NAME), writeable: false, enumerable: false);
+            PathPrototype.Define("extName", ScriptDatum.FromBonding(ScriptPathValue.EXT_NAME), writeable: false, enumerable: false);
             PathPrototype.Define("protocol", ScriptDatum.FromBonding(ScriptPathValue.PROTOCOL), writeable: false, enumerable: false);
             PathPrototype.Define("clone", ScriptDatum.FromBonding(ScriptPathValue.CLONE), writeable: false, enumerable: false);
             PathPrototype.Frozen();

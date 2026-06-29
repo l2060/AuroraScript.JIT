@@ -43,7 +43,7 @@ NuGet 包名：`AuroraScript.JIT`
 - **显式性能注解**：支持 `@directCall` 标记模块内热点函数，让可优化的调用点走更直接的执行路径。
 - **模块与作用域隔离**：支持 `@module`、`import`、`include`，每个 `ScriptDomain` 拥有独立 global 和模块实例。
 - **CompileBlock**：可编译不进入模块系统的小段脚本，适合公式、过滤器、规则判断等高频小逻辑。
-- **内置标准对象**：包含 `Object`、`Array`、`String`、`Date`、`Regex`、`HashMap`、`StringBuffer`、`JSON`、`Math`、`console`、`Proxy`、`HotPatch`。
+- **内置标准对象**：包含 `Object`、`Array`、`String`、`Date`、`Regex`、`HashMap`、`StringBuffer`、`Path`、`JSON`、`Math`、`console`、`Proxy`、`HotPatch`。
 - **测试覆盖广**：测试覆盖词法、语法、表达式、语句、模块、编译模式、CLR 互操作、JSON、热重载、并发和回归场景。
 
 ## 安装
@@ -517,6 +517,7 @@ export const TEMPLATE = STR + BASE + '_' + TAG; // 'this is string10_10_1'
 - `Regex`
 - `Proxy`
 - `StringBuffer`
+- `Path`
 - `console`
 - `JSON`
 - `Math`
@@ -663,6 +664,59 @@ export const TEMPLATE = STR + BASE + '_' + TAG; // 'this is string10_10_1'
 - `toString()`
 - `release()`
 - `stringAndRelease()`
+
+### Path
+
+`Path` 是脚本侧协议感知的路径对象。它保存规范化后的路径文本，统一使用 `/` 分隔，支持普通文件路径和 `mem://app/main.as`、`asset://pkg/textures/ui.png` 这类协议路径。`Path` 是对象类型，`==` 会按规范化路径文本做值比较。
+
+构造和静态成员：
+
+- `new Path(root, ...segments)`
+- `Path.of(root, ...segments)`
+- `Path.isPath(value)`
+- `Path.join(root, ...segments)`
+- `Path.baseModule(...segments)`
+- `Path.normalize(path)`
+- `Path.directoryName(path)`
+- `Path.fileName(path)`
+- `Path.extName(path)`
+- `Path.protocol(path)`
+- `Path.changeExt(path, extension)`
+- `Path.isRooted(path)`
+- `Path.isUnderRoot(root, path)`
+- `Path.currentFile()`
+- `Path.currentDirectory()`
+
+实例成员：
+
+- `append(...segments)`
+- `reset(root, ...segments)`
+- `changeExt(extension)`
+- `directoryName()`
+- `fileName()`
+- `extName()`
+- `protocol()`
+- `clone()`
+- `toString()`
+
+`Path.baseModule(...segments)` 从当前模块文件所在目录开始拼接，适合脚本内部生成与当前模块相邻的资源路径。`Path.currentFile()` 和 `Path.currentDirectory()` 返回当前模块的完整路径和目录；如果当前执行上下文没有模块，则返回 `null`。
+
+```javascript
+@module(MAIN);
+
+export func run() {
+    var config = Path.changeExt(Path.baseModule("../assets", "config"), "as");
+    var path = new Path("mem://app/scripts", "../shared", "main");
+    path.changeExt("as");
+    return [
+        path.toString(),
+        path.extName(),
+        path.protocol(),
+        config,
+        Path.join(Path.currentDirectory(), "generated", "out.as")
+    ];
+}
+```
 
 ### JSON
 

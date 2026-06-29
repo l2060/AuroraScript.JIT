@@ -1325,6 +1325,24 @@
             ]
           }
         },
+        "extName": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "string"
+            }
+          ],
+          "returns": "string",
+          "notes": {
+            "en": [
+              "Returns the extension of the final path segment, including the leading dot, or an empty string when absent."
+            ],
+            "zh-CN": [
+              "返回最后一个路径片段的扩展名，包含开头的点；没有扩展名时返回空字符串。"
+            ]
+          }
+        },
         "protocol": {
           "kind": "method",
           "parameters": [
@@ -1343,7 +1361,7 @@
             ]
           }
         },
-        "ensureExtension": {
+        "changeExt": {
           "kind": "method",
           "parameters": [
             {
@@ -1358,10 +1376,10 @@
           "returns": "string",
           "notes": {
             "en": [
-              "Ensures the path has the requested extension."
+              "Changes or adds the path extension and returns the normalized path text."
             ],
             "zh-CN": [
-              "确保路径具有指定扩展名。"
+              "更改或添加路径扩展名，并返回规范化路径文本。"
             ]
           }
         },
@@ -2482,7 +2500,7 @@
           ]
         }
       },
-      "ensureExtension": {
+      "changeExt": {
         "kind": "method",
         "parameters": [
           {
@@ -2493,10 +2511,10 @@
         "returns": "Path",
         "notes": {
           "en": [
-            "Ensures the current path has the requested extension."
+            "Changes or adds the current path extension in place and returns this Path."
           ],
           "zh-CN": [
-            "确保当前路径具有指定扩展名。"
+            "原地更改或添加当前路径扩展名，并返回当前 Path。"
           ]
         }
       },
@@ -2523,6 +2541,19 @@
           ],
           "zh-CN": [
             "返回最后一个路径片段。"
+          ]
+        }
+      },
+      "extName": {
+        "kind": "method",
+        "parameters": [],
+        "returns": "string",
+        "notes": {
+          "en": [
+            "Returns the current path extension, including the leading dot, or an empty string when absent."
+          ],
+          "zh-CN": [
+            "返回当前路径扩展名，包含开头的点；没有扩展名时返回空字符串。"
           ]
         }
       },

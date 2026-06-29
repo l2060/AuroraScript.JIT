@@ -120,6 +120,7 @@ Rules:
 - The parser preserves raw paths; the module graph calls `ResolveAsync`, then loads the returned reference with `GetSourceAsync`.
 - Entry paths resolve from the resolver root. Dependency paths resolve from the directory of the importing file's full path.
 - Use `/` in paths that you generate, including on Windows.
+- For runtime resource paths relative to the current module, use `Path.baseModule(...segments)` or `Path.join(Path.currentDirectory(), ...segments)` instead of hard-coded resolver roots.
 - Prefer one module per file. Give each imported file its own `@module(NAME);`.
 - In examples for MCP validation, include dependency text in the `sources` object using paths relative to the tool root/source root.
 - Memory overlays only override later sources when the resolved target falls under the memory root; otherwise different roots or protocols remain isolated.

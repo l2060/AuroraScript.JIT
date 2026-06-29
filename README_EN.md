@@ -43,7 +43,7 @@ The project is built as `AnyCPU`. The runtime has no native dependency, so `Dyna
 - **Explicit performance annotations**: Mark hot module functions with `@directCall` so eligible call sites can use a more direct execution path.
 - **Modules and domain isolation**: Supports `@module`, `import`, and `include`. Each `ScriptDomain` has its own global object and module instances.
 - **CompileBlock**: Compile small script blocks outside the module system for formulas, filters, and high-frequency rules.
-- **Built-in standard objects**: `Object`, `Array`, `String`, `Date`, `Regex`, `HashMap`, `StringBuffer`, `JSON`, `Math`, `console`, `Proxy`, and `HotPatch`.
+- **Built-in standard objects**: `Object`, `Array`, `String`, `Date`, `Regex`, `HashMap`, `StringBuffer`, `Path`, `JSON`, `Math`, `console`, `Proxy`, and `HotPatch`.
 - **Broad regression coverage**: Tests cover lexing, parsing, expressions, statements, modules, compilation modes, CLR interop, JSON, hot reload, concurrency, and release regressions.
 
 ## Installation
@@ -517,6 +517,7 @@ The current test suite and examples cover:
 - `Regex`
 - `Proxy`
 - `StringBuffer`
+- `Path`
 - `console`
 - `JSON`
 - `Math`
@@ -663,6 +664,59 @@ Strings also provide `match(regex)` and `matchAll(regex)`.
 - `toString()`
 - `release()`
 - `stringAndRelease()`
+
+### Path
+
+`Path` is the script-side protocol-aware path object. It stores normalized path text, uses `/` separators, and supports both file-like paths and protocol paths such as `mem://app/main.as` or `asset://pkg/textures/ui.png`. `Path` is an object type, and `==` compares normalized path text by value.
+
+Constructor and static members:
+
+- `new Path(root, ...segments)`
+- `Path.of(root, ...segments)`
+- `Path.isPath(value)`
+- `Path.join(root, ...segments)`
+- `Path.baseModule(...segments)`
+- `Path.normalize(path)`
+- `Path.directoryName(path)`
+- `Path.fileName(path)`
+- `Path.extName(path)`
+- `Path.protocol(path)`
+- `Path.changeExt(path, extension)`
+- `Path.isRooted(path)`
+- `Path.isUnderRoot(root, path)`
+- `Path.currentFile()`
+- `Path.currentDirectory()`
+
+Instance members:
+
+- `append(...segments)`
+- `reset(root, ...segments)`
+- `changeExt(extension)`
+- `directoryName()`
+- `fileName()`
+- `extName()`
+- `protocol()`
+- `clone()`
+- `toString()`
+
+`Path.baseModule(...segments)` joins from the current module source directory, which is useful for module-local resource paths. `Path.currentFile()` and `Path.currentDirectory()` return the current module full path and directory; outside a module context they return `null`.
+
+```javascript
+@module(MAIN);
+
+export func run() {
+    var config = Path.changeExt(Path.baseModule("../assets", "config"), "as");
+    var path = new Path("mem://app/scripts", "../shared", "main");
+    path.changeExt("as");
+    return [
+        path.toString(),
+        path.extName(),
+        path.protocol(),
+        config,
+        Path.join(Path.currentDirectory(), "generated", "out.as")
+    ];
+}
+```
 
 ### JSON
 

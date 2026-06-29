@@ -175,7 +175,58 @@ Object values:
 - date
 - hash map
 - string buffer
+- path
 - CLR interop objects exposed by the host
+
+## Path Runtime API
+
+`Path` is a protocol-aware script object for path text manipulation. It normalizes separators to `/`, handles dot segments, and supports protocol roots such as `mem://app` and `asset://pkg`.
+
+```as
+var path = new Path("mem://app/scripts", "../shared", "main");
+path.changeExt("as");
+
+return [
+    path.toString(),
+    path.directoryName(),
+    path.fileName(),
+    path.extName(),
+    path.protocol(),
+    Path.join(Path.currentDirectory(), "generated", "out.as")
+];
+```
+
+Constructor and static members:
+
+- `new Path(root, ...segments)`
+- `Path.of(root, ...segments)`
+- `Path.isPath(value)`
+- `Path.join(root, ...segments)`
+- `Path.baseModule(...segments)`
+- `Path.normalize(path)`
+- `Path.directoryName(path)`
+- `Path.fileName(path)`
+- `Path.extName(path)`
+- `Path.protocol(path)`
+- `Path.changeExt(path, extension)`
+- `Path.isRooted(path)`
+- `Path.isUnderRoot(root, path)`
+- `Path.currentFile()`
+- `Path.currentDirectory()`
+
+Instance members:
+
+- `append(...segments)`
+- `reset(root, ...segments)`
+- `changeExt(extension)`
+- `directoryName()`
+- `fileName()`
+- `extName()`
+- `protocol()`
+- `clone()`
+- `toString()`
+
+`Path.join`, `Path.baseModule`, `Path.currentFile`, and `Path.currentDirectory` return strings. `Path.extName(path)` and `path.extName()` return the extension including the leading dot, or an empty string when absent. `new Path(...)` and `Path.of(...)` return mutable `Path` objects. `Path` objects compare with `==` by normalized path text value.
 
 ## CompileBlock
 

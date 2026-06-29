@@ -17,8 +17,9 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
             Define("normalize", ScriptDatum.FromBonding(NORMALIZE), writeable: false, enumerable: false);
             Define("directoryName", ScriptDatum.FromBonding(DIRECTORY_NAME), writeable: false, enumerable: false);
             Define("fileName", ScriptDatum.FromBonding(FILE_NAME), writeable: false, enumerable: false);
+            Define("extName", ScriptDatum.FromBonding(EXT_NAME), writeable: false, enumerable: false);
             Define("protocol", ScriptDatum.FromBonding(PROTOCOL), writeable: false, enumerable: false);
-            Define("ensureExtension", ScriptDatum.FromBonding(ENSURE_EXTENSION), writeable: false, enumerable: false);
+            Define("changeExt", ScriptDatum.FromBonding(CHANGE_EXT), writeable: false, enumerable: false);
             Define("isRooted", ScriptDatum.FromBonding(IS_ROOTED), writeable: false, enumerable: false);
             Define("isUnderRoot", ScriptDatum.FromBonding(IS_UNDER_ROOT), writeable: false, enumerable: false);
             Define("currentFile", ScriptDatum.FromBonding(CURRENT_FILE), writeable: false, enumerable: false);
@@ -81,12 +82,17 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
             ScriptDatum.WriteAsString(ref result, ScriptPath.GetFileNameText(ScriptPathValue.GetPathString(args, 0)));
         }
 
+        internal static void EXT_NAME(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            ScriptDatum.WriteAsString(ref result, ScriptPath.GetExtNameText(ScriptPathValue.GetPathString(args, 0)));
+        }
+
         internal static void PROTOCOL(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             ScriptDatum.WriteAsString(ref result, ScriptPath.GetProtocolText(ScriptPathValue.GetPathString(args, 0)));
         }
 
-        internal static void ENSURE_EXTENSION(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        internal static void CHANGE_EXT(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             var path = ScriptPathValue.GetPathString(args, 0);
             var extension = ScriptPathValue.GetPathString(args, 1);

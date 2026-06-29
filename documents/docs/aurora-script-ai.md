@@ -28,6 +28,7 @@ For default code generation style, also read `docs/script-authoring-best-practic
 - Relative imports are resolved from the importing file's full path, not from a global compiler directory.
 - Entry files are resolved from the resolver root. Do not assume the old `compiler.Directory` or `BaseDirectory` input model.
 - Use `/` in generated script paths and tool overlay paths, even on Windows.
+- Use `Path.baseModule(...segments)` or `Path.currentDirectory()` when generated script code needs paths relative to the current module.
 - In MCP `sources` overlays, keys are paths relative to the tool root/source root. They override disk or later resolver sources only when the resolved target path falls under the overlay root.
 - A parent memory overlay can override a child file-system dependency. For example, if memory is rooted at `d:/a/b/c` and disk is rooted at `d:/a/b/c/d`, a disk script importing `../test` can resolve to memory source `d:/a/b/c/test.as`.
 - Different protocols or non-overlapping roots are isolated script namespaces, such as `mem://overlay/` versus `d:/project/scripts/`.
@@ -176,7 +177,7 @@ Semantics:
 Constructors and globals:
 
 - `Array`, `String`, `Boolean`, `Object`, `Number`, `Date`
-- `Error`, `HashMap`, `Regex`, `Proxy`, `StringBuffer`
+- `Error`, `HashMap`, `Regex`, `Proxy`, `StringBuffer`, `Path`
 - `console`, `JSON`, `Math`, `HotPatch`
 
 Common APIs:
@@ -187,6 +188,16 @@ Common APIs:
 - Array: `length`, `push`, `pop`, `sort`, `join`, `slice`, `reverse`, `unshift`, `shift`, `concat`, `find`, `findIndex`, `findLast`, `findLastIndex`, `map`, `filter`, `some`, `every`, `flat`, `reduce`, `indexOf`, `lastIndexOf`, `has`
 - String: `length`, `contains`, `indexOf`, `lastIndexOf`, `startsWith`, `endsWith`, `substring`, `split`, `match`, `matchAll`, `replace`, `padLeft`, `padRight`, `trim`, `trimLeft`, `trimRight`, `slice`, `toString`, `charCodeAt`, `toLowerCase`, `toUpperCase`
 - StringBuffer: `append`, `insert`, `appendLine`, `clear`, `release`, `stringAndRelease`, `toString`
+- Path constructor/static: `new Path(root, ...segments)`, `Path.of(root, ...segments)`, `Path.isPath(value)`, `Path.join(root, ...segments)`, `Path.baseModule(...segments)`, `Path.normalize(path)`, `Path.directoryName(path)`, `Path.fileName(path)`, `Path.extName(path)`, `Path.protocol(path)`, `Path.changeExt(path, extension)`, `Path.isRooted(path)`, `Path.isUnderRoot(root, path)`, `Path.currentFile()`, `Path.currentDirectory()`
+- Path instance: `append(...segments)`, `reset(root, ...segments)`, `changeExt(extension)`, `directoryName()`, `fileName()`, `extName()`, `protocol()`, `clone()`, `toString()`
+
+Path rules:
+
+- `Path` normalizes text with `/` separators and supports protocol roots such as `mem://app` and `asset://pkg`.
+- `Path.join`, `Path.baseModule`, `Path.currentFile`, and `Path.currentDirectory` return strings.
+- `Path.extName(path)` and `path.extName()` return the extension including the leading dot, or an empty string when absent.
+- `new Path(...)` and `Path.of(...)` return mutable `Path` objects; `append`, `reset`, and `changeExt` mutate and return the same `Path`.
+- `Path` objects support `==` by normalized path text value.
 
 ## Performance Rules
 

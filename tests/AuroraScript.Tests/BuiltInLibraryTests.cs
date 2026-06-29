@@ -288,8 +288,8 @@ public sealed class BuiltInLibraryTests
             export func run() {
                 var path = Path.of('mem://app/scripts', '../shared', 'main');
                 var constructed = new Path('res://pkg/modules', './runtime');
-                path.ensureExtension('.as');
-                constructed.ensureExtension('as');
+                path.changeExt('.as');
+                constructed.changeExt('as');
                 var clone = path.clone().append('..', 'generated', './config');
                 var same = new Path('mem://app/shared/main.as');
                 return [
@@ -300,12 +300,14 @@ public sealed class BuiltInLibraryTests
                     path.toString(),
                     path.directoryName(),
                     path.fileName(),
+                    path.extName(),
                     path.protocol(),
                     Path.protocol('asset://pkg/textures/ui.png'),
                     Path.protocol('C:/scripts/main.as'),
+                    Path.extName('asset://pkg/textures/ui.png'),
                     clone.toString(),
                     Path.join('asset://pkg/textures', './ui', 'button.png'),
-                    Path.ensureExtension('res://pkg/modules/main', 'as'),
+                    Path.changeExt('res://pkg/modules/main', 'as'),
                     Path.isRooted('mem://app/main.as'),
                     Path.isUnderRoot('mem://app', 'mem://app/shared/main.as'),
                     Path.isUnderRoot('mem://app', 'mem://app2/shared/main.as'),
@@ -330,9 +332,11 @@ public sealed class BuiltInLibraryTests
                 "mem://app/shared/main.as",
                 "mem://app/shared",
                 "main.as",
+                ".as",
                 "mem",
                 "asset",
                 "",
+                ".png",
                 "mem://app/shared/generated/config",
                 "asset://pkg/textures/ui/button.png",
                 "res://pkg/modules/main.as",

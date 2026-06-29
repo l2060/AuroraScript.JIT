@@ -39,7 +39,7 @@ namespace AuroraScript.Runtime.Types
             _value = AppendPathText(Value, segments, segmentStart);
         }
 
-        internal void EnsureExtension(string extension)
+        internal void ChangeExt(string extension)
         {
             _value = ScriptPath.EnsureExtensionNormalizedText(Value, extension);
         }
@@ -194,12 +194,20 @@ namespace AuroraScript.Runtime.Types
             }
         }
 
-        internal static void ENSURE_EXTENSION(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        internal static void CHANGE_EXT(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             if (thisObject is ScriptPathValue path)
             {
-                path.EnsureExtension(GetPathString(args, 0));
+                path.ChangeExt(GetPathString(args, 0));
                 ScriptDatum.WriteAsObject(ref result, path);
+            }
+        }
+
+        internal static void EXT_NAME(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            if (thisObject is ScriptPathValue path)
+            {
+                ScriptDatum.WriteAsString(ref result, ScriptPath.GetExtNameNormalizedText(path.Value));
             }
         }
 

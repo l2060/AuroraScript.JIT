@@ -325,27 +325,39 @@ namespace AuroraScript.Core
             }
 
             var root = ParseRootText(normalizedPath.AsSpan());
-            var lastSlash = normalizedPath.LastIndexOf('/');
-            if (lastSlash < root.PathStart - 1)
-            {
-                lastSlash = root.PathStart - 1;
-            }
-
-            var lastDot = normalizedPath.LastIndexOf('.');
-            if (lastDot > lastSlash)
+            var extensionStart = GetExtensionStartNormalizedText(normalizedPath, root);
+            if (extensionStart >= 0)
             {
                 var comparison = root.HasScheme || !OperatingSystem.IsWindows()
                     ? StringComparison.Ordinal
                     : StringComparison.OrdinalIgnoreCase;
-                if (normalizedPath.AsSpan(lastDot).Equals(extension.AsSpan(), comparison))
+                if (normalizedPath.AsSpan(extensionStart).Equals(extension.AsSpan(), comparison))
                 {
                     return normalizedPath;
                 }
 
-                return string.Concat(normalizedPath.AsSpan(0, lastDot), extension.AsSpan());
+                return string.Concat(normalizedPath.AsSpan(0, extensionStart), extension.AsSpan());
             }
 
             return normalizedPath + extension;
+        }
+
+        public static string GetExtNameText(string path)
+        {
+            return GetExtNameNormalizedText(NormalizeText(path));
+        }
+
+        public static string GetExtNameNormalizedText(string normalizedPath)
+        {
+            normalizedPath ??= string.Empty;
+            if (normalizedPath.Length == 0)
+            {
+                return string.Empty;
+            }
+
+            var root = ParseRootText(normalizedPath.AsSpan());
+            var extensionStart = GetExtensionStartNormalizedText(normalizedPath, root);
+            return extensionStart >= 0 ? normalizedPath.Substring(extensionStart) : string.Empty;
         }
 
         public static string GetDirectoryNameText(string path)
@@ -1045,6 +1057,23 @@ namespace AuroraScript.Core
             {
                 CopyNormalized(state.AsSpan(0, destination.Length), destination);
             });
+        }
+
+        private static int GetExtensionStartNormalizedText(string normalizedPath, RootInfo root)
+        {
+            if (root.PathStart >= normalizedPath.Length)
+            {
+                return -1;
+            }
+
+            var lastSlash = normalizedPath.LastIndexOf('/');
+            if (lastSlash < root.PathStart - 1)
+            {
+                lastSlash = root.PathStart - 1;
+            }
+
+            var lastDot = normalizedPath.LastIndexOf('.');
+            return lastDot > lastSlash ? lastDot : -1;
         }
 
         private static int IndexOfSlash(string value, int start)
