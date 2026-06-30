@@ -15,7 +15,7 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         public void Emit(FunctionEmissionContext context, LoweredStatement statement)
         {
-            if (statement == null)
+            if (statement == null || statement is LoweredNoOpStatement)
             {
                 return;
             }

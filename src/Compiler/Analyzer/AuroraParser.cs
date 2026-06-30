@@ -1066,7 +1066,7 @@ namespace AuroraScript.Compiler.Analyzer
 
         private Statement ParseDeclare(MemberAccess access = MemberAccess.Internal)
         {
-            this.Lexer.Expect(Symbols.KW_DECLARE);
+            var start = this.Lexer.NextRangeOfKind(Symbols.KW_DECLARE);
             if (this.Lexer.TestNext(Symbols.KW_FUNCTION) || this.Lexer.TestNext(Symbols.KW_FUNC))
             {
                 var funcName = this.Lexer.NextOfKind<IdentifierToken>();
@@ -1077,7 +1077,19 @@ namespace AuroraScript.Compiler.Analyzer
                 var declaration = new FunctionDeclaration(access, funcName, arguments, null, FunctionFlags.Declare);
                 return SetRange(declaration, funcName.Range, semiRange);
             }
-            throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, this.Lexer.LookAtHead(), "The Declare keyword only allows the declaration of external methods");
+            if (this.Lexer.TestSymbol(Symbols.KW_VAR) || this.Lexer.TestSymbol(Symbols.KW_CONST))
+            {
+                var declaration = ParseVariableDeclaration(access);
+                if (declaration is VariableDeclaration variable && variable.Name != null && variable.Initializer == null && variable.Pattern == null)
+                {
+                    variable.IsDeclare = true;
+                    return SetRange(variable, start, variable.Range);
+                }
+
+                throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, declaration.Range, "Declare variables must use a single external variable name without an initializer.");
+            }
+
+            throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, this.Lexer.LookAtHead(), "The Declare keyword only allows the declaration of external methods or variables");
         }
 
         private Expression ParseObjectDestructuringPattern()

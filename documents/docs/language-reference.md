@@ -58,6 +58,8 @@ var value;
 var value2 = 1;
 const name = "Aurora";
 declare func external(value);
+declare var HOST_VALUE;
+declare const HOST_CONST;
 enum Mode { Read, Write = 4, Append }
 ```
 
@@ -69,6 +71,16 @@ var [ first, ...rest ] = values;
 ```
 
 Only one simple name is declared by a simple `var` or `const` statement.
+
+External declarations:
+
+```as
+export declare func HOST_LOG(message);
+export declare const APP_VERSION;
+export declare var ONLINE_TOTAL;
+```
+
+`declare` is compile-time only. It creates a compiler symbol for binding, exports, duplicate checks, and `const` assignment checks, but it does not emit module initialization code or create a runtime module property. `declare var/const` must use one simple name and cannot have an initializer or destructuring pattern. Reads and writes of declared external variables resolve through the script domain `global` unless a local variable shadows the name.
 
 ## Scope
 

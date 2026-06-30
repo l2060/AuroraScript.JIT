@@ -24,6 +24,7 @@ namespace AuroraScript.Compiler.Backend.Analysis
             for (var i = 0; i < modulePlan.Declaration.Statements.Count; i++)
             {
                 if (modulePlan.Declaration.Statements[i] is not VariableDeclaration variable ||
+                    variable.IsDeclare ||
                     !variable.IsConst ||
                     variable.Name == null ||
                     !modulePlan.TryGetSymbol(variable.Name.Value, out var symbolId) ||
@@ -82,6 +83,7 @@ namespace AuroraScript.Compiler.Backend.Analysis
             return symbol.Module.Equals(modulePlan.Id) &&
                 symbol.Kind == BackendSymbolKind.ModuleProperty &&
                 symbol.HasFlag(BackendSymbolFlags.Const) &&
+                !symbol.HasFlag(BackendSymbolFlags.DeclaredOnly) &&
                 !symbol.HasFlag(BackendSymbolFlags.Imported) &&
                 ReferenceEquals(symbol.Declaration, declaration);
         }

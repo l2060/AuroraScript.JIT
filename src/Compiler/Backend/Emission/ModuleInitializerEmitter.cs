@@ -165,6 +165,10 @@ namespace AuroraScript.Compiler.Backend.Emission
                 case ImportDeclaration:
                     return;
                 case VariableDeclaration variable:
+                    if (variable.IsDeclare)
+                    {
+                        return;
+                    }
                     MarkSequencePoint(variable);
                     EmitVariableDeclaration(variable);
                     return;
@@ -440,7 +444,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return;
             }
 
-            if (!string.IsNullOrEmpty(name) && _module.TryGetSymbol(name, out _))
+            if (IsDefinedModuleSymbol(name))
             {
                 EmitModulePropertyLoad(name);
                 return;
@@ -1509,10 +1513,17 @@ namespace AuroraScript.Compiler.Backend.Emission
         private void EmitStoreTargetObject(string name)
         {
             _il.Emit(OpCodes.Ldarg_0);
-            var target = _module.TryGetSymbol(name, out _)
+            var target = IsDefinedModuleSymbol(name)
                 ? RuntimeMetadata.CILContext_Module
                 : RuntimeMetadata.CILContext_Global;
             _il.Emit(OpCodes.Ldfld, target);
+        }
+
+        private bool IsDefinedModuleSymbol(string name)
+        {
+            return !string.IsNullOrEmpty(name) &&
+                _module.TryGetSymbol(name, out var symbolId) &&
+                !_session.CompileSession.Symbols[symbolId].HasFlag(BackendSymbolFlags.DeclaredOnly);
         }
 
         private LocalBuilder DeclareTemp()

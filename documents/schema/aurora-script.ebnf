@@ -14,6 +14,7 @@ import-declaration  = "import" identifier "from" string-literal ";" ;
 export-declaration = "export" ( function-declaration
                               | variable-declaration
                               | declare-function
+                              | declare-variable
                               | enum-declaration ) ;
 
 statement          = ";"
@@ -21,6 +22,7 @@ statement          = ";"
                    | annotated-function
                    | function-declaration
                    | declare-function
+                   | declare-variable
                    | variable-declaration
                    | enum-declaration
                    | if-statement
@@ -43,6 +45,7 @@ annotated-function = annotation+ function-declaration ;
 
 function-declaration = ( "func" | "function" ) identifier parameter-list block ;
 declare-function     = "declare" ( "func" | "function" ) identifier parameter-list ";" ;
+declare-variable     = "declare" ( "var" | "const" ) identifier ";" ;
 parameter-list       = "(" [ parameter { "," parameter } ] ")" ;
 parameter            = [ "..." ] identifier [ "=" expression ] ;
 

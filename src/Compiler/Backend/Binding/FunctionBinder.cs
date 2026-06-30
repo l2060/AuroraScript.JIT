@@ -308,6 +308,10 @@ namespace AuroraScript.Compiler.Backend.Binding
                         CollectBlock(block, createScope: !IsRootBody(block));
                         return;
                     case VariableDeclaration variable:
+                        if (variable.IsDeclare)
+                        {
+                            return;
+                        }
                         DeclarePattern(variable);
                         CollectDeclarations(variable.Initializer);
                         return;
@@ -413,6 +417,11 @@ namespace AuroraScript.Compiler.Backend.Binding
 
             private void DeclarePattern(VariableDeclaration variable)
             {
+                if (variable.IsDeclare)
+                {
+                    return;
+                }
+
                 if (variable.Name != null)
                 {
                     DeclareLocal(variable.Name.Value, BackendSymbolKind.Local, variable.Access, variable, false);

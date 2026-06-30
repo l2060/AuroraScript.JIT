@@ -161,6 +161,43 @@ public sealed class LanguageFeatureExecutionTests
     }
 
     [Fact]
+    public async Task DeclaredHostVariablesResolveFromConfiguredGlobal()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export declare var HOST_VALUE;
+            export declare const HOST_CONST;
+            export func run() { return [HOST_VALUE, HOST_CONST]; }
+            """,
+            configureGlobal: global =>
+            {
+                global.Define("HOST_VALUE", 20);
+                global.Define("HOST_CONST", 22);
+            });
+
+        ScriptAssert.Equal(new object?[] { 20, 22 }, TestWorkspace.Execute(domain, "run"));
+        ScriptAssert.Equal(null, domain.GetModule("TEST").GetPropertyDatum(null, "HOST_VALUE"));
+        ScriptAssert.Equal(null, domain.GetModule("TEST").GetPropertyDatum(null, "HOST_CONST"));
+    }
+
+    [Fact]
+    public async Task DeclaredConstHostVariableCannotBeAssigned()
+    {
+        using var workspace = new TestWorkspace();
+
+        var error = await Assert.ThrowsAsync<AuroraCompilationException>(() => workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export declare const HOST_CONST;
+            export func run() { HOST_CONST = 1; }
+            """));
+
+        Assert.Contains("Cannot assign to constant 'HOST_CONST'", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task NestedTemplatesHandleExpressionsBracesAndEscapedText()
     {
         using var workspace = new TestWorkspace();

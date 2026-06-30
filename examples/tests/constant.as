@@ -24,4 +24,8 @@ export declare func GIVE(item, count);
 
 export declare func INPUT_NUMBER(title, label, type, callback);
 
+// 当前APP版本，只读
+export declare const APP_VERSION;
+// 在线数量，可 读/写
+export declare var ONLINE_TOTAL;
 

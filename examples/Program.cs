@@ -70,6 +70,9 @@ namespace Examples
             g.Define("CREATE_TIMER", ScriptDatum.FromBonding(Functions.CREATE_TIMER));
             g.Define("INPUT_NUMBER", ScriptDatum.FromBonding(Functions.CLIENT_INPUT_NUMBER), false, true);
             g.Define("md5_native", ScriptDatum.FromBonding(Functions.MD5_NATIVE), false, true);
+
+            g.Define("APP_VERSION", ScriptDatum.FromString("1.2.3"), false, true);
+            g.Define("ONLINE_TOTAL", ScriptDatum.FromNumber(0));
             var fo = new TestObject();
             g.SetPropertyValue("fo", fo);
         }
@@ -277,8 +280,8 @@ namespace Examples
 
             BenchmarkScript(domain, "ASTAR", "runExample");
             BenchmarkScript(domain, "ASTAR", "runExample");
-            BenchmarkScript(domain, "ASTAR", "runExample");
-            BenchmarkScript(domain, "ASTAR", "runExample");
+
+            BenchmarkScript(domain, "UNIT_LIB", "externalDeclare");
 
 
 

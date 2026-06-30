@@ -30,6 +30,13 @@ namespace AuroraScript.Compiler.Backend.Lowering
         }
     }
 
+    internal sealed class LoweredNoOpStatement : LoweredStatement
+    {
+        public LoweredNoOpStatement(AstNode source) : base(source)
+        {
+        }
+    }
+
     internal sealed class LoweredBlockStatement : LoweredStatement
     {
         public LoweredBlockStatement(AstNode source, LoweredStatement[] statements) : base(source)

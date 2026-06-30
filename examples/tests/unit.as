@@ -64,7 +64,7 @@ export func testHashMap() {
 	console.log(map.has("AAA"));
 	console.log(map.has(obj1));
 	console.log(map.has(obj2));
-	map.delete(1);
+	map.delete (1);
 	map.clear();
 }
 
@@ -94,7 +94,7 @@ export func testIssue1() {
 	$state.Test(123.45, 'abc');
 	var args = $args;
 
-	
+
 }
 
 
@@ -448,7 +448,7 @@ func executeTest(testCase) {
 export func benchmarkNumbers(iterations = 1000000) {
 	var acc = 0;
 	for (var i = 0; i < iterations; i++) {
-		acc =(acc + i) % 97;
+		acc = (acc + i) % 97;
 	}
 	return acc;
 }
@@ -901,4 +901,24 @@ func testDraw() {
 		r += k;
 	}
 	console.log(buffer.stringAndRelease());
+}
+
+
+
+export func externalDeclare() {
+	
+	console.log(APP_VERSION, ONLINE_TOTAL);
+	if (true) {
+		var APP_VERSION = "a.b.c";
+		var ONLINE_TOTAL = 111;
+		APP_VERSION = 'x.y.z';
+		ONLINE_TOTAL = 222;
+		console.log(APP_VERSION, ONLINE_TOTAL);
+	}
+
+
+	console.log(APP_VERSION, ONLINE_TOTAL);
+	// APP_VERSION = 'x.y.z';
+	ONLINE_TOTAL = 333;
+	console.log(APP_VERSION, ONLINE_TOTAL);
 }

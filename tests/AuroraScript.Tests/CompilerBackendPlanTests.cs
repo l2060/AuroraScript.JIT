@@ -112,6 +112,33 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
+    public void GlobalPredefineMarksDeclareVariablesAsCompileTimeOnlySymbols()
+    {
+        var root = Path.GetTempPath();
+        var module = Parse(
+            """
+            @module(TEST);
+            export declare var HOST_VALUE;
+            export declare const HOST_CONST;
+            """,
+            root);
+        var options = EngineOptions.Default
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
+            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var backend = new BackendCompiler(new DynamicBuilder(options), options);
+
+        var session = backend.CreateModulePlans([module]);
+        var modulePlan = Assert.Single(session.Modules);
+
+        Assert.True(modulePlan.TryGetSymbol("HOST_VALUE", out var valueSymbol));
+        Assert.True(session.Symbols[valueSymbol].HasFlag(BackendSymbolFlags.DeclaredOnly));
+        Assert.False(session.Symbols[valueSymbol].HasFlag(BackendSymbolFlags.Const));
+        Assert.True(modulePlan.TryGetSymbol("HOST_CONST", out var constSymbol));
+        Assert.True(session.Symbols[constSymbol].HasFlag(BackendSymbolFlags.DeclaredOnly));
+        Assert.True(session.Symbols[constSymbol].HasFlag(BackendSymbolFlags.Const));
+    }
+
+    [Fact]
     public void GlobalPredefineRejectsDuplicateModuleSymbol()
     {
         var root = Path.GetTempPath();

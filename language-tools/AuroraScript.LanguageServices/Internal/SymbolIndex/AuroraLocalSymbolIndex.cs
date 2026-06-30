@@ -264,6 +264,10 @@ internal sealed class AuroraLocalSymbolIndex
                 }
                 return;
             case VariableDeclaration variable:
+                if (variable.IsDeclare)
+                {
+                    return;
+                }
                 DeclarePattern(scope, variable);
                 CollectDeclarations(variable.Initializer, scope, rootBody);
                 return;

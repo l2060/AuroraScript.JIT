@@ -557,6 +557,8 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 case null:
                     return;
+                case LoweredNoOpStatement:
+                    return;
                 case LoweredBlockStatement block:
                     EmitBlock(block);
                     return;
@@ -618,7 +620,9 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void MarkStatementSequencePoint(LoweredStatement statement)
         {
-            if (statement == null || statement is LoweredBlockStatement)
+            if (statement == null ||
+                statement is LoweredNoOpStatement ||
+                statement is LoweredBlockStatement)
             {
                 return;
             }
@@ -2097,7 +2101,14 @@ namespace AuroraScript.Compiler.Backend.Emission
 
             if (name.ModuleSymbol.IsValid)
             {
-                EmitModulePropertyLoad(name.Name);
+                if (IsDeclaredOnlyModuleSymbol(name.ModuleSymbol))
+                {
+                    EmitGlobalPropertyLoad(name.Name);
+                }
+                else
+                {
+                    EmitModulePropertyLoad(name.Name);
+                }
                 return;
             }
 
@@ -2148,9 +2159,15 @@ namespace AuroraScript.Compiler.Backend.Emission
         private void EmitStoreTargetObject(LoweredNameExpression name)
         {
             _il.Emit(OpCodes.Ldarg_0);
-            _il.Emit(OpCodes.Ldfld, name.ModuleSymbol.IsValid
+            _il.Emit(OpCodes.Ldfld, name.ModuleSymbol.IsValid && !IsDeclaredOnlyModuleSymbol(name.ModuleSymbol)
                 ? RuntimeMetadata.CILContext_Module
                 : RuntimeMetadata.CILContext_Global);
+        }
+
+        private bool IsDeclaredOnlyModuleSymbol(SymbolId symbol)
+        {
+            return symbol.IsValid &&
+                _session.CompileSession.Symbols[symbol].HasFlag(BackendSymbolFlags.DeclaredOnly);
         }
 
         private void EmitGlobalPropertyLoad(string name)
@@ -2246,6 +2263,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             return statement switch
             {
                 null => true,
+                LoweredNoOpStatement => true,
                 LoweredBlockStatement block => CanEmitBlock(block, executableFunctions),
                 LoweredReturnStatement returnStatement => CanEmitExpression(returnStatement.Expression, executableFunctions),
                 LoweredVariableDeclarationStatement variable => variable.Slot.IsValid && CanEmitExpression(variable.Initializer, executableFunctions),
@@ -2306,6 +2324,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             return statement switch
             {
                 null => true,
+                LoweredNoOpStatement => true,
                 LoweredBlockStatement block => CanEmitProtectedBlock(block, executableFunctions),
                 LoweredVariableDeclarationStatement variable => variable.Slot.IsValid && CanEmitExpression(variable.Initializer, executableFunctions),
                 LoweredObjectDestructuringDeclarationStatement objectDestructuring => CanEmitObjectDestructuringDeclaration(objectDestructuring, executableFunctions),
@@ -3418,6 +3437,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 switch (statement)
                 {
                     case null:
+                    case LoweredNoOpStatement:
                         return;
                     case LoweredBlockStatement block:
                         for (var i = 0; i < block.Statements.Length; i++)

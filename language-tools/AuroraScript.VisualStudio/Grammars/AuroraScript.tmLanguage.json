@@ -176,6 +176,16 @@
           }
         },
         {
+          "name": "meta.declaration.external-variable.aurora",
+          "match": "\\b(?:(export)\\s+)?(declare)\\s+(const|var)\\s+([\\p{L}_$][\\p{L}\\p{N}_$]*)",
+          "captures": {
+            "1": { "name": "keyword.control.export.aurora" },
+            "2": { "name": "keyword.declaration.declare.aurora" },
+            "3": { "name": "keyword.declaration.variable.aurora" },
+            "4": { "name": "variable.other.aurora" }
+          }
+        },
+        {
           "name": "meta.declaration.variable.aurora",
           "match": "\\b(?:(export)\\s+)?(const|var)\\s+([\\p{L}_$][\\p{L}\\p{N}_$]*)",
           "captures": {

@@ -363,12 +363,16 @@ When scripts are called from .NET hosts:
 - Return values that serialize cleanly: number, string, boolean, null, arrays, and plain objects.
 - Keep console output separate from return values.
 - Avoid relying on ambient globals unless the host explicitly defines them.
+- When the host defines globals, declare the compile-time contract with `export declare const NAME;`, `export declare var NAME;`, or `export declare func NAME(args);`.
+- Do not use plain `export const NAME;` or `export var NAME;` for host-provided values; those create module properties and can hide the host global.
 - When using host-defined services, keep access behind a small function so tests can replace it.
 
 Example:
 
 ```as
 @module(REPORT);
+
+export declare func hostLog(message);
 
 func logInfo(message) {
     if (hostLog != null) {

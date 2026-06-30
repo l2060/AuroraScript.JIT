@@ -262,6 +262,11 @@ namespace AuroraScript.Compiler.Backend.Lowering
 
             private LoweredStatement LowerVariableDeclaration(VariableDeclaration declaration)
             {
+                if (declaration.IsDeclare)
+                {
+                    return new LoweredNoOpStatement(declaration);
+                }
+
                 if (declaration.Name != null)
                 {
                     return new LoweredVariableDeclarationStatement(
@@ -350,6 +355,11 @@ namespace AuroraScript.Compiler.Backend.Lowering
 
             private LoweredStatement LowerFunctionDeclaration(FunctionDeclaration declaration)
             {
+                if (declaration.Flags == FunctionFlags.Declare)
+                {
+                    return new LoweredNoOpStatement(declaration);
+                }
+
                 if (!_functions.TryGetValue(declaration, out var function))
                 {
                     return UnsupportedStatement(declaration);

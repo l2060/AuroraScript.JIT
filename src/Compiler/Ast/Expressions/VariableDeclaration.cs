@@ -67,6 +67,11 @@ namespace AuroraScript.Compiler.Ast.Expressions
         /// </summary>
         public bool IsConst { get; set; }
 
+        /// <summary>
+        /// External variable declaration only. No module property is emitted for this declaration.
+        /// </summary>
+        public bool IsDeclare { get; set; }
+
         public override void Accept(IAstVisitor visitor)
         {
             visitor.AcceptVarDeclaration(this);

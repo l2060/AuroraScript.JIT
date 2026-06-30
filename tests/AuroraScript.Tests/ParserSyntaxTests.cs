@@ -1,5 +1,6 @@
 using AuroraScript.Compiler.Analyzer;
 using AuroraScript.Compiler.Ast;
+using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Source;
 using AuroraScript.Tests.Infrastructure;
 using System;
@@ -82,7 +83,9 @@ public sealed class ParserSyntaxTests
     [InlineData("var value = ;")]
     [InlineData("if (true) {")]
     [InlineData("enum Broken { Value = 'text' }")]
-    [InlineData("declare var value;")]
+    [InlineData("declare var value = 1;")]
+    [InlineData("declare const value = 1;")]
+    [InlineData("declare var { value };")]
     [InlineData("export if (true) { }")]
     [InlineData("func broken( { }")]
     [InlineData("var { key } =;")]
@@ -144,6 +147,23 @@ public sealed class ParserSyntaxTests
 
         var parse = Assert.IsType<AuroraCompilationException>(exception);
         Assert.Contains("top of the module", parse.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("declare var HOST_VALUE;", false, false)]
+    [InlineData("export declare var HOST_VALUE;", false, true)]
+    [InlineData("export declare const HOST_VALUE;", true, true)]
+    public void ParsesDeclareVariables(string declaration, bool isConst, bool isExport)
+    {
+        var module = Parse("@module(TEST);\n" + declaration);
+        var variable = Assert.IsType<VariableDeclaration>(Assert.Single(module.Statements));
+
+        Assert.Equal("HOST_VALUE", variable.Name.Value);
+        Assert.True(variable.IsDeclare);
+        Assert.Equal(isConst, variable.IsConst);
+        Assert.Equal(isExport ? MemberAccess.Export : MemberAccess.Internal, variable.Access);
+        Assert.Null(variable.Initializer);
+        Assert.Null(variable.Pattern);
     }
 
     [Fact]

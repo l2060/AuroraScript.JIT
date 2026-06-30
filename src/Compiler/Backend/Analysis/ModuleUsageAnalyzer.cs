@@ -372,6 +372,11 @@ namespace AuroraScript.Compiler.Backend.Analysis
                     return;
                 }
 
+                if (variable.IsDeclare)
+                {
+                    return;
+                }
+
                 if (variable.Name != null)
                 {
                     DeclareShadow(variable.Name.Value);

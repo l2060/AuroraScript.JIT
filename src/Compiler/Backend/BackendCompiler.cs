@@ -401,6 +401,10 @@ namespace AuroraScript.Compiler.Backend
         private static int AddVariableSymbols(CompileSession session, ModulePlan modulePlan, ScopeId moduleScope, VariableDeclaration variable)
         {
             var flags = GetAccessFlags(variable.Access);
+            if (variable.IsDeclare)
+            {
+                flags |= BackendSymbolFlags.DeclaredOnly;
+            }
             if (variable.IsConst)
             {
                 flags |= BackendSymbolFlags.Const;

@@ -40,13 +40,28 @@ For default code generation style, also read `docs/script-authoring-best-practic
 - Empty statement: `;`
 - Block: `{ statement* }`
 - Function: `func name(args) { ... }` or `function name(args) { ... }`
-- External declaration: `declare func name(args);`
+- External declaration: `declare func name(args);`, `declare var name;`, `declare const name;`
 - Variable: `var name;`, `var name = expr;`, `const name = expr;`
 - Destructuring: `var { a, b } = obj;`, `var [ first, ...rest ] = array;`
 - Enum: `enum Name { A, B = 3, C }`
 - Control flow: `if`, `else`, `while`, `for`, `for-in`, `break`, `continue`, `return`, `throw`, `try`, `catch`, `finally`, `delete`, `debugger`
 
 Variable declarations are single-binding declarations. `var a = 1, b = 2;` is not the current form.
+
+External `declare` declarations are compile-time declarations only. They do not create module properties, do not assign `null`, and do not emit runtime initialization code. Use them when a .NET host defines values or services on `global`:
+
+```as
+export declare const APP_VERSION;
+export declare var ONLINE_TOTAL;
+export declare func HOST_LOG(message);
+```
+
+Rules:
+
+- `declare var/const` must declare one simple name and must not have an initializer or destructuring pattern.
+- `declare const` participates in compile-time const assignment checks, but reads still resolve from host-defined `global`.
+- `declare var` reads and writes resolve through `global` unless shadowed by a local variable.
+- Do not use `export const HOST_VALUE;` for host-provided values; that emits a module property initialized to `null` and can hide the host global.
 
 ## Functions
 

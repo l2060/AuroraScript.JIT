@@ -382,6 +382,23 @@ using var domain = engine.CreateDomain(global =>
 });
 ```
 
+Declare those host-provided values in script with `export declare` when other modules or AI tools need a compile-time contract:
+
+```as
+@module(HOST_API);
+
+export declare const tenantId;
+export declare func hostLog(message);
+```
+
+For mutable host-provided values, use `export declare var NAME;`:
+
+```as
+export declare var ONLINE_TOTAL;
+```
+
+`declare` is compile-time only. It does not emit module initialization code and does not create or overwrite module properties. Reads and writes go to the domain `global` unless a local variable shadows the name. Do not model host globals as `export const NAME;` or `export var NAME;` without `declare`; those forms create module properties and can hide the host-defined value.
+
 `ClrMarshaller` converts common values:
 
 - CLR to script: `null`, numbers, `bool`, `string`, `DateTime`, `DateTimeOffset`, `Enum`, `Delegate`, `IDictionary`, `IEnumerable`, `ScriptObject`, `ScriptDatum`, registered CLR objects.
