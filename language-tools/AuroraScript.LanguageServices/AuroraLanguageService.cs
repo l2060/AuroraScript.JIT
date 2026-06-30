@@ -1,4 +1,5 @@
 using AuroraScript.Core;
+using AuroraScript.Compiler.GlobalDeclarations;
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.LanguageServices.Builtins;
 using AuroraScript.LanguageServices.Diagnostics;
@@ -32,6 +33,8 @@ public sealed class AuroraLanguageService
     private BuiltinDefinitionDocuments _builtinDocuments;
     private readonly object _indexLock = new();
     private readonly AuroraWorkspaceIndexCache _workspaceIndexCache = new();
+    private GlobalDeclarationIndex _globalDeclarationIndex = GlobalDeclarationIndex.Empty;
+    private long _globalDeclarationIndexSignature;
 
     public AuroraLanguageService(BuiltinApiCatalog builtins)
         : this(new AuroraLanguageServiceOptions(builtins))
@@ -79,6 +82,8 @@ public sealed class AuroraLanguageService
                 _parseService = new AuroraParseService(_options.ToEngineOptions(normalized));
             }
             _workspaceIndexCache.Clear();
+            _globalDeclarationIndex = GlobalDeclarationIndex.Empty;
+            _globalDeclarationIndexSignature = 0;
         }
     }
 
@@ -90,6 +95,16 @@ public sealed class AuroraLanguageService
     public void CloseDocument(string path)
     {
         _workspace.Close(path);
+    }
+
+    public void WarmWorkspaceIndex()
+    {
+        lock (_indexLock)
+        {
+            var snapshot = CreateIndexSnapshot();
+            GetGlobalDeclarationIndex(snapshot);
+            AuroraWorkspaceIndex.Build(_parseService, snapshot, _workspace.BaseDirectory, _workspaceIndexCache);
+        }
     }
 
     public AuroraParseResult ParseText(string sourceName, string sourceText, string? baseDirectory = null)
@@ -111,14 +126,22 @@ public sealed class AuroraLanguageService
     {
         var parseResult = ParseText(sourceName, sourceText, baseDirectory);
         var analyzer = new AuroraSemanticAnalyzer(_builtins);
-        return analyzer.Analyze(parseResult).Diagnostics;
+        return AppendGlobalDiagnostics(analyzer.Analyze(parseResult).Diagnostics, baseDirectory, sourceName, sourceText, null);
     }
 
     public IReadOnlyList<LanguageDiagnostic> GetDiagnostics(string path)
     {
+        if (!TryGetWorkspaceText(path, out var normalizedPath, out _))
+        {
+            return Array.Empty<LanguageDiagnostic>();
+        }
+
         var parseResult = ParseDocument(path);
         var analyzer = new AuroraSemanticAnalyzer(_builtins);
-        return analyzer.Analyze(parseResult).Diagnostics;
+        var diagnostics = analyzer.Analyze(parseResult).Diagnostics;
+        var snapshot = CreateIndexSnapshot();
+        var globalIndex = GetGlobalDeclarationIndex(snapshot);
+        return AppendGlobalDiagnostics(diagnostics, globalIndex, normalizedPath);
     }
 
     public HoverResult? GetHover(string sourceName, string sourceText, TextPosition position, string? baseDirectory = null)
@@ -336,8 +359,9 @@ public sealed class AuroraLanguageService
 
         var snapshot = CreateWorkspaceSnapshot(sourceName, sourceText, workspaceDocuments, out var normalizedSource);
         var index = AuroraWorkspaceIndex.Build(_parseService, snapshot, normalizedSource);
+        var globalIndex = BuildGlobalDeclarationIndex(snapshot);
         return ResolveBuiltinDefinition(normalizedSource, sourceText, position, snapshot) ??
-            AuroraDefinitionResolver.Resolve(index, normalizedSource, position);
+            AuroraDefinitionResolver.Resolve(index, normalizedSource, position, globalIndex);
     }
 
     public DefinitionLocation? GetDefinition(string path, TextPosition position)
@@ -354,10 +378,18 @@ public sealed class AuroraLanguageService
             return null;
         }
 
-        var snapshot = CreateIndexSnapshot();
-        var index = GetWorkspaceIndex(normalizedPath);
+        AuroraWorkspaceSnapshot snapshot;
+        AuroraWorkspaceIndex index;
+        GlobalDeclarationIndex globalIndex;
+        lock (_indexLock)
+        {
+            snapshot = CreateIndexSnapshot();
+            globalIndex = GetGlobalDeclarationIndex(snapshot);
+            index = AuroraWorkspaceIndex.Build(_parseService, snapshot, normalizedPath, _workspaceIndexCache);
+        }
+
         return ResolveBuiltinDefinition(normalizedPath, text, position, snapshot) ??
-            AuroraDefinitionResolver.Resolve(index, normalizedPath, position);
+            AuroraDefinitionResolver.Resolve(index, normalizedPath, position, globalIndex);
     }
 
     public BuiltinDocument? GetBuiltinDocument(string uri)
@@ -420,12 +452,19 @@ public sealed class AuroraLanguageService
 
     public SemanticTokensResult GetSemanticTokens(string path)
     {
-        if (!TryGetWorkspaceText(path, out _, out var text))
+        if (!TryGetWorkspaceText(path, out var normalizedPath, out var text))
         {
             return new SemanticTokensResult(Array.Empty<SemanticToken>());
         }
 
-        return GetSemanticTokens(path, text, _workspace.BaseDirectory);
+        GlobalDeclarationIndex globalIndex;
+        lock (_indexLock)
+        {
+            globalIndex = GetGlobalDeclarationIndex(CreateIndexSnapshot());
+        }
+
+        var externalSymbols = SemanticExternalSymbols.FromGlobalDeclarationIndex(globalIndex);
+        return SemanticTokenScanner.Scan(normalizedPath, text, _workspace.BaseDirectory, _builtins, externalSymbols);
     }
 
     public FormattingResult FormatDocument(string sourceName, string sourceText, FormattingOptions options)
@@ -658,6 +697,7 @@ public sealed class AuroraLanguageService
         lock (_indexLock)
         {
             var snapshot = CreateIndexSnapshot();
+            GetGlobalDeclarationIndex(snapshot);
             return AuroraWorkspaceIndex.Build(_parseService, snapshot, rootPath, _workspaceIndexCache);
         }
     }
@@ -695,6 +735,136 @@ public sealed class AuroraLanguageService
         }
 
         return new AuroraWorkspaceSnapshot(documents, _workspace.BaseDirectory, workspaceSnapshot.Version);
+    }
+
+    private GlobalDeclarationIndex GetGlobalDeclarationIndex(AuroraWorkspaceSnapshot snapshot)
+    {
+        var signature = ComputeGlobalDeclarationSnapshotSignature(snapshot);
+        if (_globalDeclarationIndexSignature == signature)
+        {
+            return _globalDeclarationIndex;
+        }
+
+        _globalDeclarationIndex = BuildGlobalDeclarationIndex(snapshot);
+        _globalDeclarationIndexSignature = signature;
+        return _globalDeclarationIndex;
+    }
+
+    private static long ComputeGlobalDeclarationSnapshotSignature(AuroraWorkspaceSnapshot snapshot)
+    {
+        unchecked
+        {
+            var hash = 1469598103934665603L;
+            hash = AddHash(hash, snapshot.BaseDirectory);
+            hash = (hash ^ snapshot.Version) * 1099511628211L;
+            foreach (var document in snapshot.Documents.Values.OrderBy(document => document.Path, AuroraWorkspaceSnapshot.PathComparer))
+            {
+                hash = AddHash(hash, document.Path);
+                hash = (hash ^ document.Version) * 1099511628211L;
+                hash = (hash ^ document.Text.Length) * 1099511628211L;
+                hash = (hash ^ GetLastWriteTimeTicks(document.Path)) * 1099511628211L;
+            }
+
+            return hash == 0 ? 1 : hash;
+        }
+    }
+
+    private static long GetLastWriteTimeTicks(string path)
+    {
+        try
+        {
+            return File.Exists(path) ? File.GetLastWriteTimeUtc(path).Ticks : 0;
+        }
+        catch (Exception ex) when (IsFileReadFailure(ex))
+        {
+            return 0;
+        }
+    }
+
+    private static long AddHash(long hash, string? value)
+    {
+        unchecked
+        {
+            if (value == null)
+            {
+                return (hash ^ -1) * 1099511628211L;
+            }
+
+            for (var i = 0; i < value.Length; i++)
+            {
+                hash = (hash ^ value[i]) * 1099511628211L;
+            }
+
+            return hash;
+        }
+    }
+
+    private static GlobalDeclarationIndex BuildGlobalDeclarationIndex(AuroraWorkspaceSnapshot snapshot)
+    {
+        var builder = new GlobalDeclarationWorkspaceIndexBuilder();
+        foreach (var document in snapshot.Documents.Values)
+        {
+            if (!GlobalDeclarationScanner.IsProjectSource(snapshot.BaseDirectory, document.Path))
+            {
+                continue;
+            }
+
+            builder.AddFile(document.Path, document.Text);
+        }
+
+        return builder.ToIndex();
+    }
+
+    private IReadOnlyList<LanguageDiagnostic> AppendGlobalDiagnostics(
+        IReadOnlyList<LanguageDiagnostic> diagnostics,
+        string? baseDirectory,
+        string sourceName,
+        string sourceText,
+        IEnumerable<AuroraWorkspaceDocument>? workspaceDocuments)
+    {
+        var snapshot = CreateWorkspaceSnapshot(sourceName, sourceText, workspaceDocuments, out _, baseDirectory);
+        return AppendGlobalDiagnostics(diagnostics, BuildGlobalDeclarationIndex(snapshot));
+    }
+
+    private static IReadOnlyList<LanguageDiagnostic> AppendGlobalDiagnostics(
+        IReadOnlyList<LanguageDiagnostic> diagnostics,
+        GlobalDeclarationIndex globalIndex)
+    {
+        return AppendGlobalDiagnostics(diagnostics, globalIndex, pathFilter: null);
+    }
+
+    private static IReadOnlyList<LanguageDiagnostic> AppendGlobalDiagnostics(
+        IReadOnlyList<LanguageDiagnostic> diagnostics,
+        GlobalDeclarationIndex globalIndex,
+        string? pathFilter)
+    {
+        if (globalIndex.Diagnostics.Count == 0)
+        {
+            return diagnostics;
+        }
+
+        var result = new List<LanguageDiagnostic>(diagnostics.Count + globalIndex.Diagnostics.Count);
+        result.AddRange(diagnostics);
+        for (var i = 0; i < globalIndex.Diagnostics.Count; i++)
+        {
+            var diagnostic = globalIndex.Diagnostics[i];
+            if (!string.IsNullOrEmpty(pathFilter) &&
+                !string.Equals(
+                    AuroraWorkspaceIndex.NormalizePath(diagnostic.FileName),
+                    AuroraWorkspaceIndex.NormalizePath(pathFilter),
+                    OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            result.Add(new LanguageDiagnostic(
+                "AURORA-GLOBAL",
+                diagnostic.Message,
+                TextRange.FromSourceSpan(diagnostic.Location),
+                LanguageDiagnosticSeverity.Error));
+        }
+
+        return result.Count == diagnostics.Count ? diagnostics : result;
     }
 
     private AuroraWorkspaceSnapshot CreateCompletionSnapshot(string rootPath, string sourceText)

@@ -147,10 +147,15 @@ public sealed class LanguageFeatureExecutionTests
     public async Task DeclaredHostFunctionResolvesFromConfiguredGlobal()
     {
         using var workspace = new TestWorkspace();
+        workspace.WriteSource(
+            "globals.as",
+            """
+            @global();
+            declare func HOST_ADD(left, right);
+            """);
         var (_, domain) = await workspace.CompileModuleAsync(
             """
             @module(TEST);
-            export declare func HOST_ADD(left, right);
             export func run() { return HOST_ADD(20, 22); }
             """,
             configureGlobal: global => global.Define(
@@ -164,11 +169,16 @@ public sealed class LanguageFeatureExecutionTests
     public async Task DeclaredHostVariablesResolveFromConfiguredGlobal()
     {
         using var workspace = new TestWorkspace();
+        workspace.WriteSource(
+            "globals.as",
+            """
+            @global();
+            declare var HOST_VALUE;
+            declare const HOST_CONST;
+            """);
         var (_, domain) = await workspace.CompileModuleAsync(
             """
             @module(TEST);
-            export declare var HOST_VALUE;
-            export declare const HOST_CONST;
             export func run() { return [HOST_VALUE, HOST_CONST]; }
             """,
             configureGlobal: global =>
@@ -186,11 +196,16 @@ public sealed class LanguageFeatureExecutionTests
     public async Task DeclaredConstHostVariableCannotBeAssigned()
     {
         using var workspace = new TestWorkspace();
+        workspace.WriteSource(
+            "globals.as",
+            """
+            @global();
+            declare const HOST_CONST;
+            """);
 
         var error = await Assert.ThrowsAsync<AuroraCompilationException>(() => workspace.CompileModuleAsync(
             """
             @module(TEST);
-            export declare const HOST_CONST;
             export func run() { HOST_CONST = 1; }
             """));
 

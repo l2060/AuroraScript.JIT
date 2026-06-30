@@ -225,6 +225,8 @@ public sealed class AuroraLanguageServer
         {
             _languageService.SetWorkspaceRoot(root);
         }
+
+        _languageService.WarmWorkspaceIndex();
     }
 
     private static bool TryReadWorkspaceRoot(JsonObject parameters, out string root)

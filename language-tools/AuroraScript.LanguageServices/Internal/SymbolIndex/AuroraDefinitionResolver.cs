@@ -1,6 +1,7 @@
 using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Ast.Statements;
+using AuroraScript.Compiler.GlobalDeclarations;
 using AuroraScript.LanguageServices.Features.Definition;
 using AuroraScript.LanguageServices.Text;
 using System.Collections.Generic;
@@ -10,6 +11,15 @@ namespace AuroraScript.LanguageServices.Internal.SymbolIndex;
 internal static class AuroraDefinitionResolver
 {
     public static DefinitionLocation? Resolve(AuroraWorkspaceIndex index, string path, TextPosition position)
+    {
+        return Resolve(index, path, position, GlobalDeclarationIndex.Empty);
+    }
+
+    public static DefinitionLocation? Resolve(
+        AuroraWorkspaceIndex index,
+        string path,
+        TextPosition position,
+        GlobalDeclarationIndex globalDeclarations)
     {
         var module = index.TryGetModule(path);
         if (module == null)
@@ -32,6 +42,13 @@ internal static class AuroraDefinitionResolver
         if (localIndex.TryGetDefinition(position, out var localDefinition))
         {
             return localDefinition;
+        }
+
+        if (context.PropertyAccess != null &&
+            context.IsOnPropertyName &&
+            TryResolveGlobalMember(index, module, localIndex, context.PropertyAccess, globalDeclarations, out var globalMemberDefinition))
+        {
+            return globalMemberDefinition;
         }
 
         if (context.PropertyAccess != null &&
@@ -99,9 +116,49 @@ internal static class AuroraDefinitionResolver
             {
                 return ToLocation(included);
             }
+
+            if (!module.ImportsByAlias.ContainsKey(name) &&
+                globalDeclarations.TryGet(name, out var global))
+            {
+                return ToLocation(global);
+            }
         }
 
         return null;
+    }
+
+    private static bool TryResolveGlobalMember(
+        AuroraWorkspaceIndex index,
+        AuroraModuleIndex module,
+        AuroraLocalSymbolIndex localIndex,
+        GetPropertyExpression propertyAccess,
+        GlobalDeclarationIndex globalDeclarations,
+        out DefinitionLocation definition)
+    {
+        definition = null!;
+        if (propertyAccess.Object is not NameExpression owner ||
+            owner.Identifier.Value != "global" ||
+            propertyAccess.Property is not NameExpression property)
+        {
+            return false;
+        }
+
+        var ownerPosition = TextRange.FromSourceSpan(owner.Identifier.Range).Start;
+        if (localIndex.TryGetDefinition(ownerPosition, out _) ||
+            module.Symbols.ContainsKey("global") ||
+            module.ImportsByAlias.ContainsKey("global") ||
+            TryResolveIncludedExport(index, module, "global", out _))
+        {
+            return false;
+        }
+
+        if (!globalDeclarations.TryGet(property.Identifier.Value, out var declaration))
+        {
+            return false;
+        }
+
+        definition = ToLocation(declaration);
+        return true;
     }
 
     private static bool TryResolveImportDefinition(
@@ -567,6 +624,11 @@ internal static class AuroraDefinitionResolver
     private static DefinitionLocation ToLocation(AuroraSymbolInfo symbol)
     {
         return new DefinitionLocation(symbol.FilePath, symbol.NameRange);
+    }
+
+    private static DefinitionLocation ToLocation(GlobalDeclarationInfo declaration)
+    {
+        return new DefinitionLocation(declaration.FilePath, TextRange.FromSourceSpan(declaration.NameRange));
     }
 
     private static bool Contains(TextRange range, TextPosition position)

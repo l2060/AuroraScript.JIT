@@ -27,7 +27,7 @@ public sealed class BuiltinLanguageFeatureTests
         Assert.NotNull(hover);
         Assert.Contains("Math.abs", hover!.Contents, StringComparison.Ordinal);
         Assert.Contains("```aurorascript", hover.Contents, StringComparison.Ordinal);
-        Assert.Contains("export declare Math.abs(value: Number): Number;", hover.Contents, StringComparison.Ordinal);
+        Assert.Contains("Math.abs(value: Number): Number;", hover.Contents, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -46,7 +46,7 @@ public sealed class BuiltinLanguageFeatureTests
 
         Assert.NotNull(hover);
         Assert.Contains("```aurorascript", hover!.Contents, StringComparison.Ordinal);
-        Assert.Contains("export declare console;", hover.Contents, StringComparison.Ordinal);
+        Assert.Contains("console;", hover.Contents, StringComparison.Ordinal);
         Assert.Contains("Console logging and timing API.", hover.Contents, StringComparison.Ordinal);
         Assert.DoesNotContain("console.log", hover.Contents, StringComparison.Ordinal);
     }
@@ -67,7 +67,7 @@ public sealed class BuiltinLanguageFeatureTests
 
         Assert.NotNull(hover);
         Assert.Contains("```aurorascript", hover!.Contents, StringComparison.Ordinal);
-        Assert.Contains("export declare console.log(...values: Object[]): void;", hover.Contents, StringComparison.Ordinal);
+        Assert.Contains("console.log(...values: Object[]): void;", hover.Contents, StringComparison.Ordinal);
         Assert.Contains("Writes values to standard output.", hover.Contents, StringComparison.Ordinal);
         Assert.DoesNotContain("readonly func", hover.Contents, StringComparison.Ordinal);
         Assert.DoesNotContain("any[]): null", hover.Contents, StringComparison.Ordinal);

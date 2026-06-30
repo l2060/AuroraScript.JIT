@@ -6,6 +6,7 @@ using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Core;
 using AuroraScript.LanguageServices.Builtins;
 using AuroraScript.LanguageServices.Features.SemanticTokens;
+using AuroraScript.LanguageServices.Internal.SymbolIndex;
 using AuroraScript.Source;
 using AuroraScript.Tokens;
 using System;
@@ -29,7 +30,8 @@ internal static class SemanticTokenScanner
         string sourceName,
         string sourceText,
         string? baseDirectory,
-        BuiltinApiCatalog builtins)
+        BuiltinApiCatalog builtins,
+        SemanticExternalSymbols? externalSymbols = null)
     {
         baseDirectory ??= Directory.GetCurrentDirectory();
         var fullPath = ScriptPath.GetFullPath(baseDirectory, sourceName);
@@ -44,7 +46,7 @@ internal static class SemanticTokenScanner
 
             var builder = new SemanticTokenBuilder(sourceText);
             AddLexerTokens(sourceText, tokenInfos, builder);
-            AddAstTokens(baseDirectory, fullPath, sourceText, builtins, builder);
+            AddAstTokens(baseDirectory, fullPath, sourceText, builtins, externalSymbols, builder);
 
             return new SemanticTokensResult(builder.ToSemanticTokens());
         }
@@ -341,12 +343,13 @@ internal static class SemanticTokenScanner
         string fullPath,
         string sourceText,
         BuiltinApiCatalog builtins,
+        SemanticExternalSymbols? externalSymbols,
         SemanticTokenBuilder builder)
     {
         using var lexer = new AuroraLexer(baseDirectory, new MemorySource(baseDirectory, fullPath, sourceText));
         var parser = new AuroraParser(lexer, EngineOptions.Default);
         var module = parser.Parse();
-        var visitor = new SemanticAstVisitor(builtins, builder);
+        var visitor = new SemanticAstVisitor(builtins, externalSymbols ?? SemanticExternalSymbols.Empty, builder);
         visitor.Visit(module);
     }
 
@@ -533,13 +536,18 @@ internal static class SemanticTokenScanner
     private sealed class SemanticAstVisitor : IAstVisitor
     {
         private readonly BuiltinApiCatalog _builtins;
+        private readonly SemanticExternalSymbols _externalSymbols;
         private readonly SemanticTokenBuilder _builder;
         private readonly Stack<Dictionary<string, int>> _scopes = new();
         private readonly HashSet<string> _moduleEnums = new(StringComparer.Ordinal);
 
-        public SemanticAstVisitor(BuiltinApiCatalog builtins, SemanticTokenBuilder builder)
+        public SemanticAstVisitor(
+            BuiltinApiCatalog builtins,
+            SemanticExternalSymbols externalSymbols,
+            SemanticTokenBuilder builder)
         {
             _builtins = builtins;
+            _externalSymbols = externalSymbols;
             _builder = builder;
         }
 
@@ -629,7 +637,7 @@ internal static class SemanticTokenScanner
         {
             if (node.Name != null)
             {
-                var type = node.Flags == FunctionFlags.Declare
+                var type = IsDeclareFunction(node)
                     ? AuroraSemanticTokenTypes.DeclaredGlobalFunction
                     : AuroraSemanticTokenTypes.Function;
                 _builder.AddToken(node.Name, type, SemanticTokenPriority.Declaration);
@@ -715,17 +723,23 @@ internal static class SemanticTokenScanner
                 return;
             }
 
-            if (IsDeclared(value))
+            if (TryResolveSymbolType(value, out var symbolType))
             {
-                if (TryResolveDeclaredType(value, out var declaredType))
+                if (IsDeclaredExternalType(symbolType))
                 {
-                    _builder.AddToken(node.Identifier, declaredType, SemanticTokenPriority.Identifier);
+                    _builder.AddToken(node.Identifier, symbolType, SemanticTokenPriority.Identifier);
                 }
                 else if (_moduleEnums.Contains(value))
                 {
                     _builder.AddToken(node.Identifier, AuroraSemanticTokenTypes.Enum, SemanticTokenPriority.Identifier);
                 }
 
+                return;
+            }
+
+            if (_externalSymbols.TryResolveGlobal(value, out var externalType))
+            {
+                _builder.AddToken(node.Identifier, externalType, SemanticTokenPriority.Identifier);
                 return;
             }
 
@@ -786,9 +800,16 @@ internal static class SemanticTokenScanner
             {
                 var value = name.Identifier.Value;
                 var type = AuroraSemanticTokenTypes.FunctionCall;
-                if (TryResolveDeclaredType(value, out var declaredType))
+                if (TryResolveSymbolType(value, out var symbolType))
                 {
-                    type = declaredType;
+                    if (IsDeclaredExternalType(symbolType))
+                    {
+                        type = symbolType;
+                    }
+                }
+                else if (_externalSymbols.TryResolveGlobal(value, out var externalType))
+                {
+                    type = externalType;
                 }
                 else if (!IsDeclared(value) && _builtins != null && _builtins.TryGetGlobal(value, out var global))
                 {
@@ -853,7 +874,13 @@ internal static class SemanticTokenScanner
                 ? AuroraSemanticTokenTypes.MethodCall
                 : AuroraSemanticTokenTypes.Property;
 
-            if (owner is NameExpression enumOwner && _moduleEnums.Contains(enumOwner.Identifier.Value))
+            if (owner is NameExpression { Identifier.Value: "global" } &&
+                !IsDeclared("global") &&
+                _externalSymbols.TryResolveGlobal(propertyName.Identifier.Value, out var globalExternalType))
+            {
+                memberType = globalExternalType;
+            }
+            else if (owner is NameExpression enumOwner && _moduleEnums.Contains(enumOwner.Identifier.Value))
             {
                 memberType = AuroraSemanticTokenTypes.EnumMember;
             }
@@ -895,7 +922,7 @@ internal static class SemanticTokenScanner
             {
                 Declare(
                     function.Name.Value,
-                    function.Flags == FunctionFlags.Declare
+                    IsDeclareFunction(function)
                         ? AuroraSemanticTokenTypes.DeclaredGlobalFunction
                         : AuroraSemanticTokenTypes.Function);
             }
@@ -932,19 +959,29 @@ internal static class SemanticTokenScanner
             return false;
         }
 
-        private bool TryResolveDeclaredType(string name, out int type)
+        private bool TryResolveSymbolType(string name, out int type)
         {
             foreach (var scope in _scopes)
             {
                 if (scope.TryGetValue(name, out type))
                 {
-                    return type == AuroraSemanticTokenTypes.DeclaredGlobal ||
-                        type == AuroraSemanticTokenTypes.DeclaredGlobalFunction;
+                    return true;
                 }
             }
 
             type = -1;
             return false;
+        }
+
+        private static bool IsDeclaredExternalType(int type)
+        {
+            return type == AuroraSemanticTokenTypes.DeclaredGlobal ||
+                type == AuroraSemanticTokenTypes.DeclaredGlobalFunction;
+        }
+
+        private static bool IsDeclareFunction(FunctionDeclaration function)
+        {
+            return (function.Flags & FunctionFlags.Declare) != 0;
         }
 
         private static int GetBuiltinGlobalSemanticType(string value, BuiltinApiSymbol global)

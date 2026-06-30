@@ -47,8 +47,7 @@ public sealed class ParserSyntaxTests
             "include 'included';\n" +
             "export var value = dependency.value;\n" +
             "export func run() { return value + INCLUDED; }\n" +
-            "export enum Mode { One, Two }\n" +
-            "export declare func HOST(value);";
+            "export enum Mode { One, Two }\n";
 
         var module = Parse(source, workspace.Root);
         Assert.Equal(2, module.Imports.Count);
@@ -149,21 +148,50 @@ public sealed class ParserSyntaxTests
         Assert.Contains("top of the module", parse.Message, StringComparison.OrdinalIgnoreCase);
     }
 
-    [Theory]
-    [InlineData("declare var HOST_VALUE;", false, false)]
-    [InlineData("export declare var HOST_VALUE;", false, true)]
-    [InlineData("export declare const HOST_VALUE;", true, true)]
-    public void ParsesDeclareVariables(string declaration, bool isConst, bool isExport)
+    [Fact]
+    public void ParsesGlobalDeclarationFiles()
     {
-        var module = Parse("@module(TEST);\n" + declaration);
-        var variable = Assert.IsType<VariableDeclaration>(Assert.Single(module.Statements));
+        var module = Parse(
+            """
+            // comments may precede the header
+            @global();
 
+            declare var HOST_VALUE;
+            declare const HOST_CONST;
+            declare func HOST_ADD(left, right);
+            """);
+
+        Assert.True(module.IsGlobalDeclarationFile);
+        Assert.Null(module.ModuleName);
+        Assert.Equal(2, module.Statements.Count);
+        Assert.Single(module.Functions);
+        var variable = Assert.IsType<VariableDeclaration>(module.Statements[0]);
         Assert.Equal("HOST_VALUE", variable.Name.Value);
         Assert.True(variable.IsDeclare);
-        Assert.Equal(isConst, variable.IsConst);
-        Assert.Equal(isExport ? MemberAccess.Export : MemberAccess.Internal, variable.Access);
+        Assert.False(variable.IsConst);
+        Assert.Equal(MemberAccess.Internal, variable.Access);
         Assert.Null(variable.Initializer);
         Assert.Null(variable.Pattern);
+        var constant = Assert.IsType<VariableDeclaration>(module.Statements[1]);
+        Assert.Equal("HOST_CONST", constant.Name.Value);
+        Assert.True(constant.IsDeclare);
+        Assert.True(constant.IsConst);
+        var function = Assert.Single(module.Functions);
+        Assert.Equal("HOST_ADD", function.Name.Value);
+        Assert.Equal(FunctionFlags.Declare, function.Flags);
+    }
+
+    [Theory]
+    [InlineData("@module(TEST);\ndeclare var HOST_VALUE;", "declare is only allowed")]
+    [InlineData("@module(TEST);\nexport declare var HOST_VALUE;", "export declare is not supported")]
+    [InlineData("@global();\nexport declare var HOST_VALUE;", "export declare is not supported")]
+    [InlineData("@global();\nvar value = 1;", "only allow declare")]
+    [InlineData("@global();\n@module(TEST);", "cannot also declare @module")]
+    [InlineData("@module(TEST);\n@global();", "must be the first")]
+    public void RejectsInvalidGlobalDeclarationUsage(string source, string message)
+    {
+        var parse = Assert.Throws<AuroraCompilationException>(() => Parse(source));
+        Assert.Contains(message, parse.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

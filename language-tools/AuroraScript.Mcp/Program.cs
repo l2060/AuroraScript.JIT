@@ -951,9 +951,9 @@ internal sealed class AuroraMcpServer
             AddPatternWarnings(
                 warnings,
                 source,
-                @"@module\b|\b(import|include|export|declare)\b",
+                @"@(module|global)\b|\b(import|include|export|declare)\b",
                 "block.module-syntax",
-                "CompileBlock accepts a function body only; do not use module syntax.");
+                "CompileBlock accepts a function body only; do not use file or module syntax.");
         }
 
         return new JsonObject
@@ -1249,7 +1249,7 @@ internal sealed class AuroraMcpServer
 
         if (message.Contains("CompileBlock does not support module-level statement", StringComparison.OrdinalIgnoreCase))
         {
-            return "CompileBlock accepts a function body, not a complete module. Remove @module/import/export/declare or validate the script as mode=module.";
+            return "CompileBlock accepts a function body, not a complete file or module. Remove @module/@global/import/export/declare or validate the script as mode=module.";
         }
 
         if (message.Contains("break statement must be inside a loop", StringComparison.OrdinalIgnoreCase) ||

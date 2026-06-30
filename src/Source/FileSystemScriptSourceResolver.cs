@@ -1,4 +1,5 @@
 ﻿using AuroraScript.Core;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -99,12 +100,55 @@ namespace AuroraScript.Source
             }
 
             var extension = string.IsNullOrWhiteSpace(query?.Extension) ? ".as" : query.Extension;
-            foreach (var file in Directory.EnumerateFiles(root, "*" + extension, SearchOption.AllDirectories))
+            var pending = new Queue<string>();
+            pending.Enqueue(root);
+            while (pending.Count != 0)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                await Task.Yield();
-                yield return new FileSource(root, file, query.Encoding ?? _encoding);
+                var directory = pending.Dequeue();
+                IEnumerable<string> childDirectories;
+                try
+                {
+                    childDirectories = Directory.EnumerateDirectories(directory);
+                }
+                catch (Exception ex) when (IsSourceReadFailure(ex))
+                {
+                    continue;
+                }
+
+                foreach (var child in childDirectories)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    pending.Enqueue(child);
+                }
+
+                IEnumerable<string> files;
+                try
+                {
+                    files = Directory.EnumerateFiles(directory, "*" + extension, SearchOption.TopDirectoryOnly);
+                }
+                catch (Exception ex) when (IsSourceReadFailure(ex))
+                {
+                    continue;
+                }
+
+                foreach (var file in files)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    await Task.Yield();
+                    yield return new FileSource(root, file, query.Encoding ?? _encoding);
+                }
             }
+        }
+
+        private static bool IsSourceReadFailure(Exception exception)
+        {
+            return exception is FileNotFoundException
+                or DirectoryNotFoundException
+                or IOException
+                or UnauthorizedAccessException
+                or ArgumentException
+                or NotSupportedException
+                or KeyNotFoundException;
         }
     }
 

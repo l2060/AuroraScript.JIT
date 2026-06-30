@@ -50,7 +50,7 @@ var result = domain.Execute("MAIN", "run");
 
 ## CompileBlock
 
-`CompileBlock` compiles a function body, not a module. Do not pass `@module`, `import`, `include`, `export`, or `declare` syntax.
+`CompileBlock` compiles a function body, not a module. Do not pass `@module`, `@global()`, `import`, `include`, `export`, or `declare` syntax.
 
 ```csharp
 using var block = engine.CompileBlock(
@@ -382,22 +382,24 @@ using var domain = engine.CreateDomain(global =>
 });
 ```
 
-Declare those host-provided values in script with `export declare` when other modules or AI tools need a compile-time contract:
+Host-provided global values do not require script declarations to work at runtime. When modules or AI tools need a compile-time contract for editor assistance and static diagnostics, declare those values in a resolver-visible `@global()` file:
 
 ```as
-@module(HOST_API);
+@global();
 
-export declare const tenantId;
-export declare func hostLog(message);
+declare const tenantId;
+declare func hostLog(message);
 ```
 
-For mutable host-provided values, use `export declare var NAME;`:
+For mutable host-provided values, the optional contract uses `declare var NAME;` in the same kind of file:
 
 ```as
-export declare var ONLINE_TOTAL;
+@global();
+
+declare var ONLINE_TOTAL;
 ```
 
-`declare` is compile-time only. It does not emit module initialization code and does not create or overwrite module properties. Reads and writes go to the domain `global` unless a local variable shadows the name. Do not model host globals as `export const NAME;` or `export var NAME;` without `declare`; those forms create module properties and can hide the host-defined value.
+`declare` is compile-time only and is only valid in `@global()` files. These files cannot be imported or included, are not compiled as modules, and are loaded by scanning resolver-visible project `.as` files before module analysis. If no `@global()` file exists, the host globals still work at runtime; the project simply lacks those optional compile-time symbols. Do not write `export declare`; it is invalid. Reads and writes go to the domain `global` unless a local variable shadows the name. Do not model host globals as `export const NAME;` or `export var NAME;`; those forms create module properties and can hide the host-defined value.
 
 `ClrMarshaller` converts common values:
 

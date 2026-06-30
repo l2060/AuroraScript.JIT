@@ -1,5 +1,6 @@
 using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
+using AuroraScript.Compiler.GlobalDeclarations;
 using AuroraScript.Core;
 using AuroraScript.LanguageServices.Parsing;
 using AuroraScript.LanguageServices.Text;
@@ -31,6 +32,13 @@ internal sealed class AuroraWorkspaceIndex
     }
 
     public IReadOnlyDictionary<string, AuroraModuleIndex> Modules => _modules;
+
+    public bool ContainsWorkspaceDocument(string path)
+    {
+        path = NormalizePath(path);
+        return _snapshot.Documents.ContainsKey(path) &&
+            ScriptPath.IsWithinNormalizedRoot(_snapshot.BaseDirectory, path);
+    }
 
     private static StringComparer PathComparer => OperatingSystem.IsWindows()
         ? StringComparer.OrdinalIgnoreCase
@@ -93,6 +101,11 @@ internal sealed class AuroraWorkspaceIndex
                 return null;
             }
 
+            if (GlobalDeclarationScanner.IsGlobalFile(text))
+            {
+                return null;
+            }
+
             if (_cache != null && _cache.TryGet(path, text, out var cachedModule))
             {
                 _modules.Add(path, cachedModule);
@@ -135,7 +148,8 @@ internal sealed class AuroraWorkspaceIndex
                         declaration.ModulePath ?? module.Path,
                         module.Path,
                         TextRange.FromSourceSpan(variable.Name.Range),
-                        variable.Access == MemberAccess.Export));
+                        variable.Access == MemberAccess.Export,
+                        variable.IsDeclare));
                     break;
                 case EnumDeclaration enumDeclaration when enumDeclaration.Identifier != null:
                     module.AddSymbol(new AuroraSymbolInfo(
@@ -163,7 +177,8 @@ internal sealed class AuroraWorkspaceIndex
                 declaration.ModulePath ?? module.Path,
                 module.Path,
                 TextRange.FromSourceSpan(function.Name.Range),
-                function.Access == MemberAccess.Export));
+                function.Access == MemberAccess.Export,
+                (function.Flags & FunctionFlags.Declare) != 0));
         }
     }
 

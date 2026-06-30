@@ -4,7 +4,14 @@ namespace AuroraScript.LanguageServices.Internal.SymbolIndex;
 
 internal sealed class AuroraSymbolInfo
 {
-    public AuroraSymbolInfo(string name, AuroraSymbolKind kind, string modulePath, string filePath, TextRange nameRange, bool exported)
+    public AuroraSymbolInfo(
+        string name,
+        AuroraSymbolKind kind,
+        string modulePath,
+        string filePath,
+        TextRange nameRange,
+        bool exported,
+        bool declaredExternal = false)
     {
         Name = name;
         Kind = kind;
@@ -12,6 +19,7 @@ internal sealed class AuroraSymbolInfo
         FilePath = filePath;
         NameRange = nameRange;
         Exported = exported;
+        DeclaredExternal = declaredExternal;
     }
 
     public string Name { get; }
@@ -20,4 +28,5 @@ internal sealed class AuroraSymbolInfo
     public string FilePath { get; }
     public TextRange NameRange { get; }
     public bool Exported { get; }
+    public bool DeclaredExternal { get; }
 }

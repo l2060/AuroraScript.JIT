@@ -88,7 +88,7 @@ return total;
 
 Rules:
 
-- Do not use `@module`, `import`, `include`, `export`, or `declare`.
+- Do not use `@module`, `@global()`, `import`, `include`, `export`, or `declare`.
 - Treat provided parameter names as local variables.
 - End with `return` unless side effects are the only goal.
 - Validate with the exact parameter names the host will pass.
@@ -363,16 +363,22 @@ When scripts are called from .NET hosts:
 - Return values that serialize cleanly: number, string, boolean, null, arrays, and plain objects.
 - Keep console output separate from return values.
 - Avoid relying on ambient globals unless the host explicitly defines them.
-- When the host defines globals, declare the compile-time contract with `export declare const NAME;`, `export declare var NAME;`, or `export declare func NAME(args);`.
+- When the host defines globals, an `@global()` file is optional but recommended for the compile-time contract: `declare const NAME;`, `declare var NAME;`, or `declare func NAME(args);`.
+- Do not put `declare` inside `@module` files, and do not write `export declare`.
 - Do not use plain `export const NAME;` or `export var NAME;` for host-provided values; those create module properties and can hide the host global.
 - When using host-defined services, keep access behind a small function so tests can replace it.
 
 Example:
 
 ```as
-@module(REPORT);
+// host-globals.as
+@global();
 
-export declare func hostLog(message);
+declare func hostLog(message);
+```
+
+```as
+@module(REPORT);
 
 func logInfo(message) {
     if (hostLog != null) {
@@ -443,7 +449,7 @@ When validating loop code, use the recommended cached-bound form:
 - Do not use `let` or `class`.
 - Do not write multi-binding declarations such as `var a = 1, b = 2;`.
 - Do not put `import` or `include` after normal declarations.
-- Do not use module syntax inside `CompileBlock`.
+- Do not use file or module syntax inside `CompileBlock`.
 - Do not redeclare same-scope names.
 - Do not mutate `const`.
 - Do not use repeated dynamic property reads such as `items.length` directly in loop conditions; cache the bound first.

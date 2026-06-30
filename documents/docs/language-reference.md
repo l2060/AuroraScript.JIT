@@ -29,6 +29,7 @@ Rules:
 - `@module` must be first when present.
 - `include` and `import` must be at the top of the module.
 - `export` may only appear at module scope.
+- `declare` is not valid in modules. Use a separate `@global()` declaration file for host globals.
 - Duplicate module-scope names are rejected.
 
 ## Function Annotations
@@ -57,9 +58,6 @@ Unsupported annotations are rejected during backend binding.
 var value;
 var value2 = 1;
 const name = "Aurora";
-declare func external(value);
-declare var HOST_VALUE;
-declare const HOST_CONST;
 enum Mode { Read, Write = 4, Append }
 ```
 
@@ -75,12 +73,16 @@ Only one simple name is declared by a simple `var` or `const` statement.
 External declarations:
 
 ```as
-export declare func HOST_LOG(message);
-export declare const APP_VERSION;
-export declare var ONLINE_TOTAL;
+@global();
+
+declare func HOST_LOG(message);
+declare const APP_VERSION;
+declare var ONLINE_TOTAL;
 ```
 
-`declare` is compile-time only. It creates a compiler symbol for binding, exports, duplicate checks, and `const` assignment checks, but it does not emit module initialization code or create a runtime module property. `declare var/const` must use one simple name and cannot have an initializer or destructuring pattern. Reads and writes of declared external variables resolve through the script domain `global` unless a local variable shadows the name.
+`declare` is compile-time only and is only valid inside `@global()` files. A global declaration file must start with `@global();` after only comments or blank lines, cannot also use `@module`, cannot be imported or included, and is not compiled as a module. The compiler scans resolver-visible project `.as` files and loads these optional declarations before module analysis when they exist. Host-provided globals still work at runtime without an `@global()` file; the file exists to improve editor assistance and static diagnostics.
+
+Global declarations create compiler symbols for binding, duplicate checks, and `const` assignment checks, but do not emit module initialization code or create runtime module properties. `declare var/const` must use one simple name and cannot have an initializer or destructuring pattern. Reads and writes of declared external variables resolve through the script domain `global` unless a local variable shadows the name. Duplicate global names across `@global()` files are rejected; functions do not support overloads.
 
 ## Scope
 

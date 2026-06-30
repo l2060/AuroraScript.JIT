@@ -148,15 +148,36 @@ var domain = engine.CreateDomain(global =>
 });
 ```
 
+Host-injected `global` members do not require an `@global()` declaration. Without one, scripts can still read those values from the domain `global` object at runtime. `@global()` is an optional compile-time contract for host APIs, giving the editor semantic coloring, go-to-definition, and better static diagnostics. It behaves like a TypeScript `.d.ts`: it provides a symbol contract and emits no runtime code.
+
+`globals.as`:
+
+```javascript
+@global();
+
+declare func HOST_ADD(left, right);
+declare const HOST_NAME;
+declare var HOST_COUNT;
+```
+
+Normal modules can use those global symbols directly:
+
 ```javascript
 @module(MAIN);
-
-export declare func HOST_ADD(left, right);
 
 export func run() {
     return HOST_NAME + ":" + HOST_ADD(20, 22);
 }
 ```
+
+`@global()` file rules:
+
+- `@global();` must be the first effective statement; only blank lines and comments may appear before it.
+- `@global()` cannot appear together with `@module`.
+- `@global()` files may contain only `declare` statements; `export declare` is invalid.
+- `declare` is not allowed in `@module` files.
+- `@global()` files cannot be imported or included and are not compiled as modules.
+- A project may contain multiple `@global()` files, but global names must not be duplicated; functions do not support overloads.
 
 ## Script Source Resolver
 
@@ -227,11 +248,14 @@ Resolver rules:
 - `FileSystemScriptSourceResolver` enumerates files under its root for `BuildAsync()`. Dependency resolution follows the importer path and may resolve outside the root when the file exists; the returned reference still routes back to that file-system resolver.
 - `GetSourceAsync` routes by exact `ScriptSourceReference.BaseDirectory`, not by searching target paths again.
 - `BuildAsync()` enumerates through `GetAllSourcesAsync`; `Composite` de-duplicates by normalized `FullPath`, so earlier sources hide later sources with the same identity.
+- Before module analysis, the compiler scans resolver-visible project `.as` files; when `@global()` declaration files exist, their optional declarations are loaded. They do not depend on `import` / `include`.
 - Resolver implementations should normalize roots/source keys when they are built or added, use `/` internally, and avoid repeated normalization in hot comparisons.
 
 ## CompileBlock
 
 `CompileBlock` treats source text as an anonymous function body. It does not create a module and does not participate in hot reload. It is intended for formulas, rules, filters, and small snippets that are invoked frequently.
+
+`CompileBlock` accepts statement bodies only. It does not support `@module`, `@global()`, `import`, `include`, `export`, or `declare`.
 
 ```csharp
 var engine = new AuroraEngine(EngineOptions.Default);
@@ -300,6 +324,8 @@ Notes:
 ## Module and Function Annotations
 
 Declare a module name with `@module(NAME);`. `@module` must be the first effective statement in a module; only whitespace or comments may appear before it.
+
+An `@module` file is a compilable module and may use top-level `import` / `include` / `export`. An `@global()` file is a global declaration file used only for compile-time symbol assistance; it cannot be mixed with `@module` and cannot be imported or included.
 
 ```javascript
 // module metadata must be first
@@ -488,7 +514,7 @@ This optimization only changes reads that are proven constant. It does not remov
 The current test suite and examples cover:
 
 - `var` / `const` / `func` / `function` / `return`
-- `@module`, `@directCall`
+- `@module`, `@global()`, `@directCall`
 - `if` / `else` / `for` / `for-in` / `while` / `break` / `continue`
 - `try` / `catch` / `finally` / `throw`
 - `enum`

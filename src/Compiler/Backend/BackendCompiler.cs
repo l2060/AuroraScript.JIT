@@ -6,6 +6,7 @@ using AuroraScript.Compiler.Backend.Binding;
 using AuroraScript.Compiler.Backend.Builders;
 using AuroraScript.Compiler.Backend.Lowering;
 using AuroraScript.Compiler.Backend.Plans;
+using AuroraScript.Compiler.GlobalDeclarations;
 using AuroraScript.Tokens;
 using System;
 using System.Collections.Generic;
@@ -18,11 +19,21 @@ namespace AuroraScript.Compiler.Backend
     {
         private readonly AbstractCILBuilder _builder;
         private readonly EngineOptions _options;
+        private readonly GlobalDeclarationIndex _globalDeclarations;
 
         public BackendCompiler(AbstractCILBuilder builder, EngineOptions options)
+            : this(builder, options, GlobalDeclarationIndex.Empty)
+        {
+        }
+
+        public BackendCompiler(
+            AbstractCILBuilder builder,
+            EngineOptions options,
+            GlobalDeclarationIndex globalDeclarations)
         {
             _builder = builder ?? throw new ArgumentNullException(nameof(builder));
             _options = options ?? throw new ArgumentNullException(nameof(options));
+            _globalDeclarations = globalDeclarations ?? GlobalDeclarationIndex.Empty;
         }
 
         public CompileSession CreateSession(CancellationToken cancellationToken = default)
@@ -43,7 +54,7 @@ namespace AuroraScript.Compiler.Backend
                 var module = modules[i] ?? throw new ArgumentException("Module collection cannot contain null.", nameof(modules));
                 var modulePlan = new ModulePlan(moduleId, module);
                 plans[i] = modulePlan;
-                PredefineModule(session, modulePlan);
+                PredefineModule(session, modulePlan, _globalDeclarations);
             }
             session.Modules = plans;
             AnalyzeModuleConstants(session, plans, cancellationToken);
@@ -129,7 +140,7 @@ namespace AuroraScript.Compiler.Backend
                 cancellationToken.ThrowIfCancellationRequested();
                 var modulePlan = new ModulePlan(new ModuleId(i), modules[i]);
                 plans[i] = modulePlan;
-                PredefineModule(session, modulePlan);
+                PredefineModule(session, modulePlan, _globalDeclarations);
             }
 
             mainModulePlan = plans[^1];
@@ -218,7 +229,10 @@ namespace AuroraScript.Compiler.Backend
             });
         }
 
-        private static void PredefineModule(CompileSession session, ModulePlan modulePlan)
+        private static void PredefineModule(
+            CompileSession session,
+            ModulePlan modulePlan,
+            GlobalDeclarationIndex globalDeclarations)
         {
             var moduleScope = session.Scopes.Add(new ScopeInfo(
                 ScopeId.Invalid,
@@ -287,7 +301,71 @@ namespace AuroraScript.Compiler.Backend
                 modulePlan.AddFunction(new FunctionPlan(functionId, modulePlan.Id, functionScope, function, visibility, isModuleFunction: true));
             }
 
+            symbolCount += AddGlobalDeclarationSymbols(session, modulePlan, moduleScope, globalDeclarations);
+
             session.Scopes[moduleScope] = session.Scopes[moduleScope].WithSymbolRange(firstSymbol, symbolCount);
+        }
+
+        private static int AddGlobalDeclarationSymbols(
+            CompileSession session,
+            ModulePlan modulePlan,
+            ScopeId moduleScope,
+            GlobalDeclarationIndex globalDeclarations)
+        {
+            var count = 0;
+            foreach (var declaration in globalDeclarations.Declarations.Values)
+            {
+                if (modulePlan.TryGetSymbol(declaration.Name, out _))
+                {
+                    continue;
+                }
+
+                var flags = BackendSymbolFlags.DeclaredOnly | BackendSymbolFlags.ModuleVisible;
+                if (declaration.Kind == GlobalDeclarationKind.Const)
+                {
+                    flags |= BackendSymbolFlags.Const;
+                }
+
+                AddModuleSymbol(
+                    session,
+                    modulePlan,
+                    moduleScope,
+                    declaration.Name,
+                    declaration.Kind == GlobalDeclarationKind.Function
+                        ? BackendSymbolKind.Function
+                        : BackendSymbolKind.ModuleProperty,
+                    flags,
+                    CreateAmbientDeclarationNode(declaration));
+                count++;
+            }
+
+            return count;
+        }
+
+        private static AstNode CreateAmbientDeclarationNode(GlobalDeclarationInfo declaration)
+        {
+            if (declaration.Kind == GlobalDeclarationKind.Function)
+            {
+                var function = new FunctionDeclaration(
+                    MemberAccess.Internal,
+                    CreateIdentifier(declaration.Name, declaration.NameRange),
+                    Array.Empty<ParameterDeclaration>(),
+                    null,
+                    FunctionFlags.Declare);
+                function.Range = declaration.DeclarationRange;
+                return function;
+            }
+
+            var variable = new VariableDeclaration(
+                MemberAccess.Internal,
+                declaration.Kind == GlobalDeclarationKind.Const,
+                CreateIdentifier(declaration.Name, declaration.NameRange),
+                null)
+            {
+                IsDeclare = true,
+                Range = declaration.DeclarationRange
+            };
+            return variable;
         }
 
         private static ModuleDeclaration CreateCompileBlockModule(BlockStatement body, IReadOnlyList<string> parameters, string sourceName)

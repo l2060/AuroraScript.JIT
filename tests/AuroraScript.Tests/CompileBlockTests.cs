@@ -136,6 +136,8 @@ public sealed class CompileBlockTests
 
     [Theory]
     [InlineData("@module(TEST);")]
+    [InlineData("@global();")]
+    [InlineData("@global();\ndeclare const HOST_CONST;")]
     [InlineData("import value from 'value';")]
     [InlineData("include 'value';")]
     [InlineData("export func run() { }")]

@@ -1,5 +1,6 @@
 using AuroraScript.LanguageServer;
 using AuroraScript.LanguageServices.Builtins;
+using AuroraScript.LanguageServices.Features.SemanticTokens;
 using System;
 using System.IO;
 using System.Text.Json.Nodes;
@@ -148,7 +149,7 @@ public sealed class AuroraLanguageServerTests
         Assert.Equal("markdown", contents["kind"]!.GetValue<string>());
         var value = contents["value"]!.GetValue<string>();
         Assert.Contains("```aurorascript", value, StringComparison.Ordinal);
-        Assert.Contains("export declare Math.abs(value: Number): Number;", value, StringComparison.Ordinal);
+        Assert.Contains("Math.abs(value: Number): Number;", value, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -170,7 +171,7 @@ public sealed class AuroraLanguageServerTests
             ["position"] = Position(source, "console")
         });
         var ownerValue = ownerResult.Response!.Result!.AsObject()["contents"]!.AsObject()["value"]!.GetValue<string>();
-        Assert.Contains("export declare console;", ownerValue, StringComparison.Ordinal);
+        Assert.Contains("console;", ownerValue, StringComparison.Ordinal);
         Assert.DoesNotContain("console.log", ownerValue, StringComparison.Ordinal);
 
         var memberResult = await Request(server, 24, "textDocument/hover", new JsonObject
@@ -179,7 +180,7 @@ public sealed class AuroraLanguageServerTests
             ["position"] = Position(source, "log")
         });
         var memberValue = memberResult.Response!.Result!.AsObject()["contents"]!.AsObject()["value"]!.GetValue<string>();
-        Assert.Contains("export declare console.log(...values: Object[]): void;", memberValue, StringComparison.Ordinal);
+        Assert.Contains("console.log(...values: Object[]): void;", memberValue, StringComparison.Ordinal);
         Assert.DoesNotContain("readonly func", memberValue, StringComparison.Ordinal);
     }
 
@@ -367,8 +368,8 @@ public sealed class AuroraLanguageServerTests
         var document = documentResult.Response!.Result!.AsObject();
         Assert.Equal("aurora", document["languageId"]!.GetValue<string>());
         var text = document["text"]!.GetValue<string>();
-        Assert.Contains("export declare Math.abs(value: Number): Number;", text, StringComparison.Ordinal);
-        Assert.Contains("export declare Math.PI: Number;", text, StringComparison.Ordinal);
+        Assert.Contains("Math.abs(value: Number): Number;", text, StringComparison.Ordinal);
+        Assert.Contains("Math.PI: Number;", text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -682,6 +683,107 @@ public sealed class AuroraLanguageServerTests
     }
 
     [Fact]
+    public async Task SemanticTokensUseStartupWorkspaceDeclareDeclarations()
+    {
+        var server = CreateServer();
+        var root = Path.Combine(Path.GetTempPath(), "aurora-lsp-declare-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var mainPath = Path.Combine(root, "main.as");
+            var globalsPath = Path.Combine(root, "globals.as");
+            var mainUri = new Uri(mainPath).AbsoluteUri;
+            const string main =
+                """
+                @module(MAIN);
+                export func run() {
+                    INPUT_NUMBER("title", "label", "number", null);
+                    return APP_VERSION;
+                }
+                """;
+            const string globals =
+                """
+                @global();
+                declare const APP_VERSION;
+                declare func INPUT_NUMBER(title, label, type, callback);
+                """;
+            File.WriteAllText(mainPath, main);
+            File.WriteAllText(globalsPath, globals);
+
+            await Request(server, 91, "initialize", new JsonObject
+            {
+                ["rootUri"] = new Uri(root).AbsoluteUri
+            });
+
+            var result = await Request(server, 92, "textDocument/semanticTokens/full", new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = mainUri }
+            });
+
+            var tokenTypes = SemanticTokenTypes(result.Response!.Result!.AsObject()["data"]!.AsArray());
+            Assert.Contains(AuroraSemanticTokenTypes.DeclaredGlobalFunction, tokenTypes);
+            Assert.Contains(AuroraSemanticTokenTypes.DeclaredGlobal, tokenTypes);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task StartupWorkspaceDeclareScanSkipsBinDirectory()
+    {
+        var server = CreateServer();
+        var root = Path.Combine(Path.GetTempPath(), "aurora-lsp-declare-skip-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var binDirectory = Path.Combine(root, "bin");
+            Directory.CreateDirectory(binDirectory);
+            var mainPath = Path.Combine(root, "main.as");
+            var binGlobalsPath = Path.Combine(binDirectory, "globals.as");
+            var mainUri = new Uri(mainPath).AbsoluteUri;
+            const string main =
+                """
+                @module(MAIN);
+                export func run() {
+                    return BIN_ONLY_VERSION;
+                }
+                """;
+            const string binGlobals =
+                """
+                @global();
+                declare const BIN_ONLY_VERSION;
+                """;
+            File.WriteAllText(mainPath, main);
+            File.WriteAllText(binGlobalsPath, binGlobals);
+
+            await Request(server, 93, "initialize", new JsonObject
+            {
+                ["rootUri"] = new Uri(root).AbsoluteUri
+            });
+
+            var result = await Request(server, 94, "textDocument/semanticTokens/full", new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = mainUri }
+            });
+
+            var tokenTypes = SemanticTokenTypes(result.Response!.Result!.AsObject()["data"]!.AsArray());
+            Assert.DoesNotContain(AuroraSemanticTokenTypes.DeclaredGlobal, tokenTypes);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task FormattingReturnsTextEdits()
     {
         var server = CreateServer();
@@ -849,6 +951,18 @@ public sealed class AuroraLanguageServerTests
             .AsObject()["start"]!
             .AsObject()["line"]!
             .GetValue<int>();
+    }
+
+    private static int[] SemanticTokenTypes(JsonArray data)
+    {
+        Assert.Equal(0, data.Count % 5);
+        var types = new int[data.Count / 5];
+        for (var i = 0; i < data.Count; i += 5)
+        {
+            types[i / 5] = data[i + 3]!.GetValue<int>();
+        }
+
+        return types;
     }
 
     private static JsonArray PublishedDiagnostics(

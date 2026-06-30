@@ -3,6 +3,8 @@ using AuroraScript.Compiler.Analyzer;
 using AuroraScript.Compiler.Backend;
 using AuroraScript.Compiler.Backend.Builders;
 using AuroraScript.Compiler.Backend.Emission;
+using AuroraScript.Compiler.GlobalDeclarations;
+using AuroraScript.Core;
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Extensions;
 using AuroraScript.Runtime.Interop;
@@ -121,6 +123,11 @@ namespace AuroraScript
             var sources = new List<ScriptSource>();
             await foreach (var source in Options.Compiler.SourceResolver.GetAllSourcesAsync(query, cancellationToken).ConfigureAwait(false))
             {
+                if (!IsProjectSource(source))
+                {
+                    continue;
+                }
+
                 sources.Add(source);
             }
             return sources.ToArray();
@@ -212,7 +219,7 @@ namespace AuroraScript
                 var compiler = new ScriptCompiler(Options);
                 var modules = await compiler.BuildModuleGraphAsync(sources, cancellationToken).ConfigureAwait(false);
 
-                EmitProgram(builder, modules, cancellationToken);
+                EmitProgram(builder, modules, compiler.GlobalDeclarations, cancellationToken);
 
                 Assembly scriptAssembly = null;
                 MethodInfo entryPoint;
@@ -310,11 +317,15 @@ namespace AuroraScript
             }
         }
 
-        private void EmitProgram(AbstractCILBuilder builder, Compiler.Ast.ModuleDeclaration[] modules, CancellationToken cancellationToken)
+        private void EmitProgram(
+            AbstractCILBuilder builder,
+            Compiler.Ast.ModuleDeclaration[] modules,
+            GlobalDeclarationIndex globalDeclarations,
+            CancellationToken cancellationToken)
         {
             try
             {
-                var backend = new BackendCompiler(builder, Options);
+                var backend = new BackendCompiler(builder, Options, globalDeclarations);
                 var compileSession = backend.CreateModulePlans(modules, cancellationToken);
                 new BackendBuildEmitter(new EmissionSession(compileSession, builder, emitExecutableSkeletons: true)).Emit();
             }
@@ -322,6 +333,18 @@ namespace AuroraScript
             {
                 throw CreateCompilationException(ex, AuroraCompilationStage.Emission);
             }
+        }
+
+        private static bool IsProjectSource(ScriptSource source)
+        {
+            if (source == null)
+            {
+                return false;
+            }
+
+            return GlobalDeclarationScanner.IsProjectSource(
+                ScriptPath.NormalizeBaseDirectory(source.BaseDirectory),
+                source.FullPath);
         }
 
         internal static bool IsCompilationPipelineException(Exception exception)

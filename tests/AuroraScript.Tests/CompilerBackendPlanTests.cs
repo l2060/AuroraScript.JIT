@@ -112,20 +112,26 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
-    public void GlobalPredefineMarksDeclareVariablesAsCompileTimeOnlySymbols()
+    public void GlobalPredefineMarksGlobalDeclarationsAsCompileTimeOnlySymbols()
     {
         var root = Path.GetTempPath();
         var module = Parse(
             """
             @module(TEST);
-            export declare var HOST_VALUE;
-            export declare const HOST_CONST;
             """,
             root);
+        var globals = AuroraScript.Compiler.GlobalDeclarations.GlobalDeclarationScanner.BuildIndex([
+            ("globals.as",
+            """
+            @global();
+            declare var HOST_VALUE;
+            declare const HOST_CONST;
+            """)
+        ]);
         var options = EngineOptions.Default
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
-        var backend = new BackendCompiler(new DynamicBuilder(options), options);
+        var backend = new BackendCompiler(new DynamicBuilder(options), options, globals);
 
         var session = backend.CreateModulePlans([module]);
         var modulePlan = Assert.Single(session.Modules);

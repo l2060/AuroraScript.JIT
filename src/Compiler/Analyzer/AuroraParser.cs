@@ -93,6 +93,8 @@ namespace AuroraScript.Compiler.Analyzer
         private readonly SourceFileVisitor _sourceFileVisitor = new SourceFileVisitor();
 
         private readonly EngineOptions _options;
+        private bool _seenEffectiveModuleStatement;
+        private bool _seenExplicitModuleMetadata;
 
         public AuroraParser(AuroraLexer lexer, EngineOptions options)
         {
@@ -115,7 +117,6 @@ namespace AuroraScript.Compiler.Analyzer
         {
             using (scopeStack.Scope(ScopeType.MODULE))
             {
-                var seenModuleSyntax = false;
                 while (true)
                 {
                     if (this.Lexer.TestNext(Symbols.KW_EOF)) break;
@@ -127,7 +128,7 @@ namespace AuroraScript.Compiler.Analyzer
                     {
                         if (statementSymbol == Symbols.PT_SEMICOLON)
                         {
-                            seenModuleSyntax = true;
+                            _seenEffectiveModuleStatement = true;
                         }
                         continue;
                     }
@@ -136,33 +137,72 @@ namespace AuroraScript.Compiler.Analyzer
 
                     if (node is ModuleMetaStatement meta)
                     {
-                        if (meta.Name.Value == "module" && seenModuleSyntax)
+                        if (meta.Name.Value == "module" && this.Root.IsGlobalDeclarationFile)
+                        {
+                            throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, meta.Name, "@global() declaration files cannot also declare @module metadata.");
+                        }
+
+                        if (meta.Name.Value == "module" && _seenEffectiveModuleStatement)
                         {
                             throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, meta.Name, "@module metadata must be the first effective statement in a module.");
                         }
 
-                        this.Root.MetaInfos[meta.Name.Value] = meta.Value?.Value;
                         if (meta.Name.Value == "module")
                         {
+                            if (this.Root.IsGlobalDeclarationFile)
+                            {
+                                throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, meta.Name, "@global() declaration files cannot also declare @module metadata.");
+                            }
+
+                            _seenExplicitModuleMetadata = true;
+                            this.Root.MetaInfos[meta.Name.Value] = meta.Value?.Value;
                             this.Root.ModuleName = meta.Value?.Value;
+                        }
+                        else if (meta.Name.Value == "global")
+                        {
+                            if (_seenEffectiveModuleStatement)
+                            {
+                                throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, meta.Name, "@global() metadata must be the first effective statement in a file.");
+                            }
+
+                            if (_seenExplicitModuleMetadata)
+                            {
+                                throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, meta.Name, "@global() declaration files cannot also declare @module metadata.");
+                            }
+
+                            if (this.Root.MetaInfos.ContainsKey("module"))
+                            {
+                                this.Root.MetaInfos.Remove("module");
+                            }
+
+                            this.Root.MetaInfos[meta.Name.Value] = true;
+                            this.Root.IsGlobalDeclarationFile = true;
+                            this.Root.ModuleName = null;
+                        }
+                        else
+                        {
+                            this.Root.MetaInfos[meta.Name.Value] = meta.Value?.Value;
                         }
                     }
                     else if (node is FunctionDeclaration func)
                     {
+                        RejectGlobalNonDeclareStatement(node);
                         this.Root.AddFunction(func);
                         func.Parent = this.Root;
                     }
                     else if (node is ImportDeclaration importDeclaration)
                     {
+                        RejectGlobalNonDeclareStatement(node);
                         this.Root.AddImport(importDeclaration);
                         importDeclaration.Parent = Root;
                     }
                     else
                     {
+                        RejectGlobalNonDeclareStatement(node);
                         this.Root.AddStatement(node);
                     }
 
-                    seenModuleSyntax = true;
+                    _seenEffectiveModuleStatement = true;
                 }
                 SetSourceRecursive(this.Root);
             }
@@ -272,6 +312,26 @@ namespace AuroraScript.Compiler.Analyzer
             stmt.IsIndependent = true;
             SetRange(stmt, exp.Range, semiRange);
             return stmt;
+        }
+
+        private void RejectGlobalNonDeclareStatement(Statement node)
+        {
+            if (!Root.IsGlobalDeclarationFile)
+            {
+                return;
+            }
+
+            if (node is VariableDeclaration { IsDeclare: true } ||
+                node is FunctionDeclaration function && (function.Flags & FunctionFlags.Declare) != 0)
+            {
+                return;
+            }
+
+            throw new AuroraCompilationException(
+                AuroraCompilationStage.Parsing,
+                Lexer.FullPath,
+                node.Range,
+                "@global() declaration files only allow declare statements.");
         }
 
         // =================================================================================
@@ -848,6 +908,17 @@ namespace AuroraScript.Compiler.Analyzer
             var annotation = ParseAnnotation();
             if (this.Lexer.TestNext(Symbols.PT_SEMICOLON))
             {
+                if (annotation.Name.Value == "global")
+                {
+                    if (annotation.Arguments.Count != 0)
+                    {
+                        throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, annotation.Name, "@global() does not accept arguments.");
+                    }
+
+                    var globalStatement = SetDebug(new ModuleMetaStatement((IdentifierToken)annotation.Name, null), annotation.Name);
+                    return globalStatement;
+                }
+
                 if (annotation.Arguments.Count != 1 || annotation.Arguments[0] is not IdentifierToken)
                 {
                     throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, annotation.Name, "Module metadata requires exactly one identifier value.");
@@ -1015,7 +1086,7 @@ namespace AuroraScript.Compiler.Analyzer
             }
             else if (symbol == Symbols.KW_DECLARE)
             {
-                return ParseDeclare(MemberAccess.Export);
+                throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, exportRange, "export declare is not supported. Use declare inside an @global() file.");
             }
             else if (symbol == Symbols.KW_ENUM)
             {
@@ -1067,6 +1138,11 @@ namespace AuroraScript.Compiler.Analyzer
         private Statement ParseDeclare(MemberAccess access = MemberAccess.Internal)
         {
             var start = this.Lexer.NextRangeOfKind(Symbols.KW_DECLARE);
+            if (!Root.IsGlobalDeclarationFile)
+            {
+                throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, start, "declare is only allowed inside @global() declaration files.");
+            }
+
             if (this.Lexer.TestNext(Symbols.KW_FUNCTION) || this.Lexer.TestNext(Symbols.KW_FUNC))
             {
                 var funcName = this.Lexer.NextOfKind<IdentifierToken>();

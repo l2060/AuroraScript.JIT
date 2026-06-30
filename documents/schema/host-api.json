@@ -54,7 +54,9 @@
           ],
           "notes": [
             "BuildAsync(string) resolves the entry path through Compiler.SourceResolver.",
-            "BuildAsync() enumerates all sources from Compiler.SourceResolver.GetAllSourcesAsync."
+            "BuildAsync() enumerates all sources from Compiler.SourceResolver.GetAllSourcesAsync.",
+            "Before module analysis, the compiler scans resolver-visible project .as files and loads standalone @global() declaration files when they exist.",
+            "@global() declarations are optional compile-time contracts for host globals and do not depend on import/include."
           ]
         },
         "CompileBlock": {
@@ -65,7 +67,8 @@
             "CompiledBlock CompileBlock(string source, CompileBlockOptions options = null)"
           ],
           "notes": [
-            "CompileBlock accepts statement bodies only, not module syntax."
+            "CompileBlock accepts statement bodies only, not module syntax.",
+            "CompileBlock does not support @module, @global(), import, include, export, or declare."
           ]
         },
         "CreateDomain": {
@@ -514,12 +517,14 @@
           "signature": "IAsyncEnumerable<ScriptSource> GetAllSourcesAsync(ScriptSourceQuery query, CancellationToken cancellationToken = default)",
           "summary": "Enumerates sources visible to BuildAsync().",
           "notes": [
-            "Returned sources should use normalized FullPath values so CompositeScriptSourceResolver can de-duplicate overlays by source identity."
+            "Returned sources should use normalized FullPath values so CompositeScriptSourceResolver can de-duplicate overlays by source identity.",
+            "The compiler also uses resolver-visible project sources to discover optional @global() declaration files before module analysis."
           ]
         }
       },
       "notes": [
         "A resolver only defines the compiler source universe. It does not decide whether a source is open in an editor.",
+        "A resolver should not hard-code language-server workspace directory filtering; editor/indexing policies belong outside the core resolver.",
         "Use '/' internally for virtual paths and normalized file-system paths.",
         "The build pipeline is parser raw path -> ModuleGraph ResolveAsync -> GetSourceAsync."
       ]
@@ -705,7 +710,10 @@
         "GetAllSourcesAsync": {
           "kind": "method",
           "signature": "IAsyncEnumerable<ScriptSource> GetAllSourcesAsync(ScriptSourceQuery query, CancellationToken cancellationToken = default)",
-          "summary": "Enumerates script files under Root for BuildAsync()."
+          "summary": "Enumerates script files under Root for BuildAsync().",
+          "notes": [
+            "The file-system resolver does not apply language-server workspace directory filters such as bin, obj, or node_modules."
+          ]
         }
       },
       "notes": [

@@ -41,6 +41,11 @@ namespace AuroraScript.Compiler.Ast
         /// </summary>
         public String FullPath { get; set; }
 
+        /// <summary>
+        /// Gets or sets whether this file is a compile-time global declaration file.
+        /// </summary>
+        public Boolean IsGlobalDeclarationFile { get; set; }
+
         public override void Accept(IAstVisitor visitor)
         {
             visitor.AcceptModule(this);

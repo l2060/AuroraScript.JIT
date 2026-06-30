@@ -19,14 +19,13 @@ internal static class BuiltinFormat
         {
             for (var i = 0; i < symbol.Constructors.Count; i++)
             {
-                builder.Append("export declare ");
                 AppendConstructorDeclaration(builder, symbol.Constructors[i], includeNewKeyword: true, mappedTypes: true);
                 builder.Append(";\n");
             }
         }
         else
         {
-            builder.Append("export declare ").Append(symbol.Name);
+            builder.Append(symbol.Name);
             if (symbol.Kind == BuiltinApiKind.Function)
             {
                 builder.Append("(): Object");
@@ -42,7 +41,7 @@ internal static class BuiltinFormat
     {
         var builder = new StringBuilder();
         builder.Append("```").Append(MarkdownLanguageId).Append('\n');
-        builder.Append("export declare ").Append(member.FullName);
+        builder.Append(member.FullName);
 
         if (member.Kind == BuiltinApiKind.Method || member.Kind == BuiltinApiKind.Function)
         {
@@ -137,7 +136,6 @@ internal static class BuiltinFormat
     {
         var builder = new StringBuilder();
         builder.Append("```").Append(MarkdownLanguageId).Append('\n');
-        builder.Append("export declare ");
         AppendConstructorDeclaration(builder, constructor, includeNewKeyword: true, mappedTypes: true);
         builder.Append(";\n```");
         AppendNotes(builder, constructor.Documentation.GetNotes(locale));

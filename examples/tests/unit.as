@@ -917,7 +917,7 @@ export func externalDeclare() {
 	}
 
 
-	console.log(APP_VERSION, ONLINE_TOTAL);
+	console.log(global.APP_VERSION, ONLINE_TOTAL);
 	// APP_VERSION = 'x.y.z';
 	ONLINE_TOTAL = 333;
 	console.log(APP_VERSION, ONLINE_TOTAL);

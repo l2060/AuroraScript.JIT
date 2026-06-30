@@ -148,15 +148,36 @@ var domain = engine.CreateDomain(global =>
 });
 ```
 
+宿主注入的 `global` 成员不要求写 `@global()` 声明；没有声明时，运行时仍会从 domain 的 `global` 对象读取这些值。`@global()` 的作用是给宿主侧 API 提供可选的编译期契约，让编辑器获得语义着色、跳转定义和更好的静态诊断。它类似 TypeScript 的 `.d.ts`：只提供符号契约，不产生运行时代码。
+
+`globals.as`：
+
+```javascript
+@global();
+
+declare func HOST_ADD(left, right);
+declare const HOST_NAME;
+declare var HOST_COUNT;
+```
+
+普通模块中可以直接使用这些全局符号：
+
 ```javascript
 @module(MAIN);
-
-export declare func HOST_ADD(left, right);
 
 export func run() {
     return HOST_NAME + ":" + HOST_ADD(20, 22);
 }
 ```
+
+`@global()` 文件规则：
+
+- `@global();` 必须是第一条有效语句；它前面只能有空行或注释。
+- `@global()` 不能与 `@module` 同时存在。
+- `@global()` 文件只允许 `declare` 声明，不能写 `export declare`。
+- `declare` 不能写在 `@module` 文件中。
+- `@global()` 文件不能被 `import` / `include`，也不会被编译为模块。
+- 一个项目可以有多个 `@global()` 文件，但全局名称不能重复；函数不支持重载。
 
 ## Script Source Resolver
 
@@ -227,11 +248,14 @@ Resolver 规则：
 - `FileSystemScriptSourceResolver` 的 `BuildAsync()` 枚举 root 下文件；依赖解析会跟随导入者路径，文件存在时可解析到 root 外，返回引用仍由该 FileSystem resolver 读取。
 - `GetSourceAsync` 按 `ScriptSourceReference.BaseDirectory` 精确路由到对应 resolver，不会重新按目标路径搜索。
 - `BuildAsync()` 通过 `GetAllSourcesAsync` 枚举源码；`Composite` 按规范化后的 `FullPath` 去重，前面的源码覆盖后面的同路径源码。
+- 编译器会在模块分析前扫描 resolver 可见的项目 `.as` 文件；如果存在 `@global()` 声明文件，会加载这些可选声明。它们不依赖 `import` / `include`。
 - Resolver 内部路径应在构建/添加源码时规范化，并统一使用 `/` 分隔，避免每次比较时重复归一化。
 
 ## CompileBlock
 
 `CompileBlock` 会把源码当作匿名函数体编译，不创建模块，也不参与热重载。它适合公式、规则、过滤器和需要频繁调用的小段逻辑。
+
+`CompileBlock` 只接受语句体，不支持 `@module`、`@global()`、`import`、`include`、`export` 或 `declare`。
 
 ```csharp
 var engine = new AuroraEngine(EngineOptions.Default);
@@ -300,6 +324,8 @@ HotPatch.incremental("./main", "export func added() { return 1; }");
 ## 模块与函数注解
 
 模块名通过 `@module(NAME);` 声明。`@module` 必须出现在模块的第一条有效语句位置；它前面只能有空白或注释。
+
+`@module` 文件是可编译模块，允许顶层 `import` / `include` / `export`。`@global()` 文件是全局声明文件，只用于编译期符号辅助，不能与 `@module` 混用，也不能被导入或包含。
 
 ```javascript
 // 模块声明必须放在第一条有效语句
@@ -488,7 +514,7 @@ export const TEMPLATE = STR + BASE + '_' + TAG; // 'this is string10_10_1'
 当前测试覆盖和示例中使用的语法包括：
 
 - `var` / `const` / `func` / `function` / `return`
-- `@module`、`@directCall`
+- `@module`、`@global()`、`@directCall`
 - `if` / `else` / `for` / `for-in` / `while` / `break` / `continue`
 - `try` / `catch` / `finally` / `throw`
 - `enum`

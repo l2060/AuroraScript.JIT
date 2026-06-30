@@ -1,13 +1,23 @@
 using AuroraScript.LanguageServices;
 using AuroraScript.LanguageServices.Builtins;
 using AuroraScript.LanguageServices.Features.SemanticTokens;
+using System;
+using System.IO;
 using System.Linq;
 using Xunit;
 
 namespace AuroraScript.LanguageServices.Tests;
 
-public sealed class SemanticTokensFeatureTests
+public sealed class SemanticTokensFeatureTests : IDisposable
 {
+    private readonly string _root;
+
+    public SemanticTokensFeatureTests()
+    {
+        _root = Path.Combine(Path.GetTempPath(), "aurora-semantic-tokens-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(_root);
+    }
+
     [Fact]
     public void ScansLexerTokensForHighlighting()
     {
@@ -50,7 +60,7 @@ public sealed class SemanticTokensFeatureTests
                 return `total: ${10}`;
             }
             """;
-        var service = new AuroraLanguageService(BuiltinApiLoader.LoadFromFile(BuiltinApiCatalogTests.GetRuntimeApiPath()));
+        var service = CreateService(_root);
 
         var result = service.GetSemanticTokens("main.as", source);
 
@@ -129,6 +139,138 @@ public sealed class SemanticTokensFeatureTests
     }
 
     [Fact]
+    public void DeclaredExternalSymbolsUseDedicatedTokensAndRespectShadowing()
+    {
+        const string globals =
+            """
+            @global();
+
+            declare const APP_VERSION;
+            declare var ONLINE_TOTAL;
+            declare func INPUT_NUMBER(title, label, type, callback);
+            """;
+        const string source =
+            """
+            @module(TEST);
+
+            export func run() {
+                INPUT_NUMBER("title", "label", "number", null);
+                console.log(APP_VERSION, ONLINE_TOTAL);
+                {
+                    var APP_VERSION = "local";
+                    var ONLINE_TOTAL = 0;
+                    var INPUT_NUMBER = console.log;
+                    INPUT_NUMBER("local");
+                    console.log(APP_VERSION, ONLINE_TOTAL);
+                }
+                INPUT_NUMBER("title", "label", "number", null);
+            }
+
+            export func shadow(INPUT_NUMBER) {
+                INPUT_NUMBER("param");
+            }
+            """;
+        var service = CreateService(_root);
+        service.OpenOrUpdateDocument(Path.Combine(_root, "globals.as"), globals);
+        service.OpenOrUpdateDocument(Path.Combine(_root, "main.as"), source);
+
+        var globalResult = service.GetSemanticTokens(Path.Combine(_root, "globals.as"));
+        var result = service.GetSemanticTokens(Path.Combine(_root, "main.as"));
+
+        AssertToken(globals, globalResult, "declare const APP_VERSION", "APP_VERSION", AuroraSemanticTokenTypes.DeclaredGlobal);
+        AssertToken(globals, globalResult, "declare var ONLINE_TOTAL", "ONLINE_TOTAL", AuroraSemanticTokenTypes.DeclaredGlobal);
+        AssertToken(globals, globalResult, "declare func INPUT_NUMBER", "INPUT_NUMBER", AuroraSemanticTokenTypes.DeclaredGlobalFunction);
+        AssertToken(source, result, "INPUT_NUMBER(\"title\", \"label\", \"number\", null)", "INPUT_NUMBER", AuroraSemanticTokenTypes.DeclaredGlobalFunction);
+        AssertToken(source, result, "console.log(APP_VERSION, ONLINE_TOTAL)", "APP_VERSION", AuroraSemanticTokenTypes.DeclaredGlobal);
+        AssertToken(source, result, "console.log(APP_VERSION, ONLINE_TOTAL)", "ONLINE_TOTAL", AuroraSemanticTokenTypes.DeclaredGlobal);
+        AssertNoToken(source, result, "var APP_VERSION = \"local\"", "APP_VERSION", AuroraSemanticTokenTypes.DeclaredGlobal);
+        AssertNoToken(source, result, "var ONLINE_TOTAL = 0", "ONLINE_TOTAL", AuroraSemanticTokenTypes.DeclaredGlobal);
+        AssertNoToken(source, result, "var INPUT_NUMBER = console.log", "INPUT_NUMBER", AuroraSemanticTokenTypes.DeclaredGlobalFunction);
+        AssertNoToken(source, result, "INPUT_NUMBER(\"local\")", "INPUT_NUMBER", AuroraSemanticTokenTypes.DeclaredGlobalFunction);
+        AssertNoToken(source, result, "shadow(INPUT_NUMBER)", "INPUT_NUMBER", AuroraSemanticTokenTypes.DeclaredGlobalFunction);
+        AssertNoToken(source, result, "INPUT_NUMBER(\"param\")", "INPUT_NUMBER", AuroraSemanticTokenTypes.DeclaredGlobalFunction);
+    }
+
+    [Fact]
+    public void DeclaredExternalSymbolsResolveFromWorkspaceGlobalDeclarations()
+    {
+        var mainPath = Path.Combine(_root, "main.as");
+        var globalsPath = Path.Combine(_root, "globals.as");
+        var main =
+            """
+            @module(MAIN);
+
+            export func run() {
+                INPUT_NUMBER("title", "label", "number", null);
+                console.log(APP_VERSION, ONLINE_TOTAL);
+                global.INPUT_NUMBER("title", "label", "number", null);
+                console.log(global.APP_VERSION, global.ONLINE_TOTAL);
+                var host = {};
+                host.INPUT_NUMBER("title", "label", "number", null);
+                console.log(host.APP_VERSION, host.ONLINE_TOTAL);
+                {
+                    var INPUT_NUMBER = console.log;
+                    var APP_VERSION = "local";
+                    var ONLINE_TOTAL = 0;
+                    INPUT_NUMBER("local");
+                    console.log(APP_VERSION, ONLINE_TOTAL);
+                }
+            }
+            """;
+        var globals =
+            """
+            @global();
+            declare const APP_VERSION;
+            declare var ONLINE_TOTAL;
+            declare func INPUT_NUMBER(title, label, type, callback);
+            """;
+        var service = CreateService(_root);
+        service.OpenOrUpdateDocument(mainPath, main);
+        service.OpenOrUpdateDocument(globalsPath, globals);
+
+        var result = service.GetSemanticTokens(mainPath);
+
+        AssertToken(main, result, "INPUT_NUMBER(\"title\", \"label\", \"number\", null)", "INPUT_NUMBER", AuroraSemanticTokenTypes.DeclaredGlobalFunction);
+        AssertToken(main, result, "console.log(APP_VERSION, ONLINE_TOTAL)", "APP_VERSION", AuroraSemanticTokenTypes.DeclaredGlobal);
+        AssertToken(main, result, "console.log(APP_VERSION, ONLINE_TOTAL)", "ONLINE_TOTAL", AuroraSemanticTokenTypes.DeclaredGlobal);
+        AssertToken(main, result, "global.INPUT_NUMBER", "INPUT_NUMBER", AuroraSemanticTokenTypes.DeclaredGlobalFunction);
+        AssertToken(main, result, "global.APP_VERSION", "APP_VERSION", AuroraSemanticTokenTypes.DeclaredGlobal);
+        AssertToken(main, result, "global.ONLINE_TOTAL", "ONLINE_TOTAL", AuroraSemanticTokenTypes.DeclaredGlobal);
+        AssertNoToken(main, result, "host.INPUT_NUMBER", "INPUT_NUMBER", AuroraSemanticTokenTypes.DeclaredGlobalFunction);
+        AssertNoToken(main, result, "host.APP_VERSION", "APP_VERSION", AuroraSemanticTokenTypes.DeclaredGlobal);
+        AssertNoToken(main, result, "host.ONLINE_TOTAL", "ONLINE_TOTAL", AuroraSemanticTokenTypes.DeclaredGlobal);
+        AssertNoToken(main, result, "INPUT_NUMBER(\"local\")", "INPUT_NUMBER", AuroraSemanticTokenTypes.DeclaredGlobalFunction);
+        AssertNoTokenInLast(main, result, "console.log(APP_VERSION, ONLINE_TOTAL);", "APP_VERSION", AuroraSemanticTokenTypes.DeclaredGlobal);
+        AssertNoTokenInLast(main, result, "console.log(APP_VERSION, ONLINE_TOTAL);", "ONLINE_TOTAL", AuroraSemanticTokenTypes.DeclaredGlobal);
+    }
+
+    [Fact]
+    public void DeclaredExternalSymbolsResolveFromIndexedWorkspaceFiles()
+    {
+        var mainPath = Path.Combine(_root, "main.as");
+        var globalsPath = Path.Combine(_root, "globals.as");
+        var main =
+            """
+            @module(MAIN);
+            export func run() {
+                return APP_VERSION;
+            }
+            """;
+        var globals =
+            """
+            @global();
+            declare const APP_VERSION;
+            """;
+        File.WriteAllText(globalsPath, globals);
+        var service = CreateService(_root, indexWorkspaceFiles: true);
+        service.OpenOrUpdateDocument(mainPath, main);
+
+        var result = service.GetSemanticTokens(mainPath);
+
+        AssertToken(main, result, "APP_VERSION", AuroraSemanticTokenTypes.DeclaredGlobal);
+    }
+
+    [Fact]
     public void ReturnsEmptyTokensForIncompleteSource()
     {
         var service = new AuroraLanguageService(BuiltinApiLoader.LoadFromFile(BuiltinApiCatalogTests.GetRuntimeApiPath()));
@@ -136,6 +278,24 @@ public sealed class SemanticTokensFeatureTests
         var result = service.GetSemanticTokens("main.as", "export func run(){ return \"unterminated");
 
         Assert.Empty(result.Tokens);
+    }
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_root))
+        {
+            Directory.Delete(_root, recursive: true);
+        }
+    }
+
+    private static AuroraLanguageService CreateService(string baseDirectory, bool indexWorkspaceFiles = false)
+    {
+        return new AuroraLanguageService(new AuroraLanguageServiceOptions(
+            BuiltinApiLoader.LoadFromFile(BuiltinApiCatalogTests.GetRuntimeApiPath()))
+        {
+            BaseDirectory = baseDirectory,
+            IndexWorkspaceFiles = indexWorkspaceFiles
+        });
     }
 
     private static void AssertToken(string source, SemanticTokensResult result, string text, int type)
@@ -157,6 +317,28 @@ public sealed class SemanticTokensFeatureTests
     private static void AssertNoToken(string source, SemanticTokensResult result, string text, int type)
     {
         Assert.DoesNotContain(result.Tokens, token => token.Type == type && TokenText(source, token) == text);
+    }
+
+    private static void AssertNoToken(string source, SemanticTokensResult result, string context, string text, int type)
+    {
+        var contextIndex = source.IndexOf(context, System.StringComparison.Ordinal);
+        Assert.True(contextIndex >= 0, $"Context '{context}' was not found.");
+        Assert.DoesNotContain(result.Tokens, token =>
+            token.Type == type &&
+            TokenText(source, token) == text &&
+            TokenOffset(source, token) >= contextIndex &&
+            TokenOffset(source, token) < contextIndex + context.Length);
+    }
+
+    private static void AssertNoTokenInLast(string source, SemanticTokensResult result, string context, string text, int type)
+    {
+        var contextIndex = source.LastIndexOf(context, System.StringComparison.Ordinal);
+        Assert.True(contextIndex >= 0, $"Context '{context}' was not found.");
+        Assert.DoesNotContain(result.Tokens, token =>
+            token.Type == type &&
+            TokenText(source, token) == text &&
+            TokenOffset(source, token) >= contextIndex &&
+            TokenOffset(source, token) < contextIndex + context.Length);
     }
 
     private static string TokenText(string source, SemanticToken token)

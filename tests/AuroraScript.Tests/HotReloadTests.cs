@@ -58,6 +58,41 @@ public sealed class HotReloadTests
     }
 
     [Fact]
+    public async Task PatchRejectsGlobalDeclarationFile()
+    {
+        using var workspace = new TestWorkspace();
+        var (engine, domain) = await workspace.CompileModuleAsync(
+            "@module(TEST); export func version() { return 1; }",
+            enableHotReload: true);
+
+        var error = Assert.Throws<AuroraCompilationException>(() => domain.DynamicPatch(
+            workspace.MemorySource("globals.as", "@global();\ndeclare const HOST_CONST;"),
+            HotPatchType.Incremental));
+
+        Assert.Contains("@global() declaration files cannot be compiled as modules", error.Message, StringComparison.OrdinalIgnoreCase);
+        ScriptAssert.Equal(1, TestWorkspace.Execute(domain, "version"));
+    }
+
+    [Fact]
+    public async Task PatchModuleCanUseProjectGlobalDeclarations()
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource("globals.as", "@global();\ndeclare func HOST_ADD(left, right);");
+        var (engine, domain) = await workspace.CompileModuleAsync(
+            "@module(TEST); export func value() { return 1; }",
+            configureGlobal: global => global.Define("HOST_ADD", (Func<int, int, int>)((left, right) => left + right)),
+            enableHotReload: true);
+
+        domain.DynamicPatch(
+            workspace.MemorySource(
+                "patch.as",
+                "@module(TEST); export func value() { return HOST_ADD(20, 22); }"),
+            HotPatchType.Incremental);
+
+        ScriptAssert.Equal(42, TestWorkspace.Execute(domain, "value"));
+    }
+
+    [Fact]
     public async Task StringPatchRejectsRelativeModulePath()
     {
         using var workspace = new TestWorkspace();

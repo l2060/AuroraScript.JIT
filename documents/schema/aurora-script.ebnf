@@ -1,28 +1,30 @@
 (* AuroraScript grammar summary. This is a documentation grammar, not a generated parser source. *)
 
-source-file        = module-item* EOF ;
+source-file        = module-file | global-declaration-file ;
+
+module-file        = module-item* EOF ;
 module-item        = module-meta
                    | include-declaration
                    | import-declaration
                    | export-declaration
                    | statement ;
 
-module-meta        = "@" identifier "(" identifier ")" ";" ;
+global-declaration-file = global-meta global-declaration* EOF ;
+global-meta        = "@global" "(" ")" ";" ;
+global-declaration = declare-function | declare-variable ;
+
+module-meta        = "@module" "(" identifier ")" ";" ;
 include-declaration = "include" string-literal ";" ;
 import-declaration  = "import" identifier "from" string-literal ";" ;
 
 export-declaration = "export" ( function-declaration
                               | variable-declaration
-                              | declare-function
-                              | declare-variable
                               | enum-declaration ) ;
 
 statement          = ";"
                    | block
                    | annotated-function
                    | function-declaration
-                   | declare-function
-                   | declare-variable
                    | variable-declaration
                    | enum-declaration
                    | if-statement

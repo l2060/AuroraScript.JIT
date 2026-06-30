@@ -1,5 +1,6 @@
 using AuroraScript.Compiler.Analyzer;
 using AuroraScript.Compiler.Ast;
+using AuroraScript.Compiler.GlobalDeclarations;
 using AuroraScript.Core;
 using AuroraScript.Source;
 using System;
@@ -30,8 +31,10 @@ namespace AuroraScript.Compiler
                 AllowSynchronousContinuations = false
             });
         private readonly ConcurrentQueue<AuroraCompilationDiagnostic> _diagnostics = new();
+        private readonly GlobalDeclarationWorkspaceIndexBuilder _globalDeclarations = new();
         private readonly EngineOptions _options;
         private readonly object _workerLock = new();
+        private readonly object _globalDeclarationLock = new();
         private Task[] _workers;
         private CancellationToken _compilationCancellationToken;
         private int _maxWorkerCount;
@@ -43,6 +46,8 @@ namespace AuroraScript.Compiler
         {
             _options = options;
         }
+
+        public GlobalDeclarationIndex GlobalDeclarations { get; private set; } = GlobalDeclarationIndex.Empty;
 
         public async Task<ModuleDeclaration[]> BuildModuleGraphAsync(ScriptSource[] sources, CancellationToken cancellationToken = default)
         {
@@ -58,6 +63,8 @@ namespace AuroraScript.Compiler
             _maxWorkerCount = ResolveWorkerCount();
             _workers = new Task[_maxWorkerCount];
             _compilationCancellationToken = cancellationToken;
+
+            await PreloadProjectGlobalDeclarationsAsync(cancellationToken).ConfigureAwait(false);
 
             for (var i = 0; i < sources.Length; i++)
             {
@@ -84,9 +91,19 @@ namespace AuroraScript.Compiler
             if (!_diagnostics.IsEmpty)
             {
                 var diagnostics = _diagnostics.ToArray();
+                AppendGlobalDiagnostics(ref diagnostics);
                 Array.Sort(diagnostics, CompareDiagnostics);
                 throw new AuroraCompilationException(diagnostics);
             }
+
+            var globalDiagnostics = _globalDeclarations.Diagnostics.ToArray();
+            if (globalDiagnostics.Length != 0)
+            {
+                Array.Sort(globalDiagnostics, CompareDiagnostics);
+                throw new AuroraCompilationException(globalDiagnostics);
+            }
+
+            GlobalDeclarations = _globalDeclarations.ToIndex();
 
             var modules = _modulesByPath.Values.ToArray();
             Array.Sort(modules, CompareModulesByPath);
@@ -229,9 +246,21 @@ namespace AuroraScript.Compiler
         private async Task BuildSyntaxTreeAsync(ScriptSource source)
         {
             var fullPath = NormalizePath(source.FullPath);
+            var sourceText = source.ReadSource();
+            AddGlobalDeclarationFile(source.BaseDirectory, fullPath, sourceText);
+            if (GlobalDeclarationScanner.IsGlobalFile(sourceText))
+            {
+                return;
+            }
+
             var lexer = new AuroraLexer(source.BaseDirectory, source);
             var parser = new AuroraParser(lexer, _options);
             var syntaxTree = parser.Parse();
+            if (syntaxTree.IsGlobalDeclarationFile)
+            {
+                return;
+            }
+
             await ResolveImportsAsync(source, syntaxTree).ConfigureAwait(false);
 
             if (!_modulesByPath.TryAdd(fullPath, syntaxTree))
@@ -281,6 +310,19 @@ namespace AuroraScript.Compiler
                 import.FullPath = resolved.Value.FullPath;
                 import.ModulePath = resolved.Value.ModulePath;
                 import.Reference = resolved.Value;
+
+                var resolvedSource = await _options.Compiler.SourceResolver
+                    .GetSourceAsync(resolved.Value, _compilationCancellationToken)
+                    .ConfigureAwait(false);
+                var resolvedText = resolvedSource.ReadSource();
+                AddGlobalDeclarationFile(resolved.Value.BaseDirectory, resolved.Value.FullPath, resolvedText);
+                if (GlobalDeclarationScanner.IsGlobalFile(resolvedText))
+                {
+                    var message = import.Include
+                        ? "@global() declaration files cannot be included."
+                        : "@global() declaration files cannot be imported.";
+                    throw new AuroraCompilationException(AuroraCompilationStage.Binding, import.File.Range, message);
+                }
             }
         }
 
@@ -443,9 +485,85 @@ namespace AuroraScript.Compiler
             return ScriptPath.NormalizeFullPath(path);
         }
 
+        private void AddGlobalDeclarationFile(string baseDirectory, string fullPath, string text)
+        {
+            var root = ScriptPath.NormalizeBaseDirectory(baseDirectory);
+            if (!GlobalDeclarationScanner.IsProjectSource(root, fullPath))
+            {
+                return;
+            }
+
+            lock (_globalDeclarationLock)
+            {
+                _globalDeclarations.AddFile(fullPath, text);
+            }
+        }
+
+        private async Task PreloadProjectGlobalDeclarationsAsync(CancellationToken cancellationToken)
+        {
+            var resolver = _options.Compiler.SourceResolver;
+            if (resolver == null)
+            {
+                return;
+            }
+
+            var query = new ScriptSourceQuery(_options.Compiler.ExtName, Encoding.UTF8);
+            await foreach (var source in resolver.GetAllSourcesAsync(query, cancellationToken).ConfigureAwait(false))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var sourceRoot = string.IsNullOrWhiteSpace(source.BaseDirectory)
+                    ? resolver.Root
+                    : source.BaseDirectory;
+                if (!GlobalDeclarationScanner.IsProjectSource(sourceRoot, source.FullPath))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    if (GlobalDeclarationScanner.TryReadGlobalDeclarationSource(source, out var text))
+                    {
+                        AddGlobalDeclarationFile(sourceRoot, source.FullPath, text);
+                    }
+                }
+                catch (Exception ex) when (IsSourceReadFailure(ex))
+                {
+                }
+            }
+        }
+
+        private void AppendGlobalDiagnostics(ref AuroraCompilationDiagnostic[] diagnostics)
+        {
+            var globalDiagnostics = _globalDeclarations.Diagnostics;
+            if (globalDiagnostics.Count == 0)
+            {
+                return;
+            }
+
+            var combined = new AuroraCompilationDiagnostic[diagnostics.Length + globalDiagnostics.Count];
+            Array.Copy(diagnostics, combined, diagnostics.Length);
+            for (var i = 0; i < globalDiagnostics.Count; i++)
+            {
+                combined[diagnostics.Length + i] = globalDiagnostics[i];
+            }
+
+            diagnostics = combined;
+        }
+
         private static int CompareModulesByPath(ModuleDeclaration left, ModuleDeclaration right)
         {
             return PathComparer.Compare(left.FullPath, right.FullPath);
+        }
+
+        private static bool IsSourceReadFailure(Exception exception)
+        {
+            return exception is FileNotFoundException
+                or DirectoryNotFoundException
+                or IOException
+                or UnauthorizedAccessException
+                or ArgumentException
+                or NotSupportedException
+                or KeyNotFoundException;
         }
 
         private static int CompareDiagnostics(AuroraCompilationDiagnostic left, AuroraCompilationDiagnostic right)

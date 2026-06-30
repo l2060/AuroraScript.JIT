@@ -3,6 +3,7 @@ using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Backend;
 using AuroraScript.Compiler.Backend.Builders;
 using AuroraScript.Compiler.Backend.Emission;
+using AuroraScript.Compiler.GlobalDeclarations;
 using AuroraScript.Core;
 using AuroraScript.Runtime;
 using AuroraScript.Source;
@@ -38,6 +39,7 @@ namespace AuroraScript.Compiler
             var sourcePath = source.SourcePath;
             var moduleMap = Domain.Global.modulePathHash.Values.ToDictionary(k => k.ModulePath, v => v.ModuleName);
             var moduleSyntaxTrees = await BuildSyntaxTreeAsync(source, cancellationToken).ConfigureAwait(false);
+            var globalDeclarations = await BuildGlobalDeclarationIndexAsync(cancellationToken).ConfigureAwait(false);
             if ((patchType & HotPatchType.IgnoreDepends) != 0)
             {
                 moduleSyntaxTrees.RemoveAll(e => e.ModulePath != sourcePath && moduleMap.ContainsKey(e.ModulePath));
@@ -52,7 +54,7 @@ namespace AuroraScript.Compiler
                 keys = existingModule.EnumerationKeys().ToArray();
             }
             LinkModules(mainModule, dependencies, moduleMap);
-            var backend = new BackendCompiler(Builder, Options);
+            var backend = new BackendCompiler(Builder, Options, globalDeclarations);
             var session = backend.CreateHotPatchPlans(mainModule, dependencies, keys, out var mainModulePlan);
             var emitter = new HotPatchEmitter(
                 new EmissionSession(session, Builder, emitExecutableSkeletons: true, forceModuleDefinitions: true),
@@ -89,13 +91,36 @@ namespace AuroraScript.Compiler
             HashSet<String> visited = new HashSet<string>();
             padding.Enqueue(source);
             List<ModuleDeclaration> modules = new List<ModuleDeclaration>();
+            var globalDeclarations = new GlobalDeclarationWorkspaceIndexBuilder();
             while (padding.Count > 0)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 source = padding.Dequeue();
+                var sourceText = source.ReadSource();
+                globalDeclarations.AddFile(source.FullPath, sourceText);
+                if (GlobalDeclarationScanner.IsGlobalFile(sourceText))
+                {
+                    if (modules.Count == 0)
+                    {
+                        throw new AuroraCompilationException(
+                            AuroraCompilationStage.Parsing,
+                            source.FullPath,
+                            1,
+                            1,
+                            "@global() declaration files cannot be compiled as modules.");
+                    }
+
+                    continue;
+                }
+
                 var lexer = new AuroraLexer(source.BaseDirectory, source);
                 var parser = new AuroraParser(lexer, Options);
                 var syntaxTree = parser.Parse();
+                if (syntaxTree.IsGlobalDeclarationFile)
+                {
+                    continue;
+                }
+
                 await ResolveImportsAsync(source, syntaxTree, cancellationToken).ConfigureAwait(false);
                 foreach (var dep in syntaxTree.Imports)
                 {
@@ -110,7 +135,27 @@ namespace AuroraScript.Compiler
                 }
                 modules.Add(syntaxTree);
             }
+
+            if (globalDeclarations.Diagnostics.Count != 0)
+            {
+                throw new AuroraCompilationException(globalDeclarations.Diagnostics);
+            }
+
             return modules;
+        }
+
+        private async Task<GlobalDeclarationIndex> BuildGlobalDeclarationIndexAsync(CancellationToken cancellationToken)
+        {
+            var globalDeclarations = await GlobalDeclarationScanner
+                .BuildIndexAsync(Options.Compiler.SourceResolver, Options.Compiler.ExtName, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (globalDeclarations.Diagnostics.Count != 0)
+            {
+                throw new AuroraCompilationException(globalDeclarations.Diagnostics);
+            }
+
+            return globalDeclarations;
         }
 
         private async Task ResolveImportsAsync(
@@ -148,6 +193,17 @@ namespace AuroraScript.Compiler
                 import.FullPath = resolved.Value.FullPath;
                 import.ModulePath = resolved.Value.ModulePath;
                 import.Reference = resolved.Value;
+
+                var resolvedSource = await Options.Compiler.SourceResolver
+                    .GetSourceAsync(resolved.Value, cancellationToken)
+                    .ConfigureAwait(false);
+                if (GlobalDeclarationScanner.IsGlobalFile(resolvedSource.ReadSource()))
+                {
+                    var message = import.Include
+                        ? "@global() declaration files cannot be included."
+                        : "@global() declaration files cannot be imported.";
+                    throw new AuroraCompilationException(AuroraCompilationStage.Binding, import.File.Range, message);
+                }
             }
         }
     }

@@ -135,6 +135,60 @@ public sealed class ModuleCompilationTests
     }
 
     [Fact]
+    public async Task GlobalDeclarationFilesArePreloadedFromCustomSourceResolver()
+    {
+        const string root = "memory://aurora-global-tests";
+        var files = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["memory://aurora-global-tests/globals.as"] = "@global();\ndeclare const HOST_CONST;",
+            ["memory://aurora-global-tests/main.as"] = "@module(TEST); export func run() { return HOST_CONST; }"
+        };
+        var options = EngineOptions.Default
+            .WithCompiler(compiler => compiler.SourceResolver = new InMemoryResolver(root, files))
+            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var engine = new AuroraEngine(options);
+
+        await engine.BuildAsync("main.as");
+
+        var domain = engine.CreateDomain(global => global.Define("HOST_CONST", 42));
+        ScriptAssert.Equal(42, TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
+    public async Task ReportsDuplicateGlobalDeclarationsFromCustomSourceResolver()
+    {
+        const string root = "memory://aurora-global-duplicate-tests";
+        var files = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["memory://aurora-global-duplicate-tests/main.as"] = "@module(TEST); export func run() { return VERSION; }",
+            ["memory://aurora-global-duplicate-tests/a.as"] = "@global();\ndeclare const VERSION;",
+            ["memory://aurora-global-duplicate-tests/b.as"] = "@global();\ndeclare var VERSION;"
+        };
+        var options = EngineOptions.Default
+            .WithCompiler(compiler => compiler.SourceResolver = new InMemoryResolver(root, files))
+            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var engine = new AuroraEngine(options);
+
+        var error = await Assert.ThrowsAsync<AuroraCompilationException>(() => engine.BuildAsync("main.as"));
+
+        Assert.Contains("Duplicate global declaration 'VERSION'", error.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ExplicitMemoryGlobalDeclarationSourceIsAvailableToModules()
+    {
+        using var workspace = new TestWorkspace();
+        var globalSource = workspace.MemorySource("globals.as", "@global();\ndeclare const HOST_CONST;");
+        var mainSource = workspace.MemorySource("main.as", "@module(TEST); export func run() { return HOST_CONST; }");
+        var engine = workspace.CreateEngine();
+
+        await engine.BuildAsync(globalSource, mainSource);
+
+        var domain = engine.CreateDomain(global => global.Define("HOST_CONST", 42));
+        ScriptAssert.Equal(42, TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
     public async Task IncludeOnlyExposesExportedDeclarations()
     {
         using var workspace = new TestWorkspace();
@@ -370,6 +424,56 @@ public sealed class ModuleCompilationTests
             workspace.MemorySource("invalid.as", "@module(BROKEN); var value = ;")));
 
         ScriptAssert.Equal(42, TestWorkspace.Execute(engine.CreateDomain(), "run"));
+    }
+
+    [Fact]
+    public async Task GlobalDeclarationFilesAreSkippedWhenBuildingAllSources()
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource(
+            "globals.as",
+            """
+            @global();
+            declare const HOST_CONST;
+            """);
+        workspace.WriteSource("main.as", "@module(TEST); export func run() { return HOST_CONST; }");
+        var engine = workspace.CreateEngine();
+
+        await engine.BuildAsync();
+
+        var domain = engine.CreateDomain(global => global.Define("HOST_CONST", 42));
+        ScriptAssert.Equal(42, TestWorkspace.Execute(domain, "run"));
+        Assert.False(domain.Global.TryGetModule("globals", out _));
+    }
+
+    [Fact]
+    public async Task RejectsImportOrIncludeOfGlobalDeclarationFile()
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource("globals.as", "@global();\ndeclare const HOST_CONST;");
+        workspace.WriteSource("importer.as", "@module(IMPORTER); import globals from 'globals';");
+        workspace.WriteSource("includer.as", "@module(INCLUDER); include 'globals';");
+        var engine = workspace.CreateEngine();
+
+        var importError = await Assert.ThrowsAsync<AuroraCompilationException>(() => engine.BuildAsync("importer.as"));
+        var includeError = await Assert.ThrowsAsync<AuroraCompilationException>(() => engine.BuildAsync("includer.as"));
+
+        Assert.Contains("cannot be imported", importError.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("cannot be included", includeError.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ReportsDuplicateGlobalDeclarationsAcrossProject()
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource("main.as", "@module(TEST); export func run() { return VERSION; }");
+        workspace.WriteSource("a.as", "@global();\ndeclare const VERSION;");
+        workspace.WriteSource("b.as", "@global();\ndeclare func VERSION();");
+        var engine = workspace.CreateEngine();
+
+        var error = await Assert.ThrowsAsync<AuroraCompilationException>(() => engine.BuildAsync("main.as"));
+
+        Assert.Contains("Duplicate global declaration 'VERSION'", error.ToString(), StringComparison.Ordinal);
     }
 
     private sealed class InMemoryResolver : IScriptSourceResolver

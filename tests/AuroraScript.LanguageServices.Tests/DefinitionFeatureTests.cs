@@ -452,8 +452,8 @@ public sealed class DefinitionFeatureTests : IDisposable
         Assert.Equal("aurora-builtin:/Math.as", definition!.Path);
         var document = service.GetBuiltinDocument(definition.Path);
         Assert.NotNull(document);
-        Assert.Contains("export declare Math.abs(value: Number): Number;", document!.Text, StringComparison.Ordinal);
-        Assert.Contains("export declare Math.PI: Number;", document.Text, StringComparison.Ordinal);
+        Assert.Contains("Math.abs(value: Number): Number;", document!.Text, StringComparison.Ordinal);
+        Assert.Contains("Math.PI: Number;", document.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -487,7 +487,7 @@ public sealed class DefinitionFeatureTests : IDisposable
         Assert.Equal("aurora-builtin:/console.as", definition!.Path);
         var document = service.GetBuiltinDocument(definition.Path);
         Assert.NotNull(document);
-        Assert.Contains("export declare console.log(...values: Object[]): void;", document!.Text, StringComparison.Ordinal);
+        Assert.Contains("console.log(...values: Object[]): void;", document!.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -526,12 +526,12 @@ public sealed class DefinitionFeatureTests : IDisposable
         Assert.Equal("aurora-builtin:/console.as", consoleDefinition!.Path);
         var consoleDocument = service.GetBuiltinDocument(consoleDefinition.Path);
         Assert.NotNull(consoleDocument);
-        Assert.Contains("export declare console;", consoleDocument!.Text, StringComparison.Ordinal);
+        Assert.Contains("console;", consoleDocument!.Text, StringComparison.Ordinal);
         Assert.NotNull(logDefinition);
         Assert.Equal("aurora-builtin:/console.as", logDefinition!.Path);
         var document = service.GetBuiltinDocument(logDefinition.Path);
         Assert.NotNull(document);
-        Assert.Contains("export declare console.log(...values: Object[]): void;", document!.Text, StringComparison.Ordinal);
+        Assert.Contains("console.log(...values: Object[]): void;", document!.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -781,7 +781,7 @@ public sealed class DefinitionFeatureTests : IDisposable
         Assert.Equal("aurora-builtin:/Math.as", definition!.Path);
         var document = service.GetBuiltinDocument(definition.Path);
         Assert.NotNull(document);
-        Assert.Contains("export declare Math;", document!.Text, StringComparison.Ordinal);
+        Assert.Contains("Math;", document!.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -822,7 +822,7 @@ public sealed class DefinitionFeatureTests : IDisposable
         Assert.Equal("aurora-builtin:/String.as", definition!.Path);
         var document = service.GetBuiltinDocument(definition.Path);
         Assert.NotNull(document);
-        Assert.Contains("export declare String.fromCharCode(charCode: Number): String;", document!.Text, StringComparison.Ordinal);
+        Assert.Contains("String.fromCharCode(charCode: Number): String;", document!.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -869,7 +869,7 @@ public sealed class DefinitionFeatureTests : IDisposable
         Assert.Equal("aurora-builtin:/global.as", modulesDefinition!.Path);
         var document = service.GetBuiltinDocument(modulesDefinition.Path);
         Assert.NotNull(document);
-        Assert.Contains("export declare global.modules: Object;", document!.Text, StringComparison.Ordinal);
+        Assert.Contains("global.modules: Object;", document!.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -886,7 +886,7 @@ public sealed class DefinitionFeatureTests : IDisposable
         Assert.Equal("aurora-builtin:/Number.as", definition!.Path);
         var numberDocument = service.GetBuiltinDocument(definition.Path);
         Assert.NotNull(numberDocument);
-        Assert.Contains("export declare Number;", numberDocument!.Text, StringComparison.Ordinal);
+        Assert.Contains("Number;", numberDocument!.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -911,8 +911,8 @@ public sealed class DefinitionFeatureTests : IDisposable
         var document = service.GetBuiltinDocument("aurora-builtin:/Array.as");
 
         Assert.NotNull(document);
-        Assert.Contains("export declare Array.prototype.push(...values: Object[]): Number;", document!.Text, StringComparison.Ordinal);
-        Assert.Contains("export declare Array.prototype.length: Number;", document.Text, StringComparison.Ordinal);
+        Assert.Contains("Array.prototype.push(...values: Object[]): Number;", document!.Text, StringComparison.Ordinal);
+        Assert.Contains("Array.prototype.length: Number;", document.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -924,7 +924,7 @@ public sealed class DefinitionFeatureTests : IDisposable
 
         Assert.NotNull(document);
         Assert.Contains("// Constructors", document!.Text, StringComparison.Ordinal);
-        Assert.Contains("export declare new Path(root: String | Path | null, ...segments: (String | Path)[]): Path;", document.Text, StringComparison.Ordinal);
+        Assert.Contains("new Path(root: String | Path | null, ...segments: (String | Path)[]): Path;", document.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -941,7 +941,7 @@ public sealed class DefinitionFeatureTests : IDisposable
         Assert.Equal("aurora-builtin:/Function.as", definition!.Path);
         var functionDocument = service.GetBuiltinDocument(definition.Path);
         Assert.NotNull(functionDocument);
-        Assert.Contains("export declare Function;", functionDocument!.Text, StringComparison.Ordinal);
+        Assert.Contains("Function;", functionDocument!.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1004,6 +1004,54 @@ public sealed class DefinitionFeatureTests : IDisposable
         var definition = service.GetDefinition(mainPath, main, PositionOf(main, "String"));
 
         Assert.Null(definition);
+    }
+
+    [Fact]
+    public void ResolvesProjectGlobalDeclarationDefinitionsAndRespectsShadowing()
+    {
+        var service = new AuroraLanguageService(new AuroraLanguageServiceOptions(
+            BuiltinApiLoader.LoadFromFile(BuiltinApiCatalogTests.GetRuntimeApiPath()))
+        {
+            BaseDirectory = _root
+        });
+        var mainPath = Path.Combine(_root, "main.as");
+        var globalsPath = Path.Combine(_root, "globals.as");
+        var main =
+            """
+            @module(MAIN);
+            export func run() {
+                INPUT_NUMBER("title", "label", "number", null);
+                console.log(global.APP_VERSION);
+                {
+                    var INPUT_NUMBER = console.log;
+                    INPUT_NUMBER("local");
+                    var global = {};
+                    console.log(global.APP_VERSION);
+                }
+            }
+            """;
+        var globals =
+            """
+            @global();
+            declare const APP_VERSION;
+            declare func INPUT_NUMBER(title, label, type, callback);
+            """;
+        service.OpenOrUpdateDocument(mainPath, main);
+        service.OpenOrUpdateDocument(globalsPath, globals);
+
+        var callDefinition = service.GetDefinition(mainPath, PositionOf(main, "INPUT_NUMBER"));
+        var memberDefinition = service.GetDefinition(mainPath, PositionOf(main, "APP_VERSION"));
+        var shadowedCallDefinition = service.GetDefinition(mainPath, PositionOfLast(main, "INPUT_NUMBER"));
+        var shadowedMemberDefinition = service.GetDefinition(mainPath, PositionOfLast(main, "APP_VERSION"));
+
+        Assert.NotNull(callDefinition);
+        Assert.Equal(ScriptPath.NormalizeFullPath(globalsPath), ScriptPath.NormalizeFullPath(callDefinition!.Path));
+        Assert.Equal(PositionOf(globals, "INPUT_NUMBER"), callDefinition.Range.Start);
+        Assert.NotNull(memberDefinition);
+        Assert.Equal(ScriptPath.NormalizeFullPath(globalsPath), ScriptPath.NormalizeFullPath(memberDefinition!.Path));
+        Assert.Equal(PositionOf(globals, "APP_VERSION"), memberDefinition.Range.Start);
+        Assert.NotEqual(ScriptPath.NormalizeFullPath(globalsPath), shadowedCallDefinition == null ? null : ScriptPath.NormalizeFullPath(shadowedCallDefinition.Path));
+        Assert.Null(shadowedMemberDefinition);
     }
 
     public void Dispose()

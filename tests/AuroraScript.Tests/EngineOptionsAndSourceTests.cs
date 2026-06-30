@@ -2,6 +2,7 @@ using AuroraScript.Core;
 using AuroraScript.Source;
 using AuroraScript.Tests.Infrastructure;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
@@ -93,6 +94,24 @@ public sealed class EngineOptionsAndSourceTests
 
         var error = await Assert.ThrowsAsync<FileNotFoundException>(() => engine.BuildAsync("missing.as"));
         Assert.Contains("missing.as", error.FileName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task FileSystemResolverEnumeratesAllDirectoriesUnderRoot()
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource("bin/generated.as", "@module(GENERATED); export const value = 42;");
+        var resolver = ScriptSources.FileSystem(workspace.Root, Encoding.UTF8);
+        var sources = new List<ScriptSource>();
+
+        await foreach (var source in resolver.GetAllSourcesAsync(new ScriptSourceQuery(".as", Encoding.UTF8)))
+        {
+            sources.Add(source);
+        }
+
+        Assert.Contains(
+            sources,
+            source => source.FullPath.EndsWith("/bin/generated.as", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

@@ -23,7 +23,7 @@
     },
     {
       "id": "module.export",
-      "syntax": "export func name() { } | export var name = value; | export const name = value; | export declare var name; | export declare const name;",
+      "syntax": "export func name() { } | export var name = value; | export const name = value;",
       "scope": "module",
       "notes": ["Invalid outside module scope."]
     },
@@ -47,20 +47,23 @@
     },
     {
       "id": "declaration.external-variable",
-      "syntax": "declare var name; declare const name;",
-      "scope": "module-or-block",
+      "syntax": "@global(); declare var name; declare const name;",
+      "scope": "global-declaration-file",
       "notes": [
-        "Compile-time declaration only; no runtime module property or initialization code is emitted.",
+        "Only valid in @global() declaration files.",
+        "Optional compile-time host global contract; host globals still resolve at runtime without it.",
+        "No runtime module property or initialization code is emitted.",
         "The declared name must be a single identifier with no initializer or destructuring pattern.",
         "Reads and writes resolve through global unless shadowed by a local variable.",
-        "declare const participates in compile-time const assignment checks."
+        "declare const participates in compile-time const assignment checks.",
+        "@global() files cannot be imported or included and are not compiled as modules."
       ]
     },
     {
       "id": "declaration.external-function",
-      "syntax": "declare func name(parameters);",
-      "scope": "module-or-block",
-      "notes": ["Compile-time declaration only; no function body or runtime module property is emitted."]
+      "syntax": "@global(); declare func name(parameters);",
+      "scope": "global-declaration-file",
+      "notes": ["Only valid in @global() declaration files.", "Optional compile-time host global contract; host globals still resolve at runtime without it.", "No function body or runtime module property is emitted.", "Function overloads are not allowed; duplicate global declarations are rejected across the project."]
     },
     {
       "id": "function.declaration",

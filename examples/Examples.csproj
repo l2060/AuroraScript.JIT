@@ -57,6 +57,9 @@
     <None Update="tests\astar.as">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Update="tests\global.as">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="tests\seed.as">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

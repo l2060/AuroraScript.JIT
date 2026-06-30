@@ -1,13 +1,4 @@
-﻿@module(TIMER_LIB);
-
-declare function debug(msg);
-
-declare function CREATE_TIMER(timer);
-declare function START_TIMER(timer);
-declare function STOP_TIMER(timer);
-declare function DELETE_TIMER(timer);
-
-
+@module(TIMER_LIB);
 
 export var resetCount = 0;
 var timeCount = 0;

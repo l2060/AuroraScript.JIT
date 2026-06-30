@@ -177,7 +177,7 @@ Recommended AI workflow:
 4. Use `aurora_run_script` or `aurora_run_file` when a concrete result or console output should be verified.
 5. Use `aurora_validate_best_practices` to catch known poor patterns such as repeatedly reading `items.length` in loop conditions.
 
-When generating scripts that use host-defined globals, read `aurora://docs/ai` or `aurora://docs/host-integration` and use `export declare const NAME;`, `export declare var NAME;`, or `export declare func NAME(args);`. Plain `export const NAME;` and `export var NAME;` create module properties and can hide host-defined globals.
+When generating scripts that use host-defined globals, read `aurora://docs/ai` or `aurora://docs/host-integration`. A resolver-visible `@global();` file is optional but recommended for editor assistance and static diagnostics; use `declare const NAME;`, `declare var NAME;`, or `declare func NAME(args);` there when the host API contract is known. Do not use `export declare`. Plain `export const NAME;` and `export var NAME;` create module properties and can hide host-defined globals.
 
 ## Resolver behavior in tools
 

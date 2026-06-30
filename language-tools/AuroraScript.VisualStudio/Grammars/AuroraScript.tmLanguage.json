@@ -149,40 +149,29 @@
       "patterns": [
         {
           "name": "meta.declaration.function.aurora",
-          "match": "\\b(?:(export)\\s+)?(?:(declare)\\s+)?(func|function)\\s+([\\p{L}_$][\\p{L}\\p{N}_$]*)",
+          "match": "\\b(?:(export)\\s+)?(func|function)\\s+([\\p{L}_$][\\p{L}\\p{N}_$]*)",
           "captures": {
             "1": { "name": "keyword.control.export.aurora" },
-            "2": { "name": "keyword.declaration.declare.aurora" },
-            "3": { "name": "keyword.declaration.function.aurora" },
-            "4": { "name": "entity.name.function.aurora" }
-          }
-        },
-        {
-          "name": "meta.declaration.builtin.function.aurora",
-          "match": "\\b(export)\\s+(declare)\\s+((?:[\\p{L}_$][\\p{L}\\p{N}_$]*\\.)*[\\p{L}_$][\\p{L}\\p{N}_$]*)(?=\\s*\\()",
-          "captures": {
-            "1": { "name": "keyword.control.export.aurora" },
-            "2": { "name": "keyword.declaration.declare.aurora" },
+            "2": { "name": "keyword.declaration.function.aurora" },
             "3": { "name": "entity.name.function.aurora" }
           }
         },
         {
-          "name": "meta.declaration.builtin.property.aurora",
-          "match": "\\b(export)\\s+(declare)\\s+((?:[\\p{L}_$][\\p{L}\\p{N}_$]*\\.)*[\\p{L}_$][\\p{L}\\p{N}_$]*)(?=\\s*(?::|;))",
+          "name": "meta.declaration.external-function.aurora",
+          "match": "\\b(declare)\\s+(func|function)\\s+([\\p{L}_$][\\p{L}\\p{N}_$]*)(?=\\s*\\()",
           "captures": {
-            "1": { "name": "keyword.control.export.aurora" },
-            "2": { "name": "keyword.declaration.declare.aurora" },
-            "3": { "name": "entity.name.variable.aurora" }
+            "1": { "name": "keyword.declaration.declare.aurora" },
+            "2": { "name": "keyword.declaration.function.aurora" },
+            "3": { "name": "entity.name.function.aurora" }
           }
         },
         {
           "name": "meta.declaration.external-variable.aurora",
-          "match": "\\b(?:(export)\\s+)?(declare)\\s+(const|var)\\s+([\\p{L}_$][\\p{L}\\p{N}_$]*)",
+          "match": "\\b(declare)\\s+(const|var)\\s+([\\p{L}_$][\\p{L}\\p{N}_$]*)",
           "captures": {
-            "1": { "name": "keyword.control.export.aurora" },
-            "2": { "name": "keyword.declaration.declare.aurora" },
-            "3": { "name": "keyword.declaration.variable.aurora" },
-            "4": { "name": "variable.other.aurora" }
+            "1": { "name": "keyword.declaration.declare.aurora" },
+            "2": { "name": "keyword.declaration.variable.aurora" },
+            "3": { "name": "variable.other.aurora" }
           }
         },
         {

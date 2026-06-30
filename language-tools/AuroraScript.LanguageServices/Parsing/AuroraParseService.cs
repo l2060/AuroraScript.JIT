@@ -1,5 +1,6 @@
 using AuroraScript.Compiler.Analyzer;
 using AuroraScript.Compiler.Ast;
+using AuroraScript.Compiler.GlobalDeclarations;
 using AuroraScript.Core;
 using AuroraScript.LanguageServices.Diagnostics;
 using AuroraScript.LanguageServices.Text;
@@ -111,9 +112,42 @@ public sealed class AuroraParseService
             import.FullPath = resolved.Value.FullPath;
             import.ModulePath = resolved.Value.ModulePath;
             import.Reference = resolved.Value;
+
+            try
+            {
+                var resolvedSource = options.Compiler.SourceResolver
+                    .GetSourceAsync(resolved.Value)
+                    .AsTask()
+                    .GetAwaiter()
+                    .GetResult();
+                if (GlobalDeclarationScanner.IsGlobalFile(resolvedSource.ReadSource()))
+                {
+                    diagnostics.Add(new LanguageDiagnostic(
+                        "AURORA-GLOBAL-IMPORT",
+                        import.Include
+                            ? "@global() declaration files cannot be included."
+                            : "@global() declaration files cannot be imported.",
+                        TextRange.FromSourceSpan(import.File != null ? import.File.Range : import.Range),
+                        LanguageDiagnosticSeverity.Error));
+                }
+            }
+            catch (Exception ex) when (IsSourceReadFailure(ex))
+            {
+            }
         }
 
         return diagnostics;
+    }
+
+    private static bool IsSourceReadFailure(Exception exception)
+    {
+        return exception is FileNotFoundException
+            or DirectoryNotFoundException
+            or IOException
+            or UnauthorizedAccessException
+            or ArgumentException
+            or NotSupportedException
+            or KeyNotFoundException;
     }
 
     private static IReadOnlyList<LanguageDiagnostic> ConvertDiagnostics(AuroraCompilationException exception)

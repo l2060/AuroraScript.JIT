@@ -196,7 +196,6 @@ internal sealed class BuiltinDefinitionDocuments
         builder.AppendLine("/**");
         builder.Append("* Built-in ").Append(typeName).AppendLine(" type used by runtime API declarations.");
         builder.AppendLine("*/");
-        builder.Append("export declare ");
         var globalRange = builder.AppendToken(uri, typeName);
         builder.AppendLine(";");
 
@@ -208,7 +207,6 @@ internal sealed class BuiltinDefinitionDocuments
         string uri,
         BuiltinApiSymbol symbol)
     {
-        builder.Append("export declare ");
         var range = builder.AppendToken(uri, symbol.Name);
 
         if (symbol.Kind == BuiltinApiKind.Function)
@@ -227,7 +225,7 @@ internal sealed class BuiltinDefinitionDocuments
         List<BuiltinReference> builtinReferences)
     {
         AppendDocumentation(builder, uri, constructor.Documentation.GetNotes(_locale), constructor.Parameters, constructor.ReturnType, builtinReferences);
-        builder.Append("export declare new ");
+        builder.Append("new ");
         var constructorRange = builder.AppendToken(uri, constructor.Name);
         if (_knownTypes.Contains(constructor.Name))
         {
@@ -251,7 +249,6 @@ internal sealed class BuiltinDefinitionDocuments
         List<BuiltinReference> builtinReferences)
     {
         AppendDocumentation(builder, uri, member.Documentation.GetNotes(_locale), member.Parameters, member.ReturnType, builtinReferences);
-        builder.Append("export declare ");
         AppendBuiltinReference(builder, uri, ownerName, builtinReferences);
         builder.Append(includePrototype ? ".prototype." : ".");
         var memberRange = builder.AppendToken(uri, member.Name);

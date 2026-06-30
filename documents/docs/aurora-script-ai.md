@@ -9,7 +9,7 @@ For default code generation style, also read `docs/script-authoring-best-practic
 
 - Generate a full module unless the user explicitly asks for a `CompileBlock` body.
 - For modules, start with `@module(NAME);`, then top-level `include`/`import`, then declarations, then exported entry functions.
-- For `CompileBlock`, do not use `@module`, `include`, `import`, `export`, or `declare`.
+- For `CompileBlock`, do not use `@module`, `@global()`, `include`, `import`, `export`, or `declare`.
 - Prefer `const` for values that are never reassigned and `var` for values that change.
 - Return plain data that hosts can serialize: number, string, boolean, null, arrays, and objects.
 - Check `schema/runtime-api.json` before using runtime APIs that look like JavaScript built-ins.
@@ -21,9 +21,11 @@ For default code generation style, also read `docs/script-authoring-best-practic
 
 - Script files normally use `.as`.
 - A module may start with `@module(NAME);`. It must be the first effective statement when present.
+- A global declaration file starts with `@global();`. Before it only comments and blank lines are allowed.
+- `@global()` files contain only `declare` statements, cannot also use `@module`, cannot be imported/included, and are not compiled as modules.
 - `include "path";` and `import Alias from "path";` must appear at the top of a module before ordinary declarations.
 - `export` is only valid at module scope.
-- `CompileBlock` accepts statement bodies only. It rejects module-only syntax such as `@module`, `import`, `include`, `export`, and `declare`.
+- `CompileBlock` accepts statement bodies only. It rejects file/module-only syntax such as `@module`, `@global()`, `import`, `include`, `export`, and `declare`.
 - Import/include paths are raw script text until the module graph asks the configured resolver to resolve them.
 - Relative imports are resolved from the importing file's full path, not from a global compiler directory.
 - Entry files are resolved from the resolver root. Do not assume the old `compiler.Directory` or `BaseDirectory` input model.
@@ -40,7 +42,7 @@ For default code generation style, also read `docs/script-authoring-best-practic
 - Empty statement: `;`
 - Block: `{ statement* }`
 - Function: `func name(args) { ... }` or `function name(args) { ... }`
-- External declaration: `declare func name(args);`, `declare var name;`, `declare const name;`
+- External declaration in an `@global()` file: `declare func name(args);`, `declare var name;`, `declare const name;`
 - Variable: `var name;`, `var name = expr;`, `const name = expr;`
 - Destructuring: `var { a, b } = obj;`, `var [ first, ...rest ] = array;`
 - Enum: `enum Name { A, B = 3, C }`
@@ -48,16 +50,21 @@ For default code generation style, also read `docs/script-authoring-best-practic
 
 Variable declarations are single-binding declarations. `var a = 1, b = 2;` is not the current form.
 
-External `declare` declarations are compile-time declarations only. They do not create module properties, do not assign `null`, and do not emit runtime initialization code. Use them when a .NET host defines values or services on `global`:
+External `declare` declarations are optional compile-time declarations for host-defined globals. They improve semantic coloring, go-to-definition, and static diagnostics, but host globals still work at runtime without them. They do not create module properties, do not assign `null`, and do not emit runtime initialization code. Put them in one or more `@global()` files when a .NET host defines values or services on `global` and the project wants that compile-time contract:
 
 ```as
-export declare const APP_VERSION;
-export declare var ONLINE_TOTAL;
-export declare func HOST_LOG(message);
+@global();
+
+declare const APP_VERSION;
+declare var ONLINE_TOTAL;
+declare func HOST_LOG(message);
 ```
 
 Rules:
 
+- Plain `declare` is only valid inside `@global()` files. `export declare` is invalid.
+- The compiler scans resolver-visible project `.as` files and loads `@global()` files before module analysis when they exist.
+- Duplicate global declarations across `@global()` files are rejected. Function overloads are not allowed.
 - `declare var/const` must declare one simple name and must not have an initializer or destructuring pattern.
 - `declare const` participates in compile-time const assignment checks, but reads still resolve from host-defined `global`.
 - `declare var` reads and writes resolve through `global` unless shadowed by a local variable.
