@@ -916,6 +916,18 @@ public sealed class DefinitionFeatureTests : IDisposable
     }
 
     [Fact]
+    public void BuiltinDocumentIncludesConstructorSignatures()
+    {
+        var service = CreateService();
+
+        var document = service.GetBuiltinDocument("aurora-builtin:/Path.as");
+
+        Assert.NotNull(document);
+        Assert.Contains("// Constructors", document!.Text, StringComparison.Ordinal);
+        Assert.Contains("export declare new Path(root: String | Path | null, ...segments: (String | Path)[]): Path;", document.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ResolvesSyntheticBuiltinTypeReferenceToVirtualDocument()
     {
         var service = CreateService();

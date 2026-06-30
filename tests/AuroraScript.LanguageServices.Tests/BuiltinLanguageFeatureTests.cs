@@ -471,6 +471,66 @@ public sealed class BuiltinLanguageFeatureTests
         Assert.Equal(2, signature.Parameters.Count);
     }
 
+    [Fact]
+    public void SignatureHelpReturnsBuiltinConstructorSignature()
+    {
+        const string source =
+            """
+            @module(TEST);
+            export func run() {
+                return new Path("mem://app", "scripts");
+            }
+            """;
+        var service = CreateService();
+
+        var signatureHelp = service.GetSignatureHelp("test.as", source, PositionOf(source, "scripts"));
+
+        Assert.NotNull(signatureHelp);
+        var signature = Assert.Single(signatureHelp!.Signatures);
+        Assert.Equal("new Path(root: string|Path?, ...segments: string|Path): Path", signature.Label);
+        Assert.Equal(1, signatureHelp.ActiveParameter);
+        Assert.Equal(2, signature.Parameters.Count);
+    }
+
+    [Fact]
+    public void SignatureHelpReturnsCallableConstructorSignature()
+    {
+        const string source =
+            """
+            @module(TEST);
+            export func run() {
+                return String(123);
+            }
+            """;
+        var service = CreateService();
+
+        var signatureHelp = service.GetSignatureHelp("test.as", source, PositionOf(source, "123"));
+
+        Assert.NotNull(signatureHelp);
+        var signature = Assert.Single(signatureHelp!.Signatures);
+        Assert.Equal("String(value: any?): string", signature.Label);
+        Assert.Equal(0, signatureHelp.ActiveParameter);
+    }
+
+    [Fact]
+    public void CompletionShowsBuiltinConstructorSignature()
+    {
+        const string source =
+            """
+            @module(TEST);
+            export func run() {
+                return Pa
+            }
+            """;
+        var service = CreateService();
+
+        var completions = service.GetCompletions("test.as", source, PositionOf(source, "Pa"));
+
+        Assert.Contains(completions.Items, item =>
+            item.Label == "Path" &&
+            item.Detail == "new Path(root: string|Path?, ...segments: string|Path): Path");
+    }
+
     private static AuroraLanguageService CreateService(string? locale = null)
     {
         var catalog = BuiltinApiLoader.LoadFromFile(BuiltinApiCatalogTests.GetRuntimeApiPath());

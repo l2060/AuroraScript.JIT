@@ -15,12 +15,25 @@ internal static class BuiltinFormat
     {
         var builder = new StringBuilder();
         builder.Append("```").Append(MarkdownLanguageId).Append('\n');
-        builder.Append("export declare ").Append(symbol.Name);
-        if (symbol.Kind == BuiltinApiKind.Function)
+        if (symbol.Kind == BuiltinApiKind.Constructor && symbol.Constructors.Count != 0)
         {
-            builder.Append("(): Object");
+            for (var i = 0; i < symbol.Constructors.Count; i++)
+            {
+                builder.Append("export declare ");
+                AppendConstructorDeclaration(builder, symbol.Constructors[i], includeNewKeyword: true, mappedTypes: true);
+                builder.Append(";\n");
+            }
         }
-        builder.Append(";\n```");
+        else
+        {
+            builder.Append("export declare ").Append(symbol.Name);
+            if (symbol.Kind == BuiltinApiKind.Function)
+            {
+                builder.Append("(): Object");
+            }
+            builder.Append(";\n");
+        }
+        builder.Append("```");
         AppendNotes(builder, symbol.Documentation.GetNotes(locale));
         return builder.ToString();
     }
@@ -49,6 +62,11 @@ internal static class BuiltinFormat
 
     public static string FormatCompletionDetail(BuiltinApiSymbol symbol)
     {
+        if (symbol.Kind == BuiltinApiKind.Constructor && symbol.Constructors.Count != 0)
+        {
+            return FormatConstructorSignature(symbol.Constructors[0], includeNewKeyword: true);
+        }
+
         return (symbol.ReadOnly ? "readonly " : string.Empty) + FormatKind(symbol.Kind);
     }
 
@@ -74,6 +92,24 @@ internal static class BuiltinFormat
         return new SignatureInformation(FormatSignature(member), FormatMember(member, locale), parameters);
     }
 
+    public static SignatureInformation FormatConstructorSignatureInfo(
+        BuiltinApiMember constructor,
+        string? locale = null,
+        bool includeNewKeyword = true)
+    {
+        var parameters = new List<SignatureParameter>(constructor.Parameters.Count);
+        for (var i = 0; i < constructor.Parameters.Count; i++)
+        {
+            var parameter = constructor.Parameters[i];
+            parameters.Add(new SignatureParameter(FormatParameter(parameter), parameter.Type));
+        }
+
+        return new SignatureInformation(
+            FormatConstructorSignature(constructor, includeNewKeyword),
+            FormatConstructor(constructor, locale),
+            parameters);
+    }
+
     public static CompletionItemKind ToCompletionKind(BuiltinApiKind kind)
     {
         return kind switch
@@ -95,6 +131,51 @@ internal static class BuiltinFormat
         AppendParameters(builder, member.Parameters);
         builder.Append("): ").Append(member.ReturnType);
         return builder.ToString();
+    }
+
+    private static string FormatConstructor(BuiltinApiMember constructor, string? locale = null)
+    {
+        var builder = new StringBuilder();
+        builder.Append("```").Append(MarkdownLanguageId).Append('\n');
+        builder.Append("export declare ");
+        AppendConstructorDeclaration(builder, constructor, includeNewKeyword: true, mappedTypes: true);
+        builder.Append(";\n```");
+        AppendNotes(builder, constructor.Documentation.GetNotes(locale));
+        return builder.ToString();
+    }
+
+    private static string FormatConstructorSignature(BuiltinApiMember constructor, bool includeNewKeyword)
+    {
+        var builder = new StringBuilder();
+        AppendConstructorDeclaration(builder, constructor, includeNewKeyword, mappedTypes: false);
+        return builder.ToString();
+    }
+
+    private static void AppendConstructorDeclaration(
+        StringBuilder builder,
+        BuiltinApiMember constructor,
+        bool includeNewKeyword,
+        bool mappedTypes)
+    {
+        if (includeNewKeyword)
+        {
+            builder.Append("new ");
+        }
+
+        builder.Append(constructor.Name).Append('(');
+        if (mappedTypes)
+        {
+            AppendMappedParameters(builder, constructor.Parameters);
+        }
+        else
+        {
+            AppendParameters(builder, constructor.Parameters);
+        }
+
+        builder.Append("): ");
+        builder.Append(mappedTypes
+            ? FormatType(constructor.ReturnType, TypeUsage.Return, optional: false, variadic: false)
+            : constructor.ReturnType);
     }
 
     private static void AppendParameters(StringBuilder builder, IReadOnlyList<BuiltinApiParameter> parameters)

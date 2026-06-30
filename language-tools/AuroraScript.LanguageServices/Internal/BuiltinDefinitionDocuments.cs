@@ -148,6 +148,16 @@ internal sealed class BuiltinDefinitionDocuments
         AppendDocumentation(builder, uri, symbol.Documentation.GetNotes(_locale), null, null, builtinReferences);
         var globalRange = AppendGlobalDeclaration(builder, uri, symbol);
 
+        if (symbol.Constructors.Count != 0)
+        {
+            builder.AppendLine();
+            builder.AppendLine("// Constructors");
+            for (var i = 0; i < symbol.Constructors.Count; i++)
+            {
+                AppendConstructor(builder, uri, symbol.Constructors[i], builtinReferences);
+            }
+        }
+
         if (symbol.Members.Count != 0)
         {
             builder.AppendLine();
@@ -208,6 +218,27 @@ internal sealed class BuiltinDefinitionDocuments
 
         builder.AppendLine(";");
         return range;
+    }
+
+    private void AppendConstructor(
+        DocumentTextBuilder builder,
+        string uri,
+        BuiltinApiMember constructor,
+        List<BuiltinReference> builtinReferences)
+    {
+        AppendDocumentation(builder, uri, constructor.Documentation.GetNotes(_locale), constructor.Parameters, constructor.ReturnType, builtinReferences);
+        builder.Append("export declare new ");
+        var constructorRange = builder.AppendToken(uri, constructor.Name);
+        if (_knownTypes.Contains(constructor.Name))
+        {
+            builtinReferences.Add(new BuiltinReference(constructor.Name, constructorRange));
+        }
+
+        builder.Append("(");
+        AppendParameters(builder, uri, constructor.Parameters, builtinReferences);
+        builder.Append("): ");
+        AppendType(builder, uri, constructor.ReturnType, TypeUsage.Return, optional: false, variadic: false, builtinReferences);
+        builder.AppendLine(";");
     }
 
     private void AppendMember(

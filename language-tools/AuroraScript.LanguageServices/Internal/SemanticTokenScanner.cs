@@ -534,7 +534,7 @@ internal static class SemanticTokenScanner
     {
         private readonly BuiltinApiCatalog _builtins;
         private readonly SemanticTokenBuilder _builder;
-        private readonly Stack<HashSet<string>> _scopes = new();
+        private readonly Stack<Dictionary<string, int>> _scopes = new();
         private readonly HashSet<string> _moduleEnums = new(StringComparer.Ordinal);
 
         public SemanticAstVisitor(BuiltinApiCatalog builtins, SemanticTokenBuilder builder)
@@ -558,7 +558,7 @@ internal static class SemanticTokenScanner
                     var importName = node.Imports[i].Name;
                     if (importName != null)
                     {
-                        Declare(importName.Value);
+                        Declare(importName.Value, AuroraSemanticTokenTypes.Namespace);
                         _builder.AddToken(importName, AuroraSemanticTokenTypes.Namespace, SemanticTokenPriority.Declaration);
                     }
                 }
@@ -629,7 +629,10 @@ internal static class SemanticTokenScanner
         {
             if (node.Name != null)
             {
-                _builder.AddToken(node.Name, AuroraSemanticTokenTypes.Function, SemanticTokenPriority.Declaration);
+                var type = node.Flags == FunctionFlags.Declare
+                    ? AuroraSemanticTokenTypes.DeclaredGlobalFunction
+                    : AuroraSemanticTokenTypes.Function;
+                _builder.AddToken(node.Name, type, SemanticTokenPriority.Declaration);
             }
 
             PushScope();
@@ -639,7 +642,7 @@ internal static class SemanticTokenScanner
                 {
                     if (node.Parameters[i].Name != null)
                     {
-                        Declare(node.Parameters[i].Name.Value);
+                        Declare(node.Parameters[i].Name.Value, AuroraSemanticTokenTypes.Parameter);
                     }
                 }
 
@@ -670,7 +673,10 @@ internal static class SemanticTokenScanner
         {
             if (node.Name != null)
             {
-                _builder.AddToken(node.Name, AuroraSemanticTokenTypes.Variable, SemanticTokenPriority.Declaration);
+                var type = node.IsDeclare
+                    ? AuroraSemanticTokenTypes.DeclaredGlobal
+                    : AuroraSemanticTokenTypes.Variable;
+                _builder.AddToken(node.Name, type, SemanticTokenPriority.Declaration);
             }
 
             node.Pattern?.Accept(this);
@@ -711,7 +717,11 @@ internal static class SemanticTokenScanner
 
             if (IsDeclared(value))
             {
-                if (_moduleEnums.Contains(value))
+                if (TryResolveDeclaredType(value, out var declaredType))
+                {
+                    _builder.AddToken(node.Identifier, declaredType, SemanticTokenPriority.Identifier);
+                }
+                else if (_moduleEnums.Contains(value))
                 {
                     _builder.AddToken(node.Identifier, AuroraSemanticTokenTypes.Enum, SemanticTokenPriority.Identifier);
                 }
@@ -776,7 +786,11 @@ internal static class SemanticTokenScanner
             {
                 var value = name.Identifier.Value;
                 var type = AuroraSemanticTokenTypes.FunctionCall;
-                if (!IsDeclared(value) && _builtins != null && _builtins.TryGetGlobal(value, out var global))
+                if (TryResolveDeclaredType(value, out var declaredType))
+                {
+                    type = declaredType;
+                }
+                else if (!IsDeclared(value) && _builtins != null && _builtins.TryGetGlobal(value, out var global))
                 {
                     type = global.Kind == BuiltinApiKind.Constructor
                         ? AuroraSemanticTokenTypes.Type
@@ -859,13 +873,17 @@ internal static class SemanticTokenScanner
             switch (statement)
             {
                 case VariableDeclaration variable when variable.Name != null:
-                    Declare(variable.Name.Value);
+                    Declare(
+                        variable.Name.Value,
+                        variable.IsDeclare
+                            ? AuroraSemanticTokenTypes.DeclaredGlobal
+                            : AuroraSemanticTokenTypes.Variable);
                     break;
                 case FunctionDeclaration function:
                     Predeclare(function);
                     break;
                 case EnumDeclaration enumDeclaration when enumDeclaration.Identifier != null:
-                    Declare(enumDeclaration.Identifier.Value);
+                    Declare(enumDeclaration.Identifier.Value, AuroraSemanticTokenTypes.Enum);
                     _moduleEnums.Add(enumDeclaration.Identifier.Value);
                     break;
             }
@@ -875,13 +893,17 @@ internal static class SemanticTokenScanner
         {
             if (function.Name != null)
             {
-                Declare(function.Name.Value);
+                Declare(
+                    function.Name.Value,
+                    function.Flags == FunctionFlags.Declare
+                        ? AuroraSemanticTokenTypes.DeclaredGlobalFunction
+                        : AuroraSemanticTokenTypes.Function);
             }
         }
 
         private void PushScope()
         {
-            _scopes.Push(new HashSet<string>(StringComparer.Ordinal));
+            _scopes.Push(new Dictionary<string, int>(StringComparer.Ordinal));
         }
 
         private void PopScope()
@@ -889,11 +911,11 @@ internal static class SemanticTokenScanner
             _scopes.Pop();
         }
 
-        private void Declare(string name)
+        private void Declare(string name, int type)
         {
             if (!string.IsNullOrEmpty(name) && _scopes.Count != 0)
             {
-                _scopes.Peek().Add(name);
+                _scopes.Peek()[name] = type;
             }
         }
 
@@ -901,12 +923,27 @@ internal static class SemanticTokenScanner
         {
             foreach (var scope in _scopes)
             {
-                if (scope.Contains(name))
+                if (scope.ContainsKey(name))
                 {
                     return true;
                 }
             }
 
+            return false;
+        }
+
+        private bool TryResolveDeclaredType(string name, out int type)
+        {
+            foreach (var scope in _scopes)
+            {
+                if (scope.TryGetValue(name, out type))
+                {
+                    return type == AuroraSemanticTokenTypes.DeclaredGlobal ||
+                        type == AuroraSemanticTokenTypes.DeclaredGlobalFunction;
+                }
+            }
+
+            type = -1;
             return false;
         }
 

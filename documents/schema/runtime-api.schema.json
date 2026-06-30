@@ -26,10 +26,28 @@
       "required": ["kind"],
       "properties": {
         "kind": { "enum": ["constructor", "object", "function", "constant"] },
+        "callable": { "type": "boolean" },
+        "constructors": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/constructor" }
+        },
         "members": {
           "type": "object",
           "additionalProperties": { "$ref": "#/$defs/member" }
         },
+        "notes": { "$ref": "#/$defs/localizedNotes" }
+      },
+      "additionalProperties": false
+    },
+    "constructor": {
+      "type": "object",
+      "required": ["parameters", "returns"],
+      "properties": {
+        "parameters": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/parameter" }
+        },
+        "returns": { "type": "string" },
         "notes": { "$ref": "#/$defs/localizedNotes" }
       },
       "additionalProperties": false
@@ -44,6 +62,10 @@
           "items": { "$ref": "#/$defs/parameter" }
         },
         "returns": { "type": "string" },
+        "overloads": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
         "writable": { "type": "boolean" },
         "notes": { "$ref": "#/$defs/localizedNotes" }
       },

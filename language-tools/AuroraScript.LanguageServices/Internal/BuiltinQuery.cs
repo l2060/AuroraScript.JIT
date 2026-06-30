@@ -74,6 +74,11 @@ internal static class BuiltinQuery
             return null;
         }
 
+        if (context.NewExpression?.Expression == call)
+        {
+            return GetConstructorSignatureHelp(builtins, call, position, locale, includeNewKeyword: true, requireCallable: false);
+        }
+
         BuiltinApiMember member;
         if (call.Target is GetPropertyExpression propertyAccess)
         {
@@ -84,8 +89,17 @@ internal static class BuiltinQuery
         }
         else if (call.Target is NameExpression name)
         {
-            if (!builtins.TryGetGlobal(name.Identifier.Value, out var global) ||
-                global.Kind != BuiltinApiKind.Function)
+            if (!builtins.TryGetGlobal(name.Identifier.Value, out var global))
+            {
+                return null;
+            }
+
+            if (global.Kind == BuiltinApiKind.Constructor && global.Callable && global.Constructors.Count != 0)
+            {
+                return GetConstructorSignatureHelp(builtins, call, position, locale, includeNewKeyword: false, requireCallable: true);
+            }
+
+            if (global.Kind != BuiltinApiKind.Function)
             {
                 return null;
             }
@@ -107,6 +121,35 @@ internal static class BuiltinQuery
         var signature = BuiltinFormat.FormatSignatureInfo(member, locale);
         var activeParameter = GetActiveParameter(call, position);
         return new SignatureHelpResult(new[] { signature }, 0, activeParameter);
+    }
+
+    private static SignatureHelpResult? GetConstructorSignatureHelp(
+        BuiltinApiCatalog builtins,
+        FunctionCallExpression call,
+        TextPosition position,
+        string? locale,
+        bool includeNewKeyword,
+        bool requireCallable)
+    {
+        if (call.Target is not NameExpression name ||
+            !builtins.TryGetGlobal(name.Identifier.Value, out var global) ||
+            global.Kind != BuiltinApiKind.Constructor ||
+            global.Constructors.Count == 0 ||
+            requireCallable && !global.Callable)
+        {
+            return null;
+        }
+
+        var signatures = new List<SignatureInformation>(global.Constructors.Count);
+        for (var i = 0; i < global.Constructors.Count; i++)
+        {
+            signatures.Add(BuiltinFormat.FormatConstructorSignatureInfo(
+                global.Constructors[i],
+                locale,
+                includeNewKeyword));
+        }
+
+        return new SignatureHelpResult(signatures, 0, GetActiveParameter(call, position));
     }
 
     private static CompletionResult CompleteGlobals(IReadOnlyDictionary<string, BuiltinApiSymbol> globals, string? locale)

@@ -202,6 +202,8 @@ The underlying engine also supports parent-root overlays when a host constructs 
 - `aurora://schema/host-api`
 - `aurora://examples/manifest`
 
+`aurora://schema/runtime-api` includes constructor signatures and parameters under each constructor global's `constructors` array.
+
 ## Tool Example
 
 Read AI authoring guidance:

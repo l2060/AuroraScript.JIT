@@ -50,6 +50,29 @@ public sealed class BuiltinApiCatalogTests
     }
 
     [Fact]
+    public void LoadsConstructorSignatures()
+    {
+        var catalog = LoadCatalog();
+
+        Assert.True(catalog.TryGetGlobal("Path", out var path));
+        Assert.Equal(BuiltinApiKind.Constructor, path.Kind);
+        Assert.False(path.Callable);
+        var constructor = Assert.Single(path.Constructors);
+        Assert.Equal("Path", constructor.ReturnType);
+        Assert.Equal(2, constructor.Parameters.Count);
+        Assert.Equal("root", constructor.Parameters[0].Name);
+        Assert.Equal("string|Path", constructor.Parameters[0].Type);
+        Assert.True(constructor.Parameters[0].Optional);
+        Assert.Equal("segments", constructor.Parameters[1].Name);
+        Assert.Equal("string|Path", constructor.Parameters[1].Type);
+        Assert.True(constructor.Parameters[1].Variadic);
+
+        Assert.True(catalog.TryGetGlobal("String", out var stringConstructor));
+        Assert.True(stringConstructor.Callable);
+        Assert.Single(stringConstructor.Constructors);
+    }
+
+    [Fact]
     public void RuntimeApiCatalogCoversRuntimeRegisteredGlobals()
     {
         var catalog = LoadCatalog();

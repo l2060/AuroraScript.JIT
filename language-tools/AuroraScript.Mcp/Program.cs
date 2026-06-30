@@ -1047,6 +1047,17 @@ internal sealed class AuroraMcpServer
                 }
 
                 yield return RuntimeApiEntry.FromJson(global.Key, "global", node);
+                if (node["constructors"] is JsonArray constructors)
+                {
+                    foreach (var constructor in constructors)
+                    {
+                        if (constructor is JsonObject constructorNode)
+                        {
+                            yield return RuntimeApiEntry.FromJson($"new {global.Key}", "constructor", constructorNode, global.Key);
+                        }
+                    }
+                }
+
                 if (node["members"] is JsonObject members)
                 {
                     foreach (var member in members)
@@ -1546,16 +1557,18 @@ internal sealed class AuroraMcpServer
         string Category,
         string Kind,
         string Returns,
+        string Signature,
         string Notes,
         JsonObject Definition)
     {
-        public static RuntimeApiEntry FromJson(string path, string category, JsonObject node)
+        public static RuntimeApiEntry FromJson(string path, string category, JsonObject node, string? ownerName = null)
         {
             return new RuntimeApiEntry(
                 path,
                 category,
                 node["kind"]?.GetValue<string>() ?? string.Empty,
                 node["returns"]?.GetValue<string>() ?? string.Empty,
+                ReadSignature(path, category, node, ownerName),
                 ReadNotes(node["notes"]),
                 (JsonObject)node.DeepClone());
         }
@@ -1566,6 +1579,7 @@ internal sealed class AuroraMcpServer
                 Contains(Category, query) ||
                 Contains(Kind, query) ||
                 Contains(Returns, query) ||
+                Contains(Signature, query) ||
                 Contains(Notes, query);
         }
 
@@ -1577,6 +1591,7 @@ internal sealed class AuroraMcpServer
                 ["category"] = Category,
                 ["kind"] = Kind,
                 ["returns"] = Returns,
+                ["signature"] = Signature,
                 ["notes"] = Notes,
                 ["definition"] = Definition.DeepClone()
             };
@@ -1585,6 +1600,46 @@ internal sealed class AuroraMcpServer
         private static bool Contains(string value, string query)
         {
             return value?.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static string ReadSignature(string path, string category, JsonObject node, string? ownerName)
+        {
+            if (node["overloads"] is JsonArray overloads)
+            {
+                return string.Join(" ", overloads
+                    .Select(item => item?.GetValue<string>())
+                    .Where(text => !string.IsNullOrWhiteSpace(text)));
+            }
+
+            if (node["parameters"] is not JsonArray parameters)
+            {
+                return path;
+            }
+
+            var parts = new List<string>();
+            foreach (var parameter in parameters)
+            {
+                if (parameter is not JsonObject parameterNode)
+                {
+                    continue;
+                }
+
+                var name = parameterNode["name"]?.GetValue<string>() ?? string.Empty;
+                var type = parameterNode["type"]?.GetValue<string>() ?? "any";
+                var optional = parameterNode["optional"]?.GetValue<bool>() == true;
+                var variadic = parameterNode["variadic"]?.GetValue<bool>() == true;
+                if (variadic)
+                {
+                    name = "..." + name;
+                }
+
+                parts.Add(name + (optional ? "?: " : ": ") + type);
+            }
+
+            var namePart = category == "constructor" && !string.IsNullOrWhiteSpace(ownerName)
+                ? "new " + ownerName
+                : path;
+            return namePart + "(" + string.Join(", ", parts) + "): " + (node["returns"]?.GetValue<string>() ?? string.Empty);
         }
 
         private static string ReadNotes(JsonNode? notes)

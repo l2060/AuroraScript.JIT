@@ -18,6 +18,8 @@ internal static class AuroraSyntaxClassificationTypes
     public const string Property = "AuroraScript.Property";
     public const string MapKey = "AuroraScript.MapKey";
     public const string BuiltinVariable = "AuroraScript.BuiltinVariable";
+    public const string DeclaredGlobal = "AuroraScript.DeclaredGlobal";
+    public const string DeclaredGlobalFunction = "AuroraScript.DeclaredGlobalFunction";
     public const string ControlFlow = "AuroraScript.ControlFlow";
     public const string Return = "AuroraScript.Return";
     public const string Throw = "AuroraScript.Throw";
@@ -137,6 +139,8 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
             [AuroraSyntaxClassificationTypes.Property] = CreateTag(classificationTypes, AuroraSyntaxClassificationTypes.Property),
             [AuroraSyntaxClassificationTypes.MapKey] = CreateTag(classificationTypes, AuroraSyntaxClassificationTypes.MapKey),
             [AuroraSyntaxClassificationTypes.BuiltinVariable] = CreateTag(classificationTypes, AuroraSyntaxClassificationTypes.BuiltinVariable),
+            [AuroraSyntaxClassificationTypes.DeclaredGlobal] = CreateTag(classificationTypes, AuroraSyntaxClassificationTypes.DeclaredGlobal),
+            [AuroraSyntaxClassificationTypes.DeclaredGlobalFunction] = CreateTag(classificationTypes, AuroraSyntaxClassificationTypes.DeclaredGlobalFunction),
             [AuroraSyntaxClassificationTypes.ControlFlow] = CreateTag(classificationTypes, AuroraSyntaxClassificationTypes.ControlFlow),
             [AuroraSyntaxClassificationTypes.Return] = CreateTag(classificationTypes, AuroraSyntaxClassificationTypes.Return),
             [AuroraSyntaxClassificationTypes.Throw] = CreateTag(classificationTypes, AuroraSyntaxClassificationTypes.Throw),
@@ -770,6 +774,16 @@ internal static class AuroraSyntaxClassificationDefinitions
     internal static ClassificationTypeDefinition? BuiltinVariableClassificationType;
 
     [Export(typeof(ClassificationTypeDefinition))]
+    [Name(AuroraSyntaxClassificationTypes.DeclaredGlobal)]
+    [BaseDefinition("text")]
+    internal static ClassificationTypeDefinition? DeclaredGlobalClassificationType;
+
+    [Export(typeof(ClassificationTypeDefinition))]
+    [Name(AuroraSyntaxClassificationTypes.DeclaredGlobalFunction)]
+    [BaseDefinition("text")]
+    internal static ClassificationTypeDefinition? DeclaredGlobalFunctionClassificationType;
+
+    [Export(typeof(ClassificationTypeDefinition))]
     [Name(AuroraSyntaxClassificationTypes.ControlFlow)]
     [BaseDefinition("text")]
     internal static ClassificationTypeDefinition? ControlFlowClassificationType;
@@ -890,6 +904,24 @@ internal sealed class AuroraMapKeyFormat : AuroraSyntaxFormatDefinition
 internal sealed class AuroraBuiltinVariableFormat : AuroraSyntaxFormatDefinition
 {
     public AuroraBuiltinVariableFormat() : base("AuroraScript Built-in Variable", 0xC5, 0x86, 0xC0) { }
+}
+
+[Export(typeof(EditorFormatDefinition))]
+[ClassificationType(ClassificationTypeNames = AuroraSyntaxClassificationTypes.DeclaredGlobal)]
+[Name(AuroraSyntaxClassificationTypes.DeclaredGlobal)]
+[UserVisible(true)]
+internal sealed class AuroraDeclaredGlobalFormat : AuroraSyntaxFormatDefinition
+{
+    public AuroraDeclaredGlobalFormat() : base("AuroraScript Declared Global", 0xD7, 0xBA, 0x7D) { }
+}
+
+[Export(typeof(EditorFormatDefinition))]
+[ClassificationType(ClassificationTypeNames = AuroraSyntaxClassificationTypes.DeclaredGlobalFunction)]
+[Name(AuroraSyntaxClassificationTypes.DeclaredGlobalFunction)]
+[UserVisible(true)]
+internal sealed class AuroraDeclaredGlobalFunctionFormat : AuroraSyntaxFormatDefinition
+{
+    public AuroraDeclaredGlobalFunctionFormat() : base("AuroraScript Declared Global Function", 0xDC, 0xDC, 0xAA) { }
 }
 
 [Export(typeof(EditorFormatDefinition))]

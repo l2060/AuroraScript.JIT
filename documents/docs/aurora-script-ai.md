@@ -206,6 +206,21 @@ Common APIs:
 - Path constructor/static: `new Path(root, ...segments)`, `Path.of(root, ...segments)`, `Path.isPath(value)`, `Path.join(root, ...segments)`, `Path.baseModule(...segments)`, `Path.normalize(path)`, `Path.directoryName(path)`, `Path.fileName(path)`, `Path.extName(path)`, `Path.protocol(path)`, `Path.changeExt(path, extension)`, `Path.isRooted(path)`, `Path.isUnderRoot(root, path)`, `Path.currentFile()`, `Path.currentDirectory()`
 - Path instance: `append(...segments)`, `reset(root, ...segments)`, `changeExt(extension)`, `directoryName()`, `fileName()`, `extName()`, `protocol()`, `clone()`, `toString()`
 
+Constructor signatures are also available in `schema/runtime-api.json` under each constructor global's `constructors` array:
+
+- `new Array(capacity?: number): array`
+- `new String(value?: any): string`
+- `new Boolean(value?: any): boolean`
+- `new Object(prototype?: object): object`
+- `new Number(value?: any): number`
+- `new Date(value: number|string): date`; use `Date.now()` or `Date.utcNow()` for the current time.
+- `new Error(message: string): Error`
+- `new HashMap(capacity?: number): HashMap`
+- `new Regex(pattern: string|Regex, flags?: string): Regex`
+- `new Proxy(target: object, options: object): Proxy`; `options` must provide `get` and `set`.
+- `new StringBuffer(initialValue?: string): StringBuffer`
+- `new Path(root?: string|Path, ...segments: string|Path): Path`
+
 Path rules:
 
 - `Path` normalizes text with `/` separators and supports protocol roots such as `mem://app` and `asset://pkg`.

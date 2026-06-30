@@ -5,6 +5,27 @@
   "globals": {
     "Array": {
       "kind": "constructor",
+      "callable": true,
+      "constructors": [
+        {
+          "parameters": [
+            {
+              "name": "capacity",
+              "type": "number",
+              "optional": true
+            }
+          ],
+          "returns": "array",
+          "notes": {
+            "en": [
+              "Creates an empty array. A single numeric argument reserves capacity."
+            ],
+            "zh-CN": [
+              "创建空数组。单个数字参数用于预留容量。"
+            ]
+          }
+        }
+      ],
       "members": {
         "from": {
           "kind": "method",
@@ -97,6 +118,27 @@
     },
     "String": {
       "kind": "constructor",
+      "callable": true,
+      "constructors": [
+        {
+          "parameters": [
+            {
+              "name": "value",
+              "type": "any",
+              "optional": true
+            }
+          ],
+          "returns": "string",
+          "notes": {
+            "en": [
+              "Converts a value to a string. Missing or non-string-convertible input produces an empty string."
+            ],
+            "zh-CN": [
+              "将值转换为字符串。缺少参数或无法转换为字符串时返回空字符串。"
+            ]
+          }
+        }
+      ],
       "members": {
         "fromCharCode": {
           "kind": "method",
@@ -168,6 +210,27 @@
     },
     "Boolean": {
       "kind": "constructor",
+      "callable": true,
+      "constructors": [
+        {
+          "parameters": [
+            {
+              "name": "value",
+              "type": "any",
+              "optional": true
+            }
+          ],
+          "returns": "boolean",
+          "notes": {
+            "en": [
+              "Converts a value using AuroraScript truthiness."
+            ],
+            "zh-CN": [
+              "按 AuroraScript 真值规则转换为布尔值。"
+            ]
+          }
+        }
+      ],
       "members": {
         "valueOf": {
           "kind": "method",
@@ -223,6 +286,27 @@
     },
     "Object": {
       "kind": "constructor",
+      "callable": true,
+      "constructors": [
+        {
+          "parameters": [
+            {
+              "name": "prototype",
+              "type": "object",
+              "optional": true
+            }
+          ],
+          "returns": "object",
+          "notes": {
+            "en": [
+              "Creates an empty object, or an object derived from the supplied object."
+            ],
+            "zh-CN": [
+              "创建空对象；传入对象时创建派生自该对象的新对象。"
+            ]
+          }
+        }
+      ],
       "members": {
         "equal$": {
           "kind": "method",
@@ -415,6 +499,27 @@
     },
     "Number": {
       "kind": "constructor",
+      "callable": true,
+      "constructors": [
+        {
+          "parameters": [
+            {
+              "name": "value",
+              "type": "any",
+              "optional": true
+            }
+          ],
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Converts a value to a number. Failed conversion produces NaN."
+            ],
+            "zh-CN": [
+              "将值转换为数字。转换失败时返回 NaN。"
+            ]
+          }
+        }
+      ],
       "members": {
         "MAX_VALUE": {
           "kind": "constant",
@@ -602,6 +707,26 @@
     },
     "Date": {
       "kind": "constructor",
+      "callable": true,
+      "constructors": [
+        {
+          "parameters": [
+            {
+              "name": "value",
+              "type": "number|string"
+            }
+          ],
+          "returns": "date",
+          "notes": {
+            "en": [
+              "Creates a date from ticks or a supported formatted date string. Use Date.now() or Date.utcNow() for the current time."
+            ],
+            "zh-CN": [
+              "根据 ticks 或受支持的格式化日期字符串创建日期。当前时间请使用 Date.now() 或 Date.utcNow()。"
+            ]
+          }
+        }
+      ],
       "members": {
         "now": {
           "kind": "method",
@@ -659,6 +784,26 @@
     },
     "Error": {
       "kind": "constructor",
+      "callable": false,
+      "constructors": [
+        {
+          "parameters": [
+            {
+              "name": "message",
+              "type": "string"
+            }
+          ],
+          "returns": "Error",
+          "notes": {
+            "en": [
+              "Creates an Error value with a message and captured script stack."
+            ],
+            "zh-CN": [
+              "创建包含消息和脚本调用栈的 Error 值。"
+            ]
+          }
+        }
+      ],
       "notes": {
         "en": [
           "Error constructor for runtime error values."
@@ -670,6 +815,27 @@
     },
     "HashMap": {
       "kind": "constructor",
+      "callable": false,
+      "constructors": [
+        {
+          "parameters": [
+            {
+              "name": "capacity",
+              "type": "number",
+              "optional": true
+            }
+          ],
+          "returns": "HashMap",
+          "notes": {
+            "en": [
+              "Creates an empty hash map, optionally reserving initial capacity."
+            ],
+            "zh-CN": [
+              "创建空 HashMap，可选地预留初始容量。"
+            ]
+          }
+        }
+      ],
       "notes": {
         "en": [
           "HashMap constructor for key-value collections."
@@ -681,6 +847,31 @@
     },
     "Regex": {
       "kind": "constructor",
+      "callable": false,
+      "constructors": [
+        {
+          "parameters": [
+            {
+              "name": "pattern",
+              "type": "string|Regex"
+            },
+            {
+              "name": "flags",
+              "type": "string",
+              "optional": true
+            }
+          ],
+          "returns": "Regex",
+          "notes": {
+            "en": [
+              "Creates a regex from a pattern and optional flags. Passing a Regex without flags returns it unchanged."
+            ],
+            "zh-CN": [
+              "根据模式和可选 flags 创建 Regex。只传入 Regex 时原样返回该 Regex。"
+            ]
+          }
+        }
+      ],
       "notes": {
         "en": [
           "Regex constructor for regular expression values."
@@ -692,6 +883,30 @@
     },
     "Proxy": {
       "kind": "constructor",
+      "callable": false,
+      "constructors": [
+        {
+          "parameters": [
+            {
+              "name": "target",
+              "type": "object"
+            },
+            {
+              "name": "options",
+              "type": "object"
+            }
+          ],
+          "returns": "Proxy",
+          "notes": {
+            "en": [
+              "Creates a proxy for an object. The options object must provide get and set handlers."
+            ],
+            "zh-CN": [
+              "为对象创建 Proxy。options 对象必须提供 get 和 set 处理器。"
+            ]
+          }
+        }
+      ],
       "notes": {
         "en": [
           "Proxy constructor for dynamic object interception."
@@ -703,6 +918,27 @@
     },
     "StringBuffer": {
       "kind": "constructor",
+      "callable": false,
+      "constructors": [
+        {
+          "parameters": [
+            {
+              "name": "initialValue",
+              "type": "string",
+              "optional": true
+            }
+          ],
+          "returns": "StringBuffer",
+          "notes": {
+            "en": [
+              "Creates a string buffer, optionally initialized with text."
+            ],
+            "zh-CN": [
+              "创建字符串缓冲区，可选地使用初始文本。"
+            ]
+          }
+        }
+      ],
       "notes": {
         "en": [
           "Use for high-volume incremental string building."
@@ -1187,17 +1423,43 @@
     },
     "Path": {
       "kind": "constructor",
+      "callable": false,
+      "constructors": [
+        {
+          "parameters": [
+            {
+              "name": "root",
+              "type": "string|Path",
+              "optional": true
+            },
+            {
+              "name": "segments",
+              "type": "string|Path",
+              "variadic": true
+            }
+          ],
+          "returns": "Path",
+          "notes": {
+            "en": [
+              "Creates a mutable normalized Path from a root and optional segments."
+            ],
+            "zh-CN": [
+              "根据根路径和可选片段创建可变且已规范化的 Path。"
+            ]
+          }
+        }
+      ],
       "members": {
         "of": {
           "kind": "method",
           "parameters": [
             {
               "name": "root",
-              "type": "string"
+              "type": "string|Path"
             },
             {
               "name": "segments",
-              "type": "string",
+              "type": "string|Path",
               "variadic": true
             }
           ],
@@ -1234,11 +1496,11 @@
           "parameters": [
             {
               "name": "root",
-              "type": "string"
+              "type": "string|Path"
             },
             {
               "name": "segments",
-              "type": "string",
+              "type": "string|Path",
               "variadic": true
             }
           ],
@@ -1257,7 +1519,7 @@
           "parameters": [
             {
               "name": "segments",
-              "type": "string",
+              "type": "string|Path",
               "variadic": true
             }
           ],
@@ -1276,7 +1538,7 @@
           "parameters": [
             {
               "name": "path",
-              "type": "string"
+              "type": "string|Path"
             }
           ],
           "returns": "string",
@@ -1294,7 +1556,7 @@
           "parameters": [
             {
               "name": "path",
-              "type": "string"
+              "type": "string|Path"
             }
           ],
           "returns": "string",
@@ -1312,7 +1574,7 @@
           "parameters": [
             {
               "name": "path",
-              "type": "string"
+              "type": "string|Path"
             }
           ],
           "returns": "string",
@@ -1330,7 +1592,7 @@
           "parameters": [
             {
               "name": "path",
-              "type": "string"
+              "type": "string|Path"
             }
           ],
           "returns": "string",
@@ -1348,7 +1610,7 @@
           "parameters": [
             {
               "name": "path",
-              "type": "string"
+              "type": "string|Path"
             }
           ],
           "returns": "string",
@@ -1366,11 +1628,11 @@
           "parameters": [
             {
               "name": "path",
-              "type": "string"
+              "type": "string|Path"
             },
             {
               "name": "extension",
-              "type": "string"
+              "type": "string|Path"
             }
           ],
           "returns": "string",
@@ -1388,7 +1650,7 @@
           "parameters": [
             {
               "name": "path",
-              "type": "string"
+              "type": "string|Path"
             }
           ],
           "returns": "boolean",
@@ -1406,11 +1668,11 @@
           "parameters": [
             {
               "name": "root",
-              "type": "string"
+              "type": "string|Path"
             },
             {
               "name": "path",
-              "type": "string"
+              "type": "string|Path"
             }
           ],
           "returns": "boolean",
@@ -2463,7 +2725,7 @@
         "parameters": [
           {
             "name": "segments",
-            "type": "string",
+            "type": "string|Path",
             "variadic": true
           }
         ],
@@ -2482,11 +2744,11 @@
         "parameters": [
           {
             "name": "root",
-            "type": "string"
+            "type": "string|Path"
           },
           {
             "name": "segments",
-            "type": "string",
+            "type": "string|Path",
             "variadic": true
           }
         ],
@@ -2505,7 +2767,7 @@
         "parameters": [
           {
             "name": "extension",
-            "type": "string"
+            "type": "string|Path"
           }
         ],
         "returns": "Path",

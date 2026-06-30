@@ -190,6 +190,23 @@ Object values:
 - path
 - CLR interop objects exposed by the host
 
+## Runtime Constructors
+
+Use `schema/runtime-api.json` for the complete machine-readable runtime API. Constructor globals expose structured signatures in their `constructors` arrays:
+
+- `new Array(capacity?: number): array`
+- `new String(value?: any): string`
+- `new Boolean(value?: any): boolean`
+- `new Object(prototype?: object): object`
+- `new Number(value?: any): number`
+- `new Date(value: number|string): date`
+- `new Error(message: string): Error`
+- `new HashMap(capacity?: number): HashMap`
+- `new Regex(pattern: string|Regex, flags?: string): Regex`
+- `new Proxy(target: object, options: object): Proxy`
+- `new StringBuffer(initialValue?: string): StringBuffer`
+- `new Path(root?: string|Path, ...segments: string|Path): Path`
+
 ## Path Runtime API
 
 `Path` is a protocol-aware script object for path text manipulation. It normalizes separators to `/`, handles dot segments, and supports protocol roots such as `mem://app` and `asset://pkg`.
@@ -238,7 +255,7 @@ Instance members:
 - `clone()`
 - `toString()`
 
-`Path.join`, `Path.baseModule`, `Path.currentFile`, and `Path.currentDirectory` return strings. `Path.extName(path)` and `path.extName()` return the extension including the leading dot, or an empty string when absent. `new Path(...)` and `Path.of(...)` return mutable `Path` objects. `Path` objects compare with `==` by normalized path text value.
+`Path` APIs accept string path text or existing `Path` values for path arguments. `Path.join`, `Path.baseModule`, `Path.currentFile`, and `Path.currentDirectory` return strings. `Path.extName(path)` and `path.extName()` return the extension including the leading dot, or an empty string when absent. `new Path(...)` and `Path.of(...)` return mutable `Path` objects. `Path` objects compare with `==` by normalized path text value.
 
 ## CompileBlock
 

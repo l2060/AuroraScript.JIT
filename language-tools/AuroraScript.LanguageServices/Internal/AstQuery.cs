@@ -23,6 +23,7 @@ internal static class AstQuery
             Name = state.Name,
             PropertyAccess = state.PropertyAccess,
             Call = state.Call,
+            NewExpression = state.NewExpression,
             IsOnPropertyOwner = state.IsOnPropertyOwner,
             IsOnPropertyName = state.IsOnPropertyName,
             IsAfterMemberAccessDot = state.IsAfterMemberAccessDot
@@ -70,6 +71,7 @@ internal static class AstQuery
                 VisitFunctionCall(call, state);
                 return;
             case NewExpression newExpression:
+                state.NewExpression = newExpression;
                 Visit(newExpression.Expression, state);
                 return;
             case AssignmentExpression assignment:
@@ -252,6 +254,7 @@ internal static class AstQuery
         public NameExpression? Name { get; set; }
         public GetPropertyExpression? PropertyAccess { get; set; }
         public FunctionCallExpression? Call { get; set; }
+        public NewExpression? NewExpression { get; set; }
         public bool IsOnPropertyOwner { get; set; }
         public bool IsOnPropertyName { get; set; }
         public bool IsAfterMemberAccessDot { get; set; }

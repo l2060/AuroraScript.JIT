@@ -49,12 +49,43 @@ public static class BuiltinApiLoader
     {
         var kind = ReadKind(element, BuiltinApiKind.Object);
         var readOnly = ReadReadOnly(element, defaultValue: true);
+        var callable = element.TryGetProperty("callable", out var callableElement) &&
+            callableElement.ValueKind == JsonValueKind.True;
+        var constructors = element.TryGetProperty("constructors", out var constructorsElement)
+            ? ReadConstructors(name, constructorsElement)
+            : Array.Empty<BuiltinApiMember>();
         var documentation = ReadDocumentation(element);
         var members = element.TryGetProperty("members", out var membersElement)
             ? ReadMembers(name, membersElement)
             : new Dictionary<string, BuiltinApiMember>(StringComparer.Ordinal);
 
-        return new BuiltinApiSymbol(name, kind, readOnly, documentation, members);
+        return new BuiltinApiSymbol(name, kind, readOnly, callable, constructors, documentation, members);
+    }
+
+    private static IReadOnlyList<BuiltinApiMember> ReadConstructors(string ownerName, JsonElement element)
+    {
+        if (element.ValueKind != JsonValueKind.Array)
+        {
+            return Array.Empty<BuiltinApiMember>();
+        }
+
+        var constructors = new List<BuiltinApiMember>();
+        foreach (var constructorElement in element.EnumerateArray())
+        {
+            var returnType = constructorElement.TryGetProperty("returns", out var returnsElement)
+                ? returnsElement.GetString() ?? ownerName
+                : ownerName;
+            constructors.Add(new BuiltinApiMember(
+                string.Empty,
+                ownerName,
+                BuiltinApiKind.Constructor,
+                returnType,
+                readOnly: true,
+                ReadParameters(constructorElement),
+                ReadDocumentation(constructorElement)));
+        }
+
+        return constructors;
     }
 
     private static IReadOnlyDictionary<string, BuiltinApiMember> ReadMembers(string ownerName, JsonElement element)

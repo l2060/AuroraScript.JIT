@@ -41,6 +41,8 @@ public static class AuroraSemanticTokenTypes
     public const int BraceLevel4 = 36;
     public const int BraceLevel5 = 37;
     public const int BraceLevel6 = 38;
+    public const int DeclaredGlobal = 39;
+    public const int DeclaredGlobalFunction = 40;
 
     public static readonly string[] Legend =
     {
@@ -82,6 +84,8 @@ public static class AuroraSemanticTokenTypes
         "braceLevel3",
         "braceLevel4",
         "braceLevel5",
-        "braceLevel6"
+        "braceLevel6",
+        "declaredGlobal",
+        "declaredGlobalFunction"
     };
 }
