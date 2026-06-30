@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Configuration xmlns="http://schemas.microsoft.com/vstudio/vsdconfig/2008">
+
+  <DefineGuid Name="guidAuroraScriptExpressionCompilerCompId" Value="1C7CC7E5-38E4-4F42-8465-2C496D5D7D7A"/>
+  <DefineGuid Name="guidAuroraScriptLanguageId" Value="72B5C67C-4C8F-4A17-93A4-35C34487374D"/>
+
+  <ManagedComponent
+    ComponentId="guidAuroraScriptExpressionCompilerCompId"
+    ComponentLevel="9991900"
+    AssemblyName="AuroraScript.VisualStudio"
+    Synchronized="true">
+
+    <Class Name="AuroraScript.VisualStudio.Debugger.AuroraExpressionCompiler">
+      <Implements>
+        <InterfaceGroup>
+          <Filter>
+            <LanguageId RequiredValue="guidAuroraScriptLanguageId"/>
+          </Filter>
+          <Interface Name="IDkmClrExpressionCompiler"/>
+        </InterfaceGroup>
+      </Implements>
+    </Class>
+
+  </ManagedComponent>
+
+</Configuration>

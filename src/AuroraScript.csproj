@@ -30,94 +30,100 @@
 		<AssemblyTitle>AuroraScript</AssemblyTitle>
 		<GenerateDocumentationFile>True</GenerateDocumentationFile>
 		<PackageProjectUrl>https://github.com/l2060/AuroraScript.JIT.git</PackageProjectUrl>
-	</PropertyGroup>	
-	
-	
+	</PropertyGroup>
+
+
 	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
-	  <Optimize>False</Optimize>
-	  <DebugType>portable</DebugType>
-	  <DefineConstants>$(DefineConstants);PERFORMANCE_COUNTER</DefineConstants>
+		<Optimize>False</Optimize>
+		<DebugType>portable</DebugType>
+		<DefineConstants>$(DefineConstants);PERFORMANCE_COUNTER</DefineConstants>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-	  <Optimize>False</Optimize>
-	  <DebugType>portable</DebugType>
-	  <DefineConstants>$(DefineConstants);PERFORMANCE_COUNTER</DefineConstants>
+		<Optimize>False</Optimize>
+		<DebugType>portable</DebugType>
+		<DefineConstants>$(DefineConstants);PERFORMANCE_COUNTER</DefineConstants>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
-	  <Optimize>True</Optimize>
-	  <DebugType>none</DebugType>
+		<Optimize>True</Optimize>
+		<DebugType>none</DebugType>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-	  <Optimize>True</Optimize>
-	  <DebugType>none</DebugType>
+		<Optimize>True</Optimize>
+		<DebugType>none</DebugType>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Release|net8.0|AnyCPU'">
-	  <DebugType>portable</DebugType>
+		<DebugType>portable</DebugType>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Release|net9.0|AnyCPU'">
-	  <DebugType>portable</DebugType>
+		<DebugType>portable</DebugType>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Release|net10.0|AnyCPU'">
-	  <DebugType>portable</DebugType>
+		<DebugType>portable</DebugType>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Release|net8.0|x64'">
-	  <DebugType>portable</DebugType>
+		<DebugType>portable</DebugType>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Release|net9.0|x64'">
-	  <DebugType>portable</DebugType>
+		<DebugType>portable</DebugType>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Release|net10.0|x64'">
-	  <DebugType>portable</DebugType>
+		<DebugType>portable</DebugType>
 	</PropertyGroup>
 
 	<ItemGroup>
-	  <Content Include="icon.ico" />
-	  <InternalsVisibleTo Include="AuroraScript.LanguageServices" />
-	  <InternalsVisibleTo Include="AuroraScript.LanguageServices.Tests" />
+		<Content Include="icon.ico" />
+		<InternalsVisibleTo Include="AuroraScript.LanguageServices" />
+		<InternalsVisibleTo Include="AuroraScript.LanguageServices.Tests" />
 	</ItemGroup>
 
 	<ItemGroup>
-	  <None Include="..\icon.png">
-	    <Pack>True</Pack>
-	    <PackagePath>\</PackagePath>
-	  </None>
-	  <None Include="..\LICENSE">
-	    <Pack>True</Pack>
-	    <PackagePath>\</PackagePath>
-	  </None>
-	  <None Include="..\README.md">
-	    <Pack>True</Pack>
-	    <PackagePath>\</PackagePath>
-	  </None>
-	  <None Include="..\documents\README.md">
-	    <Pack>True</Pack>
-	    <PackagePath>documents\</PackagePath>
-	  </None>
-	  <None Include="..\documents\llms.txt">
-	    <Pack>True</Pack>
-	    <PackagePath>documents\</PackagePath>
-	  </None>
-	  <None Include="..\documents\docs\**\*.*">
-	    <Pack>True</Pack>
-	    <PackagePath>documents\docs\</PackagePath>
-	  </None>
-	  <None Include="..\documents\schema\**\*.*">
-	    <Pack>True</Pack>
-	    <PackagePath>documents\schema\</PackagePath>
-	  </None>
-	  <None Include="..\documents\examples\**\*.*">
-	    <Pack>True</Pack>
-	    <PackagePath>documents\examples\</PackagePath>
-	  </None>
+		<None Include="..\icon.png">
+			<Pack>True</Pack>
+			<Visible>False</Visible>
+			<PackagePath>\</PackagePath>
+		</None>
+		<None Include="..\LICENSE">
+			<Pack>True</Pack>
+			<Visible>False</Visible>
+			<PackagePath>\</PackagePath>
+		</None>
+		<None Include="..\README.md">
+			<Pack>True</Pack>
+			<PackagePath>\</PackagePath>
+		</None>
+		<None Include="..\documents\README.md">
+			<Pack>True</Pack>
+			<PackagePath>documents\</PackagePath>
+		</None>
+		<None Include="..\documents\llms.txt">
+			<Pack>True</Pack>
+			<Visible>False</Visible>
+			<PackagePath>documents\</PackagePath>
+		</None>
+		<None Include="..\documents\docs\**\*.*">
+			<Pack>True</Pack>
+			<Visible>False</Visible>
+			<PackagePath>documents\docs\</PackagePath>
+		</None>
+		<None Include="..\documents\schema\**\*.*">
+			<Pack>True</Pack>
+			<Visible>False</Visible>
+			<PackagePath>documents\schema\</PackagePath>
+		</None>
+		<None Include="..\documents\examples\**\*.*">
+			<Pack>True</Pack>
+			<Visible>False</Visible>
+			<PackagePath>documents\examples\</PackagePath>
+		</None>
 	</ItemGroup>
 
 </Project>

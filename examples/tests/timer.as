@@ -73,6 +73,7 @@ export function createTimer(callback, interval = 521) {
 	resetCount++;
 	timeCount++;
 	timers.push(timer);
+	console.log(timer);
 	return Object(timer);
 }
 

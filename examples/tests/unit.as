@@ -94,7 +94,7 @@ export func testIssue1() {
 	$state.Test(123.45, 'abc');
 	var args = $args;
 
-
+	
 }
 
 

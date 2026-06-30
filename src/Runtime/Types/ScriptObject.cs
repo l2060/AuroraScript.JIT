@@ -1,5 +1,6 @@
 ﻿using AuroraScript.Runtime.Interop;
 using AuroraScript.Runtime.Property;
+using AuroraScript.Runtime.Debugging;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -27,15 +28,17 @@ namespace AuroraScript.Runtime.Types
     /// Represents the base object type in the AuroraScript runtime.
     /// Supports prototype-based inheritance and dynamic property management.
     /// </summary>
+    [DebuggerTypeProxy(typeof(ScriptObjectDebugView))]
+    [DebuggerDisplay("{DebuggerDisplayValue,nq}", Type = "{DebuggerDisplayType,nq}")]
     public partial class ScriptObject
     {
         private ScriptObject prototype;
         /// <summary> Prototype object. </summary>
         public ScriptObject Prototype => prototype;
 
-        private PropertyDescriptor[] propertyValues = Array.Empty<PropertyDescriptor>();
+        internal PropertyDescriptor[] propertyValues = Array.Empty<PropertyDescriptor>();
 
-        private HiddenClass hiddenClass = HiddenClass.Root;
+        internal HiddenClass hiddenClass = HiddenClass.Root;
 
         private ObjectFlags flags = ObjectFlags.None;
         private ClrInstanceObject clrFallback;
@@ -50,6 +53,12 @@ namespace AuroraScript.Runtime.Types
         public bool Immutable => (flags & ObjectFlags.Immutable) == ObjectFlags.Immutable;
 
         internal bool HasValueEquality => (flags & ObjectFlags.ValueEquality) == ObjectFlags.ValueEquality;
+
+        [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+        internal string DebuggerDisplayValue => ScriptDebugView.FormatValue(this);
+
+        [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+        internal string DebuggerDisplayType => ScriptDebugView.GetTypeName(this);
 
         /// <summary>
         /// Initializes an internal immutable object with a specific prototype.

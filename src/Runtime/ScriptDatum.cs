@@ -1,5 +1,6 @@
 ﻿using AuroraScript.Runtime.Types;
 using System;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace AuroraScript.Runtime
@@ -9,6 +10,8 @@ namespace AuroraScript.Runtime
     /// This is a value type implemented as a tagged union using an explicit layout to minimize memory overhead.
     /// It can store primitive values (Number, Boolean, Null) or references to script objects.
     /// </summary>
+    [DebuggerTypeProxy(typeof(Debugging.ScriptDatumDebugView))]
+    [DebuggerDisplay("{DebuggerDisplayValue,nq}", Type = "{DebuggerDisplayType,nq}")]
     [StructLayout(LayoutKind.Explicit)]
     public unsafe partial struct ScriptDatum : IEquatable<ScriptDatum>
     {
@@ -47,6 +50,12 @@ namespace AuroraScript.Runtime
             readonly get => Object as StringValue;
             set => Object = value;
         }
+
+        [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+        internal readonly string DebuggerDisplayValue => Debugging.ScriptDebugView.FormatValue(this);
+
+        [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+        internal readonly string DebuggerDisplayType => Debugging.ScriptDebugView.GetTypeName(this);
 
         /// <summary>
         /// Returns a string representation of the datum's value.

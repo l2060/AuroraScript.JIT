@@ -9,6 +9,7 @@ using AuroraScript.Tokens;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Text;
 using System.Reflection;
 using System.Reflection.Emit;
 
@@ -142,6 +143,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             try
             {
                 InitializeCapturedLocals(function);
+                _session.Builder.SetDebuggerMetadata(method, CreateDebuggerMetadata(function, executable.Convention));
                 InitializeParameters(function, executable.Convention);
                 EmitLocation(function.Body);
                 EmitStatement(function.Body);
@@ -2919,6 +2921,159 @@ namespace AuroraScript.Compiler.Backend.Emission
                 FunctionCallConvention.Fast7 => 7,
                 _ => -1
             };
+        }
+
+        private string CreateDebuggerMetadata(FunctionPlan function, FunctionCallConvention convention)
+        {
+            if (_session.Options.Compiler.Mode != CompilationMode.Persistence ||
+                _session.Options.Optimization.Level != OptimizeOptions.Debug)
+            {
+                return string.Empty;
+            }
+
+            var builder = new StringBuilder();
+            builder.Append("v=1");
+            builder.Append(";cc=");
+            builder.Append(convention == FunctionCallConvention.Span ? "span" : "fast");
+            builder.Append(";arity=");
+            builder.Append(convention == FunctionCallConvention.Span ? GetParameterCount(function) : GetFastArity(convention));
+
+            var parameterPlans = BuildParameterLoadPlans(function, convention);
+            for (var i = 0; i < function.LocalSlots.Length; i++)
+            {
+                var slot = function.LocalSlots[i];
+                if (slot.Id.IsValid &&
+                    _capturedLocalByLocalSlot != null &&
+                    _capturedLocalByLocalSlot.ContainsKey(slot.Id.Value))
+                {
+                    continue;
+                }
+
+                if (slot.IsParameter)
+                {
+                    var plan = (uint)i < (uint)parameterPlans.Length ? parameterPlans[i] : default;
+                    builder.Append(";p:");
+                    AppendEscaped(builder, slot.Name);
+                    builder.Append(':');
+                    builder.Append(_locals != null && (uint)i < (uint)_locals.Length && _locals[i] != null ? _locals[i].LocalIndex : -1);
+                    builder.Append(':');
+                    builder.Append(plan.ParameterIndex);
+                    builder.Append(':');
+                    builder.Append(plan.CanLoadDirectly ? '1' : '0');
+                    continue;
+                }
+
+                if (_locals == null || (uint)i >= (uint)_locals.Length || _locals[i] == null)
+                {
+                    continue;
+                }
+
+                builder.Append(";l:");
+                AppendEscaped(builder, slot.Name);
+                builder.Append(':');
+                builder.Append(_locals[i].LocalIndex);
+            }
+
+            for (var i = 0; i < function.UpvalueSlots.Length; i++)
+            {
+                builder.Append(";u:");
+                AppendEscaped(builder, function.UpvalueSlots[i].Name);
+                builder.Append(':');
+                builder.Append(i);
+            }
+
+            for (var i = 0; i < function.CapturedLocalSlots.Length; i++)
+            {
+                builder.Append(";c:");
+                AppendEscaped(builder, function.CapturedLocalSlots[i].Name);
+                builder.Append(':');
+                builder.Append(i);
+                builder.Append(':');
+                builder.Append(_capturedUpvalues?.LocalIndex ?? -1);
+            }
+
+            AppendModuleSymbols(builder, function);
+            return builder.ToString();
+        }
+
+        private void AppendModuleSymbols(StringBuilder builder, FunctionPlan function)
+        {
+            if (!_module.ModuleScope.IsValid)
+            {
+                return;
+            }
+
+            var moduleScope = _session.CompileSession.Scopes[_module.ModuleScope];
+            if (moduleScope.SymbolCount == 0)
+            {
+                return;
+            }
+
+            var symbols = _session.CompileSession.Symbols;
+            for (var i = 0; i < moduleScope.SymbolCount; i++)
+            {
+                var symbol = symbols[new SymbolId(moduleScope.FirstSymbol.Value + i)];
+                if (!CanShowModuleSymbolInDebugger(function, symbol))
+                {
+                    continue;
+                }
+
+                builder.Append(";m:");
+                AppendEscaped(builder, symbol.Name);
+            }
+        }
+
+        private static bool CanShowModuleSymbolInDebugger(FunctionPlan function, SymbolInfo symbol)
+        {
+            if (symbol.Kind is not (BackendSymbolKind.ModuleProperty or BackendSymbolKind.ImportAlias or BackendSymbolKind.Function or BackendSymbolKind.Enum))
+            {
+                return false;
+            }
+
+            for (var i = 0; i < function.LocalSlots.Length; i++)
+            {
+                if (string.Equals(function.LocalSlots[i].Name, symbol.Name, StringComparison.Ordinal))
+                {
+                    return false;
+                }
+            }
+
+            for (var i = 0; i < function.UpvalueSlots.Length; i++)
+            {
+                if (string.Equals(function.UpvalueSlots[i].Name, symbol.Name, StringComparison.Ordinal))
+                {
+                    return false;
+                }
+            }
+
+            for (var i = 0; i < function.CapturedLocalSlots.Length; i++)
+            {
+                if (string.Equals(function.CapturedLocalSlots[i].Name, symbol.Name, StringComparison.Ordinal))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static void AppendEscaped(StringBuilder builder, string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return;
+            }
+
+            for (var i = 0; i < value.Length; i++)
+            {
+                var ch = value[i];
+                if (ch == '\\' || ch == ';' || ch == ':')
+                {
+                    builder.Append('\\');
+                }
+
+                builder.Append(ch);
+            }
         }
 
         private static bool IsLocalName(LoweredNameExpression name)

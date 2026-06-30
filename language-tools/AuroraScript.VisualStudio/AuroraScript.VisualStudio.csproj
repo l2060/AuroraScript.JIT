@@ -1,5 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug' and '$(BuildingInsideVisualStudio)' != 'true'">
+    <Configuration>Release</Configuration>
+  </PropertyGroup>
+
   <PropertyGroup>
     <TargetFramework>net472</TargetFramework>
     <LangVersion>latest</LangVersion>
@@ -19,15 +23,22 @@
     <CreateVsixContainer>true</CreateVsixContainer>
     <EnableContentIncludeInVsix>true</EnableContentIncludeInVsix>
     <NoWarn>$(NoWarn);0618;0649</NoWarn>
+    <AuroraVsixManifest>$(MSBuildProjectDirectory)\source.extension.vsixmanifest</AuroraVsixManifest>
+    <AuroraVsixVersionBumpScript>$(MSBuildProjectDirectory)\IncrementVsixVersion.ps1</AuroraVsixVersionBumpScript>
   </PropertyGroup>
 
   <ItemGroup>
     <Reference Include="PresentationCore" />
     <Reference Include="System.ComponentModel.Composition" />
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net472" Version="1.0.3" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.NETCore.ILAsm" Version="5.0.0" GeneratePathProperty="true" />
+    <PackageReference Include="Microsoft.VisualStudio.Debugger.Engine" Version="17.0.2012801" />
+    <PackageReference Include="Microsoft.VisualStudio.Debugger.Metadata" Version="17.0.2012801" />
     <PackageReference Include="Microsoft.VisualStudio.LanguageServer.Client" Version="17.14.60" ExcludeAssets="runtime" />
     <PackageReference Include="Microsoft.VisualStudio.SDK" Version="17.14.40265" ExcludeAssets="runtime" />
+    <PackageReference Include="Microsoft.VSSDK.Debugger.VSDConfigTool" Version="17.0.2012801" PrivateAssets="all" />
     <PackageReference Include="Microsoft.VSSDK.BuildTools" Version="18.5.40034" PrivateAssets="all" />
+    <PackageReference Include="System.Reflection.Metadata" Version="9.0.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -35,6 +46,15 @@
     <Content Include="AuroraScript.TextMate.pkgdef">
       <IncludeInVSIX>true</IncludeInVSIX>
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Debugger\AuroraScript.Debugger.pkgdef">
+      <IncludeInVSIX>true</IncludeInVSIX>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="$(PkgMicrosoft_NETCore_ILAsm)\runtimes\native\ilasm.exe">
+      <Link>ilasm.exe</Link>
+      <IncludeInVSIX>true</IncludeInVSIX>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="language-configuration.json">
       <IncludeInVSIX>true</IncludeInVSIX>
@@ -60,6 +80,20 @@
     </Content>
   </ItemGroup>
 
+  <ItemGroup>
+    <VsdConfigXmlFiles Include="Debugger\ExpressionEvaluator.vsdconfigxml" />
+  </ItemGroup>
+
+  <Target Name="IncrementAuroraVsixVersion"
+          BeforeTargets="MergeVsixManifestFile"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(IsCrossTargetingBuild)' != 'true'">
+    <Error Text="AuroraScript VSIX manifest was not found: $(AuroraVsixManifest)"
+           Condition="!Exists('$(AuroraVsixManifest)')" />
+    <Error Text="AuroraScript VSIX version bump script was not found: $(AuroraVsixVersionBumpScript)"
+           Condition="!Exists('$(AuroraVsixVersionBumpScript)')" />
+    <Exec Command='powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(AuroraVsixVersionBumpScript)&quot; &quot;$(AuroraVsixManifest)&quot;' />
+  </Target>
+
   <Target Name="PublishAuroraLanguageServer" BeforeTargets="GetVsixSourceItems">
     <PropertyGroup>
       <AuroraLanguageServerPublishDir>$(MSBuildProjectDirectory)\obj\$(Configuration)\LanguageServer\win-x64\</AuroraLanguageServerPublishDir>
@@ -81,6 +115,17 @@
         <Link>Server\AuroraScript.LanguageServer.exe</Link>
         <VSIXSubPath>Server</VSIXSubPath>
         <TargetPath>AuroraScript.LanguageServer.exe</TargetPath>
+        <IncludeInVSIX>true</IncludeInVSIX>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+    </ItemGroup>
+  </Target>
+
+  <Target Name="IncludeAuroraDebuggerConfig" BeforeTargets="GetVsixSourceItems" DependsOnTargets="CreateVsdbgConfigFile">
+    <ItemGroup>
+      <Content Include="$(OutputPath)$(AssemblyName).vsdconfig">
+        <Link>AuroraScript.VisualStudio.vsdconfig</Link>
+        <TargetPath>AuroraScript.VisualStudio.vsdconfig</TargetPath>
         <IncludeInVSIX>true</IncludeInVSIX>
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>

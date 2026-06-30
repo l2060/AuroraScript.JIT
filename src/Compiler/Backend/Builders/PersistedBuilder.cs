@@ -19,6 +19,10 @@ namespace AuroraScript.Compiler.Backend.Builders
 #if NET9_0_OR_GREATER
     internal sealed class PersistedBuilder : AbstractCILBuilder
     {
+        private static readonly Guid AuroraScriptLanguageId = new Guid("72B5C67C-4C8F-4A17-93A4-35C34487374D");
+        private static readonly Guid MicrosoftVendorId = new Guid("994b45c4-e6e9-11d2-903f-00c04fa302a1");
+        private static readonly Guid TextDocumentType = new Guid("5a869d0b-6611-11d3-bd2a-0000f80849bd");
+
         private readonly PersistedAssemblyBuilder _assemblyBuilder;
         private readonly ModuleBuilder _moduleBuilder;
         private readonly Dictionary<String, ISymbolDocumentWriter> _sourceDocumentMap = new();
@@ -38,7 +42,7 @@ namespace AuroraScript.Compiler.Backend.Builders
             var typeBuilder = _moduleBuilder.DefineType(ConfuseTypeName(module.ModuleName, ConfuseTarget.Class), TypeAttributes.Public | TypeAttributes.Class | TypeAttributes.Sealed);
             var methodBuilder = typeBuilder.DefineMethod(ConfuseTypeName("Initialize", ConfuseTarget.Method), MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig, typeof(void), [typeof(ScriptContext), typeof(Span<ScriptDatum>)]);
             ISymbolDocumentWriter symbolDoc = null;
-            symbolDoc = _moduleBuilder.DefineDocument(module.FullPath, Guid.Empty, Guid.Empty, SymDocumentType.Text);
+            symbolDoc = _moduleBuilder.DefineDocument(module.FullPath, AuroraScriptLanguageId, MicrosoftVendorId, TextDocumentType);
             _sourceDocumentMap.Add(module.FullPath, symbolDoc);
             RegisterType(module.ModuleName, typeBuilder);
             return (methodBuilder, methodBuilder.GetILGenerator());
@@ -62,6 +66,17 @@ namespace AuroraScript.Compiler.Backend.Builders
             var method = typeBuilder.DefineMethod(ConfuseTypeName(methodName, ConfuseTarget.Method), MethodAttributes.Public | MethodAttributes.Static, returnType, parameterTypes);
 
             return (method, method.GetILGenerator());
+        }
+
+        public override void SetDebuggerMetadata(MethodInfo method, string metadata)
+        {
+            if (!IsDebugMode || method is not MethodBuilder methodBuilder || string.IsNullOrEmpty(metadata))
+            {
+                return;
+            }
+
+            var constructor = typeof(Runtime.Debugging.ScriptDebuggerMetadataAttribute).GetConstructor([typeof(string)]);
+            methodBuilder.SetCustomAttribute(new CustomAttributeBuilder(constructor, [metadata]));
         }
 
 
