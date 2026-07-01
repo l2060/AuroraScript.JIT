@@ -32,13 +32,23 @@ namespace AuroraScript.Runtime.Extensions
             Define("asin", ScriptDatum.FromBonding(ASIN), writeable: false, enumerable: false);
             Define("atan", ScriptDatum.FromBonding(ATAN), writeable: false, enumerable: false);
 
-
+            Define("ceil", ScriptDatum.FromBonding(CEIL), writeable: false, enumerable: false);
 
             Define("floor", ScriptDatum.FromBonding(FLOOR), writeable: false, enumerable: false);
             Define("round", ScriptDatum.FromBonding(ROUND), writeable: false, enumerable: false);
 
         }
-
+        public static void CEIL(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            if (args.TryGetNumber(0, out var num))
+            {
+                ScriptDatum.WriteAsNumber(ref result, Math.Ceiling(num));
+            }
+            else
+            {
+                ScriptDatum.WriteAsNumber(ref result, Double.NaN);
+            }
+        }
 
         public static void FLOOR(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {

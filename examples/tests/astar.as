@@ -565,36 +565,207 @@ export func findPath(astar, startX, startY, goalX, goalY, allowDiagonal = true, 
 
 // examples
 // 
-const width = 8;
-const height = 6;
-var map  = [];
+const ASTAR_WALKABLE = 1;
+const ASTAR_BLOCKED = 0;
+
+const width = 1000;
+const height = 1000;
+const blockRate = 0.28;
+const seed = 20250701;
+
+var map = [];
 var astar = null;
+var pathBuffer = null;
+var startX = 0;
+var startY = 0;
+var goalX = width - 1;
+var goalY = height - 1;
 
-func init() {
+func astarRand01(rng) {
+	var x = rng.seed;
 
-	var _map = Array.withCapacity(width * height);
+	x = x ^ (x << 13);
+	x = x ^ (x >> 17);
+	x = x ^ (x << 5);
 
-	for (var i = 0; i < width * height; i++) {
-		_map.push(1);
+	rng.seed = x;
+
+	if (x < 0) {
+		x = -x;
 	}
 
-	_map[10] = 0;
-	_map[18] = 0;
-	_map[26] = 0;
-	_map[34] = 0;
-	map = _map;
-	astar = createAStar(width, height, map, null);
+	return(x % 1000000) / 1000000;
 }
 
+export func makeMap(w, h, rate, rngSeed) {
+	var n = w * h;
+	var _map = Array.withCapacity(n);
+	var rng = { seed: rngSeed };
+
+	for (var i = 0; i < n; i++) {
+		if (astarRand01(rng) < rate) {
+			_map.push(ASTAR_BLOCKED);
+		} else {
+			_map.push(ASTAR_WALKABLE);
+		}
+	}
+
+	// Ensure there is always a valid path:
+	// clear top row and right side column.
+	for (var x = 0; x < w; x++) {
+		_map[x] = ASTAR_WALKABLE;
+
+		if (h > 1) {
+			_map[w + x] = ASTAR_WALKABLE;
+		}
+	}
+
+	for (var y = 0; y < h; y++) {
+		_map[y * w + (w - 1)] = ASTAR_WALKABLE;
+
+		if (w > 1) {
+			_map[y * w + (w - 2)] = ASTAR_WALKABLE;
+		}
+	}
+
+	_map[0] = ASTAR_WALKABLE;
+	_map[n - 1] = ASTAR_WALKABLE;
+
+	return _map;
+}
+
+export func validate(path) {
+	if (path.length == 0) {
+		return false;
+	}
+
+	for (var i = 0; i < path.length; i++) {
+		var point = path[i];
+		var id = point.y * width + point.x;
+
+		if (point.x < 0 || point.x >= width || point.y < 0 || point.y >= height) {
+			return false;
+		}
+
+		if (map[id] == ASTAR_BLOCKED) {
+			return false;
+		}
+
+		if (i > 0) {
+			var prev = path[i - 1];
+			var dx = point.x - prev.x;
+			var dy = point.y - prev.y;
+
+			if (dx < 0) {
+				dx = -dx;
+			}
+
+			if (dy < 0) {
+				dy = -dy;
+			}
+
+			if (dx > 1 || dy > 1) {
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+
+export func validateIndexes(path, count) {
+	if (count <= 0) {
+		return false;
+	}
+
+	for (var i = 0; i < count; i++) {
+		var id = path[i];
+
+		if (id < 0 || id >= width * height) {
+			return false;
+		}
+
+		if (map[id] == ASTAR_BLOCKED) {
+			return false;
+		}
+
+		if (i > 0) {
+			var prev = path[i - 1];
+			var dx = (id % width) - (prev % width);
+			var y = (id - (id % width)) / width;
+			var prevY = (prev - (prev % width)) / width;
+			var dy = y - prevY;
+
+			if (dx < 0) {
+				dx = -dx;
+			}
+
+			if (dy < 0) {
+				dy = -dy;
+			}
+
+			if (dx > 1 || dy > 1) {
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+
+func init() {
+	console.log("generate map", width, height, "cells", width * height);
+
+	console.time("make 1000x1000 map");
+	map = makeMap(width, height, blockRate, seed);
+	console.timeEnd("make 1000x1000 map");
+
+	console.log("map generated, length =", map.length);
+
+	console.time("create astar");
+	astar = createAStar(width, height, map, null);
+	pathBuffer = newPathBuffer(astar);
+	console.timeEnd("create astar");
+}
 
 init();
 
 export func runExample() {
 
-	var path = findPath(astar, 1, 1, 6, 4, true, true);
-	console.log(astar.expanded, path);
+	console.time("astar");
+	var pathLength = findPathInto(astar, startX, startY, goalX, goalY, pathBuffer, true, true);
+	console.timeEnd("astar");
+
+	var ok = validateIndexes(pathBuffer, pathLength);
+
+	console.log("expanded =", astar.expanded);
+	console.log("path length =", pathLength);
+	console.log("valid =", ok);
+
+	var first = null;
+	var last = null;
+
+	if (pathLength > 0) {
+		first = pathBuffer[0];
+		last = pathBuffer[pathLength - 1];
+
+		console.log("first node =", first);
+		console.log("last node =", last);
+	}
+
 	return {
-		path: path,
-		expanded: astar.expanded
+		width: width,
+		height: height,
+		cells: width * height,
+		mapLength: map.length,
+		pathLength: pathLength,
+		valid: ok,
+		expanded: astar.expanded,
+		firstNode: first,
+		lastNode: last,
+		startX: startX,
+		startY: startY,
+		goalX: goalX,
+		goalY: goalY
 	};
 }

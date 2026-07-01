@@ -31,7 +31,7 @@ namespace Examples
             compiler.SourceResolver = ScriptSources.Composite(memorySource, fileSystemSource);
             compiler.MaxDegreeOfParallelism = 0;
             compiler.ExtName = "as";
-            compiler.Mode = CompilationMode.Persistence;
+            compiler.Mode = CompilationMode.Dynamic;
         })
         .WithOutput(output =>
         {
@@ -52,7 +52,7 @@ namespace Examples
             optimization.StackTrace = true;
             optimization.ModuleConstInlining = true;
             optimization.AutoModuleDirectCall = true;
-            optimization.Level = OptimizeOptions.Debug;
+            optimization.Level = OptimizeOptions.Release;
         });
 
 
@@ -104,7 +104,7 @@ namespace Examples
                 Console.WriteLine(ex.ToString());
             }
 
-            Console.WriteLine($"{{{5 + 1}}}");
+
             for (int i = 0; i < 10; i++)
             {
                 GC.Collect();
@@ -283,6 +283,10 @@ namespace Examples
 
             BenchmarkScript(domain, "UNIT_LIB", "externalDeclare");
 
+            BenchmarkScript(domain, "ASTAR1000", "run");
+
+            BenchmarkScript(domain, "PERF_BENCH", "run");
+
 
 
             Console.WriteLine("Verification complete!");
@@ -325,9 +329,15 @@ return clamp(x, 0, 100) + PI;
             {
                 domain.Execute(module, method, args);
             }
+            catch (AuroraRuntimeException ex)
+            {
+                _ex = ex;
+                Console.WriteLine(ex);
+            }
             catch (Exception ex)
             {
                 _ex = ex;
+
             }
             finally
             {

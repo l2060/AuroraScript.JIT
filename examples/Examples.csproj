@@ -54,6 +54,12 @@
     <None Update="temp\debug_test.as">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Update="tests\perf-bench.as">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="tests\astar1000.as">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="tests\astar.as">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
