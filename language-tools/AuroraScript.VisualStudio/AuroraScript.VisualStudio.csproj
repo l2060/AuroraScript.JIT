@@ -25,6 +25,10 @@
     <NoWarn>$(NoWarn);0618;0649</NoWarn>
     <AuroraVsixManifest>$(MSBuildProjectDirectory)\source.extension.vsixmanifest</AuroraVsixManifest>
     <AuroraVsixVersionBumpScript>$(MSBuildProjectDirectory)\IncrementVsixVersion.ps1</AuroraVsixVersionBumpScript>
+    <PackageProjectUrl>https://github.com/l2060/AuroraScript.JIT</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/l2060/AuroraScript.JIT</RepositoryUrl>
+    <PackageIcon>icon.png</PackageIcon>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -42,6 +46,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="..\..\icon.png">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+    <None Include="..\..\README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
     <None Include="source.extension.vsixmanifest" SubType="Designer" />
     <Content Include="AuroraScript.TextMate.pkgdef">
       <IncludeInVSIX>true</IncludeInVSIX>
@@ -84,14 +96,10 @@
     <VsdConfigXmlFiles Include="Debugger\ExpressionEvaluator.vsdconfigxml" />
   </ItemGroup>
 
-  <Target Name="IncrementAuroraVsixVersion"
-          BeforeTargets="MergeVsixManifestFile"
-          Condition="'$(DesignTimeBuild)' != 'true' and '$(IsCrossTargetingBuild)' != 'true'">
-    <Error Text="AuroraScript VSIX manifest was not found: $(AuroraVsixManifest)"
-           Condition="!Exists('$(AuroraVsixManifest)')" />
-    <Error Text="AuroraScript VSIX version bump script was not found: $(AuroraVsixVersionBumpScript)"
-           Condition="!Exists('$(AuroraVsixVersionBumpScript)')" />
-    <Exec Command='powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(AuroraVsixVersionBumpScript)&quot; &quot;$(AuroraVsixManifest)&quot;' />
+  <Target Name="IncrementAuroraVsixVersion" BeforeTargets="MergeVsixManifestFile" Condition="'$(DesignTimeBuild)' != 'true' and '$(IsCrossTargetingBuild)' != 'true'">
+    <Error Text="AuroraScript VSIX manifest was not found: $(AuroraVsixManifest)" Condition="!Exists('$(AuroraVsixManifest)')" />
+    <Error Text="AuroraScript VSIX version bump script was not found: $(AuroraVsixVersionBumpScript)" Condition="!Exists('$(AuroraVsixVersionBumpScript)')" />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(AuroraVsixVersionBumpScript)&quot; &quot;$(AuroraVsixManifest)&quot;" />
   </Target>
 
   <Target Name="PublishAuroraLanguageServer" BeforeTargets="GetVsixSourceItems">
@@ -100,16 +108,12 @@
       <AuroraLanguageServerExecutable>$(AuroraLanguageServerPublishDir)AuroraScript.LanguageServer.exe</AuroraLanguageServerExecutable>
     </PropertyGroup>
     <RemoveDir Directories="$(AuroraLanguageServerPublishDir)" Condition="Exists('$(AuroraLanguageServerPublishDir)')" />
-    <MSBuild
-      Projects="$(MSBuildProjectDirectory)\..\..\language-tools\AuroraScript.LanguageServer\AuroraScript.LanguageServer.csproj"
-      Targets="Publish"
-      Properties="Configuration=$(Configuration);RuntimeIdentifier=win-x64;SelfContained=true;PublishSingleFile=true;PublishTrimmed=true;TrimMode=partial;EnableCompressionInSingleFile=true;DebugType=none;DebugSymbols=false;CopyOutputSymbolsToPublishDirectory=false;CopyDocumentationFileToPublishDirectory=false;PublishDir=$(AuroraLanguageServerPublishDir)" />
+    <MSBuild Projects="$(MSBuildProjectDirectory)\..\..\language-tools\AuroraScript.LanguageServer\AuroraScript.LanguageServer.csproj" Targets="Publish" Properties="Configuration=$(Configuration);RuntimeIdentifier=win-x64;SelfContained=true;PublishSingleFile=true;PublishTrimmed=true;TrimMode=partial;EnableCompressionInSingleFile=true;DebugType=none;DebugSymbols=false;CopyOutputSymbolsToPublishDirectory=false;CopyDocumentationFileToPublishDirectory=false;PublishDir=$(AuroraLanguageServerPublishDir)" />
     <ItemGroup>
       <AuroraLanguageServerSidecarFiles Include="$(AuroraLanguageServerPublishDir)**\*.*" Exclude="$(AuroraLanguageServerExecutable)" />
     </ItemGroup>
     <Delete Files="@(AuroraLanguageServerSidecarFiles)" />
-    <Error Text="AuroraScript.LanguageServer single-file publish did not produce $(AuroraLanguageServerExecutable)."
-           Condition="!Exists('$(AuroraLanguageServerExecutable)')" />
+    <Error Text="AuroraScript.LanguageServer single-file publish did not produce $(AuroraLanguageServerExecutable)." Condition="!Exists('$(AuroraLanguageServerExecutable)')" />
     <ItemGroup>
       <Content Include="$(AuroraLanguageServerExecutable)">
         <Link>Server\AuroraScript.LanguageServer.exe</Link>
