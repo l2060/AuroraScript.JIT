@@ -25,7 +25,7 @@ namespace AuroraBenchmark
 #pragma warning disable CS8618
         private AuroraEngine engine;
         private ScriptDomain domain;
-        private ScriptDatum iterationsDatum;
+        private ScriptDatum[] iterationArguments;
 #pragma warning restore CS8618
 
         [Params(1000, 10000)]
@@ -49,7 +49,7 @@ namespace AuroraBenchmark
             engine.RegisterType<HostObject>();
             await engine.BuildAsync();
             domain = engine.CreateDomain(global => global.SetPropertyValue("host", new HostObject()));
-            iterationsDatum = ScriptDatum.FromNumber(Iterations);
+            iterationArguments = [ScriptDatum.FromNumber(Iterations)];
         }
 
         [BenchmarkCategory("domain")]
@@ -215,7 +215,7 @@ namespace AuroraBenchmark
 
         private ScriptDatum Execute(string methodName)
         {
-            return domain.Execute("RUNTIME_BENCH", methodName, iterationsDatum);
+            return domain.Execute("RUNTIME_BENCH", methodName, iterationArguments);
         }
     }
 }

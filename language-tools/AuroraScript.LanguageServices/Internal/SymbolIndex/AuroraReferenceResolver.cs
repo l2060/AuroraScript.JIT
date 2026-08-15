@@ -355,10 +355,6 @@ internal static class AuroraReferenceResolver
                     Visit(inExpression.Left);
                     Visit(inExpression.Right);
                     return;
-                case CastTypeExpression cast:
-                    Visit(cast.Expression);
-                    Visit(cast.Typed);
-                    return;
                 case PrefixUnaryExpression unary:
                     Visit(unary.Expression);
                     return;

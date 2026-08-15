@@ -94,10 +94,6 @@ internal static class AstQuery
                 Visit(inExpression.Left, state);
                 Visit(inExpression.Right, state);
                 return;
-            case CastTypeExpression cast:
-                Visit(cast.Expression, state);
-                Visit(cast.Typed, state);
-                return;
             case PrefixUnaryExpression prefixUnary:
                 Visit(prefixUnary.Expression, state);
                 return;

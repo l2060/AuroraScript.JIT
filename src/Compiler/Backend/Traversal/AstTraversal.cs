@@ -168,10 +168,6 @@ namespace AuroraScript.Compiler.Backend.Traversal
                     return;
                 case PrefixUnaryExpression prefix:
                     VisitIfNotNull(prefix.Expression, ref visitor);
-                    if (prefix is CastTypeExpression cast)
-                    {
-                        VisitIfNotNull(cast.Typed, ref visitor);
-                    }
                     return;
                 case UnaryExpression unary:
                     VisitIfNotNull(unary.Expression, ref visitor);

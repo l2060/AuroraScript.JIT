@@ -111,7 +111,7 @@ namespace AuroraScript
 
                     case ValueKind.String:
                         return double.TryParse(
-                            d.String.Value,
+                            d.StringText,
                             NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint,
                             CultureInfo.InvariantCulture,
                             out value);
@@ -147,7 +147,7 @@ namespace AuroraScript
 
                     case ValueKind.String:
                         return long.TryParse(
-                            d.String.Value,
+                            d.StringText,
                             NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint,
                             CultureInfo.InvariantCulture,
                             out value);
@@ -184,7 +184,7 @@ namespace AuroraScript
 
                     case ValueKind.String:
                         return int.TryParse(
-                            d.String.Value,
+                            d.StringText,
                             NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint,
                             CultureInfo.InvariantCulture,
                             out value);
@@ -220,21 +220,21 @@ namespace AuroraScript
         }
 
         /// <summary>
-        /// Attempts to retrieve a string representation from the <see cref="ScriptDatum"/> strictly if its kind is tagged as numeric.
+        /// Attempts to retrieve a string from the <see cref="ScriptDatum"/> strictly if it is already a String.
         /// </summary>
         /// <param name="source">The span of script data.</param>
         /// <param name="index">The index of the datum to retrieve.</param>
         /// <param name="value">The retrieved string value, or empty if retrieval fails.</param>
-        /// <returns>True if the datum is a Number; otherwise, false.</returns>
+        /// <returns>True if the datum is a String; otherwise, false.</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool TryGetStrictString(this Span<ScriptDatum> source, int index, out string value)
         {
             if ((uint)index < (uint)source.Length)
             {
                 ref readonly var d = ref source[index];
-                if (d.Kind == ValueKind.Number)
+                if (d.Kind == ValueKind.String)
                 {
-                    value = d.String.Value;
+                    value = d.StringText;
                     return true;
                 }
             }
@@ -259,7 +259,7 @@ namespace AuroraScript
                 switch (d.Kind)
                 {
                     case ValueKind.String:
-                        value = d.String.Value;
+                        value = d.StringText;
                         return true;
 
                     case ValueKind.Null:
@@ -426,7 +426,7 @@ namespace AuroraScript
                         return true;
 
                     case ValueKind.String:
-                        value = d.String.Value.Length != 0;
+                        value = d.StringText.Length != 0;
                         return true;
 
                     default:

@@ -356,14 +356,14 @@ namespace AuroraScript.Runtime.Types
                                     return InvokeReplaceCallback(ctx, callback, originalValue, match, callbackArgs);
                                 }
                             default:
-                                var rentedArgs = CILHelper.RentArguments(argumentCount);
+                                var rentedArgs = CallOps.RentArguments(argumentCount);
                                 try
                                 {
                                     return InvokeReplaceCallback(ctx, callback, originalValue, match, rentedArgs.AsSpan(0, argumentCount));
                                 }
                                 finally
                                 {
-                                    CILHelper.ReturnArguments(rentedArgs, argumentCount);
+                                    CallOps.ReturnArguments(rentedArgs, argumentCount);
                                 }
                         }
                     }, replaceAll);
@@ -549,8 +549,8 @@ namespace AuroraScript.Runtime.Types
         {
             switch (datum.Kind)
             {
-                case ValueKind.String when datum.String != null:
-                    return datum.String.Value;
+                case ValueKind.String:
+                    return datum.StringText;
                 case ValueKind.Number:
                     return datum.Number.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 case ValueKind.Boolean:

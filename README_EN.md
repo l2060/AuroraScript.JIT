@@ -383,25 +383,25 @@ Usage guidance:
 
 ### directCall Call Path Optimization
 
-`@directCall` optimizes the path for calling a known module function. It is not function inlining. The target function remains a separate function, AuroraScript still creates a script call context, and return values and exception stack behavior remain observable; the optimization is that the call site no longer treats the target as a dynamic function object.
+`@directCall` optimizes the path for calling a known module function. It is not function inlining. The target remains a separate CIL method, while return values and exception-stack behavior stay observable. Calls reuse the active `ScriptContext` with a lightweight frame instead of allocating a child context; a proven numeric-only call graph can go further and call native `double` methods without materializing runtime values inside that graph.
 
 A normal module function call roughly follows this path:
 
 1. Read the module member for the function name. For example, `addOne` is read from the current `ScriptContext.Module` by string key.
 2. The module read enters `ScriptObject.GetPropertyDatum`: hidden class/property metadata lookup, property descriptor checks, and any getter, CLR binding, prototype chain, or CLR fallback handling.
 3. Convert the read value to a callable object.
-4. Enter the generic call helper, such as `CILHelper.Invoke0..Invoke7` or `InvokeMany`.
+4. Enter the compact call boundary, such as `CallOps.Invoke0..Invoke7` or `InvokeMany`.
 5. The helper checks whether the target is a `ClosureFunction`, then enters `ClosureFunction.Invoke*`.
-6. `ClosureFunction` creates a new script context, selects a fast delegate or span/generic delegate by arity, invokes it, then releases the context.
+6. `ClosureFunction` pushes a lightweight frame on the active context, selects a fixed-arity or span delegate, invokes it, then restores the frame.
 
 With direct call, an eligible call site takes a shorter path:
 
 1. At compile time, AuroraScript proves that `addOne(value)` targets a specific function in the same module and binds the call site to that function's `FunctionId` / IL method.
 2. At runtime, arguments are still evaluated in source order; fixed arguments are stored in temporary locals, missing arguments become `null`, and extra arguments are evaluated then discarded.
-3. AuroraScript creates only a direct-call context for stack traces and error locations.
-4. The emitted IL directly `call`s the target method, for example `OpCodes.Call target.Method`, then releases the direct-call context.
+3. The generic direct adapter uses a lightweight frame on the active context for stack traces and error locations; no child `ScriptContext` is allocated.
+4. The emitted IL directly `call`s the target method. When the compiler proves a numeric-only signature and body, parameters, locals, arithmetic, comparisons, and the return value remain native CIL values (`double` / `bool`) until a dynamic boundary is required.
 
-Direct call mainly removes module property lookup, function-object conversion, `CILHelper.Invoke*` dispatch, `ClosureFunction.Invoke*` dispatch, delegate arity switching, and many branches on the dynamic call path. It keeps the required `ScriptContext`, so it is not a zero-cost call; the win is most visible when a small function is called repeatedly in a loop.
+Direct call mainly removes module property lookup, function-object conversion, `CallOps.Invoke*` dispatch, `ClosureFunction.Invoke*` dispatch, delegate arity switching, and many branches on the dynamic path. Generic direct calls retain a lightweight frame; proven native numeric calls inside the compiled call graph need neither dynamic dispatch nor `ScriptDatum` conversion. The win is most visible when a small numerical function is called repeatedly in a loop.
 
 An eligible direct-call site must satisfy these rules:
 
@@ -414,7 +414,7 @@ An eligible direct-call site must satisfy these rules:
 
 ### Local Variables vs Module Members
 
-Function parameters, `var` / `const` inside a function body, and local function declarations inside a function are bound to local slots by the backend. Reading or writing a normal local is essentially CLR IL `ldloc` / `stloc` over a `ScriptDatum`. That path has no string key, no object property lookup, no getter/setter, no prototype chain, and no module-object property descriptor lookup.
+Function parameters, `var` / `const` inside a function body, and local function declarations are bound to local slots by the backend. Proven number, Boolean, and string locals use native CLR slots (`double`, `bool`, and `string`); only dynamic values use `ScriptDatum`. Reads and writes are direct `ldloc` / `stloc` operations, with conversion deferred until an object, call, scope, or other dynamic runtime boundary.
 
 Module-level declarations are different. Top-level `var`, `const`, `func`, `enum`, and import/export symbols are members of the module object. When a function accesses a module member, the compiler cannot treat it as a plain local because the module object is observable at runtime: the host can call `GetModule` / `Execute`, scripts can import/export it, hot patches can replace module members, and properties may have getter/setter behavior or be redefined. Therefore module member access usually starts from `ScriptContext.Module` and calls `ScriptObject.GetPropertyDatum` or `SetPropertyDatum` by name.
 
@@ -837,7 +837,7 @@ Current `net10.0` coverage matrix:
 | `StatementExecutionTests` | Control flow, loops, closures, recursion, exceptions, domain isolation |
 | `LanguageFeatureExecutionTests` | enum, lambdas, sparse arrays, truthiness, templates, assignment semantics |
 | `ModuleCompilationTests` | Dependencies, parallel compile, cycles, error aggregation, cancellation |
-| `CompilerBackendPlanTests` | Backend plans, direct call, closures/upvalues, slots/lowering, control flow and constant folding plans |
+| `CompilerBackendPlanTests` | Typed code, native CIL slots/signatures, direct calls, closures/upvalues, control flow, and constant folding |
 | `CompileBlockTests` | CompileBlock parameters, invocation modes, invalid inputs, diagnostics, dynamic delegate lifetime |
 | `CompilationModeTests` | Dynamic/OnlyRun/Persistence behavior and hot-reload settings |
 | `RuntimeApiAndErrorTests` | Runtime APIs, error paths, `$state`, disposed domains |
@@ -846,6 +846,7 @@ Current `net10.0` coverage matrix:
 | `ClrInteropTests` | CLR constructors/properties/fields/methods/overloads/access restrictions |
 | `SerializationTests` | JSON serialization/deserialization, circular references, malformed JSON |
 | `ScriptDatumTests` | Datum payloads, equality, CLR collection conversion, Span helpers |
+| `ValueOpsTests` | Arithmetic, comparison, bitwise, and conversion semantics at dynamic boundaries |
 | `HotReloadTests` | Disabled hot reload, incremental patch, replacement patch, domain isolation |
 | `ConcurrentRuntimeTests` | Same-domain/multi-domain concurrency, detached closure concurrency |
 | `ReleaseRegressionTests` | Release direct calls, closure slots, stack balance, confusion, empty modules |
@@ -862,7 +863,7 @@ Coverage summary:
 - Expressions/statements: precedence, arithmetic, bitwise operations, comparison, logical operators, member access, spread, assignment, loops, exceptions, closures, recursion.
 - Core semantic regressions: null numeric addition, string-participating addition, truthiness, short-circuit return values, array capacity versus `new Array(n)` semantics, object properties, closure loops.
 - Module compilation: relative paths, diamond dependencies, duplicate roots, wide dependency graphs, cycles, error aggregation, cancellation, concurrent builds.
-- Compiler backend plans: direct call, function annotations, slot/upvalue binding, lowering, control flow, constant folding, and runtime helper call plans.
+- Compiler backend plans: typed code, function annotations, slot/upvalue binding, native CIL signatures/locals, control flow, constant folding, and runtime-boundary calls.
 - Compilation modes: Dynamic, OnlyRun, Persistence parity; net8 Persistence limitation.
 - Runtime APIs and errors: pre-build use, missing modules/methods, script stack traces, const writes, `$state`, disposal.
 - Built-ins: Math, String, Array, JSON, HashMap, Regex, StringBuffer, Console, Date, Proxy.
@@ -904,68 +905,36 @@ Current key metrics include:
 - object, array, HashMap, string, JSON, Regex, and CLR interop paths
 - Lexer, Parser, Emitter, single/multi-module compile, and CompileBlock
 
-The latest summarized results come from the Release/net10.0 quick comparison run on 2026-06-22:
+The latest runtime hot-path results come from a BenchmarkDotNet `ShortRun` on Release/net10.0, measured on 2026-08-15:
 
 ```bash
-dotnet run --project benchmark/Benchmark.csproj -c Release -- --compare
+dotnet run --project benchmark/Benchmark.csproj -c Release -- \
+  --filter "*FunctionCallLoop*" "*ModuleCallLoop*" "*NumericLoop*"
 ```
 
-The older `ScriptBenchmark` report is historical and is no longer used as the current benchmark reference. Run the benchmark command without `--compare` to regenerate full BenchmarkDotNet reports.
+Numbers from the old runtime architecture are no longer used as the current reference. Run without `--filter` to regenerate the complete suite.
 
 Environment:
 
 - BenchmarkDotNet `0.15.8`
-- Windows 11 `10.0.26200.8655`
+- Windows 11 `10.0.28000.2704`
 - Intel Core i7-13700KF
-- .NET SDK `10.0.301`
-- Runtime `.NET 10.0.9`
+- .NET SDK `10.0.400`
+- Runtime `.NET 10.0.11`
 - Job `ShortRun`
 
-Runtime summary:
+Core runtime hot paths:
 
 | Metric | Scale | Mean | Allocated | Notes |
 |---|---:|---:|---:|---|
-| `EmptyCall` | 1 call | 0.001 ms | 279 B | Low host-to-script empty call overhead |
-| `CreateDomain` | 1 domain | 0.017 ms | 5.55 KB | Lightweight domain creation |
-| `NumericLoop` | 1,000 | 0.009 ms | 411 B | Numeric loops are close to allocation-free |
-| `FunctionCallLoop` | 1,000 | 0.302 ms | 327 B | Local function calls allocate very little |
-| `ModuleCallLoop` | 1,000 | 0.364 ms | 327 B | Module calls are slightly slower than local calls |
-| `ClosureInvoke` | 1,000 | 0.067 ms | 487 B | Stable low allocation |
-| `ObjectCreateSetGet` | 1,000 | 0.611 ms | 195.72 KB | Object creation/property writes allocate linearly |
-| `ArrayPushIndex` | 1,000 | 0.288 ms | 48.49 KB | Low allocation for push/index access |
-| `ArrayLiteralIndex` | 1,000 | 0.119 ms | 172.15 KB | Array literals allocate array objects per iteration |
-| `HashMapSetGet` | 1,000 | 0.781 ms | 199.77 KB | Capacity is pre-sized; remaining cost is mainly dynamic string keys |
-| `JsonStringify` | 1,000 | 1.821 ms | 774.43 KB | JSON serialization still allocates heavily |
-| `JsonParse` | 1,000 | 7.606 ms | 875.43 KB | JSON parsing remains a heavy path |
-| `JsonRoundTrip` | 1,000 | 9.930 ms | 1.61 MB | Combined parse + stringify cost is high |
-| `RegexMatchAll` | 1,000 | 5.697 ms | 3.34 MB | One of the heaviest regular runtime paths |
-| `StringBufferAppend` | 1,000 | 0.369 ms | 39.35 KB | Much better than direct string concatenation |
-| `StringConcat` | 1,000 | 0.512 ms | 3.73 MB | Direct string concatenation allocates heavily |
-| `ClrPropertyGetSet` | 1,000 | 0.100 ms | 23.87 KB | CLR property access is lightweight |
-| `ClrArrayArgument` | 1,000 | 0.884 ms | 250.39 KB | Remaining allocation mostly comes from script array literals and required CLR arrays |
-| `ClrInstanceMethod` | 1,000 | 0.177 ms | 23.88 KB | DynamicMethod invoker greatly reduces instance method overhead |
-| `ClrStaticMethod` | 1,000 | 0.560 ms | 31.61 KB | Static method call wrapping is reduced; remaining cost is mostly string result wrapping |
+| `NumericLoop` | 1,000 | 1.477 µs | 0 B | Numeric locals and arithmetic stay in native CIL |
+| `NumericLoop` | 10,000 | 13.483 µs | 0 B | Linear scaling with no loop-local allocation |
+| `FunctionCallLoop` | 1,000 | 82.668 µs | 0 B | Same-module numeric calls use the native specialization |
+| `FunctionCallLoop` | 10,000 | 766.803 µs | 0 B | Reused call frames avoid per-call contexts |
+| `ModuleCallLoop` | 1,000 | 122.591 µs | 0 B | Cross-module generic call boundary is allocation-free |
+| `ModuleCallLoop` | 10,000 | 1.186 ms | 0 B | Controlled dynamic-dispatch cost with no per-call allocation |
 
-Compiler pipeline summary:
-
-| Metric | Mean | Allocated | Notes |
-|---|---:|---:|---|
-| `CompileBlock` | 0.047 ms | 18.35 KB | Low compile cost for small script blocks |
-| `FullCompile_MultiModule` | 0.281 ms | 65.63 KB | Current multi-module sample is small and healthy |
-| `FullCompile_SingleModule` | 10.413 ms | 2.81 MB | Main cost for large-module full compilation |
-| `EmitOnly_ParsedLargeModule` | 4.598 ms | 1.26 MB | Emitter is a major large-module hotspot |
-| `LexerOnly_Large` | 2.640 ms | 21.49 KB | Large-source lexing allocates little |
-| `ParseOnly_Large` | 5.421 ms | 1.53 MB | AST construction is the main parser allocation cost |
-| `ParseOnly_TemplateInterpolation` | 0.949 ms | 413.08 KB | Template interpolation parsing allocates relatively heavily |
-
-Observed hotspots:
-
-- `StringConcat` allocates about `3.73 MB` for 1,000 iterations. This is expected for repeated immutable-string concatenation, but it is far too expensive for hot paths; use `StringBuffer`.
-- `RegexMatchAll` allocates about `3.34 MB` per 1,000 iterations. Match result arrays and capture/group objects are good future optimization targets.
-- JSON round-trip allocates about `1.61 MB` per 1,000 iterations. Parsing and serialization remain runtime allocation hotspots.
-- `HashMapSetGet` no longer measures dictionary growth as the dominant variable; the remaining cost mainly comes from dynamic string key creation in `"k" + i`.
-- CLR interop now uses DynamicMethod invokers and array conversion fast paths to reduce call-wrapper overhead. `ClrArrayArgument` still allocates because script array literals and CLR array creation are required by the benchmark scenario.
-- `ParseOnly_TemplateInterpolation` allocates heavily relative to source size and is worth a focused parser optimization pass.
+The benchmark reuses a prebuilt host argument array, so `Allocated` reflects the execution path itself; no managed allocations were detected for these six cases. `ShortRun` is intended for regression checks, and absolute timings should be remeasured on the target deployment hardware.
 
 ## Examples
 

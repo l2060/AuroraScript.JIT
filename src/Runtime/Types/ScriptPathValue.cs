@@ -157,9 +157,9 @@ namespace AuroraScript.Runtime.Types
                 return true;
             }
 
-            if (datum.Kind == ValueKind.String && datum.String != null)
+            if (datum.Kind == ValueKind.String)
             {
-                value = datum.String.Value;
+                value = datum.StringText;
                 return true;
             }
 

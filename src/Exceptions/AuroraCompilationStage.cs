@@ -14,10 +14,7 @@ namespace AuroraScript
         /// <summary>Symbols, declarations, or module references could not be bound.</summary>
         Binding,
 
-        /// <summary>The syntax tree could not be lowered into the compiler's executable form.</summary>
-        Lowering,
-
-        /// <summary>The executable form could not be emitted.</summary>
+        /// <summary>The bound syntax tree could not be emitted.</summary>
         Emission,
 
         /// <summary>Modules or dependencies could not be linked into a valid program.</summary>

@@ -143,7 +143,7 @@ namespace AuroraScript.Runtime.Debugging
                 ValueKind.Null => "null",
                 ValueKind.Boolean => datum.Boolean ? "true" : "false",
                 ValueKind.Number => datum.Number.ToString(),
-                ValueKind.String => Quote(datum.String?.Value ?? string.Empty),
+                ValueKind.String => Quote(datum.StringText ?? string.Empty),
                 ValueKind.Array => FormatArray((ScriptArray)datum.Object),
                 _ => FormatObject(datum.Object)
             };
@@ -306,14 +306,7 @@ namespace AuroraScript.Runtime.Debugging
         private static bool TryGetOwnPropertyDatum(ScriptObject obj, HiddenProperty property, out ScriptDatum datum)
         {
             var slot = property.Meta.Slot;
-            if ((uint)slot >= (uint)obj.propertyValues.Length)
-            {
-                datum = default;
-                return false;
-            }
-
-            var descriptor = obj.propertyValues[slot];
-            if (!descriptor.IsDefined)
+            if (!obj.TryGetOwnProperty(slot, out var descriptor))
             {
                 datum = default;
                 return false;
@@ -345,7 +338,7 @@ namespace AuroraScript.Runtime.Debugging
         private static string FormatKey(ScriptDatum key)
         {
             return key.Kind == ValueKind.String
-                ? key.String?.Value ?? string.Empty
+                ? key.StringText ?? string.Empty
                 : FormatValue(key);
         }
     }

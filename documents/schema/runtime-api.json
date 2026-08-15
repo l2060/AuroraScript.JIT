@@ -1375,6 +1375,24 @@
             ]
           }
         },
+        "ceil": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "number"
+            }
+          ],
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Rounds up to the nearest integer."
+            ],
+            "zh-CN": [
+              "向上取整。"
+            ]
+          }
+        },
         "floor": {
           "kind": "method",
           "parameters": [

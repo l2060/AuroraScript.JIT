@@ -139,7 +139,7 @@ namespace AuroraScript
         /// <param name="sources">An array of script sources to compile.</param>
         /// <returns>A task representing the asynchronous build operation.</returns>
         /// <exception cref="AuroraException">Thrown if the base directory is invalid.</exception>
-        /// <exception cref="NotImplementedException">Thrown if the compilation mode is not supported.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown if the compilation mode is not supported.</exception>
         public Task BuildAsync(params ScriptSource[] sources)
         {
             return BuildAsync(CancellationToken.None, sources);
@@ -214,7 +214,10 @@ namespace AuroraScript
                     CompilationMode.Persistence => new PersistedBuilder(Options),
                     CompilationMode.OnlyRun => new OnlyRunBuilder(Options),
                     CompilationMode.Dynamic => new DynamicBuilder(Options),
-                    _ => throw new NotImplementedException()
+                    _ => throw new ArgumentOutOfRangeException(
+                        nameof(Options.Compiler.Mode),
+                        Options.Compiler.Mode,
+                        "Unsupported compilation mode.")
                 };
                 var compiler = new ScriptCompiler(Options);
                 var modules = await compiler.BuildModuleGraphAsync(sources, cancellationToken).ConfigureAwait(false);
@@ -300,7 +303,7 @@ namespace AuroraScript
                 var builder = new DynamicBuilder(builderOptions);
                 var backend = new BackendCompiler(builder, builderOptions);
                 var blockPlan = backend.CreateCompileBlockPlan(block, options.Parameters, sourceName);
-                var emissionSession = new EmissionSession(blockPlan.Session, builder, emitExecutableSkeletons: true);
+                var emissionSession = new EmissionSession(blockPlan.Session, builder, emitExecutableCode: true);
                 var method = new CompileBlockEmitter(
                     emissionSession,
                     blockPlan).Emit();
@@ -327,7 +330,7 @@ namespace AuroraScript
             {
                 var backend = new BackendCompiler(builder, Options, globalDeclarations);
                 var compileSession = backend.CreateModulePlans(modules, cancellationToken);
-                new BackendBuildEmitter(new EmissionSession(compileSession, builder, emitExecutableSkeletons: true)).Emit();
+                new BackendBuildEmitter(new EmissionSession(compileSession, builder, emitExecutableCode: true)).Emit();
             }
             catch (Exception ex) when (IsCompilationPipelineException(ex))
             {

@@ -67,6 +67,12 @@ namespace AuroraScript.Runtime.Property
             Datum = datum;
         }
 
+        internal PropertyDescriptor(ScriptDatum datum, PropertyAccessor accessor)
+        {
+            Datum = datum;
+            this.accessor = accessor;
+        }
+
 
         /// <summary> Gets a string representation of the value for the debugger display. </summary>
         [DebuggerBrowsable(DebuggerBrowsableState.Never)]

@@ -149,7 +149,7 @@ namespace AuroraScript.Runtime
                         return _target(context, buffer);
                     }
                 default:
-                    var rented = CILHelper.RentArguments(arguments.Length);
+                    var rented = CallOps.RentArguments(arguments.Length);
                     try
                     {
                         arguments.CopyTo(rented);
@@ -157,7 +157,7 @@ namespace AuroraScript.Runtime
                     }
                     finally
                     {
-                        CILHelper.ReturnArguments(rented, arguments.Length);
+                        CallOps.ReturnArguments(rented, arguments.Length);
                     }
             }
         }

@@ -27,219 +27,203 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void MarkAsNull(ref ScriptDatum dst)
         {
-            dst.Kind = ValueKind.Null;
-            dst.Object = null;
+            dst.SetNull();
         }
 
         /// <summary> Creates a new datum from a boolean value. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum FromBoolean(bool value)
         {
-            return new ScriptDatum { Kind = ValueKind.Boolean, Boolean = value };
+            return CreateBoolean(value);
         }
 
         /// <summary> Writes a boolean value into the destination datum. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void WriteAsBoolean(ref ScriptDatum dst, bool value)
         {
-            dst.Kind = ValueKind.Boolean;
-            dst.Boolean = value;
-            dst.Object = null;
+            dst.SetBoolean(value);
         }
 
         /// <summary> Writes a numeric value (keeping existing Kind) into the destination. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void WriteNumber(ref ScriptDatum dst, double value)
         {
-            dst.Number = value;
-            dst.Object = null;
+            dst.SetNumber(value);
         }
 
         /// <summary> Writes a numeric value and sets the Kind to Number. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void WriteAsNumber(ref ScriptDatum dst, double value)
         {
-            dst.Kind = ValueKind.Number;
-            dst.Number = value;
+            dst.SetNumber(value);
         }
 
         /// <summary> Creates a new datum from a double-precision number. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum FromNumber(double value)
         {
-            return new ScriptDatum { Kind = ValueKind.Number, Number = value };
+            return CreateNumber(value);
         }
 
         /// <summary> Creates a new datum from an existing <see cref="StringValue"/>. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum FromString(StringValue value)
         {
-            return new ScriptDatum { Kind = ValueKind.String, String = value };
+            return CreateString(value?.Value);
         }
 
         /// <summary> Creates a new datum from a .NET string. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum FromString(String value)
         {
-            return new ScriptDatum { Kind = ValueKind.String, String = StringValue.Of(value) };
+            return CreateString(value);
         }
 
         /// <summary> Writes a .NET string into the destination datum as a StringValue. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void WriteAsString(ref ScriptDatum dst, String value)
         {
-            dst.Kind = ValueKind.String;
-            dst.String = StringValue.Of(value);
+            dst.SetString(value);
         }
 
         /// <summary> Writes an existing StringValue into the destination datum. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void WriteAsString(ref ScriptDatum dst, StringValue value)
         {
-            dst.Kind = ValueKind.String;
-            dst.String = value;
+            dst.SetString(value?.Value);
         }
 
         /// <summary> Creates a new datum from a script array. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum FromArray(ScriptArray value)
         {
-            return new ScriptDatum { Kind = ValueKind.Array, Object = value };
+            return CreateReference(ValueKind.Array, value);
         }
 
         /// <summary> Writes a script array into the destination datum. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void WriteAsArray(ref ScriptDatum dst, ScriptArray value)
         {
-            dst.Kind = ValueKind.Array;
-            dst.Object = value;
+            dst.SetReference(ValueKind.Array, value);
         }
 
         /// <summary> Creates a new datum from a script date. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum FromDate(ScriptDate date)
         {
-            return new ScriptDatum { Kind = ValueKind.Date, Object = date };
+            return CreateReference(ValueKind.Date, date);
         }
 
         /// <summary> Writes a script date into the destination datum. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void WriteAsDate(ref ScriptDatum dst, ScriptDate value)
         {
-            dst.Kind = ValueKind.Date;
-            dst.Object = value;
+            dst.SetReference(ValueKind.Date, value);
         }
 
         /// <summary> Writes a .NET DateTimeOffset into the destination as a script date. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void WriteAsDate(ref ScriptDatum dst, DateTimeOffset value)
         {
-            dst.Kind = ValueKind.Date;
-            dst.Object = new ScriptDate(value);
+            dst.SetReference(ValueKind.Date, new ScriptDate(value));
         }
 
         /// <summary> Writes a .NET DateTime into the destination as a script date. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void WriteAsDate(ref ScriptDatum dst, DateTime value)
         {
-            dst.Kind = ValueKind.Date;
-            dst.Object = new ScriptDate(value);
+            dst.SetReference(ValueKind.Date, new ScriptDate(value));
         }
 
         /// <summary> Creates a new datum from a .NET DateTime. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum FromDate(DateTime date)
         {
-            return new ScriptDatum { Kind = ValueKind.Date, Object = new ScriptDate(date) };
+            return CreateReference(ValueKind.Date, new ScriptDate(date));
         }
 
         /// <summary> Creates a new datum from a .NET DateTimeOffset. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum FromDate(DateTimeOffset date)
         {
-            return new ScriptDatum { Kind = ValueKind.Date, Object = new ScriptDate(date) };
+            return CreateReference(ValueKind.Date, new ScriptDate(date));
         }
 
         /// <summary> Creates a new datum from a script regex. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum FromRegex(ScriptRegex value)
         {
-            return new ScriptDatum { Kind = ValueKind.Regex, Object = value };
+            return CreateReference(ValueKind.Regex, value);
         }
 
         /// <summary> Writes a script regex into the destination datum. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void WriteAsRegex(ref ScriptDatum dst, ScriptRegex value)
         {
-            dst.Kind = ValueKind.Regex;
-            dst.Object = value;
+            dst.SetReference(ValueKind.Regex, value);
         }
 
         /// <summary> Creates a new datum from a script function (closure). </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum FromFunction(ClosureFunction value)
         {
-            return new ScriptDatum { Kind = ValueKind.Function, Object = value };
+            return CreateReference(ValueKind.Function, value);
         }
 
         /// <summary> Writes a script function into the destination datum. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void WriteAsFunction(ref ScriptDatum dst, ClosureFunction value)
         {
-            dst.Kind = ValueKind.Function;
-            dst.Object = value;
+            dst.SetReference(ValueKind.Function, value);
         }
 
         /// <summary> Creates a new datum from a CLR method binding. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum FromClrFunction(ClrMethodBinding value)
         {
-            return new ScriptDatum { Kind = ValueKind.ClrFunction, Object = value };
+            return CreateReference(ValueKind.ClrFunction, value);
         }
 
         /// <summary> Creates a new datum from a script type. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum FromType(ScriptType value)
         {
-            return new ScriptDatum { Kind = ValueKind.Type, Object = value };
+            return CreateReference(ValueKind.Type, value);
         }
 
         /// <summary> Writes a script type into the destination datum. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void WriteAsType(ref ScriptDatum dst, ScriptType value)
         {
-            dst.Kind = ValueKind.Type;
-            dst.Object = value;
+            dst.SetReference(ValueKind.Type, value);
         }
 
         /// <summary> Creates a new datum from a CLR bonding function. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum FromBonding(BondingFunction value)
         {
-            return new ScriptDatum { Kind = ValueKind.ClrBonding, Object = value };
+            return CreateReference(ValueKind.ClrBonding, value);
         }
 
         /// <summary> Writes a CLR bonding function into the destination datum. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void WriteAsClrBonding(ref ScriptDatum dst, BondingFunction value)
         {
-            dst.Kind = ValueKind.ClrBonding;
-            dst.Object = value;
+            dst.SetReference(ValueKind.ClrBonding, value);
         }
 
         /// <summary> Writes a native delegate into the destination datum as a bonding function. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void WriteAsClrBonding(ref ScriptDatum dst, ClrDatumDelegate value)
         {
-            dst.Kind = ValueKind.ClrBonding;
-            dst.Object = new BondingFunction(value);
+            dst.SetReference(ValueKind.ClrBonding, new BondingFunction(value));
         }
 
         /// <summary> Creates a new datum from a native delegate. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum FromBonding(ClrDatumDelegate value)
         {
-            return new ScriptDatum { Kind = ValueKind.ClrBonding, Object = new BondingFunction(value) };
+            return CreateReference(ValueKind.ClrBonding, new BondingFunction(value));
         }
 
 
@@ -247,15 +231,14 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum FromBondingGetter(ClrGetterDelegate callback)
         {
-            return new ScriptDatum { Kind = ValueKind.ClrBonding, Object = new BondingGetter(callback) };
+            return CreateReference(ValueKind.ClrBonding, new BondingGetter(callback));
         }
 
         /// <summary> Writes a generic script object into the destination datum. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void WriteAsObject(ref ScriptDatum dst, ScriptObject value)
         {
-            dst.Kind = ValueKind.Object;
-            dst.Object = value;
+            dst.SetReference(ValueKind.Object, value);
         }
 
 
@@ -263,7 +246,7 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum FromError(ScriptError value)
         {
-            return new ScriptDatum { Kind = ValueKind.Error, Object = value };
+            return CreateReference(ValueKind.Error, value);
         }
 
 
@@ -271,8 +254,7 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void WriteAsError(ref ScriptDatum dst, ScriptError value)
         {
-            dst.Kind = ValueKind.Error;
-            dst.Object = value;
+            dst.SetReference(ValueKind.Error, value);
         }
 
         /// <summary>
@@ -286,66 +268,54 @@ namespace AuroraScript.Runtime
             {
                 case null:
                 case NullValue:
-                    dst.Kind = ValueKind.Null;
+                    dst.SetNull();
                     return;
                 case NumberValue numberValue:
-                    dst.Kind = ValueKind.Number;
-                    dst.Number = numberValue.DoubleValue;
+                    dst.SetNumber(numberValue.DoubleValue);
                     return;
 
                 case BooleanValue booleanValue:
-                    dst.Kind = ValueKind.Boolean;
-                    dst.Boolean = booleanValue.Value;
+                    dst.SetBoolean(booleanValue.Value);
                     return;
 
-                case StringValue:
-                    dst.Kind = ValueKind.String;
-                    dst.Object = value;
+                case StringValue stringValue:
+                    dst.SetString(stringValue.Value);
                     return;
 
                 case ScriptArray:
-                    dst.Kind = ValueKind.Array;
-                    dst.Object = value;
+                    dst.SetReference(ValueKind.Array, value);
                     return;
 
                 case ScriptDate:
-                    dst.Kind = ValueKind.Date;
-                    dst.Object = value;
+                    dst.SetReference(ValueKind.Date, value);
                     return;
 
                 case ScriptRegex:
-                    dst.Kind = ValueKind.Regex;
-                    dst.Object = value;
+                    dst.SetReference(ValueKind.Regex, value);
                     return;
 
                 case ClrMethodBinding:
-                    dst.Kind = ValueKind.ClrFunction;
-                    dst.Object = value;
+                    dst.SetReference(ValueKind.ClrFunction, value);
                     return;
 
                 case ClosureFunction:
-                    dst.Kind = ValueKind.Function;
-                    dst.Object = value;
+                    dst.SetReference(ValueKind.Function, value);
                     return;
 
                 case ScriptType:
-                    dst.Kind = ValueKind.Type;
-                    dst.Object = value;
+                    dst.SetReference(ValueKind.Type, value);
                     return;
 
                 case BondingFunction:
-                    dst.Kind = ValueKind.ClrBonding;
-                    dst.Object = value;
+                    dst.SetReference(ValueKind.ClrBonding, value);
                     return;
 
                 case ScriptError:
-                    dst.Kind = ValueKind.Error;
-                    dst.Object = value;
+                    dst.SetReference(ValueKind.Error, value);
                     return;
 
                 default:
-                    dst.Kind = ValueKind.Object;
-                    dst.Object = value;
+                    dst.SetReference(ValueKind.Object, value);
                     return;
             }
         }
@@ -394,7 +364,7 @@ namespace AuroraScript.Runtime
                     return FromBonding(bonding);
 
                 default:
-                    return new ScriptDatum { Kind = ValueKind.Object, Object = value };
+                    return CreateReference(ValueKind.Object, value);
             }
 
         }
@@ -436,7 +406,7 @@ namespace AuroraScript.Runtime
                     var num = d.Number;
                     return num != 0 && !double.IsNaN(num);
                 case ValueKind.String:
-                    return !string.IsNullOrEmpty(d.String.Value);
+                    return !string.IsNullOrEmpty(d.StringText);
                 default:
                     return d.Object != ScriptObject.Null;
             }
@@ -458,7 +428,7 @@ namespace AuroraScript.Runtime
                     var num = d.Number;
                     return num == 0 || double.IsNaN(num);
                 case ValueKind.String:
-                    return string.IsNullOrEmpty(d.String.Value);
+                    return string.IsNullOrEmpty(d.StringText);
                 default:
                     return d.Object == ScriptObject.Null;
             }
@@ -470,7 +440,7 @@ namespace AuroraScript.Runtime
         public static string GetTypeName(ScriptDatum d)
         {
             ScriptDatum datum = TypeOf(d);
-            return datum.String.Value;
+            return datum.StringText;
         }
 
         /// <summary>
@@ -526,7 +496,7 @@ namespace AuroraScript.Runtime
                 case ValueKind.Number:
                     return d.Number.ToString();
                 case ValueKind.String:
-                    return d.String.Value;
+                    return d.StringText;
                 default:
                     return d.Object.ToString();
             }

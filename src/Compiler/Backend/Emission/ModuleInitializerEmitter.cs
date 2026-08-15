@@ -4,6 +4,7 @@ using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Compiler.Backend.Analysis;
 using AuroraScript.Compiler.Backend.Binding;
 using AuroraScript.Compiler.Backend.Builders;
+using AuroraScript.Compiler.Backend.Code;
 using AuroraScript.Compiler.Backend.Plans;
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Types;
@@ -25,6 +26,8 @@ namespace AuroraScript.Compiler.Backend.Emission
         private ILGenerator _il;
         private bool _defined;
         private bool _emitted;
+        private bool _hasArgumentBufferCleanup;
+        private List<(LocalBuilder Arguments, LocalBuilder Count)> _argumentBuffers;
 
         public ModuleInitializerEmitter(EmissionSession session, ModulePlan module)
         {
@@ -56,6 +59,12 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
 
             Define();
+            _hasArgumentBufferCleanup = PooledArgumentCallDetector.Contains(_module.Declaration);
+            if (_hasArgumentBufferCleanup)
+            {
+                _argumentBuffers = new List<(LocalBuilder Arguments, LocalBuilder Count)>();
+                _il.BeginExceptionBlock();
+            }
             for (var i = 0; i < _module.Declaration.Imports.Count; i++)
             {
                 var import = _module.Declaration.Imports[i];
@@ -92,6 +101,17 @@ namespace AuroraScript.Compiler.Backend.Emission
                 }
             }
 
+            if (_hasArgumentBufferCleanup)
+            {
+                _il.BeginFinallyBlock();
+                for (var i = 0; i < _argumentBuffers.Count; i++)
+                {
+                    _il.Emit(OpCodes.Ldloc, _argumentBuffers[i].Arguments);
+                    _il.Emit(OpCodes.Ldloc, _argumentBuffers[i].Count);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ReturnArguments);
+                }
+                _il.EndExceptionBlock();
+            }
             _il.Emit(OpCodes.Ret);
             _emitted = true;
 
@@ -109,14 +129,14 @@ namespace AuroraScript.Compiler.Backend.Emission
         private void EmitDefineFunction(ILGenerator il, FunctionPlan function)
         {
             il.Emit(OpCodes.Ldarg_0);
-            il.Emit(OpCodes.Ldfld, RuntimeMetadata.CILContext_Module);
+            il.Emit(OpCodes.Ldfld, TypedRuntimeMetadata.ContextModule);
             _session.Builder.LoadStringConstant(il, function.Name);
             ClosureMaterializer.EmitClosure(_session, il, function);
             il.Emit(OpCodes.Ldc_I4_1);
             il.Emit(OpCodes.Ldc_I4_1);
             il.Emit(OpCodes.Callvirt, _session.ForceModuleDefinitions
-                ? RuntimeMetadata.ScriptObject_Patch
-                : RuntimeMetadata.ScriptObject_Define);
+                ? TypedRuntimeMetadata.ScriptObjectPatchObject
+                : TypedRuntimeMetadata.ScriptObjectDefineObject);
         }
 
         private void EmitImportAlias(ImportDeclaration import)
@@ -127,15 +147,15 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
 
             _il.Emit(OpCodes.Ldarg_0);
-            _il.Emit(OpCodes.Ldfld, RuntimeMetadata.CILContext_Module);
+            _il.Emit(OpCodes.Ldfld, TypedRuntimeMetadata.ContextModule);
             _session.Builder.LoadStringConstant(_il, import.Name.Value);
             _il.Emit(OpCodes.Ldarg_0);
-            _il.Emit(OpCodes.Ldfld, RuntimeMetadata.CILContext_Global);
+            _il.Emit(OpCodes.Ldfld, TypedRuntimeMetadata.ContextGlobal);
             _session.Builder.LoadStringConstant(_il, import.ModuleName);
-            _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptGlobal_GetModule);
+            _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptGlobalGetModule);
             _il.Emit(OpCodes.Ldc_I4_0);
             _il.Emit(OpCodes.Ldc_I4_1);
-            _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptObject_Define);
+            _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptObjectDefineObject);
         }
 
         private void EmitInclude(ImportDeclaration import)
@@ -146,13 +166,13 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
 
             _il.Emit(OpCodes.Ldarg_0);
-            _il.Emit(OpCodes.Ldfld, RuntimeMetadata.CILContext_Module);
+            _il.Emit(OpCodes.Ldfld, TypedRuntimeMetadata.ContextModule);
             _il.Emit(OpCodes.Ldarg_0);
-            _il.Emit(OpCodes.Ldfld, RuntimeMetadata.CILContext_Global);
+            _il.Emit(OpCodes.Ldfld, TypedRuntimeMetadata.ContextGlobal);
             _session.Builder.LoadStringConstant(_il, import.ModuleName);
-            _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptGlobal_GetModule);
+            _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptGlobalGetModule);
             _il.Emit(OpCodes.Ldc_I4_0);
-            _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptObject_CopyEnumerablePropertysFrom);
+            _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptObjectCopyEnumerableProperties);
         }
 
         private void EmitModuleStatement(AstNode node)
@@ -209,7 +229,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         private void EmitDefineDatum(VariableDeclaration declaration, string name, Expression initializer, bool writable)
         {
             _il.Emit(OpCodes.Ldarg_0);
-            _il.Emit(OpCodes.Ldfld, RuntimeMetadata.CILContext_Module);
+            _il.Emit(OpCodes.Ldfld, TypedRuntimeMetadata.ContextModule);
             _session.Builder.LoadStringConstant(_il, name);
             if (_module.TryGetSymbol(name, out var symbolId) &&
                 ReferenceEquals(_session.CompileSession.Symbols[symbolId].Declaration, declaration) &&
@@ -224,7 +244,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             _il.Emit(writable ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
             _il.Emit(OpCodes.Ldc_I4_1);
             _il.Emit(_session.ForceModuleDefinitions ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptObject_InternalDefineDatum);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ScriptObjectInternalDefineDatum);
         }
 
         private void EmitEnum(EnumDeclaration enumDeclaration)
@@ -236,7 +256,7 @@ namespace AuroraScript.Compiler.Backend.Emission
 
             var enumLocal = _il.DeclareLocal(typeof(ScriptObject));
             _session.Builder.SetLocalSymInfo(enumLocal, enumDeclaration.Identifier.Value);
-            _il.Emit(OpCodes.Newobj, RuntimeMetadata.ScriptObject_Ctor);
+            _il.Emit(OpCodes.Newobj, TypedRuntimeMetadata.ScriptObjectConstructor);
             _il.Emit(OpCodes.Stloc, enumLocal);
 
             for (var i = 0; i < enumDeclaration.Elements.Count; i++)
@@ -245,21 +265,21 @@ namespace AuroraScript.Compiler.Backend.Emission
                 _il.Emit(OpCodes.Ldloc, enumLocal);
                 _session.Builder.LoadStringConstant(_il, element.Name.Value);
                 _il.Emit(OpCodes.Ldc_R8, (double)element.Value);
-                _il.Emit(OpCodes.Call, RuntimeMetadata.NumberValue_Of);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromNumber);
                 _il.Emit(OpCodes.Ldc_I4_0);
                 _il.Emit(OpCodes.Ldc_I4_1);
-                _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptObject_Define);
+                _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptObjectDefineDatum);
             }
 
             _il.Emit(OpCodes.Ldarg_0);
-            _il.Emit(OpCodes.Ldfld, RuntimeMetadata.CILContext_Module);
+            _il.Emit(OpCodes.Ldfld, TypedRuntimeMetadata.ContextModule);
             _session.Builder.LoadStringConstant(_il, enumDeclaration.Identifier.Value);
             _il.Emit(OpCodes.Ldloc, enumLocal);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromObject);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
             _il.Emit(OpCodes.Ldc_I4_0);
             _il.Emit(OpCodes.Ldc_I4_1);
             _il.Emit(_session.ForceModuleDefinitions ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptObject_InternalDefineDatum);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ScriptObjectInternalDefineDatum);
         }
 
         private void EmitExpressionOrNull(Expression expression)
@@ -286,8 +306,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return;
             }
 
-            if (expression is UnaryExpression unary &&
-                GetMutationVoidMethod(unary.Operator) != null)
+            if (expression is UnaryExpression unary && IsMutation(unary.Operator))
             {
                 EmitUnaryDiscarded(unary);
                 return;
@@ -387,7 +406,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
 
             EmitExpressionOrNull(expression);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_ToBoolean);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ToBooleanDatum);
         }
 
         private void EmitLiteral(LiteralExpression expression)
@@ -397,25 +416,25 @@ namespace AuroraScript.Compiler.Backend.Emission
                 case NumberToken number:
                     if (_session.Builder.LoadNumber(_il, number.NumberValue) == LoadState.Constant)
                     {
-                        _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromNumber);
+                        _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromNumber);
                     }
                     return;
                 case StringToken stringToken:
                     if (_session.Builder.LoadString(_il, stringToken.Value) == LoadState.Constant)
                     {
-                        _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromString);
+                        _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromString);
                     }
                     return;
                 case RegexToken regex:
                     _session.Builder.LoadStringConstant(_il, regex.Pattern);
                     _session.Builder.LoadStringConstant(_il, regex.Flags);
-                    _il.Emit(OpCodes.Call, RuntimeMetadata.RegexManager_LoadRegex);
-                    _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromObject);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ResolveRegex);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
                     return;
                 case BooleanToken boolean:
                     if (_session.Builder.LoadBoolean(_il, boolean.BoolValue) == LoadState.Constant)
                     {
-                        _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromBoolean);
+                        _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromBoolean);
                     }
                     return;
                 case NullToken:
@@ -432,15 +451,15 @@ namespace AuroraScript.Compiler.Backend.Emission
             if (StringComparer.Ordinal.Equals(name, "$state"))
             {
                 _il.Emit(OpCodes.Ldarg_0);
-                _il.Emit(OpCodes.Ldfld, RuntimeMetadata.CILContext_UserState);
-                _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromObject);
+                _il.Emit(OpCodes.Ldfld, TypedRuntimeMetadata.ContextUserState);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
                 return;
             }
             if (StringComparer.Ordinal.Equals(name, "global"))
             {
                 _il.Emit(OpCodes.Ldarg_0);
-                _il.Emit(OpCodes.Ldfld, RuntimeMetadata.CILContext_Global);
-                _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromObject);
+                _il.Emit(OpCodes.Ldfld, TypedRuntimeMetadata.ContextGlobal);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
                 return;
             }
 
@@ -495,15 +514,13 @@ namespace AuroraScript.Compiler.Backend.Emission
                     return true;
                 case IncludedExpression included:
                     EmitExpression(included.Right);
-                    _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
                     EmitExpression(included.Left);
-                    _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_IncludedBool);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.Includes);
                     return true;
                 case InExpression inExpression:
                     EmitExpression(inExpression.Right);
-                    _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
                     EmitExpression(inExpression.Left);
-                    _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_IncludedBool);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.Includes);
                     return true;
                 default:
                     return false;
@@ -589,7 +606,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 EmitExpression(leftBinary.Left);
                 _session.Builder.LoadStringConstant(_il, middle);
                 EmitExpression(expression.Right);
-                _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_AddStringMiddle);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.AddStringMiddle);
                 return true;
             }
 
@@ -597,7 +614,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 EmitExpression(expression.Left);
                 _session.Builder.LoadStringConstant(_il, right);
-                _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_AddStringRight);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.AddStringRight);
                 return true;
             }
 
@@ -605,7 +622,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 _session.Builder.LoadStringConstant(_il, left);
                 EmitExpression(expression.Right);
-                _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_AddStringLeft);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.AddStringLeft);
                 return true;
             }
 
@@ -618,7 +635,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             if (elementCount == 0)
             {
                 _session.Builder.LoadStringConstant(_il, string.Empty);
-                _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromString);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromString);
                 return;
             }
 
@@ -658,19 +675,19 @@ namespace AuroraScript.Compiler.Backend.Emission
                 case 1:
                     break;
                 case 2:
-                    _il.Emit(OpCodes.Call, RuntimeMetadata.String_Concat2);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.StringConcat2);
                     break;
                 case 3:
-                    _il.Emit(OpCodes.Call, RuntimeMetadata.String_Concat3);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.StringConcat3);
                     break;
                 case 4:
-                    _il.Emit(OpCodes.Call, RuntimeMetadata.String_Concat4);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.StringConcat4);
                     break;
                 default:
                     throw new NotSupportedException("Template string concat element count " + elementCount);
             }
 
-            _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromString);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromString);
         }
 
         private void EmitTemplateStringElement(TemplateStringPart part)
@@ -685,7 +702,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
 
             EmitExpression(part.Expression);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToString);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumToString);
         }
 
         private void EmitTemplateStringBuilder(TemplateStringExpression expression)
@@ -702,7 +719,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 }
 
                 EmitExpression(part.Expression);
-                _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToString);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumToString);
                 var local = DeclareLocal(typeof(string));
                 _il.Emit(OpCodes.Stloc, local);
                 dynamicStrings[i] = local;
@@ -718,11 +735,11 @@ namespace AuroraScript.Compiler.Backend.Emission
                 }
 
                 _il.Emit(OpCodes.Ldloc, local);
-                _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_GetStringLength);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.StringLength);
                 _il.Emit(OpCodes.Add);
             }
 
-            _il.Emit(OpCodes.Newobj, RuntimeMetadata.StringBuilder_CtorCapacity);
+            _il.Emit(OpCodes.Newobj, TypedRuntimeMetadata.StringBuilderCapacity);
             for (var i = 0; i < expression.PartCount; i++)
             {
                 var part = expression.Parts[i];
@@ -740,11 +757,11 @@ namespace AuroraScript.Compiler.Backend.Emission
                     _il.Emit(OpCodes.Ldloc, dynamicStrings[i]);
                 }
 
-                _il.Emit(OpCodes.Callvirt, RuntimeMetadata.StringBuilder_AppendString);
+                _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.StringBuilderAppend);
             }
 
-            _il.Emit(OpCodes.Callvirt, RuntimeMetadata.StringBuilder_ToString);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromString);
+            _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.StringBuilderToString);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromString);
         }
 
         private static bool TryGetStringLiteral(Expression expression, out string value)
@@ -764,7 +781,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             var endLabel = _il.DefineLabel();
             EmitExpression(expression.Left);
             _il.Emit(OpCodes.Dup);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_ToBoolean);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ToBooleanDatum);
             _il.Emit(branchWhenTrue ? OpCodes.Brtrue : OpCodes.Brfalse, endLabel);
             _il.Emit(OpCodes.Pop);
             EmitExpression(expression.Right);
@@ -837,7 +854,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 EmitExpression(element.Object);
                 EmitExpression(element.Index);
                 EmitExpression(expression.Right);
-                _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_CompoundAddElementDatum);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CompoundAddElement);
                 return;
             }
 
@@ -860,7 +877,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 EmitExpression(element.Object);
                 EmitExpression(element.Index);
                 EmitExpression(expression.Right);
-                _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_CompoundAddElementDatum);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CompoundAddElement);
                 _il.Emit(OpCodes.Pop);
                 return;
             }
@@ -870,8 +887,7 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitUnary(UnaryExpression expression)
         {
-            var incrementMethod = GetIncrementMethod(expression.Operator);
-            if (incrementMethod == null)
+            if (!IsMutation(expression.Operator))
             {
                 EmitExpression(expression.Expression);
                 _il.Emit(OpCodes.Call, GetUnaryMethod(expression.Operator));
@@ -881,26 +897,29 @@ namespace AuroraScript.Compiler.Backend.Emission
             if (expression.Expression is NameExpression name)
             {
                 EmitStoreTargetObject(name.Identifier.Value);
+                _il.Emit(OpCodes.Ldarg_0);
                 _session.Builder.LoadStringConstant(_il, name.Identifier.Value);
-                _il.Emit(OpCodes.Call, GetPropertyMutationMethod(expression.Operator));
+                EmitMutationArguments(expression.Operator);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ChangeObjectProperty);
                 return;
             }
 
             if (expression.Expression is GetElementExpression element)
             {
                 EmitExpression(element.Object);
-                _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
                 EmitExpression(element.Index);
-                _il.Emit(OpCodes.Call, GetElementMutationMethod(expression.Operator));
+                EmitMutationArguments(expression.Operator);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ChangeElement);
                 return;
             }
 
             if (expression.Expression is GetPropertyExpression property && TryGetStaticPropertyName(property, out var propertyName))
             {
                 EmitExpression(property.Object);
-                _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
+                _il.Emit(OpCodes.Ldarg_0);
                 _session.Builder.LoadStringConstant(_il, propertyName);
-                _il.Emit(OpCodes.Call, GetPropertyMutationMethod(expression.Operator));
+                EmitMutationArguments(expression.Operator);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ChangeDatumProperty);
                 return;
             }
 
@@ -909,41 +928,25 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitUnaryDiscarded(UnaryExpression expression)
         {
-            if (expression.Expression is NameExpression name)
-            {
-                EmitStoreTargetObject(name.Identifier.Value);
-                _session.Builder.LoadStringConstant(_il, name.Identifier.Value);
-                _il.Emit(OpCodes.Call, GetPropertyMutationVoidMethod(expression.Operator));
-                return;
-            }
+            EmitUnary(expression);
+            _il.Emit(OpCodes.Pop);
+        }
 
-            if (expression.Expression is GetElementExpression element)
-            {
-                EmitExpression(element.Object);
-                _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
-                EmitExpression(element.Index);
-                _il.Emit(OpCodes.Call, GetElementMutationVoidMethod(expression.Operator));
-                return;
-            }
-
-            if (expression.Expression is GetPropertyExpression property && TryGetStaticPropertyName(property, out var propertyName))
-            {
-                EmitExpression(property.Object);
-                _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
-                _session.Builder.LoadStringConstant(_il, propertyName);
-                _il.Emit(OpCodes.Call, GetPropertyMutationVoidMethod(expression.Operator));
-                return;
-            }
-
-            throw new NotSupportedException("Module unary target " + expression.Expression?.GetType().Name);
+        private void EmitMutationArguments(Operator op)
+        {
+            _il.Emit(OpCodes.Ldc_R8,
+                op == Operator.PreIncrement || op == Operator.PostIncrement ? 1d : -1d);
+            _il.Emit(op == Operator.PostIncrement || op == Operator.PostDecrement
+                ? OpCodes.Ldc_I4_1
+                : OpCodes.Ldc_I4_0);
         }
 
         private void EmitIncluded(Expression left, Expression right)
         {
             EmitExpression(right);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
             EmitExpression(left);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_Included);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.Includes);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromBoolean);
         }
 
         private void EmitGetProperty(GetPropertyExpression expression)
@@ -954,16 +957,9 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
 
             EmitExpression(expression.Object);
-            if (StringComparer.Ordinal.Equals(name, "length"))
-            {
-                _il.Emit(OpCodes.Ldarg_0);
-                _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_GetLengthDatum);
-                return;
-            }
-
             _il.Emit(OpCodes.Ldarg_0);
             _session.Builder.LoadStringConstant(_il, name);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_GetProperty);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetProperty);
         }
 
         private void EmitSetProperty(SetPropertyExpression expression)
@@ -974,15 +970,10 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
 
             EmitExpression(expression.Object);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
             _il.Emit(OpCodes.Ldarg_0);
             _session.Builder.LoadStringConstant(_il, name);
             EmitExpression(expression.Value);
-            var valueLocal = DeclareTemp();
-            _il.Emit(OpCodes.Dup);
-            _il.Emit(OpCodes.Stloc, valueLocal);
-            _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptObject_SetPropertyDatum);
-            _il.Emit(OpCodes.Ldloc, valueLocal);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.SetProperty);
         }
 
         private void EmitSetPropertyDiscarded(SetPropertyExpression expression)
@@ -993,11 +984,11 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
 
             EmitExpression(expression.Object);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
             _il.Emit(OpCodes.Ldarg_0);
             _session.Builder.LoadStringConstant(_il, name);
             EmitExpression(expression.Value);
-            _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptObject_SetPropertyDatum);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.SetProperty);
+            _il.Emit(OpCodes.Pop);
         }
 
         private void EmitGetElement(GetElementExpression expression)
@@ -1009,7 +1000,7 @@ namespace AuroraScript.Compiler.Backend.Emission
 
             EmitExpression(expression.Object);
             EmitExpression(expression.Index);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_GetElementDatum);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetElement);
         }
 
         private bool TryEmitGetElementFastPath(GetElementExpression expression)
@@ -1018,30 +1009,8 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 EmitExpression(expression.Object);
                 EmitRawNumber(index);
-                _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_GetElementNumber);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetElementNumber);
                 return true;
-            }
-
-            if (expression.Index is BinaryExpression binary &&
-                binary.Operator == Operator.Add)
-            {
-                if (TryGetNumberLiteral(binary.Right, out var right))
-                {
-                    EmitExpression(expression.Object);
-                    EmitExpression(binary.Left);
-                    EmitRawNumber(right);
-                    _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_GetElementAddNumberRight);
-                    return true;
-                }
-
-                if (TryGetNumberLiteral(binary.Left, out var left))
-                {
-                    EmitExpression(expression.Object);
-                    EmitRawNumber(left);
-                    EmitExpression(binary.Right);
-                    _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_GetElementAddNumberLeft);
-                    return true;
-                }
             }
 
             return false;
@@ -1069,11 +1038,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             EmitExpression(expression.Object);
             EmitExpression(expression.Index);
             EmitExpression(expression.Value);
-            var valueLocal = DeclareTemp();
-            _il.Emit(OpCodes.Dup);
-            _il.Emit(OpCodes.Stloc, valueLocal);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_SetElementDatum);
-            _il.Emit(OpCodes.Ldloc, valueLocal);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.SetElement);
         }
 
         private void EmitSetElementDiscarded(SetElementExpression expression)
@@ -1081,37 +1046,42 @@ namespace AuroraScript.Compiler.Backend.Emission
             EmitExpression(expression.Object);
             EmitExpression(expression.Index);
             EmitExpression(expression.Value);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_SetElementDatum);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.SetElement);
+            _il.Emit(OpCodes.Pop);
         }
 
         private void EmitArrayLiteral(ArrayLiteralExpression expression)
         {
-            _il.Emit(OpCodes.Ldc_I4, expression.Elements.Count);
-            _il.Emit(OpCodes.Newobj, RuntimeMetadata.ScriptArray_CtorCapacity);
+            var hasSpread = HasSpread(expression.Elements);
+            _il.Emit(OpCodes.Ldc_I4, hasSpread ? 0 : expression.Elements.Count);
+            _il.Emit(OpCodes.Newobj, TypedRuntimeMetadata.ScriptArrayCapacity);
             for (var i = 0; i < expression.Elements.Count; i++)
             {
                 _il.Emit(OpCodes.Dup);
-                _il.Emit(OpCodes.Ldc_I4, i);
                 var element = expression.Elements[i];
                 if (element is SpreadExpression spread)
                 {
-                    _il.Emit(OpCodes.Pop);
                     EmitExpression(spread.Expression);
-                    _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
-                    _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_SpreadInto);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.SpreadIntoArray);
+                }
+                else if (hasSpread)
+                {
+                    EmitExpressionOrNull(element);
+                    _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptArrayPush);
                 }
                 else
                 {
+                    _il.Emit(OpCodes.Ldc_I4, i);
                     EmitExpressionOrNull(element);
-                    _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptArray_SetElementValue);
+                    _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptArraySetElement);
                 }
             }
-            _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromObject);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
         }
 
         private void EmitMap(MapExpression expression)
         {
-            _il.Emit(OpCodes.Newobj, RuntimeMetadata.ScriptObject_Ctor);
+            _il.Emit(OpCodes.Newobj, TypedRuntimeMetadata.ScriptObjectConstructor);
             for (var i = 0; i < expression.Entries.Count; i++)
             {
                 _il.Emit(OpCodes.Dup);
@@ -1121,16 +1091,14 @@ namespace AuroraScript.Compiler.Backend.Emission
                     _il.Emit(OpCodes.Ldarg_0);
                     _session.Builder.LoadStringConstant(_il, entry.Key.Value);
                     EmitExpressionOrNull(entry.Value);
-                    _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptObject_SetPropertyDatum);
+                    _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptObjectSetProperty);
                     continue;
                 }
 
                 if (mapEntry is SpreadExpression spread)
                 {
                     EmitExpression(spread.Expression);
-                    _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
-                    _il.Emit(OpCodes.Ldc_I4_0);
-                    _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptObject_CopyPropertysFrom);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CopyProperties);
                     continue;
                 }
 
@@ -1139,13 +1107,13 @@ namespace AuroraScript.Compiler.Backend.Emission
                     _il.Emit(OpCodes.Ldarg_0);
                     _session.Builder.LoadStringConstant(_il, name.Identifier.Value);
                     EmitName(name);
-                    _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptObject_SetPropertyDatum);
+                    _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptObjectSetProperty);
                     continue;
                 }
 
                 throw new NotSupportedException("Module map entry " + mapEntry?.GetType().Name);
             }
-            _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromObject);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
         }
 
         private void EmitLambda(LambdaExpression expression)
@@ -1157,7 +1125,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
 
             ClosureMaterializer.EmitClosure(_session, _il, function);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_FromObject);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
         }
 
         private Dictionary<FunctionDeclaration, FunctionPlan> GetFunctionsByDeclaration()
@@ -1195,7 +1163,6 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
 
             EmitExpression(call.Target);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
             _il.Emit(OpCodes.Ldarg_0);
             for (var i = 0; i < call.Arguments.Count; i++)
             {
@@ -1224,7 +1191,6 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
 
             EmitExpression(call.Target);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
             _il.Emit(OpCodes.Ldarg_0);
             for (var i = 0; i < call.Arguments.Count; i++)
             {
@@ -1287,14 +1253,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             var arity = GetFastArity(target.CallConvention);
             var argumentLocals = EmitDirectCallArguments(call.Arguments, arity, out var deferredArguments);
-            var directContext = _il.DeclareLocal(typeof(ScriptContext));
             _il.Emit(OpCodes.Ldarg_0);
-            _session.Builder.LoadStringConstant(_il, target.Name);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_EnterDirect);
-            _il.Emit(OpCodes.Stloc, directContext);
-
-            _il.Emit(OpCodes.Ldloc, directContext);
-            _il.Emit(OpCodes.Ldloc, directContext);
             for (var i = 0; i < arity; i++)
             {
                 if (i >= argumentLocals.Length)
@@ -1311,8 +1270,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 }
             }
 
-            _il.Emit(OpCodes.Call, target.Method);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_LeaveDirect);
+            _il.Emit(OpCodes.Call, target.DirectEntryMethod);
         }
 
         private LocalBuilder[] EmitDirectCallArguments(IReadOnlyList<Expression> arguments, int arity, out bool[] deferredArguments)
@@ -1389,7 +1347,6 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
 
             EmitExpression(property.Object);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
             _il.Emit(OpCodes.Ldarg_0);
             _session.Builder.LoadStringConstant(_il, name);
             for (var i = 0; i < call.Arguments.Count; i++)
@@ -1401,61 +1358,78 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitNewMany(FunctionCallExpression call)
         {
-            var typeLocal = _il.DeclareLocal(typeof(ScriptObject));
+            var typeLocal = _il.DeclareLocal(typeof(ScriptDatum));
             var argsLocal = _il.DeclareLocal(typeof(ScriptDatum[]));
+            var countLocal = _il.DeclareLocal(typeof(int));
+            var resultLocal = _il.DeclareLocal(typeof(ScriptDatum));
 
             EmitExpression(call.Target);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
             _il.Emit(OpCodes.Stloc, typeLocal);
-            var countLocal = EmitArgumentsToBuffer(call.Arguments, argsLocal);
+            InitializeArgumentBuffer(argsLocal, countLocal);
+            EmitArgumentsToBuffer(call.Arguments, argsLocal, countLocal);
 
             _il.Emit(OpCodes.Ldloc, typeLocal);
             _il.Emit(OpCodes.Ldarg_0);
             _il.Emit(OpCodes.Ldloc, argsLocal);
             _il.Emit(OpCodes.Ldloc, countLocal);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_NewMany);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.NewMany);
+            _il.Emit(OpCodes.Stloc, resultLocal);
+            ReleaseArgumentBuffer(argsLocal, countLocal);
+            _il.Emit(OpCodes.Ldloc, resultLocal);
         }
 
         private void EmitRegularCallMany(FunctionCallExpression call)
         {
-            var functionLocal = _il.DeclareLocal(typeof(ScriptObject));
+            var functionLocal = _il.DeclareLocal(typeof(ScriptDatum));
             var argsLocal = _il.DeclareLocal(typeof(ScriptDatum[]));
+            var countLocal = _il.DeclareLocal(typeof(int));
+            var resultLocal = _il.DeclareLocal(typeof(ScriptDatum));
 
             EmitExpression(call.Target);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
             _il.Emit(OpCodes.Stloc, functionLocal);
-            var countLocal = EmitArgumentsToBuffer(call.Arguments, argsLocal);
+            InitializeArgumentBuffer(argsLocal, countLocal);
+            EmitArgumentsToBuffer(call.Arguments, argsLocal, countLocal);
 
             _il.Emit(OpCodes.Ldloc, functionLocal);
             _il.Emit(OpCodes.Ldarg_0);
             _il.Emit(OpCodes.Ldloc, argsLocal);
             _il.Emit(OpCodes.Ldloc, countLocal);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_InvokeMany);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.InvokeMany);
+            _il.Emit(OpCodes.Stloc, resultLocal);
+            ReleaseArgumentBuffer(argsLocal, countLocal);
+            _il.Emit(OpCodes.Ldloc, resultLocal);
         }
 
         private void EmitPropertyCallMany(FunctionCallExpression call, GetPropertyExpression property, string name)
         {
-            var receiverLocal = _il.DeclareLocal(typeof(ScriptObject));
+            var receiverLocal = _il.DeclareLocal(typeof(ScriptDatum));
             var argsLocal = _il.DeclareLocal(typeof(ScriptDatum[]));
+            var countLocal = _il.DeclareLocal(typeof(int));
+            var resultLocal = _il.DeclareLocal(typeof(ScriptDatum));
 
             EmitExpression(property.Object);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
             _il.Emit(OpCodes.Stloc, receiverLocal);
-            var countLocal = EmitArgumentsToBuffer(call.Arguments, argsLocal);
+            InitializeArgumentBuffer(argsLocal, countLocal);
+            EmitArgumentsToBuffer(call.Arguments, argsLocal, countLocal);
 
             _il.Emit(OpCodes.Ldloc, receiverLocal);
             _il.Emit(OpCodes.Ldarg_0);
             _session.Builder.LoadStringConstant(_il, name);
             _il.Emit(OpCodes.Ldloc, argsLocal);
             _il.Emit(OpCodes.Ldloc, countLocal);
-            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_InvokePropertyMany);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.InvokePropertyMany);
+            _il.Emit(OpCodes.Stloc, resultLocal);
+            ReleaseArgumentBuffer(argsLocal, countLocal);
+            _il.Emit(OpCodes.Ldloc, resultLocal);
         }
 
-        private LocalBuilder EmitArgumentsToBuffer(IReadOnlyList<Expression> arguments, LocalBuilder argsLocal)
+        private void EmitArgumentsToBuffer(
+            IReadOnlyList<Expression> arguments,
+            LocalBuilder argsLocal,
+            LocalBuilder countLocal)
         {
-            var countLocal = _il.DeclareLocal(typeof(int));
             _il.Emit(OpCodes.Ldc_I4, Math.Max(arguments.Count, 1));
-            _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_RentArguments);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.RentArguments);
             _il.Emit(OpCodes.Stloc, argsLocal);
             _il.Emit(OpCodes.Ldc_I4_0);
             _il.Emit(OpCodes.Stloc, countLocal);
@@ -1467,55 +1441,79 @@ namespace AuroraScript.Compiler.Backend.Emission
                 if (arguments[i] is SpreadExpression spread)
                 {
                     EmitExpression(spread.Expression);
-                    _il.Emit(OpCodes.Call, RuntimeMetadata.ScriptDatum_ToObject);
-                    _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_SpreadIntoArguments);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.AppendSpread);
                 }
                 else
                 {
                     EmitExpression(arguments[i]);
-                    _il.Emit(OpCodes.Call, RuntimeMetadata.CILHelper_AddArgument);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.AppendArgument);
                 }
                 _il.Emit(OpCodes.Stloc, argsLocal);
             }
+        }
 
-            return countLocal;
+        private void InitializeArgumentBuffer(LocalBuilder argsLocal, LocalBuilder countLocal)
+        {
+            if (!_hasArgumentBufferCleanup || _argumentBuffers == null)
+            {
+                throw new InvalidOperationException("Missing module-level argument-buffer cleanup region.");
+            }
+            _argumentBuffers.Add((argsLocal, countLocal));
+
+            // A module-level script catch may swallow a failure from this call site.
+            // Drain the buffer retained by that failed attempt before a loop or later
+            // execution overwrites the local; the module cleanup handles final exit.
+            _il.Emit(OpCodes.Ldloc, argsLocal);
+            _il.Emit(OpCodes.Ldloc, countLocal);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ReturnArguments);
+            _il.Emit(OpCodes.Ldnull);
+            _il.Emit(OpCodes.Stloc, argsLocal);
+            _il.Emit(OpCodes.Ldc_I4_0);
+            _il.Emit(OpCodes.Stloc, countLocal);
+        }
+
+        private void ReleaseArgumentBuffer(LocalBuilder argsLocal, LocalBuilder countLocal)
+        {
+            _il.Emit(OpCodes.Ldloc, argsLocal);
+            _il.Emit(OpCodes.Ldloc, countLocal);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ReturnArguments);
+            _il.Emit(OpCodes.Ldnull);
+            _il.Emit(OpCodes.Stloc, argsLocal);
         }
 
         private void EmitModulePropertyLoad(string name)
         {
             _il.Emit(OpCodes.Ldarg_0);
-            _il.Emit(OpCodes.Ldfld, RuntimeMetadata.CILContext_Module);
-            _il.Emit(OpCodes.Ldarg_0);
             _session.Builder.LoadStringConstant(_il, name);
-            _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptObject_GetPropertyDatum);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetModule);
         }
 
         private void EmitGlobalPropertyLoad(string name)
         {
             _il.Emit(OpCodes.Ldarg_0);
-            _il.Emit(OpCodes.Ldfld, RuntimeMetadata.CILContext_Global);
-            _il.Emit(OpCodes.Ldarg_0);
             _session.Builder.LoadStringConstant(_il, name);
-            _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptObject_GetPropertyDatum);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetGlobal);
         }
 
         private void EmitStoreNameFromStack(string name)
         {
             var valueLocal = DeclareTemp();
             _il.Emit(OpCodes.Stloc, valueLocal);
-            EmitStoreTargetObject(name);
             _il.Emit(OpCodes.Ldarg_0);
             _session.Builder.LoadStringConstant(_il, name);
             _il.Emit(OpCodes.Ldloc, valueLocal);
-            _il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptObject_SetPropertyDatum);
+            _il.Emit(OpCodes.Call, IsDefinedModuleSymbol(name)
+                ? TypedRuntimeMetadata.SetModule
+                : TypedRuntimeMetadata.SetGlobal);
+            _il.Emit(OpCodes.Pop);
         }
 
         private void EmitStoreTargetObject(string name)
         {
             _il.Emit(OpCodes.Ldarg_0);
             var target = IsDefinedModuleSymbol(name)
-                ? RuntimeMetadata.CILContext_Module
-                : RuntimeMetadata.CILContext_Global;
+                ? TypedRuntimeMetadata.ContextModule
+                : TypedRuntimeMetadata.ContextGlobal;
             _il.Emit(OpCodes.Ldfld, target);
         }
 
@@ -1577,144 +1575,82 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private static MethodInfo GetBinaryMethod(Operator op)
         {
-            if (op == Operator.Add) return RuntimeMetadata.CILHelper_Add;
-            if (op == Operator.Subtract) return RuntimeMetadata.CILHelper_Subtract;
-            if (op == Operator.Multiply) return RuntimeMetadata.CILHelper_Multiply;
-            if (op == Operator.Divide) return RuntimeMetadata.CILHelper_Divide;
-            if (op == Operator.Modulo) return RuntimeMetadata.CILHelper_Modulo;
-            if (op == Operator.Equal) return RuntimeMetadata.CILHelper_Equal;
-            if (op == Operator.NotEqual) return RuntimeMetadata.CILHelper_NotEqual;
-            if (op == Operator.LessThan) return RuntimeMetadata.CILHelper_Less;
-            if (op == Operator.LessThanOrEqual) return RuntimeMetadata.CILHelper_LessEqual;
-            if (op == Operator.GreaterThan) return RuntimeMetadata.CILHelper_Greater;
-            if (op == Operator.GreaterThanOrEqual) return RuntimeMetadata.CILHelper_GreaterEqual;
-            if (op == Operator.BitwiseAnd) return RuntimeMetadata.CILHelper_BitwiseAnd;
-            if (op == Operator.BitwiseOr) return RuntimeMetadata.CILHelper_BitwiseOr;
-            if (op == Operator.BitwiseXor) return RuntimeMetadata.CILHelper_BitwiseXor;
-            if (op == Operator.LeftShift) return RuntimeMetadata.CILHelper_LeftShift;
-            if (op == Operator.SignedRightShift) return RuntimeMetadata.CILHelper_RightShift;
-            if (op == Operator.UnSignedRightShift) return RuntimeMetadata.CILHelper_UnsignedRightShift;
+            if (op == Operator.Add) return TypedRuntimeMetadata.Add;
+            if (op == Operator.Subtract) return TypedRuntimeMetadata.Subtract;
+            if (op == Operator.Multiply) return TypedRuntimeMetadata.Multiply;
+            if (op == Operator.Divide) return TypedRuntimeMetadata.Divide;
+            if (op == Operator.Modulo) return TypedRuntimeMetadata.Modulo;
+            if (op == Operator.Equal) return TypedRuntimeMetadata.Equal;
+            if (op == Operator.NotEqual) return TypedRuntimeMetadata.NotEqual;
+            if (op == Operator.LessThan) return TypedRuntimeMetadata.Less;
+            if (op == Operator.LessThanOrEqual) return TypedRuntimeMetadata.LessEqual;
+            if (op == Operator.GreaterThan) return TypedRuntimeMetadata.Greater;
+            if (op == Operator.GreaterThanOrEqual) return TypedRuntimeMetadata.GreaterEqual;
+            if (op == Operator.BitwiseAnd) return TypedRuntimeMetadata.BitwiseAnd;
+            if (op == Operator.BitwiseOr) return TypedRuntimeMetadata.BitwiseOr;
+            if (op == Operator.BitwiseXor) return TypedRuntimeMetadata.BitwiseXor;
+            if (op == Operator.LeftShift) return TypedRuntimeMetadata.LeftShift;
+            if (op == Operator.SignedRightShift) return TypedRuntimeMetadata.RightShift;
+            if (op == Operator.UnSignedRightShift) return TypedRuntimeMetadata.UnsignedRightShift;
             return null;
         }
 
         private static MethodInfo GetBinaryConditionMethod(Operator op)
         {
-            if (op == Operator.Add) return RuntimeMetadata.CILHelper_AddBool;
-            if (op == Operator.Subtract) return RuntimeMetadata.CILHelper_SubtractBool;
-            if (op == Operator.Multiply) return RuntimeMetadata.CILHelper_MultiplyBool;
-            if (op == Operator.Divide) return RuntimeMetadata.CILHelper_DivideBool;
-            if (op == Operator.Modulo) return RuntimeMetadata.CILHelper_ModuloBool;
-            if (op == Operator.Equal) return RuntimeMetadata.CILHelper_EqualBool;
-            if (op == Operator.NotEqual) return RuntimeMetadata.CILHelper_NotEqualBool;
-            if (op == Operator.LessThan) return RuntimeMetadata.CILHelper_LessBool;
-            if (op == Operator.LessThanOrEqual) return RuntimeMetadata.CILHelper_LessEqualBool;
-            if (op == Operator.GreaterThan) return RuntimeMetadata.CILHelper_GreaterBool;
-            if (op == Operator.GreaterThanOrEqual) return RuntimeMetadata.CILHelper_GreaterEqualBool;
-            if (op == Operator.BitwiseAnd) return RuntimeMetadata.CILHelper_BitwiseAndBool;
-            if (op == Operator.BitwiseOr) return RuntimeMetadata.CILHelper_BitwiseOrBool;
-            if (op == Operator.BitwiseXor) return RuntimeMetadata.CILHelper_BitwiseXorBool;
-            if (op == Operator.LeftShift) return RuntimeMetadata.CILHelper_LeftShiftBool;
-            if (op == Operator.SignedRightShift) return RuntimeMetadata.CILHelper_RightShiftBool;
-            if (op == Operator.UnSignedRightShift) return RuntimeMetadata.CILHelper_UnsignedRightShiftBool;
+            if (op == Operator.Add) return TypedRuntimeMetadata.AddBoolean;
+            if (op == Operator.Subtract) return TypedRuntimeMetadata.SubtractBoolean;
+            if (op == Operator.Multiply) return TypedRuntimeMetadata.MultiplyBoolean;
+            if (op == Operator.Divide) return TypedRuntimeMetadata.DivideBoolean;
+            if (op == Operator.Modulo) return TypedRuntimeMetadata.ModuloBoolean;
+            if (op == Operator.Equal) return TypedRuntimeMetadata.EqualBoolean;
+            if (op == Operator.NotEqual) return TypedRuntimeMetadata.NotEqualBoolean;
+            if (op == Operator.LessThan) return TypedRuntimeMetadata.LessBoolean;
+            if (op == Operator.LessThanOrEqual) return TypedRuntimeMetadata.LessEqualBoolean;
+            if (op == Operator.GreaterThan) return TypedRuntimeMetadata.GreaterBoolean;
+            if (op == Operator.GreaterThanOrEqual) return TypedRuntimeMetadata.GreaterEqualBoolean;
+            if (op == Operator.BitwiseAnd) return TypedRuntimeMetadata.BitwiseAndBoolean;
+            if (op == Operator.BitwiseOr) return TypedRuntimeMetadata.BitwiseOrBoolean;
+            if (op == Operator.BitwiseXor) return TypedRuntimeMetadata.BitwiseXorBoolean;
+            if (op == Operator.LeftShift) return TypedRuntimeMetadata.LeftShiftBoolean;
+            if (op == Operator.SignedRightShift) return TypedRuntimeMetadata.RightShiftBoolean;
+            if (op == Operator.UnSignedRightShift) return TypedRuntimeMetadata.UnsignedRightShiftBoolean;
             return null;
         }
 
         private static MethodInfo GetUnaryMethod(Operator op)
         {
-            if (op == Operator.LogicalNot) return RuntimeMetadata.CILHelper_Not;
-            if (op == Operator.BitwiseNot) return RuntimeMetadata.CILHelper_BitwiseNot;
-            if (op == Operator.Negate) return RuntimeMetadata.CILHelper_Negate;
-            if (op == Operator.TypeOf) return RuntimeMetadata.CILHelper_TypeOf;
+            if (op == Operator.LogicalNot) return TypedRuntimeMetadata.Not;
+            if (op == Operator.BitwiseNot) return TypedRuntimeMetadata.BitwiseNot;
+            if (op == Operator.Negate) return TypedRuntimeMetadata.Negate;
+            if (op == Operator.TypeOf) return TypedRuntimeMetadata.TypeOf;
             return null;
         }
 
-        private static MethodInfo GetIncrementMethod(Operator op)
-        {
-            if (op == Operator.PreIncrement) return RuntimeMetadata.CILHelper_IncrementPrefix;
-            if (op == Operator.PostIncrement) return RuntimeMetadata.CILHelper_IncrementPostfix;
-            if (op == Operator.PreDecrement) return RuntimeMetadata.CILHelper_DecrementPrefix;
-            if (op == Operator.PostDecrement) return RuntimeMetadata.CILHelper_DecrementPostfix;
-            return null;
-        }
-
-        private static MethodInfo GetMutationVoidMethod(Operator op)
-        {
-            if (op == Operator.PreIncrement || op == Operator.PostIncrement) return RuntimeMetadata.CILHelper_IncrementVoid;
-            if (op == Operator.PreDecrement || op == Operator.PostDecrement) return RuntimeMetadata.CILHelper_DecrementVoid;
-            return null;
-        }
-
-        private static MethodInfo GetElementMutationMethod(Operator op)
-        {
-            if (op == Operator.PreIncrement) return RuntimeMetadata.CILHelper_IncrementElementPrefix;
-            if (op == Operator.PostIncrement) return RuntimeMetadata.CILHelper_IncrementElementPostfix;
-            if (op == Operator.PreDecrement) return RuntimeMetadata.CILHelper_DecrementElementPrefix;
-            if (op == Operator.PostDecrement) return RuntimeMetadata.CILHelper_DecrementElementPostfix;
-            return null;
-        }
-
-        private static MethodInfo GetElementMutationVoidMethod(Operator op)
-        {
-            if (op == Operator.PreIncrement || op == Operator.PostIncrement) return RuntimeMetadata.CILHelper_IncrementElementVoid;
-            if (op == Operator.PreDecrement || op == Operator.PostDecrement) return RuntimeMetadata.CILHelper_DecrementElementVoid;
-            return null;
-        }
-
-        private static MethodInfo GetPropertyMutationMethod(Operator op)
-        {
-            if (op == Operator.PreIncrement) return RuntimeMetadata.CILHelper_IncrementPropertyPrefix;
-            if (op == Operator.PostIncrement) return RuntimeMetadata.CILHelper_IncrementPropertyPostfix;
-            if (op == Operator.PreDecrement) return RuntimeMetadata.CILHelper_DecrementPropertyPrefix;
-            if (op == Operator.PostDecrement) return RuntimeMetadata.CILHelper_DecrementPropertyPostfix;
-            return null;
-        }
-
-        private static MethodInfo GetPropertyMutationVoidMethod(Operator op)
-        {
-            if (op == Operator.PreIncrement || op == Operator.PostIncrement) return RuntimeMetadata.CILHelper_IncrementPropertyVoid;
-            if (op == Operator.PreDecrement || op == Operator.PostDecrement) return RuntimeMetadata.CILHelper_DecrementPropertyVoid;
-            return null;
-        }
+        private static bool IsMutation(Operator op) =>
+            op == Operator.PreIncrement || op == Operator.PostIncrement ||
+            op == Operator.PreDecrement || op == Operator.PostDecrement;
 
         private static MethodInfo GetInvokeMethod(int argumentCount)
         {
-            return argumentCount switch
-            {
-                0 => RuntimeMetadata.CILHelper_Invoke0,
-                1 => RuntimeMetadata.CILHelper_Invoke1,
-                2 => RuntimeMetadata.CILHelper_Invoke2,
-                3 => RuntimeMetadata.CILHelper_Invoke3,
-                4 => RuntimeMetadata.CILHelper_Invoke4,
-                5 => RuntimeMetadata.CILHelper_Invoke5,
-                6 => RuntimeMetadata.CILHelper_Invoke6,
-                7 => RuntimeMetadata.CILHelper_Invoke7,
-                _ => throw new NotSupportedException("Regular call arity " + argumentCount)
-            };
+            return (uint)argumentCount < (uint)TypedRuntimeMetadata.Invoke.Length
+                ? TypedRuntimeMetadata.Invoke[argumentCount]
+                : throw new NotSupportedException("Regular call arity " + argumentCount);
         }
 
         private static MethodInfo GetInvokePropertyMethod(int argumentCount)
         {
-            return argumentCount switch
-            {
-                0 => RuntimeMetadata.CILHelper_InvokeProperty0,
-                1 => RuntimeMetadata.CILHelper_InvokeProperty1,
-                2 => RuntimeMetadata.CILHelper_InvokeProperty2,
-                3 => RuntimeMetadata.CILHelper_InvokeProperty3,
-                4 => RuntimeMetadata.CILHelper_InvokeProperty4,
-                5 => RuntimeMetadata.CILHelper_InvokeProperty5,
-                6 => RuntimeMetadata.CILHelper_InvokeProperty6,
-                7 => RuntimeMetadata.CILHelper_InvokeProperty7,
-                _ => throw new NotSupportedException("Property call arity " + argumentCount)
-            };
+            return (uint)argumentCount < (uint)TypedRuntimeMetadata.InvokeProperty.Length
+                ? TypedRuntimeMetadata.InvokeProperty[argumentCount]
+                : throw new NotSupportedException("Property call arity " + argumentCount);
         }
 
         private static MethodInfo GetNewMethod(int argumentCount)
         {
             return argumentCount switch
             {
-                0 => RuntimeMetadata.CILHelper_New0,
-                1 => RuntimeMetadata.CILHelper_New1,
-                2 => RuntimeMetadata.CILHelper_New2,
+                0 => TypedRuntimeMetadata.New0,
+                1 => TypedRuntimeMetadata.New1,
+                2 => TypedRuntimeMetadata.New2,
                 _ => throw new NotSupportedException("Constructor arity " + argumentCount)
             };
         }
@@ -1723,6 +1659,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             return function != null &&
                 function.Method != null &&
+                function.DirectEntryMethod != null &&
                 function.IsDirectCallCandidate &&
                 !function.HasDefaultParameters &&
                 !function.UsesArgumentsObject &&

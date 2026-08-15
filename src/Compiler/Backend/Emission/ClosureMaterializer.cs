@@ -1,4 +1,5 @@
 using AuroraScript.Compiler.Backend.Plans;
+using AuroraScript.Compiler.Backend.Code;
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Types;
 using System;
@@ -31,9 +32,9 @@ namespace AuroraScript.Compiler.Backend.Emission
             Action<UpvalueSlot> emitUpvalue = null)
         {
             il.Emit(OpCodes.Ldarg_0);
-            il.Emit(OpCodes.Ldfld, RuntimeMetadata.CILContext_Domain);
+            il.Emit(OpCodes.Ldfld, TypedRuntimeMetadata.ContextDomain);
             il.Emit(OpCodes.Ldarg_0);
-            il.Emit(OpCodes.Ldfld, RuntimeMetadata.CILContext_Module);
+            il.Emit(OpCodes.Ldfld, TypedRuntimeMetadata.ContextModule);
             EmitDelegate(session, il, function);
             EmitUpvalues(il, function, emitUpvalue);
             if (string.IsNullOrEmpty(function.Name))
@@ -51,7 +52,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             if (function.UpvalueSlots.Length == 0)
             {
-                il.Emit(OpCodes.Call, RuntimeMetadata.Array_Empty_Upvalue);
+                il.Emit(OpCodes.Call, TypedRuntimeMetadata.EmptyUpvalues);
                 return;
             }
 
@@ -76,7 +77,6 @@ namespace AuroraScript.Compiler.Backend.Emission
             if (function.Method is DynamicMethod dynamicMethod)
             {
                 var delegateId = session.GetDynamicDelegateId(function, dynamicMethod);
-                il.Emit(OpCodes.Dup);
                 il.Emit(OpCodes.Ldc_I4, delegateId);
                 il.Emit(OpCodes.Call, GetResolveDelegateMethod(function.CallConvention));
                 return;
@@ -101,22 +101,22 @@ namespace AuroraScript.Compiler.Backend.Emission
                 FunctionCallConvention.Fast7 => (ScriptFunctionDelegate7)dynamicMethod.CreateDelegate(typeof(ScriptFunctionDelegate7)),
                 _ => (ScriptFunctionDelegate)dynamicMethod.CreateDelegate(typeof(ScriptFunctionDelegate))
             };
-            DynamicMethodRegistry.RegisterReserved(id, dynamicMethod.Name, del);
+            DynamicMethodRegistry.RegisterReserved(id, del);
         }
 
         private static MethodInfo GetResolveDelegateMethod(FunctionCallConvention convention)
         {
             return convention switch
             {
-                FunctionCallConvention.Fast0 => RuntimeMetadata.CILHelper_ResolveDelegate0,
-                FunctionCallConvention.Fast1 => RuntimeMetadata.CILHelper_ResolveDelegate1,
-                FunctionCallConvention.Fast2 => RuntimeMetadata.CILHelper_ResolveDelegate2,
-                FunctionCallConvention.Fast3 => RuntimeMetadata.CILHelper_ResolveDelegate3,
-                FunctionCallConvention.Fast4 => RuntimeMetadata.CILHelper_ResolveDelegate4,
-                FunctionCallConvention.Fast5 => RuntimeMetadata.CILHelper_ResolveDelegate5,
-                FunctionCallConvention.Fast6 => RuntimeMetadata.CILHelper_ResolveDelegate6,
-                FunctionCallConvention.Fast7 => RuntimeMetadata.CILHelper_ResolveDelegate7,
-                _ => RuntimeMetadata.CILHelper_ResolveDelegate
+                FunctionCallConvention.Fast0 => TypedRuntimeMetadata.ResolveClosureDelegate[1],
+                FunctionCallConvention.Fast1 => TypedRuntimeMetadata.ResolveClosureDelegate[2],
+                FunctionCallConvention.Fast2 => TypedRuntimeMetadata.ResolveClosureDelegate[3],
+                FunctionCallConvention.Fast3 => TypedRuntimeMetadata.ResolveClosureDelegate[4],
+                FunctionCallConvention.Fast4 => TypedRuntimeMetadata.ResolveClosureDelegate[5],
+                FunctionCallConvention.Fast5 => TypedRuntimeMetadata.ResolveClosureDelegate[6],
+                FunctionCallConvention.Fast6 => TypedRuntimeMetadata.ResolveClosureDelegate[7],
+                FunctionCallConvention.Fast7 => TypedRuntimeMetadata.ResolveClosureDelegate[8],
+                _ => TypedRuntimeMetadata.ResolveClosureDelegate[0]
             };
         }
 
@@ -145,15 +145,15 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             return convention switch
             {
-                FunctionCallConvention.Fast0 => RuntimeMetadata.ClosureFunction_Ctor0,
-                FunctionCallConvention.Fast1 => RuntimeMetadata.ClosureFunction_Ctor1,
-                FunctionCallConvention.Fast2 => RuntimeMetadata.ClosureFunction_Ctor2,
-                FunctionCallConvention.Fast3 => RuntimeMetadata.ClosureFunction_Ctor3,
-                FunctionCallConvention.Fast4 => RuntimeMetadata.ClosureFunction_Ctor4,
-                FunctionCallConvention.Fast5 => RuntimeMetadata.ClosureFunction_Ctor5,
-                FunctionCallConvention.Fast6 => RuntimeMetadata.ClosureFunction_Ctor6,
-                FunctionCallConvention.Fast7 => RuntimeMetadata.ClosureFunction_Ctor7,
-                _ => RuntimeMetadata.ClosureFunction_Ctor
+                FunctionCallConvention.Fast0 => TypedRuntimeMetadata.ClosureConstructors[1],
+                FunctionCallConvention.Fast1 => TypedRuntimeMetadata.ClosureConstructors[2],
+                FunctionCallConvention.Fast2 => TypedRuntimeMetadata.ClosureConstructors[3],
+                FunctionCallConvention.Fast3 => TypedRuntimeMetadata.ClosureConstructors[4],
+                FunctionCallConvention.Fast4 => TypedRuntimeMetadata.ClosureConstructors[5],
+                FunctionCallConvention.Fast5 => TypedRuntimeMetadata.ClosureConstructors[6],
+                FunctionCallConvention.Fast6 => TypedRuntimeMetadata.ClosureConstructors[7],
+                FunctionCallConvention.Fast7 => TypedRuntimeMetadata.ClosureConstructors[8],
+                _ => TypedRuntimeMetadata.ClosureConstructors[0]
             };
         }
     }

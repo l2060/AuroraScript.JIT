@@ -1,5 +1,6 @@
+using AuroraScript.Compiler.Ast.Expressions;
+using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Compiler.Backend.Binding;
-using AuroraScript.Compiler.Backend.Lowering;
 using AuroraScript.Compiler.Backend.Plans;
 using System;
 using System.Collections.Generic;
@@ -38,7 +39,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         public MethodInfo Method { get; private set; }
         public int CilLocalCount { get; private set; }
 
-        public void RecordStatement(LoweredStatement statement)
+        public void RecordStatement(Statement statement)
         {
             if (statement == null)
             {
@@ -49,7 +50,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             RecordSequencePoint(statement.Range);
         }
 
-        public void RecordExpression(LoweredExpression expression)
+        public void RecordExpression(Expression expression)
         {
             if (expression != null)
             {
@@ -106,23 +107,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             RecordLocal(slot);
         }
 
-        public UnsupportedEmissionException Unsupported(LoweredUnsupportedStatement statement)
-        {
-            return new UnsupportedEmissionException(Function, new LoweredUnsupportedNode(
-                statement.Source?.GetType().Name ?? "<null>",
-                statement.Range,
-                isExpression: false));
-        }
-
-        public UnsupportedEmissionException Unsupported(LoweredUnsupportedExpression expression)
-        {
-            return new UnsupportedEmissionException(Function, new LoweredUnsupportedNode(
-                expression.Source?.GetType().Name ?? "<null>",
-                expression.Range,
-                isExpression: true));
-        }
-
-        public void SetExecutableSkeleton(MethodInfo method, int localCount)
+        public void SetExecutableCode(MethodInfo method, int localCount)
         {
             Method = method;
             CilLocalCount = localCount;

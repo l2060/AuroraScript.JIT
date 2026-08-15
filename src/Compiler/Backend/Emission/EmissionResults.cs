@@ -92,7 +92,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         public SourceSpan[] SequencePoints { get; }
         public int SequencePointCount => SequencePoints.Length;
         public MethodInfo Method { get; }
-        public bool HasExecutableSkeleton => Method != null;
+        public bool HasExecutableCode => Method != null;
         public int CilLocalCount { get; }
     }
 }

@@ -1,54 +1,219 @@
-﻿using AuroraScript.Runtime.Types;
+using AuroraScript.Runtime.Types;
 using System;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace AuroraScript.Runtime
 {
     /// <summary>
-    /// Represents a primary data unit (datum) in the AuroraScript runtime.
-    /// This is a value type implemented as a tagged union using an explicit layout to minimize memory overhead.
-    /// It can store primitive values (Number, Boolean, Null) or references to script objects.
+    /// Represents the compact dynamic value crossing AuroraScript runtime boundaries.
+    /// Primitive payloads are encoded in 64 bits while managed references stay in a
+    /// normal GC-tracked field.
     /// </summary>
     [DebuggerTypeProxy(typeof(Debugging.ScriptDatumDebugView))]
     [DebuggerDisplay("{DebuggerDisplayValue,nq}", Type = "{DebuggerDisplayType,nq}")]
-    [StructLayout(LayoutKind.Explicit)]
-    public unsafe partial struct ScriptDatum : IEquatable<ScriptDatum>
+    [StructLayout(LayoutKind.Sequential)]
+    public partial struct ScriptDatum : IEquatable<ScriptDatum>
     {
-        /// <summary>
-        /// The kind of value stored in this datum (e.g., Null, Boolean, Number, String, Object).
-        /// </summary>
-        [FieldOffset(0)]
-        public ValueKind Kind;
+        private const ulong NullPayload = 0;
+        private const ulong FalsePayload = 1;
+        private const ulong TruePayload = 2;
+        private const ulong EncodedPositiveZero = 0x7ff8_0000_0000_0001UL;
+        private const ulong EncodedSubnormalOne = 0x7ff8_0000_0000_0002UL;
+        private const ulong EncodedSubnormalTwo = 0x7ff8_0000_0000_0003UL;
+        private const ulong EncodedNaN = 0x7ff8_0000_0000_0004UL;
+        private static readonly object s_kindMarker = new();
+
+        private object reference;
+        private ulong payload;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private ScriptDatum(object reference, ulong payload)
+        {
+            this.reference = reference;
+            this.payload = payload;
+        }
+
+        /// <summary>Gets the kind of value stored in this datum.</summary>
+        public ValueKind Kind
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            readonly get
+            {
+                if (reference != null)
+                {
+                    return (ValueKind)(short)payload;
+                }
+
+                return payload switch
+                {
+                    NullPayload => ValueKind.Null,
+                    FalsePayload or TruePayload => ValueKind.Boolean,
+                    _ => ValueKind.Number,
+                };
+            }
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            set
+            {
+                var currentKind = Kind;
+                switch (value)
+                {
+                    case ValueKind.Null:
+                        SetNull();
+                        return;
+                    case ValueKind.Boolean:
+                        SetBoolean(currentKind == ValueKind.Boolean && Boolean);
+                        return;
+                    case ValueKind.Number:
+                        SetNumber(currentKind == ValueKind.Number ? Number : 0d);
+                        return;
+                    case ValueKind.String:
+                        SetString(reference switch
+                        {
+                            string text => text,
+                            StringValue text => text.Value,
+                            _ => string.Empty
+                        });
+                        return;
+                    default:
+                        payload = (ulong)(short)value;
+                        if (reference is not ScriptObject) reference = s_kindMarker;
+                        return;
+                }
+            }
+        }
+
+        /// <summary>Gets the double-precision numeric payload.</summary>
+        public double Number
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            readonly get => DecodeNumber(payload);
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            set => SetNumber(value);
+        }
+
+        /// <summary>Gets the Boolean payload.</summary>
+        public bool Boolean
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            readonly get => payload == TruePayload;
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            set => SetBoolean(value);
+        }
 
         /// <summary>
-        /// The double-precision floating-point number value. 
-        /// Overlays with other 8-byte value fields.
+        /// Gets the referenced script object. String primitives are materialized only
+        /// when this compatibility view is explicitly requested.
         /// </summary>
-        [FieldOffset(8)]
-        public double Number;
+        public ScriptObject Object
+        {
+            readonly get
+            {
+                if (reference is ScriptObject scriptObject)
+                {
+                    return scriptObject;
+                }
+
+                return reference is string text ? StringValue.Of(text) : null;
+            }
+            set
+            {
+                var kind = Kind;
+                if (kind == ValueKind.String && value is StringValue text)
+                {
+                    SetString(text.Value);
+                    return;
+                }
+
+                reference = value ?? (kind is ValueKind.Null or ValueKind.Boolean or ValueKind.Number
+                    ? null
+                    : s_kindMarker);
+                payload = (ulong)(short)kind;
+            }
+        }
 
         /// <summary>
-        /// The boolean value stored in this datum. 
-        /// Overlays with other 8-byte value fields.
-        /// </summary>
-        [FieldOffset(8)]
-        public bool Boolean;
-
-        /// <summary>
-        /// The reference to a <see cref="ScriptObject"/> (including functions, arrays, and standard objects).
-        /// </summary>
-        [FieldOffset(16)]
-        public ScriptObject Object;
-
-        /// <summary>
-        /// Gets or sets the datum value as a <see cref="StringValue"/>.
-        /// This is a convenience property for accessing the underlying object as a string.
+        /// Gets the legacy string object view. Runtime code should use the allocation-free
+        /// <see cref="StringText"/> view instead.
         /// </summary>
         public StringValue String
         {
-            readonly get => Object as StringValue;
-            set => Object = value;
+            readonly get => reference is string text ? StringValue.Of(text) : reference as StringValue;
+            set => SetString(value?.Value);
+        }
+
+        /// <summary>Gets the raw CLR string without allocating a compatibility wrapper.</summary>
+        internal readonly string StringText => reference as string;
+
+        /// <summary>Gets the raw managed reference for internal kind-specialized code.</summary>
+        internal readonly object Reference => reference;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ScriptDatum CreateBoolean(bool value)
+        {
+            return new ScriptDatum(null, value ? TruePayload : FalsePayload);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ScriptDatum CreateNumber(double value)
+        {
+            return new ScriptDatum(null, EncodeNumber(value));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ScriptDatum CreateString(string value)
+        {
+            return new ScriptDatum(value ?? string.Empty, (ulong)(short)ValueKind.String);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ScriptDatum CreateReference(ValueKind kind, ScriptObject value)
+        {
+            return value == null
+                ? default
+                : new ScriptDatum(value, (ulong)(short)kind);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void SetNull()
+        {
+            reference = null;
+            payload = NullPayload;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void SetBoolean(bool value)
+        {
+            reference = null;
+            payload = value ? TruePayload : FalsePayload;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void SetNumber(double value)
+        {
+            reference = null;
+            payload = EncodeNumber(value);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void SetString(string value)
+        {
+            reference = value ?? string.Empty;
+            payload = (ulong)(short)ValueKind.String;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void SetReference(ValueKind kind, ScriptObject value)
+        {
+            if (value == null)
+            {
+                SetNull();
+                return;
+            }
+
+            reference = value;
+            payload = (ulong)(short)kind;
         }
 
         [DebuggerBrowsable(DebuggerBrowsableState.Never)]
@@ -57,19 +222,13 @@ namespace AuroraScript.Runtime
         [DebuggerBrowsable(DebuggerBrowsableState.Never)]
         internal readonly string DebuggerDisplayType => Debugging.ScriptDebugView.GetTypeName(this);
 
-        /// <summary>
-        /// Returns a string representation of the datum's value.
-        /// </summary>
-        /// <returns>A string representing the current value.</returns>
+        /// <summary>Returns the script value's string representation.</summary>
         public override readonly string ToString()
         {
             return ScriptDatum.ToString(this);
         }
 
-        /// <summary>
-        /// Serves as the default hash function for the <see cref="ScriptDatum"/>.
-        /// </summary>
-        /// <returns>A hash code for the current datum based on its kind and value.</returns>
+        /// <summary>Returns the script value's semantic hash code.</summary>
         public override readonly int GetHashCode()
         {
             return Kind switch
@@ -77,17 +236,12 @@ namespace AuroraScript.Runtime
                 ValueKind.Null => ScriptObject.Null.GetHashCode(),
                 ValueKind.Boolean => Boolean.GetHashCode(),
                 ValueKind.Number => Number.GetHashCode(),
-                ValueKind.String => String.Value.GetHashCode(StringComparison.Ordinal),
-                _ => Object.GetHashCode(),
+                ValueKind.String => StringText.GetHashCode(StringComparison.Ordinal),
+                _ => reference.GetHashCode(),
             };
         }
 
-        /// <summary>
-        /// Determines whether the specified <see cref="ScriptDatum"/> is equal to the current instance.
-        /// Supports type-aware comparison and loose numeric equality (if applicable).
-        /// </summary>
-        /// <param name="other">The datum to compare with the current instance.</param>
-        /// <returns>True if the values are considered equal; otherwise, false.</returns>
+        /// <summary>Compares two values using AuroraScript equality semantics.</summary>
         public readonly bool Equals(ScriptDatum other)
         {
             var a = other;
@@ -99,17 +253,48 @@ namespace AuroraScript.Runtime
                     ValueKind.Null => true,
                     ValueKind.Boolean => a.Boolean == b.Boolean,
                     ValueKind.Number => a.Number == b.Number,
-                    ValueKind.String => a.String.Value == b.String.Value,
-                    _ => ReferenceEquals(a.Object, b.Object),
+                    ValueKind.String => a.StringText == b.StringText,
+                    _ => ReferenceEquals(a.reference, b.reference),
                 };
             }
 
-            // Fallback to numeric comparison if both sides can be treated as numbers
-            if (ScriptDatum.TryToNumber(a, out var na) && ScriptDatum.TryToNumber(b, out var nb))
+            if (TryToNumber(a, out var na) && TryToNumber(b, out var nb))
             {
                 return na == nb;
             }
             return false;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong EncodeNumber(double value)
+        {
+            if (double.IsNaN(value))
+            {
+                return EncodedNaN;
+            }
+
+            var bits = BitConverter.DoubleToUInt64Bits(value);
+            return bits switch
+            {
+                NullPayload => EncodedPositiveZero,
+                FalsePayload => EncodedSubnormalOne,
+                TruePayload => EncodedSubnormalTwo,
+                _ => bits,
+            };
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static double DecodeNumber(ulong encoded)
+        {
+            var bits = encoded switch
+            {
+                EncodedPositiveZero => NullPayload,
+                EncodedSubnormalOne => FalsePayload,
+                EncodedSubnormalTwo => TruePayload,
+                EncodedNaN => BitConverter.DoubleToUInt64Bits(double.NaN),
+                _ => encoded,
+            };
+            return BitConverter.UInt64BitsToDouble(bits);
         }
     }
 }

@@ -20,64 +20,9 @@ namespace AuroraScript.Runtime
             return Interlocked.Increment(ref _nextId);
         }
 
-        public static void RegisterReserved(int id, String methodName, Delegate del)
+        public static void RegisterReserved(int id, Delegate del)
         {
             _registry[id] = del;
-        }
-
-        /// <summary>
-        /// Registers a delegate and returns a unique ID.
-        /// </summary>
-        public static int Register(String methodName, ScriptFunctionDelegate del)
-        {
-            return Register(methodName, (Delegate)del);
-        }
-
-        public static int Register(String methodName, ScriptFunctionDelegate0 del)
-        {
-            return Register(methodName, (Delegate)del);
-        }
-
-        public static int Register(String methodName, ScriptFunctionDelegate1 del)
-        {
-            return Register(methodName, (Delegate)del);
-        }
-
-        public static int Register(String methodName, ScriptFunctionDelegate2 del)
-        {
-            return Register(methodName, (Delegate)del);
-        }
-
-        public static int Register(String methodName, ScriptFunctionDelegate3 del)
-        {
-            return Register(methodName, (Delegate)del);
-        }
-
-        public static int Register(String methodName, ScriptFunctionDelegate4 del)
-        {
-            return Register(methodName, (Delegate)del);
-        }
-
-        public static int Register(String methodName, ScriptFunctionDelegate5 del)
-        {
-            return Register(methodName, (Delegate)del);
-        }
-
-        public static int Register(String methodName, ScriptFunctionDelegate6 del)
-        {
-            return Register(methodName, (Delegate)del);
-        }
-
-        public static int Register(String methodName, ScriptFunctionDelegate7 del)
-        {
-            return Register(methodName, (Delegate)del);
-        }
-
-        private static int Register(String methodName, Delegate del)
-        {
-            int id = Reserve();
-            _registry[id] = del;
-            return id;
         }
 
         /// <summary>

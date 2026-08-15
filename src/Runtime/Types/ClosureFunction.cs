@@ -120,146 +120,226 @@ namespace AuroraScript.Runtime.Types
 
         internal ScriptDatum Invoke0(ScriptContext ctx)
         {
-            var context = ctx.With(Module, this);
-            var result = fastArity switch
+            var frame = ctx.EnterClosure(this);
+            ScriptDatum result;
+            try
             {
-                0 => ((ScriptFunctionDelegate0)targetDelegate).Invoke(context),
-                1 => ((ScriptFunctionDelegate1)targetDelegate).Invoke(context, ScriptDatum.Null),
-                2 => ((ScriptFunctionDelegate2)targetDelegate).Invoke(context, ScriptDatum.Null, ScriptDatum.Null),
-                3 => ((ScriptFunctionDelegate3)targetDelegate).Invoke(context, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
-                4 => ((ScriptFunctionDelegate4)targetDelegate).Invoke(context, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
-                5 => ((ScriptFunctionDelegate5)targetDelegate).Invoke(context, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
-                6 => ((ScriptFunctionDelegate6)targetDelegate).Invoke(context, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
-                7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(context, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
-                _ => ((ScriptFunctionDelegate)targetDelegate).Invoke(context, Array.Empty<ScriptDatum>())
-            };
-            return ReturnAndRelease(context, result);
+                result = fastArity switch
+                {
+                    0 => ((ScriptFunctionDelegate0)targetDelegate).Invoke(ctx),
+                    1 => ((ScriptFunctionDelegate1)targetDelegate).Invoke(ctx, ScriptDatum.Null),
+                    2 => ((ScriptFunctionDelegate2)targetDelegate).Invoke(ctx, ScriptDatum.Null, ScriptDatum.Null),
+                    3 => ((ScriptFunctionDelegate3)targetDelegate).Invoke(ctx, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
+                    4 => ((ScriptFunctionDelegate4)targetDelegate).Invoke(ctx, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
+                    5 => ((ScriptFunctionDelegate5)targetDelegate).Invoke(ctx, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
+                    6 => ((ScriptFunctionDelegate6)targetDelegate).Invoke(ctx, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
+                    7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(ctx, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
+                    _ => ((ScriptFunctionDelegate)targetDelegate).Invoke(ctx, Span<ScriptDatum>.Empty)
+                };
+            }
+            catch
+            {
+                AbortInvoke(ctx, frame);
+                throw;
+            }
+            ctx.LeaveFrame(frame);
+            return result;
         }
 
         internal ScriptDatum Invoke1(ScriptContext ctx, ScriptDatum arg0)
         {
-            var context = ctx.With(Module, this);
-            var result = fastArity switch
+            var frame = ctx.EnterClosure(this);
+            ScriptDatum result;
+            try
             {
-                0 => ((ScriptFunctionDelegate0)targetDelegate).Invoke(context),
-                1 => ((ScriptFunctionDelegate1)targetDelegate).Invoke(context, arg0),
-                2 => ((ScriptFunctionDelegate2)targetDelegate).Invoke(context, arg0, ScriptDatum.Null),
-                3 => ((ScriptFunctionDelegate3)targetDelegate).Invoke(context, arg0, ScriptDatum.Null, ScriptDatum.Null),
-                4 => ((ScriptFunctionDelegate4)targetDelegate).Invoke(context, arg0, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
-                5 => ((ScriptFunctionDelegate5)targetDelegate).Invoke(context, arg0, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
-                6 => ((ScriptFunctionDelegate6)targetDelegate).Invoke(context, arg0, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
-                7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(context, arg0, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
-                _ => InvokeGeneric(context, arg0)
-            };
-            return ReturnAndRelease(context, result);
+                result = fastArity switch
+                {
+                    0 => ((ScriptFunctionDelegate0)targetDelegate).Invoke(ctx),
+                    1 => ((ScriptFunctionDelegate1)targetDelegate).Invoke(ctx, arg0),
+                    2 => ((ScriptFunctionDelegate2)targetDelegate).Invoke(ctx, arg0, ScriptDatum.Null),
+                    3 => ((ScriptFunctionDelegate3)targetDelegate).Invoke(ctx, arg0, ScriptDatum.Null, ScriptDatum.Null),
+                    4 => ((ScriptFunctionDelegate4)targetDelegate).Invoke(ctx, arg0, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
+                    5 => ((ScriptFunctionDelegate5)targetDelegate).Invoke(ctx, arg0, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
+                    6 => ((ScriptFunctionDelegate6)targetDelegate).Invoke(ctx, arg0, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
+                    7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(ctx, arg0, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
+                    _ => InvokeGeneric(ctx, arg0)
+                };
+            }
+            catch
+            {
+                AbortInvoke(ctx, frame);
+                throw;
+            }
+            ctx.LeaveFrame(frame);
+            return result;
         }
 
         internal ScriptDatum Invoke2(ScriptContext ctx, ScriptDatum arg0, ScriptDatum arg1)
         {
-            var context = ctx.With(Module, this);
-            var result = fastArity switch
+            var frame = ctx.EnterClosure(this);
+            ScriptDatum result;
+            try
             {
-                0 => ((ScriptFunctionDelegate0)targetDelegate).Invoke(context),
-                1 => ((ScriptFunctionDelegate1)targetDelegate).Invoke(context, arg0),
-                2 => ((ScriptFunctionDelegate2)targetDelegate).Invoke(context, arg0, arg1),
-                3 => ((ScriptFunctionDelegate3)targetDelegate).Invoke(context, arg0, arg1, ScriptDatum.Null),
-                4 => ((ScriptFunctionDelegate4)targetDelegate).Invoke(context, arg0, arg1, ScriptDatum.Null, ScriptDatum.Null),
-                5 => ((ScriptFunctionDelegate5)targetDelegate).Invoke(context, arg0, arg1, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
-                6 => ((ScriptFunctionDelegate6)targetDelegate).Invoke(context, arg0, arg1, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
-                7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(context, arg0, arg1, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
-                _ => InvokeGeneric(context, arg0, arg1)
-            };
-            return ReturnAndRelease(context, result);
+                result = fastArity switch
+                {
+                    0 => ((ScriptFunctionDelegate0)targetDelegate).Invoke(ctx),
+                    1 => ((ScriptFunctionDelegate1)targetDelegate).Invoke(ctx, arg0),
+                    2 => ((ScriptFunctionDelegate2)targetDelegate).Invoke(ctx, arg0, arg1),
+                    3 => ((ScriptFunctionDelegate3)targetDelegate).Invoke(ctx, arg0, arg1, ScriptDatum.Null),
+                    4 => ((ScriptFunctionDelegate4)targetDelegate).Invoke(ctx, arg0, arg1, ScriptDatum.Null, ScriptDatum.Null),
+                    5 => ((ScriptFunctionDelegate5)targetDelegate).Invoke(ctx, arg0, arg1, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
+                    6 => ((ScriptFunctionDelegate6)targetDelegate).Invoke(ctx, arg0, arg1, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
+                    7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(ctx, arg0, arg1, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
+                    _ => InvokeGeneric(ctx, arg0, arg1)
+                };
+            }
+            catch
+            {
+                AbortInvoke(ctx, frame);
+                throw;
+            }
+            ctx.LeaveFrame(frame);
+            return result;
         }
 
         internal ScriptDatum Invoke3(ScriptContext ctx, ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2)
         {
-            var context = ctx.With(Module, this);
-            var result = fastArity switch
+            var frame = ctx.EnterClosure(this);
+            ScriptDatum result;
+            try
             {
-                0 => ((ScriptFunctionDelegate0)targetDelegate).Invoke(context),
-                1 => ((ScriptFunctionDelegate1)targetDelegate).Invoke(context, arg0),
-                2 => ((ScriptFunctionDelegate2)targetDelegate).Invoke(context, arg0, arg1),
-                3 => ((ScriptFunctionDelegate3)targetDelegate).Invoke(context, arg0, arg1, arg2),
-                4 => ((ScriptFunctionDelegate4)targetDelegate).Invoke(context, arg0, arg1, arg2, ScriptDatum.Null),
-                5 => ((ScriptFunctionDelegate5)targetDelegate).Invoke(context, arg0, arg1, arg2, ScriptDatum.Null, ScriptDatum.Null),
-                6 => ((ScriptFunctionDelegate6)targetDelegate).Invoke(context, arg0, arg1, arg2, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
-                7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(context, arg0, arg1, arg2, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
-                _ => InvokeGeneric(context, arg0, arg1, arg2)
-            };
-            return ReturnAndRelease(context, result);
+                result = fastArity switch
+                {
+                    0 => ((ScriptFunctionDelegate0)targetDelegate).Invoke(ctx),
+                    1 => ((ScriptFunctionDelegate1)targetDelegate).Invoke(ctx, arg0),
+                    2 => ((ScriptFunctionDelegate2)targetDelegate).Invoke(ctx, arg0, arg1),
+                    3 => ((ScriptFunctionDelegate3)targetDelegate).Invoke(ctx, arg0, arg1, arg2),
+                    4 => ((ScriptFunctionDelegate4)targetDelegate).Invoke(ctx, arg0, arg1, arg2, ScriptDatum.Null),
+                    5 => ((ScriptFunctionDelegate5)targetDelegate).Invoke(ctx, arg0, arg1, arg2, ScriptDatum.Null, ScriptDatum.Null),
+                    6 => ((ScriptFunctionDelegate6)targetDelegate).Invoke(ctx, arg0, arg1, arg2, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
+                    7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(ctx, arg0, arg1, arg2, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
+                    _ => InvokeGeneric(ctx, arg0, arg1, arg2)
+                };
+            }
+            catch
+            {
+                AbortInvoke(ctx, frame);
+                throw;
+            }
+            ctx.LeaveFrame(frame);
+            return result;
         }
 
         internal ScriptDatum Invoke4(ScriptContext ctx, ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3)
         {
-            var context = ctx.With(Module, this);
-            var result = fastArity switch
+            var frame = ctx.EnterClosure(this);
+            ScriptDatum result;
+            try
             {
-                0 => ((ScriptFunctionDelegate0)targetDelegate).Invoke(context),
-                1 => ((ScriptFunctionDelegate1)targetDelegate).Invoke(context, arg0),
-                2 => ((ScriptFunctionDelegate2)targetDelegate).Invoke(context, arg0, arg1),
-                3 => ((ScriptFunctionDelegate3)targetDelegate).Invoke(context, arg0, arg1, arg2),
-                4 => ((ScriptFunctionDelegate4)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3),
-                5 => ((ScriptFunctionDelegate5)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3, ScriptDatum.Null),
-                6 => ((ScriptFunctionDelegate6)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3, ScriptDatum.Null, ScriptDatum.Null),
-                7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
-                _ => InvokeGeneric(context, arg0, arg1, arg2, arg3)
-            };
-            return ReturnAndRelease(context, result);
+                result = fastArity switch
+                {
+                    0 => ((ScriptFunctionDelegate0)targetDelegate).Invoke(ctx),
+                    1 => ((ScriptFunctionDelegate1)targetDelegate).Invoke(ctx, arg0),
+                    2 => ((ScriptFunctionDelegate2)targetDelegate).Invoke(ctx, arg0, arg1),
+                    3 => ((ScriptFunctionDelegate3)targetDelegate).Invoke(ctx, arg0, arg1, arg2),
+                    4 => ((ScriptFunctionDelegate4)targetDelegate).Invoke(ctx, arg0, arg1, arg2, arg3),
+                    5 => ((ScriptFunctionDelegate5)targetDelegate).Invoke(ctx, arg0, arg1, arg2, arg3, ScriptDatum.Null),
+                    6 => ((ScriptFunctionDelegate6)targetDelegate).Invoke(ctx, arg0, arg1, arg2, arg3, ScriptDatum.Null, ScriptDatum.Null),
+                    7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(ctx, arg0, arg1, arg2, arg3, ScriptDatum.Null, ScriptDatum.Null, ScriptDatum.Null),
+                    _ => InvokeGeneric(ctx, arg0, arg1, arg2, arg3)
+                };
+            }
+            catch
+            {
+                AbortInvoke(ctx, frame);
+                throw;
+            }
+            ctx.LeaveFrame(frame);
+            return result;
         }
 
         internal ScriptDatum Invoke5(ScriptContext ctx, ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4)
         {
-            var context = ctx.With(Module, this);
-            var result = fastArity switch
+            var frame = ctx.EnterClosure(this);
+            ScriptDatum result;
+            try
             {
-                0 => ((ScriptFunctionDelegate0)targetDelegate).Invoke(context),
-                1 => ((ScriptFunctionDelegate1)targetDelegate).Invoke(context, arg0),
-                2 => ((ScriptFunctionDelegate2)targetDelegate).Invoke(context, arg0, arg1),
-                3 => ((ScriptFunctionDelegate3)targetDelegate).Invoke(context, arg0, arg1, arg2),
-                4 => ((ScriptFunctionDelegate4)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3),
-                5 => ((ScriptFunctionDelegate5)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3, arg4),
-                6 => ((ScriptFunctionDelegate6)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3, arg4, ScriptDatum.Null),
-                7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3, arg4, ScriptDatum.Null, ScriptDatum.Null),
-                _ => InvokeGeneric(context, arg0, arg1, arg2, arg3, arg4)
-            };
-            return ReturnAndRelease(context, result);
+                result = fastArity switch
+                {
+                    0 => ((ScriptFunctionDelegate0)targetDelegate).Invoke(ctx),
+                    1 => ((ScriptFunctionDelegate1)targetDelegate).Invoke(ctx, arg0),
+                    2 => ((ScriptFunctionDelegate2)targetDelegate).Invoke(ctx, arg0, arg1),
+                    3 => ((ScriptFunctionDelegate3)targetDelegate).Invoke(ctx, arg0, arg1, arg2),
+                    4 => ((ScriptFunctionDelegate4)targetDelegate).Invoke(ctx, arg0, arg1, arg2, arg3),
+                    5 => ((ScriptFunctionDelegate5)targetDelegate).Invoke(ctx, arg0, arg1, arg2, arg3, arg4),
+                    6 => ((ScriptFunctionDelegate6)targetDelegate).Invoke(ctx, arg0, arg1, arg2, arg3, arg4, ScriptDatum.Null),
+                    7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(ctx, arg0, arg1, arg2, arg3, arg4, ScriptDatum.Null, ScriptDatum.Null),
+                    _ => InvokeGeneric(ctx, arg0, arg1, arg2, arg3, arg4)
+                };
+            }
+            catch
+            {
+                AbortInvoke(ctx, frame);
+                throw;
+            }
+            ctx.LeaveFrame(frame);
+            return result;
         }
 
         internal ScriptDatum Invoke6(ScriptContext ctx, ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5)
         {
-            var context = ctx.With(Module, this);
-            var result = fastArity switch
+            var frame = ctx.EnterClosure(this);
+            ScriptDatum result;
+            try
             {
-                0 => ((ScriptFunctionDelegate0)targetDelegate).Invoke(context),
-                1 => ((ScriptFunctionDelegate1)targetDelegate).Invoke(context, arg0),
-                2 => ((ScriptFunctionDelegate2)targetDelegate).Invoke(context, arg0, arg1),
-                3 => ((ScriptFunctionDelegate3)targetDelegate).Invoke(context, arg0, arg1, arg2),
-                4 => ((ScriptFunctionDelegate4)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3),
-                5 => ((ScriptFunctionDelegate5)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3, arg4),
-                6 => ((ScriptFunctionDelegate6)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3, arg4, arg5),
-                7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3, arg4, arg5, ScriptDatum.Null),
-                _ => InvokeGeneric(context, arg0, arg1, arg2, arg3, arg4, arg5)
-            };
-            return ReturnAndRelease(context, result);
+                result = fastArity switch
+                {
+                    0 => ((ScriptFunctionDelegate0)targetDelegate).Invoke(ctx),
+                    1 => ((ScriptFunctionDelegate1)targetDelegate).Invoke(ctx, arg0),
+                    2 => ((ScriptFunctionDelegate2)targetDelegate).Invoke(ctx, arg0, arg1),
+                    3 => ((ScriptFunctionDelegate3)targetDelegate).Invoke(ctx, arg0, arg1, arg2),
+                    4 => ((ScriptFunctionDelegate4)targetDelegate).Invoke(ctx, arg0, arg1, arg2, arg3),
+                    5 => ((ScriptFunctionDelegate5)targetDelegate).Invoke(ctx, arg0, arg1, arg2, arg3, arg4),
+                    6 => ((ScriptFunctionDelegate6)targetDelegate).Invoke(ctx, arg0, arg1, arg2, arg3, arg4, arg5),
+                    7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(ctx, arg0, arg1, arg2, arg3, arg4, arg5, ScriptDatum.Null),
+                    _ => InvokeGeneric(ctx, arg0, arg1, arg2, arg3, arg4, arg5)
+                };
+            }
+            catch
+            {
+                AbortInvoke(ctx, frame);
+                throw;
+            }
+            ctx.LeaveFrame(frame);
+            return result;
         }
 
         internal ScriptDatum Invoke7(ScriptContext ctx, ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6)
         {
-            var context = ctx.With(Module, this);
-            var result = fastArity switch
+            var frame = ctx.EnterClosure(this);
+            ScriptDatum result;
+            try
             {
-                0 => ((ScriptFunctionDelegate0)targetDelegate).Invoke(context),
-                1 => ((ScriptFunctionDelegate1)targetDelegate).Invoke(context, arg0),
-                2 => ((ScriptFunctionDelegate2)targetDelegate).Invoke(context, arg0, arg1),
-                3 => ((ScriptFunctionDelegate3)targetDelegate).Invoke(context, arg0, arg1, arg2),
-                4 => ((ScriptFunctionDelegate4)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3),
-                5 => ((ScriptFunctionDelegate5)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3, arg4),
-                6 => ((ScriptFunctionDelegate6)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3, arg4, arg5),
-                7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(context, arg0, arg1, arg2, arg3, arg4, arg5, arg6),
-                _ => InvokeGeneric(context, arg0, arg1, arg2, arg3, arg4, arg5, arg6)
-            };
-            return ReturnAndRelease(context, result);
+                result = fastArity switch
+                {
+                    0 => ((ScriptFunctionDelegate0)targetDelegate).Invoke(ctx),
+                    1 => ((ScriptFunctionDelegate1)targetDelegate).Invoke(ctx, arg0),
+                    2 => ((ScriptFunctionDelegate2)targetDelegate).Invoke(ctx, arg0, arg1),
+                    3 => ((ScriptFunctionDelegate3)targetDelegate).Invoke(ctx, arg0, arg1, arg2),
+                    4 => ((ScriptFunctionDelegate4)targetDelegate).Invoke(ctx, arg0, arg1, arg2, arg3),
+                    5 => ((ScriptFunctionDelegate5)targetDelegate).Invoke(ctx, arg0, arg1, arg2, arg3, arg4),
+                    6 => ((ScriptFunctionDelegate6)targetDelegate).Invoke(ctx, arg0, arg1, arg2, arg3, arg4, arg5),
+                    7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(ctx, arg0, arg1, arg2, arg3, arg4, arg5, arg6),
+                    _ => InvokeGeneric(ctx, arg0, arg1, arg2, arg3, arg4, arg5, arg6)
+                };
+            }
+            catch
+            {
+                AbortInvoke(ctx, frame);
+                throw;
+            }
+            ctx.LeaveFrame(frame);
+            return result;
         }
 
         /// <summary>
@@ -274,8 +354,8 @@ namespace AuroraScript.Runtime.Types
             }
             catch (Exception ex)
             {
-                var stackTrace = ctx.StackTrace();
-                while (ctx.Next != null)
+                var stackTrace = ctx.TakeExceptionStack();
+                if (ctx.Next != null)
                 {
                     ctx.Next.ReleaseLinked();
                 }
@@ -316,20 +396,30 @@ namespace AuroraScript.Runtime.Types
 
         private ScriptDatum InvokeArray(ScriptContext ctx, Span<ScriptDatum> args)
         {
-            var context = ctx.With(Module, this);
-            var result = fastArity switch
+            var frame = ctx.EnterClosure(this);
+            ScriptDatum result;
+            try
             {
-                0 => ((ScriptFunctionDelegate0)targetDelegate).Invoke(context),
-                1 => ((ScriptFunctionDelegate1)targetDelegate).Invoke(context, GetArg(args, 0)),
-                2 => ((ScriptFunctionDelegate2)targetDelegate).Invoke(context, GetArg(args, 0), GetArg(args, 1)),
-                3 => ((ScriptFunctionDelegate3)targetDelegate).Invoke(context, GetArg(args, 0), GetArg(args, 1), GetArg(args, 2)),
-                4 => ((ScriptFunctionDelegate4)targetDelegate).Invoke(context, GetArg(args, 0), GetArg(args, 1), GetArg(args, 2), GetArg(args, 3)),
-                5 => ((ScriptFunctionDelegate5)targetDelegate).Invoke(context, GetArg(args, 0), GetArg(args, 1), GetArg(args, 2), GetArg(args, 3), GetArg(args, 4)),
-                6 => ((ScriptFunctionDelegate6)targetDelegate).Invoke(context, GetArg(args, 0), GetArg(args, 1), GetArg(args, 2), GetArg(args, 3), GetArg(args, 4), GetArg(args, 5)),
-                7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(context, GetArg(args, 0), GetArg(args, 1), GetArg(args, 2), GetArg(args, 3), GetArg(args, 4), GetArg(args, 5), GetArg(args, 6)),
-                _ => ((ScriptFunctionDelegate)targetDelegate).Invoke(context, args)
-            };
-            return ReturnAndRelease(context, result);
+                result = fastArity switch
+                {
+                    0 => ((ScriptFunctionDelegate0)targetDelegate).Invoke(ctx),
+                    1 => ((ScriptFunctionDelegate1)targetDelegate).Invoke(ctx, GetArg(args, 0)),
+                    2 => ((ScriptFunctionDelegate2)targetDelegate).Invoke(ctx, GetArg(args, 0), GetArg(args, 1)),
+                    3 => ((ScriptFunctionDelegate3)targetDelegate).Invoke(ctx, GetArg(args, 0), GetArg(args, 1), GetArg(args, 2)),
+                    4 => ((ScriptFunctionDelegate4)targetDelegate).Invoke(ctx, GetArg(args, 0), GetArg(args, 1), GetArg(args, 2), GetArg(args, 3)),
+                    5 => ((ScriptFunctionDelegate5)targetDelegate).Invoke(ctx, GetArg(args, 0), GetArg(args, 1), GetArg(args, 2), GetArg(args, 3), GetArg(args, 4)),
+                    6 => ((ScriptFunctionDelegate6)targetDelegate).Invoke(ctx, GetArg(args, 0), GetArg(args, 1), GetArg(args, 2), GetArg(args, 3), GetArg(args, 4), GetArg(args, 5)),
+                    7 => ((ScriptFunctionDelegate7)targetDelegate).Invoke(ctx, GetArg(args, 0), GetArg(args, 1), GetArg(args, 2), GetArg(args, 3), GetArg(args, 4), GetArg(args, 5), GetArg(args, 6)),
+                    _ => ((ScriptFunctionDelegate)targetDelegate).Invoke(ctx, args)
+                };
+            }
+            catch
+            {
+                AbortInvoke(ctx, frame);
+                throw;
+            }
+            ctx.LeaveFrame(frame);
+            return result;
         }
 
         private ScriptDatum InvokeGeneric(ScriptContext context, ScriptDatum arg0)
@@ -402,14 +492,10 @@ namespace AuroraScript.Runtime.Types
             return ((ScriptFunctionDelegate)targetDelegate).Invoke(context, args);
         }
 
-        private static ScriptDatum ReturnAndRelease(ScriptContext context, ScriptDatum result)
+        private static void AbortInvoke(ScriptContext context, int restoreDepth)
         {
-            while (context.Next != null)
-            {
-                context.Next.ReleaseLinked();
-            }
-            context.Release();
-            return result;
+            context.CaptureExceptionStack();
+            context.LeaveFrame(restoreDepth);
         }
 
         private static ScriptDatum GetArg(Span<ScriptDatum> args, int index)

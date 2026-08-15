@@ -383,25 +383,25 @@ func normalCall(value) {
 
 ### directCall 的调用路径优化
 
-`@directCall` 优化的是“调用一个已知模块函数”的路径，不是函数内联。被调用函数仍然是一个独立函数，仍会建立脚本调用上下文，异常堆栈和返回值语义保持不变；优化点在于编译器不再把这次调用当成动态函数对象调用。
+`@directCall` 优化的是“调用一个已知模块函数”的路径，不是函数内联。目标仍是独立的 CIL 方法，异常堆栈和返回值语义保持不变。调用会在当前 `ScriptContext` 上使用轻量帧，不再分配子上下文；若整个调用图被证明为纯数值路径，还会直接调用原生 `double` 方法，图内不物化运行时值。
 
 普通的模块函数调用大致会走下面的路径：
 
 1. 读取函数名对应的模块成员，例如 `addOne` 会从当前 `ScriptContext.Module` 上按字符串 key 读取 `addOne`。
 2. 模块成员读取会进入 `ScriptObject.GetPropertyDatum`：查 hidden class/property meta、检查属性描述符、必要时处理 getter、CLR 绑定函数、原型链或 CLR fallback。
 3. 调用点把读取到的值转换成可调用对象。
-4. 通过 `CILHelper.Invoke0..Invoke7` 或 `InvokeMany` 进入通用调用 helper。
+4. 通过 `CallOps.Invoke0..Invoke7` 或 `InvokeMany` 进入紧凑调用边界。
 5. helper 判断目标是不是 `ClosureFunction`，再进入 `ClosureFunction.Invoke*`。
-6. `ClosureFunction` 创建新的脚本上下文，按参数个数选择 fast delegate 或 span/generic delegate，最后释放上下文。
+6. `ClosureFunction` 在当前上下文上压入轻量帧，按参数个数选择固定参数 delegate 或 span delegate，调用后恢复帧。
 
 开启 direct call 后，符合条件的调用点会改成更短的路径：
 
 1. 编译期确认 `addOne(value)` 的目标就是同一模块里的某个函数，并把调用点绑定到该函数的 `FunctionId` / IL method。
 2. 调用时仍按源码顺序计算参数；固定参数会放进临时 local，缺失参数补 `null`，多余参数会被求值后丢弃。
-3. 运行时只创建 direct-call 上下文用于调用栈和异常定位。
-4. 发射的 IL 直接 `call` 目标函数方法，例如 `OpCodes.Call target.Method`，返回后释放 direct-call 上下文。
+3. 通用 direct adapter 只在当前上下文上使用轻量帧，用于调用栈和异常定位，不分配子 `ScriptContext`。
+4. 发射的 IL 直接 `call` 目标方法；若编译器证明函数签名和函数体是纯数值路径，参数、local、算术、比较和返回值都保持为原生 CIL 值（`double` / `bool`），直到确实需要动态边界。
 
-因此 direct call 主要省掉了：模块属性读取、函数对象转换、`CILHelper.Invoke*` 分发、`ClosureFunction.Invoke*` 分发、delegate arity switch，以及很多动态调用路径上的分支。它保留必要的 `ScriptContext`，所以它不是“零成本调用”；但在循环里反复调用小函数时，省掉的动态分发会很明显。
+因此 direct call 主要省掉了：模块属性读取、函数对象转换、`CallOps.Invoke*` 分发、`ClosureFunction.Invoke*` 分发、delegate arity switch，以及动态路径上的许多分支。通用 direct call 保留轻量帧；编译调用图内部已证明安全的原生数值调用既不经过动态分发，也不转换 `ScriptDatum`。在循环里反复调用小型数值函数时收益最明显。
 
 能够走 direct call 的调用点需要满足这些条件：
 
@@ -414,7 +414,7 @@ func normalCall(value) {
 
 ### local 变量和 module 成员的访问成本
 
-函数参数、函数体内 `var` / `const`、函数体内声明的局部函数都会被后端绑定到 local slot。读取和写入普通 local 基本就是 CLR IL 的 `ldloc` / `stloc`，值的载体是 `ScriptDatum`。这条路径没有字符串 key、没有对象属性查找、没有 getter/setter、没有原型链，也不需要从模块对象上取属性描述符。
+函数参数、函数体内 `var` / `const`、函数体内声明的局部函数都会被后端绑定到 local slot。能够证明类型的 number、Boolean 和 string 分别使用 CLR 原生 `double`、`bool` 和 `string` slot，只有动态值才使用 `ScriptDatum`。读取和写入是直接的 `ldloc` / `stloc`，只在对象、调用、作用域等动态运行时边界才进行转换。
 
 模块顶层声明则不同。顶层 `var`、`const`、`func`、`enum` 和 import/export 相关符号都属于模块对象的成员。函数里访问一个模块成员时，编译器不能把它简单当作 local，因为模块对象是可观察的运行时对象：宿主可以 `GetModule` / `Execute`，脚本可以 import/export，热补丁可以替换模块成员，属性也可能带 getter/setter 或被重新定义。因此访问模块成员时通常要从 `ScriptContext.Module` 出发，按名字调用 `ScriptObject.GetPropertyDatum` 或 `SetPropertyDatum`。
 
@@ -837,7 +837,7 @@ export func run() {
 | `StatementExecutionTests` | 控制流、循环、闭包、递归、异常、Domain 隔离 |
 | `LanguageFeatureExecutionTests` | enum、Lambda、稀疏数组、truthiness、模板、赋值语义 |
 | `ModuleCompilationTests` | 模块依赖、并行编译、循环依赖、错误聚合、取消 |
-| `CompilerBackendPlanTests` | backend plan、direct call、闭包/upvalue、slot/lowering、控制流和常量折叠计划 |
+| `CompilerBackendPlanTests` | typed code、原生 CIL slot/signature、direct call、闭包/upvalue、控制流和常量折叠 |
 | `CompileBlockTests` | CompileBlock 参数、调用方式、错误输入、诊断和动态 delegate 生命周期 |
 | `CompilationModeTests` | Dynamic/OnlyRun/Persistence 行为和热重载开关 |
 | `RuntimeApiAndErrorTests` | 运行时 API、错误路径、`$state`、释放后行为 |
@@ -846,6 +846,7 @@ export func run() {
 | `ClrInteropTests` | CLR 构造/属性/字段/方法/重载/访问限制 |
 | `SerializationTests` | JSON 序列化/反序列化、循环引用、异常 JSON |
 | `ScriptDatumTests` | Datum payload、相等性、CLR 集合转换、Span helper |
+| `ValueOpsTests` | 动态边界上的算术、比较、位运算和类型转换语义 |
 | `HotReloadTests` | 热重载禁用、增量补丁、替换补丁、Domain 隔离 |
 | `ConcurrentRuntimeTests` | 同域/多域并发、detached closure 并发 |
 | `ReleaseRegressionTests` | Release 直连调用、闭包槽位、栈平衡、混淆、空模块 |
@@ -862,7 +863,7 @@ export func run() {
 - 表达式/语句：优先级、算术、位运算、比较、逻辑、成员访问、spread、赋值、循环、异常、闭包、递归。
 - 基础语义回归：null 数值加法、字符串参与加法、truthiness、短路返回值、数组容量与 `new Array(n)` 语义、对象属性和闭包循环。
 - 模块编译：相对路径、菱形依赖、重复根、并行依赖图、循环依赖、错误聚合、取消、并发 build。
-- 编译后端计划：direct call、函数注解、slot/upvalue 绑定、lowering、控制流、常量折叠和 runtime helper 调用计划。
+- 编译后端计划：typed code、函数注解、slot/upvalue 绑定、原生 CIL signature/local、控制流、常量折叠和 runtime 边界调用。
 - 编译模式：Dynamic、OnlyRun、Persistence 的行为一致性；net8 下 Persistence 限制。
 - 运行时 API 和错误：未 Build 使用、缺失模块/方法、脚本堆栈、const 写入、`$state`、释放。
 - 内置库：Math、String、Array、JSON、HashMap、Regex、StringBuffer、Console、Date、Proxy。
@@ -904,68 +905,36 @@ dotnet run --project benchmark/Benchmark.csproj -c Release
 - 对象、数组、HashMap、字符串、JSON、Regex、CLR 互操作
 - Lexer、Parser、Emitter、单模块/多模块编译、CompileBlock
 
-最近一次摘要结果来自 2026-06-22 在 Release/net10.0 下执行的快速对比命令：
+最新的运行时热路径结果来自 2026-08-15 在 Release/net10.0 下执行的 BenchmarkDotNet `ShortRun`：
 
 ```bash
-dotnet run --project benchmark/Benchmark.csproj -c Release -- --compare
+dotnet run --project benchmark/Benchmark.csproj -c Release -- \
+  --filter "*FunctionCallLoop*" "*ModuleCallLoop*" "*NumericLoop*"
 ```
 
-旧的 `ScriptBenchmark` 报告是历史文件，已不作为当前指标参考。完整 BenchmarkDotNet 报告可通过不带 `--compare` 的 benchmark 命令重新生成。
+旧架构的 benchmark 数字不再作为当前指标参考。完整指标可通过不带 `--filter` 的命令重新生成。
 
 测试环境：
 
 - BenchmarkDotNet `0.15.8`
-- Windows 11 `10.0.26200.8655`
+- Windows 11 `10.0.28000.2704`
 - Intel Core i7-13700KF
-- .NET SDK `10.0.301`
-- Runtime `.NET 10.0.9`
+- .NET SDK `10.0.400`
+- Runtime `.NET 10.0.11`
 - Job `ShortRun`
 
-运行时核心结果：
+运行时核心热路径结果：
 
 | 指标 | 规模 | Mean | Allocated | 观察 |
 |---|---:|---:|---:|---|
-| `EmptyCall` | 1 call | 0.001 ms | 279 B | 宿主到脚本空调用开销低 |
-| `CreateDomain` | 1 domain | 0.017 ms | 5.55 KB | Domain 创建较轻量 |
-| `NumericLoop` | 1,000 | 0.009 ms | 411 B | 数值循环接近零分配 |
-| `FunctionCallLoop` | 1,000 | 0.302 ms | 327 B | 局部函数调用分配很低 |
-| `ModuleCallLoop` | 1,000 | 0.364 ms | 327 B | 模块调用略慢于局部调用 |
-| `ClosureInvoke` | 1,000 | 0.067 ms | 487 B | 闭包调用分配稳定 |
-| `ObjectCreateSetGet` | 1,000 | 0.611 ms | 195.72 KB | 对象创建/属性写入线性分配 |
-| `ArrayPushIndex` | 1,000 | 0.288 ms | 48.49 KB | 数组 push/index 路径分配较低 |
-| `ArrayLiteralIndex` | 1,000 | 0.119 ms | 172.15 KB | 数组字面量会按次数分配数组对象 |
-| `HashMapSetGet` | 1,000 | 0.781 ms | 199.77 KB | 已使用容量构造，主要成本来自动态字符串 key |
-| `JsonStringify` | 1,000 | 1.821 ms | 774.43 KB | JSON 序列化分配较高 |
-| `JsonParse` | 1,000 | 7.606 ms | 875.43 KB | JSON 解析仍是较重路径 |
-| `JsonRoundTrip` | 1,000 | 9.930 ms | 1.61 MB | parse + stringify 组合成本较高 |
-| `RegexMatchAll` | 1,000 | 5.697 ms | 3.34 MB | 当前最重的常规运行时路径之一 |
-| `StringBufferAppend` | 1,000 | 0.369 ms | 39.35 KB | 明显优于直接字符串拼接 |
-| `StringConcat` | 1,000 | 0.512 ms | 3.73 MB | 直接字符串拼接分配很高 |
-| `ClrPropertyGetSet` | 1,000 | 0.100 ms | 23.87 KB | CLR 属性访问较轻量 |
-| `ClrArrayArgument` | 1,000 | 0.884 ms | 250.39 KB | 剩余分配主要来自脚本数组字面量和必要的 CLR 数组 |
-| `ClrInstanceMethod` | 1,000 | 0.177 ms | 23.88 KB | DynamicMethod invoker 后实例方法开销明显降低 |
-| `ClrStaticMethod` | 1,000 | 0.560 ms | 31.61 KB | 静态方法调用包装已降低，主要剩余为返回字符串包装 |
+| `NumericLoop` | 1,000 | 1.477 µs | 0 B | 数值 local 和算术保持为原生 CIL |
+| `NumericLoop` | 10,000 | 13.483 µs | 0 B | 时间线性增长，无循环内分配 |
+| `FunctionCallLoop` | 1,000 | 82.668 µs | 0 B | 同模块数值调用使用原生 specialization |
+| `FunctionCallLoop` | 10,000 | 766.803 µs | 0 B | 调用帧复用，无逐次上下文分配 |
+| `ModuleCallLoop` | 1,000 | 122.591 µs | 0 B | 跨模块通用调用边界零分配 |
+| `ModuleCallLoop` | 10,000 | 1.186 ms | 0 B | 动态分发成本可控且无逐次分配 |
 
-编译器 pipeline 结果：
-
-| 指标 | Mean | Allocated | 观察 |
-|---|---:|---:|---|
-| `CompileBlock` | 0.047 ms | 18.35 KB | 小段脚本编译开销较低 |
-| `FullCompile_MultiModule` | 0.281 ms | 65.63 KB | 当前多模块样例较小，结果健康 |
-| `FullCompile_SingleModule` | 10.413 ms | 2.81 MB | 大模块完整编译主要成本 |
-| `EmitOnly_ParsedLargeModule` | 4.598 ms | 1.26 MB | Emitter 是大模块编译主要热点 |
-| `LexerOnly_Large` | 2.640 ms | 21.49 KB | 大源码词法阶段分配较低 |
-| `ParseOnly_Large` | 5.421 ms | 1.53 MB | AST 构建带来主要分配 |
-| `ParseOnly_TemplateInterpolation` | 0.949 ms | 413.08 KB | 模板插值解析分配偏高 |
-
-异常点分析：
-
-- `StringConcat` 的 1,000 次场景分配约 `3.73 MB`，属于预期但非常重的用法问题；性能敏感场景应使用 `StringBuffer`。
-- `RegexMatchAll` 每 1,000 次分配约 `3.34 MB`，说明当前 match 结果对象构造成本高，适合后续优化结果数组、capture/group 对象分配。
-- JSON round-trip 每 1,000 次分配约 `1.61 MB`，解析和序列化仍是运行时分配热点。
-- `HashMapSetGet` 已移除字典扩容作为主要变量；当前剩余成本主要来自 benchmark 中 `"k" + i` 的动态字符串 key 构造。
-- CLR 互操作已通过 DynamicMethod invoker 和数组转换快路径降低调用包装成本；`ClrArrayArgument` 的剩余分配主要来自脚本数组字面量和必要的 CLR 数组创建。
-- 编译器侧 `ParseOnly_TemplateInterpolation` 分配相对源码规模偏高，模板解析可作为专项优化点。
+benchmark 会复用预先构造的宿主参数数组，因此 `Allocated` 只反映实际执行路径；以上六项均未检测到托管分配。`ShortRun` 适合回归验证，绝对耗时应在目标部署机器上重新测量。
 
 ## 示例
 

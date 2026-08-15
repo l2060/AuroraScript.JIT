@@ -7,6 +7,20 @@ namespace AuroraScript.Tests;
 
 public sealed class CoreSemanticsRegressionTests
 {
+    [Theory]
+    [InlineData("Number.isInfinity(5 / null)")]
+    [InlineData("Number.isNaN(null / null)")]
+    [InlineData("Number.isNaN(5 % null)")]
+    [InlineData("Number.isNaN('x' - 1)")]
+    [InlineData("Number.isNaN(-'x')")]
+    public void NumericSpecialValuesSurviveNativeCallBoundaries(string expression)
+    {
+        using var workspace = new TestWorkspace();
+        using var block = workspace.CreateEngine().CompileBlock("return " + expression + ";");
+
+        ScriptAssert.Equal(true, block.Invoke(Array.Empty<ScriptDatum>()));
+    }
+
     [Fact]
     public void NumericOperatorsCoerceBooleansAndNumericStringsConsistently()
     {

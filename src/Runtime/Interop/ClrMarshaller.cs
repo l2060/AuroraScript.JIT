@@ -157,7 +157,7 @@ namespace AuroraScript.Runtime.Interop
                 case ValueKind.String:
                     if (targetType == typeof(string))
                     {
-                        result = datum.String.Value;
+                        result = datum.StringText;
                         return true;
                     }
                     if (targetType == typeof(ScriptObject))
@@ -553,7 +553,7 @@ namespace AuroraScript.Runtime.Interop
                     ref readonly var datum = ref values[i];
                     if (datum.Kind == ValueKind.String)
                     {
-                        strings[i] = datum.String.Value;
+                        strings[i] = datum.StringText;
                         continue;
                     }
                     if (!TryConvertArgument(in datum, elementType, out var converted))

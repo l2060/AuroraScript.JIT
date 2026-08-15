@@ -1,11 +1,13 @@
 using AuroraScript.Compiler;
 using AuroraScript.Compiler.Analyzer;
 using AuroraScript.Compiler.Ast;
+using AuroraScript.Compiler.Ast.Expressions;
+using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Compiler.Backend;
 using AuroraScript.Compiler.Backend.Binding;
 using AuroraScript.Compiler.Backend.Builders;
+using AuroraScript.Compiler.Backend.Code;
 using AuroraScript.Compiler.Backend.Emission;
-using AuroraScript.Compiler.Backend.Lowering;
 using AuroraScript.Compiler.Backend.Plans;
 using AuroraScript.Compiler.Backend.Traversal;
 using AuroraScript.Core;
@@ -26,6 +28,70 @@ namespace AuroraScript.Tests;
 
 public sealed class CompilerBackendPlanTests
 {
+    [Fact]
+    public void TypedModuleCodeCarriesNumericEvidenceThroughRecursion()
+    {
+        var root = Path.GetTempPath();
+        var options = EngineOptions.Default
+            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var module = Parse(
+            """
+            @module(TEST);
+            @directCall
+            func sum(value, total) {
+                if (value <= 0) return total;
+                return sum(value - 1, total + value);
+            }
+            export func run() { return sum(100, 0); }
+            """,
+            root);
+        var session = new BackendCompiler(new DynamicBuilder(options), options).CreateModulePlans([module]);
+        var modulePlan = Assert.Single(session.Modules);
+        var sum = Assert.Single(modulePlan.Functions, function => function.Name == "sum");
+
+        var code = TypedModuleCode.Build(modulePlan);
+
+        Assert.Equal(
+            [FlowValueType.Number, FlowValueType.Number],
+            code.GetDirectParameters(sum.Id));
+        Assert.Equal(FlowValueType.Number, code.GetDirect(sum.Id).ReturnType);
+    }
+
+    [Fact]
+    public void TypedFunctionCodeKeepsNumericLoopLocalsNative()
+    {
+        var root = Path.GetTempPath();
+        var options = EngineOptions.Default
+            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var module = Parse(
+            """
+            @module(TEST);
+            export func run(iterations = 1000) {
+                var sum = 0;
+                var enabled = true;
+                var label = "Aurora";
+                enabled = !enabled;
+                label += "Script";
+                for (var i = 0; i < iterations; i++) {
+                    sum = sum + ((i * 3) - (i / 2));
+                }
+                return sum;
+            }
+            """,
+            root);
+        var session = new BackendCompiler(new DynamicBuilder(options), options).CreateModulePlans([module]);
+        var modulePlan = Assert.Single(session.Modules);
+        var function = Assert.Single(modulePlan.Functions);
+
+        var code = TypedFunctionBuilder.Build(modulePlan, function);
+
+        Assert.Equal(FlowValueType.Dynamic, code.GetLocalType(function.LocalSlots.Single(slot => slot.Name == "iterations").Id));
+        Assert.Equal(FlowValueType.Number, code.GetLocalType(function.LocalSlots.Single(slot => slot.Name == "sum").Id));
+        Assert.Equal(FlowValueType.Number, code.GetLocalType(function.LocalSlots.Single(slot => slot.Name == "i").Id));
+        Assert.Equal(FlowValueType.Boolean, code.GetLocalType(function.LocalSlots.Single(slot => slot.Name == "enabled").Id));
+        Assert.Equal(FlowValueType.String, code.GetLocalType(function.LocalSlots.Single(slot => slot.Name == "label").Id));
+    }
+
     [Fact]
     public void GlobalPredefineCreatesModuleAndFunctionPlans()
     {
@@ -434,9 +500,10 @@ public sealed class CompilerBackendPlanTests
         var modulePlan = Assert.Single(session.Modules);
         var helper = Assert.Single(modulePlan.Functions, function => function.Name == "helper");
         var runPlan = Assert.Single(modulePlan.Functions, function => function.Name == "run");
-        var runReturn = Assert.IsType<LoweredReturnStatement>(Assert.Single(runPlan.Body.Statements));
-        var call = Assert.IsType<LoweredCallExpression>(runReturn.Expression);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var call = Assert.IsType<FunctionCallExpression>(GetSingleReturnExpression(modulePlan, "run"));
+        var callTarget = Assert.IsType<NameExpression>(call.Target);
+        var callBinding = TypedFunctionBuilder.Build(modulePlan, runPlan).GetName(callTarget);
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var moduleResult = Assert.Single(report.Modules);
         var initialize = (ModuleInitializerDelegate)moduleResult.Initializer.CreateDelegate(typeof(ModuleInitializerDelegate));
         var run = Assert.Single(moduleResult.Functions, function => function.Name == "run");
@@ -448,7 +515,7 @@ public sealed class CompilerBackendPlanTests
         Assert.Equal(DirectCallDirective.PreserveClosure, helper.DirectCallDirective);
         Assert.True(helper.IsDirectCallCandidate);
         Assert.True(helper.RequiresClosureObject);
-        Assert.True(call.DirectFunction.Equals(helper.Id));
+        Assert.True(callBinding.DirectFunction.Equals(helper.Id));
 
         initialize(ctx, Span<ScriptDatum>.Empty);
         Assert.IsType<ClosureFunction>(runtimeModule.GetPropertyValue("helper"));
@@ -508,13 +575,14 @@ public sealed class CompilerBackendPlanTests
         var modulePlan = Assert.Single(session.Modules);
         var helper = Assert.Single(modulePlan.Functions, function => function.Name == "helper");
         var run = Assert.Single(modulePlan.Functions, function => function.Name == "run");
-        var returnStatement = Assert.IsType<LoweredReturnStatement>(Assert.Single(run.Body.Statements));
-        var call = Assert.IsType<LoweredCallExpression>(returnStatement.Expression);
+        var call = Assert.IsType<FunctionCallExpression>(GetSingleReturnExpression(modulePlan, "run"));
+        var callTarget = Assert.IsType<NameExpression>(call.Target);
+        var callBinding = TypedFunctionBuilder.Build(modulePlan, run).GetName(callTarget);
 
         Assert.Equal(FunctionVisibility.Exported, helper.Visibility);
         Assert.True(helper.IsDirectCallCandidate);
         Assert.True(helper.RequiresClosureObject);
-        Assert.True(call.DirectFunction.Equals(helper.Id));
+        Assert.True(callBinding.DirectFunction.Equals(helper.Id));
     }
 
     [Fact]
@@ -540,12 +608,13 @@ public sealed class CompilerBackendPlanTests
         var modulePlan = Assert.Single(session.Modules);
         var helper = Assert.Single(modulePlan.Functions, function => function.Name == "helper");
         var run = Assert.Single(modulePlan.Functions, function => function.Name == "run");
-        var returnStatement = Assert.IsType<LoweredReturnStatement>(Assert.Single(run.Body.Statements));
-        var call = Assert.IsType<LoweredCallExpression>(returnStatement.Expression);
+        var call = Assert.IsType<FunctionCallExpression>(GetSingleReturnExpression(modulePlan, "run"));
+        var callTarget = Assert.IsType<NameExpression>(call.Target);
+        var callBinding = TypedFunctionBuilder.Build(modulePlan, run).GetName(callTarget);
 
         Assert.True(session.Capabilities.CanUseModuleDirectCall);
         Assert.True(helper.IsDirectCallCandidate);
-        Assert.True(call.DirectFunction.Equals(helper.Id));
+        Assert.True(callBinding.DirectFunction.Equals(helper.Id));
     }
 
     [Fact]
@@ -839,7 +908,7 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
-    public void LoweringResolvesNamesToLocalUpvalueAndModuleSymbols()
+    public void TypedBindingResolvesNamesToLocalUpvalueAndModuleSymbols()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -864,27 +933,21 @@ public sealed class CompilerBackendPlanTests
         var outer = Assert.Single(modulePlan.Functions, function => function.Name == "outer");
         var inner = Assert.Single(modulePlan.Functions, function => function.Name == "inner");
 
-        Assert.NotNull(outer.Body);
-        Assert.NotNull(inner.Body);
-        var outerReturn = Assert.IsType<LoweredReturnStatement>(Assert.Single(outer.Body.Statements.OfType<LoweredReturnStatement>()));
-        var outerCall = Assert.IsType<LoweredCallExpression>(outerReturn.Expression);
-        var outerTarget = Assert.IsType<LoweredNameExpression>(outerCall.Target);
-        Assert.True(outerTarget.LocalSlot.IsValid);
-        Assert.Equal("inner", outerTarget.Name);
+        var outerCall = Assert.IsType<FunctionCallExpression>(GetSingleReturnExpression(modulePlan, "outer"));
+        var outerTarget = Assert.IsType<NameExpression>(outerCall.Target);
+        var outerCode = TypedFunctionBuilder.Build(modulePlan, outer);
+        var outerBinding = outerCode.GetName(outerTarget);
+        Assert.True(outerBinding.Local.IsValid);
+        Assert.Equal("inner", outerBinding.Name);
 
-        var innerReturn = Assert.IsType<LoweredReturnStatement>(Assert.Single(inner.Body.Statements));
-        var names = new List<LoweredNameExpression>();
-        CollectLoweredNames(innerReturn.Expression, names);
+        var innerExpression = GetSingleReturnExpression(modulePlan, "inner");
+        var names = new List<NameExpression>();
+        CollectNames(innerExpression, names);
+        var innerCode = TypedFunctionBuilder.Build(modulePlan, inner);
 
-        Assert.Contains(names, name => name.Name == "local" && name.UpvalueSlot.IsValid);
-        Assert.Contains(names, name => name.Name == "delta" && name.LocalSlot.IsValid);
-        Assert.Contains(names, name => name.Name == "MODULE_VALUE" && name.ModuleSymbol.IsValid);
-        Assert.Equal(0, outer.UnsupportedLoweredStatementCount);
-        Assert.Equal(0, outer.UnsupportedLoweredExpressionCount);
-        Assert.Empty(outer.UnsupportedLoweredNodes);
-        Assert.Equal(0, inner.UnsupportedLoweredStatementCount);
-        Assert.Equal(0, inner.UnsupportedLoweredExpressionCount);
-        Assert.Empty(inner.UnsupportedLoweredNodes);
+        Assert.Contains(names, name => innerCode.GetName(name) is { Name: "local", Upvalue.IsValid: true });
+        Assert.Contains(names, name => innerCode.GetName(name) is { Name: "delta", Local.IsValid: true });
+        Assert.Contains(names, name => innerCode.GetName(name) is { Name: "MODULE_VALUE", ModuleSymbol.IsValid: true });
     }
 
     [Fact]
@@ -908,11 +971,14 @@ public sealed class CompilerBackendPlanTests
         var session = backend.CreateModulePlans([module]);
         var modulePlan = Assert.Single(session.Modules);
         var returned = GetSingleReturnExpression(modulePlan, "run");
-        var name = Assert.IsType<LoweredNameExpression>(returned);
+        var name = Assert.IsType<NameExpression>(returned);
+        var run = Assert.Single(modulePlan.Functions, function => function.Name == "run");
+        var binding = TypedFunctionBuilder.Build(modulePlan, run).GetName(name);
 
         Assert.False(modulePlan.HasInlineConstants);
-        Assert.Equal("a5", name.Name);
-        Assert.True(name.ModuleSymbol.IsValid);
+        Assert.Equal("a5", binding.Name);
+        Assert.True(binding.ModuleSymbol.IsValid);
+        Assert.False(binding.HasConstant);
     }
 
     [Fact]
@@ -937,15 +1003,17 @@ public sealed class CompilerBackendPlanTests
         var session = backend.CreateModulePlans([module]);
         var modulePlan = Assert.Single(session.Modules);
         var returned = GetSingleReturnExpression(modulePlan, "run");
-        var literal = Assert.IsType<LoweredLiteralExpression>(returned);
-        var number = Assert.IsType<NumberToken>(literal.Token);
+        var name = Assert.IsType<NameExpression>(returned);
+        var run = Assert.Single(modulePlan.Functions, function => function.Name == "run");
+        var binding = TypedFunctionBuilder.Build(modulePlan, run).GetName(name);
 
         Assert.True(modulePlan.HasInlineConstants);
         Assert.True(modulePlan.TryGetSymbol("a5", out var symbolId));
         Assert.True(modulePlan.TryGetInlineConstant(symbolId, out var constant));
         Assert.Equal(ValueKind.Number, constant.Kind);
         Assert.Equal(5, constant.Number);
-        Assert.Equal(5, number.NumberValue);
+        Assert.True(binding.HasConstant);
+        Assert.Equal(5, binding.Constant.Number);
     }
 
     [Fact]
@@ -975,7 +1043,9 @@ public sealed class CompilerBackendPlanTests
         var session = backend.CreateModulePlans([module]);
         var modulePlan = Assert.Single(session.Modules);
         var returned = GetSingleReturnExpression(modulePlan, "run");
-        var array = Assert.IsType<LoweredArrayLiteralExpression>(returned);
+        var array = Assert.IsType<ArrayLiteralExpression>(returned);
+        var run = Assert.Single(modulePlan.Functions, function => function.Name == "run");
+        var code = TypedFunctionBuilder.Build(modulePlan, run);
 
         AssertInlineNumber(modulePlan, "NUM", expectedNum);
         AssertInlineString(modulePlan, "STR", "this is string");
@@ -984,8 +1054,12 @@ public sealed class CompilerBackendPlanTests
         AssertInlineNumber(modulePlan, "COMPLEX", 10 * expectedNum + 5);
         AssertInlineString(modulePlan, "TAG", "10_1");
         AssertInlineString(modulePlan, "TEMPLATE", "this is string10_10_1");
-        Assert.Equal(6, array.Elements.Length);
-        Assert.All(array.Elements, element => Assert.IsType<LoweredLiteralExpression>(element));
+        Assert.Equal(6, array.Elements.Count);
+        Assert.All(array.Elements, element =>
+        {
+            var name = Assert.IsType<NameExpression>(element);
+            Assert.True(code.GetName(name).HasConstant);
+        });
     }
 
     [Fact]
@@ -1013,7 +1087,7 @@ public sealed class CompilerBackendPlanTests
         var expectedNum = 3.141592678987654321d;
 
         var session = backend.CreateModulePlans([module]);
-        new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        new EmissionSession(session, builder, emitExecutableCode: true).Emit();
 
         Assert.Contains(builder.NumberLoads, number => Math.Abs(number - (10 * expectedNum + 5)) < 1e-12);
         Assert.Contains("10_1", builder.StringLoads);
@@ -1042,12 +1116,15 @@ public sealed class CompilerBackendPlanTests
         var session = backend.CreateModulePlans([module]);
         var modulePlan = Assert.Single(session.Modules);
         var returned = GetSingleReturnExpression(modulePlan, "run");
-        var name = Assert.IsType<LoweredNameExpression>(returned);
+        var name = Assert.IsType<NameExpression>(returned);
+        var run = Assert.Single(modulePlan.Functions, function => function.Name == "run");
+        var binding = TypedFunctionBuilder.Build(modulePlan, run).GetName(name);
 
         Assert.True(modulePlan.TryGetSymbol("fv", out var symbolId));
         Assert.False(modulePlan.TryGetInlineConstant(symbolId, out _));
-        Assert.Equal("fv", name.Name);
-        Assert.True(name.ModuleSymbol.IsValid);
+        Assert.Equal("fv", binding.Name);
+        Assert.True(binding.ModuleSymbol.IsValid);
+        Assert.False(binding.HasConstant);
     }
 
     [Fact]
@@ -1071,14 +1148,17 @@ public sealed class CompilerBackendPlanTests
         var session = backend.CreateModulePlans([module]);
         var modulePlan = Assert.Single(session.Modules);
         var returned = GetSingleReturnExpression(modulePlan, "run");
-        var name = Assert.IsType<LoweredNameExpression>(returned);
+        var name = Assert.IsType<NameExpression>(returned);
+        var run = Assert.Single(modulePlan.Functions, function => function.Name == "run");
+        var binding = TypedFunctionBuilder.Build(modulePlan, run).GetName(name);
 
         Assert.True(modulePlan.TryGetSymbol("a1", out var a1Symbol));
         Assert.True(modulePlan.TryGetInlineConstant(a1Symbol, out _));
         Assert.True(modulePlan.TryGetSymbol("a5", out var a5Symbol));
         Assert.False(modulePlan.TryGetInlineConstant(a5Symbol, out _));
-        Assert.Equal("a5", name.Name);
-        Assert.True(name.ModuleSymbol.IsValid);
+        Assert.Equal("a5", binding.Name);
+        Assert.True(binding.ModuleSymbol.IsValid);
+        Assert.False(binding.HasConstant);
     }
 
     [Fact]
@@ -1132,19 +1212,22 @@ public sealed class CompilerBackendPlanTests
         var session = backend.CreateModulePlans([module]);
         var modulePlan = Assert.Single(session.Modules);
         var run = Assert.Single(modulePlan.Functions, function => function.Name == "run");
-        var assignmentStatement = Assert.IsType<LoweredExpressionStatement>(run.Body.Statements[0]);
-        var assignment = Assert.IsType<LoweredAssignmentExpression>(assignmentStatement.Expression);
-        var assignmentTarget = Assert.IsType<LoweredNameExpression>(assignment.Left);
-        var incrementStatement = Assert.IsType<LoweredExpressionStatement>(run.Body.Statements[1]);
-        var increment = Assert.IsType<LoweredUnaryExpression>(incrementStatement.Expression);
-        var incrementTarget = Assert.IsType<LoweredNameExpression>(increment.Expression);
-        var returnStatement = Assert.IsType<LoweredReturnStatement>(run.Body.Statements[2]);
+        var body = Assert.IsType<BlockStatement>(run.Declaration.Body);
+        var assignmentStatement = Assert.IsType<ExpressionStatement>(body.Statements[0]);
+        var assignment = Assert.IsType<AssignmentExpression>(assignmentStatement.Expression);
+        var assignmentTarget = Assert.IsType<NameExpression>(assignment.Left);
+        var incrementStatement = Assert.IsType<ExpressionStatement>(body.Statements[1]);
+        var increment = Assert.IsType<UnaryExpression>(incrementStatement.Expression);
+        var incrementTarget = Assert.IsType<NameExpression>(increment.Expression);
+        var returnStatement = Assert.IsType<ReturnStatement>(body.Statements[2]);
+        var returnName = Assert.IsType<NameExpression>(returnStatement.Expression);
+        var code = TypedFunctionBuilder.Build(modulePlan, run);
 
-        Assert.Equal("value", assignmentTarget.Name);
-        Assert.True(assignmentTarget.ModuleSymbol.IsValid);
-        Assert.Equal("value", incrementTarget.Name);
-        Assert.True(incrementTarget.ModuleSymbol.IsValid);
-        Assert.IsType<LoweredLiteralExpression>(returnStatement.Expression);
+        Assert.Equal("value", code.GetName(assignmentTarget).Name);
+        Assert.True(code.GetName(assignmentTarget).ModuleSymbol.IsValid);
+        Assert.Equal("value", code.GetName(incrementTarget).Name);
+        Assert.True(code.GetName(incrementTarget).ModuleSymbol.IsValid);
+        Assert.True(code.GetName(returnName).HasConstant);
     }
 
     [Fact]
@@ -1169,22 +1252,24 @@ public sealed class CompilerBackendPlanTests
         var session = backend.CreateModulePlans([module]);
         var modulePlan = Assert.Single(session.Modules);
         var returned = GetSingleReturnExpression(modulePlan, "run");
-        var array = Assert.IsType<LoweredArrayLiteralExpression>(returned);
-        var property = Assert.IsType<LoweredGetPropertyExpression>(array.Elements[0]);
-        var propertyName = Assert.IsType<LoweredNameExpression>(property.Property);
-        var element = Assert.IsType<LoweredGetElementExpression>(array.Elements[1]);
-        var index = Assert.IsType<LoweredLiteralExpression>(element.Index);
-        var indexNumber = Assert.IsType<NumberToken>(index.Token);
+        var array = Assert.IsType<ArrayLiteralExpression>(returned);
+        var property = Assert.IsType<GetPropertyExpression>(array.Elements[0]);
+        var propertyName = Assert.IsType<NameExpression>(property.Property);
+        var element = Assert.IsType<GetElementExpression>(array.Elements[1]);
+        var index = Assert.IsType<NameExpression>(element.Index);
+        var run = Assert.Single(modulePlan.Functions, function => function.Name == "run");
+        var code = TypedFunctionBuilder.Build(modulePlan, run);
 
-        Assert.Equal("width", propertyName.Name);
-        Assert.False(propertyName.LocalSlot.IsValid);
-        Assert.False(propertyName.UpvalueSlot.IsValid);
-        Assert.False(propertyName.ModuleSymbol.IsValid);
-        Assert.Equal(8, indexNumber.NumberValue);
+        Assert.Equal("width", propertyName.Identifier.Value);
+        Assert.False(code.GetName(propertyName).Local.IsValid);
+        Assert.False(code.GetName(propertyName).Upvalue.IsValid);
+        Assert.False(code.GetName(propertyName).ModuleSymbol.IsValid);
+        Assert.True(code.GetName(index).HasConstant);
+        Assert.Equal(8, code.GetName(index).Constant.Number);
     }
 
     [Fact]
-    public void LoweringMarksModuleDirectCallTarget()
+    public void TypedBindingMarksModuleDirectCallTarget()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -1205,16 +1290,17 @@ public sealed class CompilerBackendPlanTests
         var modulePlan = Assert.Single(session.Modules);
         var helper = Assert.Single(modulePlan.Functions, function => function.Name == "helper");
         var run = Assert.Single(modulePlan.Functions, function => function.Name == "run");
-        var runReturn = Assert.IsType<LoweredReturnStatement>(Assert.Single(run.Body.Statements));
-        var call = Assert.IsType<LoweredCallExpression>(runReturn.Expression);
+        var call = Assert.IsType<FunctionCallExpression>(GetSingleReturnExpression(modulePlan, "run"));
+        var target = Assert.IsType<NameExpression>(call.Target);
+        var binding = TypedFunctionBuilder.Build(modulePlan, run).GetName(target);
 
         Assert.True(helper.IsDirectCallCandidate);
         Assert.Equal(FunctionVisibility.InternalOnly, helper.Visibility);
-        Assert.Equal(helper.Id, call.DirectFunction);
+        Assert.Equal(helper.Id, binding.DirectFunction);
     }
 
     [Fact]
-    public void LoweringRepresentsLambdaExpressionsByFunctionId()
+    public void AstLambdaMapsToRegisteredFunctionPlan()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -1236,13 +1322,12 @@ public sealed class CompilerBackendPlanTests
         var test = Assert.Single(modulePlan.Functions, function => function.Name == "test");
         var lambda = Assert.Single(modulePlan.Functions, function => function.IsLambda);
 
-        var loweredReturn = Assert.IsType<LoweredReturnStatement>(Assert.Single(test.Body.Statements));
-        var loweredLambda = Assert.IsType<LoweredLambdaExpression>(loweredReturn.Expression);
-        Assert.Equal(lambda.Id, loweredLambda.Function);
+        var lambdaExpression = Assert.IsType<LambdaExpression>(GetSingleReturnExpression(modulePlan, "test"));
+        Assert.Same(lambda.Declaration, lambdaExpression.Function);
     }
 
     [Fact]
-    public void LoweringRepresentsControlFlowAndHighFrequencyOperators()
+    public void AstRepresentsControlFlowAndHighFrequencyOperators()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -1275,30 +1360,30 @@ public sealed class CompilerBackendPlanTests
         var session = backend.CreateModulePlans([module]);
         var test = Assert.Single(Assert.Single(session.Modules).Functions, function => function.Name == "test");
 
-        Assert.Empty(test.UnsupportedLoweredNodes);
-        var expressionStatements = test.Body.Statements.OfType<LoweredExpressionStatement>().ToArray();
-        Assert.IsType<LoweredAssignmentExpression>(expressionStatements[0].Expression);
-        Assert.IsType<LoweredCompoundExpression>(expressionStatements[1].Expression);
+        var body = Assert.IsType<BlockStatement>(test.Declaration.Body);
+        var expressionStatements = body.Statements.OfType<ExpressionStatement>().ToArray();
+        Assert.IsType<AssignmentExpression>(expressionStatements[0].Expression);
+        Assert.IsType<CompoundExpression>(expressionStatements[1].Expression);
 
-        var ifStatement = Assert.Single(test.Body.Statements.OfType<LoweredIfStatement>());
-        Assert.IsType<LoweredBinaryExpression>(ifStatement.Condition);
-        Assert.IsType<LoweredBlockStatement>(ifStatement.Body);
-        Assert.IsType<LoweredBlockStatement>(ifStatement.Else);
+        var ifStatement = Assert.Single(body.Statements.OfType<IfStatement>());
+        Assert.IsType<BinaryExpression>(ifStatement.Condition);
+        Assert.IsType<BlockStatement>(ifStatement.Body);
+        Assert.IsType<BlockStatement>(ifStatement.Else);
 
-        var whileStatement = Assert.Single(test.Body.Statements.OfType<LoweredWhileStatement>());
-        var whileBody = Assert.IsType<LoweredBlockStatement>(whileStatement.Body);
-        Assert.IsType<LoweredBreakStatement>(Assert.Single(whileBody.Statements));
+        var whileStatement = Assert.Single(body.Statements.OfType<WhileStatement>());
+        var whileBody = Assert.IsType<BlockStatement>(whileStatement.Body);
+        Assert.IsType<BreakStatement>(Assert.Single(whileBody.Statements));
 
-        var forStatement = Assert.Single(test.Body.Statements.OfType<LoweredForStatement>());
-        Assert.IsType<LoweredVariableDeclarationStatement>(forStatement.Initializer);
-        Assert.IsType<LoweredBinaryExpression>(forStatement.Condition);
-        Assert.IsType<LoweredUnaryExpression>(forStatement.Incrementor);
-        var forBody = Assert.IsType<LoweredBlockStatement>(forStatement.Body);
-        Assert.IsType<LoweredContinueStatement>(Assert.Single(forBody.Statements));
+        var forStatement = Assert.Single(body.Statements.OfType<ForStatement>());
+        Assert.IsType<VariableDeclaration>(forStatement.Initializer);
+        Assert.IsType<BinaryExpression>(forStatement.Condition);
+        Assert.IsType<UnaryExpression>(forStatement.Incrementor);
+        var forBody = Assert.IsType<BlockStatement>(forStatement.Body);
+        Assert.IsType<ContinueStatement>(Assert.Single(forBody.Statements));
     }
 
     [Fact]
-    public void LoweringRepresentsForInAndExceptionStatements()
+    public void AstRepresentsForInAndExceptionStatements()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -1329,29 +1414,28 @@ public sealed class CompilerBackendPlanTests
         var session = backend.CreateModulePlans([module]);
         var test = Assert.Single(Assert.Single(session.Modules).Functions, function => function.Name == "test");
 
-        Assert.Empty(test.UnsupportedLoweredNodes);
-        var forIn = Assert.Single(test.Body.Statements.OfType<LoweredForInStatement>());
-        Assert.IsType<LoweredVariableDeclarationStatement>(forIn.Initializer);
+        var body = Assert.IsType<BlockStatement>(test.Declaration.Body);
+        var forIn = Assert.Single(body.Statements.OfType<ForInStatement>());
+        Assert.IsType<VariableDeclaration>(forIn.Initializer);
         Assert.NotNull(forIn.Iterator);
-        Assert.IsType<LoweredNameExpression>(forIn.Iterator.Left);
-        var forInBody = Assert.IsType<LoweredBlockStatement>(forIn.Body);
-        Assert.IsType<LoweredContinueStatement>(Assert.Single(forInBody.Statements));
+        Assert.IsType<NameExpression>(forIn.Iterator.Left);
+        var forInBody = Assert.IsType<BlockStatement>(forIn.Body);
+        Assert.IsType<ContinueStatement>(Assert.Single(forInBody.Statements));
 
-        var tryStatement = Assert.Single(test.Body.Statements.OfType<LoweredTryStatement>());
+        var tryStatement = Assert.Single(body.Statements.OfType<TryStatement>());
         Assert.Equal("error", tryStatement.CatchVariable);
-        Assert.True(tryStatement.CatchSlot.IsValid);
-        Assert.Contains(test.LocalSlots, slot => slot.Name == "error" && slot.Id.Equals(tryStatement.CatchSlot));
-        var tryBody = Assert.IsType<LoweredBlockStatement>(tryStatement.Body);
-        Assert.IsType<LoweredThrowStatement>(Assert.Single(tryBody.Statements));
-        var catchBody = Assert.IsType<LoweredBlockStatement>(tryStatement.CatchBody);
-        Assert.IsType<LoweredDeleteStatement>(catchBody.Statements[0]);
-        Assert.IsType<LoweredDebuggerStatement>(catchBody.Statements[1]);
-        var finallyBody = Assert.IsType<LoweredBlockStatement>(tryStatement.FinallyBody);
-        Assert.IsType<LoweredDebuggerStatement>(Assert.Single(finallyBody.Statements));
+        Assert.Contains(test.LocalSlots, slot => slot.Name == "error" && ReferenceEquals(slot.Declaration, tryStatement));
+        var tryBody = Assert.IsType<BlockStatement>(tryStatement.Body);
+        Assert.IsType<ThrowStatement>(Assert.Single(tryBody.Statements));
+        var catchBody = Assert.IsType<BlockStatement>(tryStatement.CatchBody);
+        Assert.IsType<DeleteStatement>(catchBody.Statements[0]);
+        Assert.IsType<DebuggerStatement>(catchBody.Statements[1]);
+        var finallyBody = Assert.IsType<BlockStatement>(tryStatement.FinallyBody);
+        Assert.IsType<DebuggerStatement>(Assert.Single(finallyBody.Statements));
     }
 
     [Fact]
-    public void LoweringRepresentsObjectArrayMapAndConstructorExpressions()
+    public void AstRepresentsObjectArrayMapAndConstructorExpressions()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -1376,27 +1460,29 @@ public sealed class CompilerBackendPlanTests
         var session = backend.CreateModulePlans([module]);
         var test = Assert.Single(Assert.Single(session.Modules).Functions, function => function.Name == "test");
 
-        Assert.Empty(test.UnsupportedLoweredNodes);
-        var declarations = test.Body.Statements.OfType<LoweredVariableDeclarationStatement>().ToArray();
-        var array = Assert.IsType<LoweredArrayLiteralExpression>(declarations[0].Initializer);
-        Assert.Contains(array.Elements, expression => expression is LoweredSpreadExpression);
-        Assert.Contains(array.Elements, expression => expression is LoweredGetElementExpression);
-        Assert.Contains(array.Elements, expression => expression is LoweredGetPropertyExpression);
+        var body = Assert.IsType<BlockStatement>(test.Declaration.Body);
+        var declarations = body.Statements.OfType<VariableDeclaration>().ToArray();
+        var array = Assert.IsType<ArrayLiteralExpression>(declarations[0].Initializer);
+        Assert.Contains(array.Elements, expression => expression is SpreadExpression);
+        Assert.Contains(array.Elements, expression => expression is GetElementExpression);
+        Assert.Contains(array.Elements, expression => expression is GetPropertyExpression);
 
-        var map = Assert.IsType<LoweredMapExpression>(declarations[1].Initializer);
-        Assert.Equal(3, map.Entries.Length);
-        Assert.Contains(map.Entries, entry => entry.Key?.Value == "first" && entry.Value is LoweredGetPropertyExpression);
-        Assert.Contains(map.Entries, entry => entry.Key?.Value == "second" && entry.Value is LoweredGetElementExpression);
-        Assert.Contains(map.Entries, entry => entry.Key == null && entry.Value is LoweredSpreadExpression);
+        var map = Assert.IsType<MapExpression>(declarations[1].Initializer);
+        Assert.Equal(3, map.Entries.Count);
+        Assert.Contains(map.Entries, entry => entry is MapKeyValueExpression { Key.Value: "first", Value: GetPropertyExpression });
+        Assert.Contains(map.Entries, entry => entry is MapKeyValueExpression { Key.Value: "second", Value: GetElementExpression });
+        Assert.Contains(map.Entries, entry => entry is SpreadExpression);
 
-        var expressionStatements = test.Body.Statements.OfType<LoweredExpressionStatement>().ToArray();
-        var setProperty = Assert.IsType<LoweredSetPropertyExpression>(expressionStatements[0].Expression);
-        Assert.IsType<LoweredNewExpression>(setProperty.Value);
-        Assert.IsType<LoweredSetElementExpression>(expressionStatements[1].Expression);
+        var expressionStatements = body.Statements.OfType<ExpressionStatement>().ToArray();
+        var setProperty = Assert.IsType<SetPropertyExpression>(expressionStatements[0].Expression);
+        Assert.IsType<NameExpression>(setProperty.Property);
+        Assert.IsType<NewExpression>(setProperty.Value);
+        var setElement = Assert.IsType<SetElementExpression>(expressionStatements[1].Expression);
+        Assert.IsType<NameExpression>(setElement.Index);
     }
 
     [Fact]
-    public void LoweringCountsUnsupportedNodes()
+    public void AstKeepsUnsupportedNodesForEmissionValidation()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -1416,16 +1502,19 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
 
         var session = backend.CreateModulePlans([module]);
-        var test = Assert.Single(Assert.Single(session.Modules).Functions, function => function.Name == "test");
+        var modulePlan = Assert.Single(session.Modules);
+        var test = Assert.Single(modulePlan.Functions, function => function.Name == "test");
+        var body = Assert.IsType<BlockStatement>(test.Declaration.Body);
+        Assert.Contains(body.Statements, statement => statement is EnumDeclaration);
 
-        Assert.True(test.UnsupportedLoweredStatementCount > 0);
-        Assert.Contains(test.UnsupportedLoweredNodes, node => node.NodeType == "EnumDeclaration" && !node.IsExpression);
-        Assert.Equal(test.UnsupportedLoweredStatementCount, test.UnsupportedLoweredNodes.Count(node => !node.IsExpression));
-        Assert.Equal(test.UnsupportedLoweredExpressionCount, test.UnsupportedLoweredNodes.Count(node => node.IsExpression));
+        var exception = Assert.Throws<UnsupportedEmissionException>(() =>
+            new EmissionSession(session, new DynamicBuilder(options), collectDiagnostics: true).Emit());
+        Assert.Equal("EnumDeclaration", exception.NodeType);
+        Assert.False(exception.IsExpression);
     }
 
     [Fact]
-    public void LoweringRepresentsDestructuringDeclarations()
+    public void AstRepresentsDestructuringDeclarations()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -1447,20 +1536,21 @@ public sealed class CompilerBackendPlanTests
         var session = backend.CreateModulePlans([module]);
         var test = Assert.Single(Assert.Single(session.Modules).Functions, function => function.Name == "test");
 
-        Assert.Empty(test.UnsupportedLoweredNodes);
-        var array = Assert.IsType<LoweredArrayDestructuringDeclarationStatement>(test.Body.Statements[0]);
-        Assert.Equal(3, array.Bindings.Length);
-        Assert.False(array.Bindings[0].IsRest);
-        Assert.True(array.Bindings[1].IsRest);
-        Assert.Equal(1, array.Bindings[1].TrailingCount);
-        Assert.Equal(1, array.Bindings[2].TrailingCount);
+        var body = Assert.IsType<BlockStatement>(test.Declaration.Body);
+        var arrayDeclaration = Assert.IsType<VariableDeclaration>(body.Statements[0]);
+        var array = Assert.IsType<ArrayDestructuringPattern>(arrayDeclaration.Pattern);
+        Assert.Equal(3, array.Elements.Count);
+        Assert.IsType<NameExpression>(array.Elements[0]);
+        Assert.IsType<SpreadExpression>(array.Elements[1]);
+        Assert.IsType<NameExpression>(array.Elements[2]);
 
-        var obj = Assert.IsType<LoweredObjectDestructuringDeclarationStatement>(test.Body.Statements[1]);
-        Assert.Equal(new[] { "name", "age" }, obj.Bindings.Select(binding => binding.Property.Value).ToArray());
+        var objectDeclaration = Assert.IsType<VariableDeclaration>(body.Statements[1]);
+        var obj = Assert.IsType<ObjectDestructuringPattern>(objectDeclaration.Pattern);
+        Assert.Equal(new[] { "name", "age" }, obj.Properties.Select(property => property.Value).ToArray());
     }
 
     [Fact]
-    public void EmissionPassConsumesSupportedLoweredPlan()
+    public void EmissionPassConsumesSupportedBoundAst()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -1511,7 +1601,7 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
-    public void EmissionPassRejectsUnsupportedLoweredNodes()
+    public void EmissionPassRejectsUnsupportedAstNodes()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -1538,7 +1628,7 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
-    public void EmissionPassConsumesLoweredBodyInsteadOfAst()
+    public void EmissionPassReadsBoundAstDirectly()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -1557,18 +1647,15 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var runPlan = Assert.Single(Assert.Single(session.Modules).Functions, function => function.Name == "run");
-        runPlan.Body = new LoweredBlockStatement(runPlan.Declaration.Body, Array.Empty<LoweredStatement>());
-
         var report = new EmissionSession(session, builder, collectDiagnostics: true).Emit();
 
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
-        Assert.Equal(1, run.StatementCount);
-        Assert.Equal(0, run.ExpressionCount);
+        Assert.Equal(2, run.StatementCount);
+        Assert.Equal(1, run.ExpressionCount);
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesLiteralReturn()
+    public void TypedEmitterExecutesLiteralReturn()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -1587,10 +1674,10 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         Assert.Equal(0, run.CilLocalCount);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = del(CreateTestContext(), Span<ScriptDatum>.Empty);
@@ -1598,7 +1685,7 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
-    public void EmissionSkeletonStoresAndLoadsLocal()
+    public void TypedEmitterStoresAndLoadsLocal()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -1618,10 +1705,10 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         Assert.Equal(1, run.CilLocalCount);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = del(CreateTestContext(), Span<ScriptDatum>.Empty);
@@ -1629,7 +1716,7 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
-    public void EmissionSkeletonInitializesParameterLocalsFromSpanArguments()
+    public void TypedEmitterInitializesParameterLocalsFromSpanArguments()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -1648,10 +1735,10 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         Assert.Equal(1, run.CilLocalCount);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var args = new ScriptDatum[1];
@@ -1661,7 +1748,7 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesBinaryArithmeticAndComparison()
+    public void TypedEmitterExecutesBinaryArithmeticAndComparison()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -1683,10 +1770,10 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var args = new[] { ScriptDatum.FromNumber(3), ScriptDatum.FromNumber(4) };
         var result = del(CreateTestContext(), args);
@@ -1694,7 +1781,7 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesLocalAssignment()
+    public void TypedEmitterExecutesLocalAssignment()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -1715,17 +1802,17 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = del(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(5, result.Number);
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesCompoundAndUnaryLocalOperators()
+    public void TypedEmitterExecutesCompoundAndUnaryLocalOperators()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -1747,17 +1834,17 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = del(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(64, result.Number);
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesElementCompoundAddOnce()
+    public void TypedEmitterExecutesElementCompoundAddOnce()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -1780,17 +1867,17 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = del(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(31, result.Number);
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesPropertyAndElementUnaryMutation()
+    public void TypedEmitterExecutesPropertyAndElementUnaryMutation()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -1816,17 +1903,17 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = del(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(22541, result.Number);
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesLogicalShortCircuitAndBitwiseOperators()
+    public void TypedEmitterExecutesLogicalShortCircuitAndBitwiseOperators()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -1851,17 +1938,17 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = del(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(14, result.Number);
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesWhileLoop()
+    public void TypedEmitterExecutesWhileLoop()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -1885,17 +1972,17 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = del(CreateTestContext(), new[] { ScriptDatum.FromNumber(4) });
         Assert.Equal(10, result.Number);
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesForLoopWithBreakAndContinue()
+    public void TypedEmitterExecutesForLoopWithBreakAndContinue()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -1924,17 +2011,17 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = del(CreateTestContext(), new[] { ScriptDatum.FromNumber(8) });
         Assert.Equal(8, result.Number);
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesForInAcrossArrayObjectAndString()
+    public void TypedEmitterExecutesForInAcrossArrayObjectAndString()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -1965,17 +2052,17 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = del(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(323, result.Number);
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesForInWithBreakAndContinue()
+    public void TypedEmitterExecutesForInWithBreakAndContinue()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -2004,17 +2091,17 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = del(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(4, result.Number);
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesForwardModuleDirectCallWithFastArity()
+    public void TypedEmitterExecutesForwardModuleDirectCallWithFastArity()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -2039,13 +2126,13 @@ public sealed class CompilerBackendPlanTests
         var session = backend.CreateModulePlans([module]);
         var modulePlan = Assert.Single(session.Modules);
         var helperPlan = Assert.Single(modulePlan.Functions, function => function.Name == "helper");
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var moduleResult = Assert.Single(report.Modules);
         var run = Assert.Single(moduleResult.Functions, function => function.Name == "run");
         var helper = Assert.Single(moduleResult.Functions, function => function.Name == "helper");
 
-        Assert.True(run.HasExecutableSkeleton);
-        Assert.True(helper.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
+        Assert.True(helper.HasExecutableCode);
         Assert.Equal(FunctionCallConvention.Fast2, helperPlan.CallConvention);
         var engine = new AuroraEngine(options);
         var domain = engine.CreateEmptyDomain(null);
@@ -2086,7 +2173,7 @@ public sealed class CompilerBackendPlanTests
         var session = backend.CreateModulePlans([module]);
         var modulePlan = Assert.Single(session.Modules);
         var helperPlan = Assert.Single(modulePlan.Functions, function => function.Name == "helper");
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var moduleResult = Assert.Single(report.Modules);
         var initialize = (ModuleInitializerDelegate)moduleResult.Initializer.CreateDelegate(typeof(ModuleInitializerDelegate));
         var run = Assert.Single(moduleResult.Functions, function => function.Name == "run");
@@ -2106,7 +2193,7 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
-    public void EmissionSkeletonHoistsUncapturedLocalFunctionDeclarations()
+    public void TypedEmitterHoistsUncapturedLocalFunctionDeclarations()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -2132,7 +2219,7 @@ public sealed class CompilerBackendPlanTests
         var session = backend.CreateModulePlans([module]);
         var modulePlan = Assert.Single(session.Modules);
         var helperPlan = Assert.Single(modulePlan.Functions, function => function.Name == "helper" && !function.IsModuleFunction);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var moduleResult = Assert.Single(report.Modules);
         var run = Assert.Single(moduleResult.Functions, function => function.Name == "run");
         var helper = Assert.Single(moduleResult.Functions, function => function.Function.Equals(helperPlan.Id));
@@ -2140,15 +2227,15 @@ public sealed class CompilerBackendPlanTests
         var domain = engine.CreateEmptyDomain(null);
         var ctx = new ScriptContext(domain) { Module = CreateRuntimeModule(root) };
 
-        Assert.True(run.HasExecutableSkeleton);
-        Assert.True(helper.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
+        Assert.True(helper.HasExecutableCode);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = runDel(ctx, new[] { ScriptDatum.FromNumber(2) });
         Assert.Equal(11, result.Number);
     }
 
     [Fact]
-    public void EmissionSkeletonEvaluatesExtraDirectCallArgumentsInOrder()
+    public void TypedEmitterEvaluatesExtraDirectCallArgumentsInOrder()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -2173,11 +2260,11 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
-        Assert.Equal(3, run.CilLocalCount);
+        Assert.True(run.HasExecutableCode);
+        Assert.Equal(1, run.CilLocalCount);
         var engine = new AuroraEngine(options);
         var domain = engine.CreateEmptyDomain(null);
         var ctx = new ScriptContext(domain) { Module = CreateRuntimeModule(root) };
@@ -2187,7 +2274,7 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesRegularFunctionObjectCallsWithFastArity()
+    public void TypedEmitterExecutesRegularFunctionObjectCallsWithFastArity()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -2207,18 +2294,18 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
         var callback = new BondingFunction(SumArgumentCountAndValues);
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = del(CreateTestContext(), new[] { ScriptDatum.FromObject(callback) });
         Assert.Equal(40, result.Number);
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesRegularFunctionObjectCallsWithMaterializedArguments()
+    public void TypedEmitterExecutesRegularFunctionObjectCallsWithMaterializedArguments()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -2248,18 +2335,18 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
         var callback = new BondingFunction(SumArgumentCountAndValues);
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = del(CreateTestContext(), new[] { ScriptDatum.FromObject(callback) });
         Assert.Equal(63, result.Number);
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesSpreadFunctionObjectCalls()
+    public void TypedEmitterExecutesSpreadFunctionObjectCalls()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -2281,18 +2368,18 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
         var callback = new BondingFunction(SumArgumentCountAndValues);
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = del(CreateTestContext(), new[] { ScriptDatum.FromObject(callback) });
         Assert.Equal(21, result.Number);
     }
 
     [Fact]
-    public void EmissionSkeletonMaterializesUncapturedLambdaArguments()
+    public void TypedEmitterMaterializesUncapturedLambdaArguments()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -2314,7 +2401,7 @@ public sealed class CompilerBackendPlanTests
         var session = backend.CreateModulePlans([module]);
         var modulePlan = Assert.Single(session.Modules);
         var lambdaPlan = Assert.Single(modulePlan.Functions, function => function.IsLambda);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var moduleResult = Assert.Single(report.Modules);
         var run = Assert.Single(moduleResult.Functions, function => function.Name == "run");
         var lambda = Assert.Single(moduleResult.Functions, function => function.Function.Equals(lambdaPlan.Id));
@@ -2323,15 +2410,15 @@ public sealed class CompilerBackendPlanTests
         var ctx = new ScriptContext(domain) { Module = CreateRuntimeModule(root) };
         var callback = new BondingFunction(InvokeLambdaWithTwoNumbers);
 
-        Assert.True(lambda.HasExecutableSkeleton);
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(lambda.HasExecutableCode);
+        Assert.True(run.HasExecutableCode);
         var del = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = del(ctx, new[] { ScriptDatum.FromObject(callback) });
         Assert.Equal(5, result.Number);
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesDefaultParameterFunctions()
+    public void TypedEmitterExecutesDefaultParameterFunctions()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -2356,7 +2443,7 @@ public sealed class CompilerBackendPlanTests
         var session = backend.CreateModulePlans([module]);
         var modulePlan = Assert.Single(session.Modules);
         var addPlan = Assert.Single(modulePlan.Functions, function => function.Name == "add");
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var moduleResult = Assert.Single(report.Modules);
         var add = Assert.Single(moduleResult.Functions, function => function.Name == "add");
         var run = Assert.Single(moduleResult.Functions, function => function.Name == "run");
@@ -2367,8 +2454,8 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(addPlan.HasDefaultParameters);
         Assert.Equal(FunctionCallConvention.Span, addPlan.CallConvention);
-        Assert.True(add.HasExecutableSkeleton);
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(add.HasExecutableCode);
+        Assert.True(run.HasExecutableCode);
         Assert.True(moduleResult.HasExecutableInitializer);
 
         var initialize = (ModuleInitializerDelegate)moduleResult.Initializer.CreateDelegate(typeof(ModuleInitializerDelegate));
@@ -2380,7 +2467,7 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesArgsObjectFunctions()
+    public void TypedEmitterExecutesArgsObjectFunctions()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -2405,7 +2492,7 @@ public sealed class CompilerBackendPlanTests
         var session = backend.CreateModulePlans([module]);
         var modulePlan = Assert.Single(session.Modules);
         var countPlan = Assert.Single(modulePlan.Functions, function => function.Name == "count");
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var moduleResult = Assert.Single(report.Modules);
         var count = Assert.Single(moduleResult.Functions, function => function.Name == "count");
         var run = Assert.Single(moduleResult.Functions, function => function.Name == "run");
@@ -2417,8 +2504,8 @@ public sealed class CompilerBackendPlanTests
         Assert.True(countPlan.UsesArgumentsObject);
         Assert.False(countPlan.IsDirectCallCandidate);
         Assert.Equal(FunctionCallConvention.Span, countPlan.CallConvention);
-        Assert.True(count.HasExecutableSkeleton);
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(count.HasExecutableCode);
+        Assert.True(run.HasExecutableCode);
         Assert.True(moduleResult.HasExecutableInitializer);
 
         var initialize = (ModuleInitializerDelegate)moduleResult.Initializer.CreateDelegate(typeof(ModuleInitializerDelegate));
@@ -2430,7 +2517,7 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
-    public void EmissionSkeletonMaterializesWideModuleCallsInsteadOfInvalidDirectCall()
+    public void TypedEmitterMaterializesWideModuleCallsInsteadOfInvalidDirectCall()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -2451,7 +2538,7 @@ public sealed class CompilerBackendPlanTests
         var session = backend.CreateModulePlans([module]);
         var modulePlan = Assert.Single(session.Modules);
         var helperPlan = Assert.Single(modulePlan.Functions, function => function.Name == "helper");
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var moduleResult = Assert.Single(report.Modules);
         var helper = Assert.Single(moduleResult.Functions, function => function.Name == "helper");
         var run = Assert.Single(moduleResult.Functions, function => function.Name == "run");
@@ -2463,8 +2550,8 @@ public sealed class CompilerBackendPlanTests
         Assert.False(helperPlan.IsDirectCallCandidate);
         Assert.Equal(FunctionVisibility.ModuleVisible, helperPlan.Visibility);
         Assert.Equal(FunctionCallConvention.Span, helperPlan.CallConvention);
-        Assert.True(helper.HasExecutableSkeleton);
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(helper.HasExecutableCode);
+        Assert.True(run.HasExecutableCode);
         Assert.True(moduleResult.HasExecutableInitializer);
 
         var initialize = (ModuleInitializerDelegate)moduleResult.Initializer.CreateDelegate(typeof(ModuleInitializerDelegate));
@@ -2476,7 +2563,7 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesPropertyCallsWithFastAndMaterializedArguments()
+    public void TypedEmitterExecutesPropertyCallsWithFastAndMaterializedArguments()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -2498,17 +2585,17 @@ public sealed class CompilerBackendPlanTests
         receiver.SetPropertyValue("sum", new BondingFunction(SumArgumentCountAndValues));
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = runDel(CreateTestContext(), new[] { ScriptDatum.FromObject(receiver) });
         Assert.Equal(63, result.Number);
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesRegexLiteralCalls()
+    public void TypedEmitterExecutesRegexLiteralCalls()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -2528,17 +2615,17 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = runDel(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.True(result.Boolean);
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesSpreadPropertyCalls()
+    public void TypedEmitterExecutesSpreadPropertyCalls()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -2561,17 +2648,17 @@ public sealed class CompilerBackendPlanTests
         receiver.SetPropertyValue("sum", new BondingFunction(SumArgumentCountAndValues));
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = runDel(CreateTestContext(), new[] { ScriptDatum.FromObject(receiver) });
         Assert.Equal(20, result.Number);
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesArrayAndMapLiteralFastPaths()
+    public void TypedEmitterExecutesArrayAndMapLiteralFastPaths()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -2593,17 +2680,17 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = runDel(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(15, result.Number);
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesArrayAndMapSpreadLiterals()
+    public void TypedEmitterExecutesArrayAndMapSpreadLiterals()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -2627,17 +2714,17 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = runDel(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(4317, result.Number);
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesDestructuringDeclarations()
+    public void TypedEmitterExecutesDestructuringDeclarations()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -2660,18 +2747,17 @@ public sealed class CompilerBackendPlanTests
 
         var session = backend.CreateModulePlans([module]);
         var runPlan = Assert.Single(Assert.Single(session.Modules).Functions, function => function.Name == "run");
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.Empty(runPlan.UnsupportedLoweredNodes);
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = runDel(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(1246, result.Number);
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesElementGetAndSet()
+    public void TypedEmitterExecutesElementGetAndSet()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -2693,17 +2779,17 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = runDel(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(9, result.Number);
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesFixedPropertySet()
+    public void TypedEmitterExecutesFixedPropertySet()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -2725,17 +2811,17 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = runDel(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(5, result.Number);
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesConstructorFastAndMaterializedArguments()
+    public void TypedEmitterExecutesConstructorFastAndMaterializedArguments()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -2755,17 +2841,17 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = runDel(CreateTestContext(), new[] { ScriptDatum.FromObject(new CountingType()) });
         Assert.Equal(19, result.Number);
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesSpreadConstructorCalls()
+    public void TypedEmitterExecutesSpreadConstructorCalls()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -2786,17 +2872,17 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = runDel(CreateTestContext(), new[] { ScriptDatum.FromObject(new CountingType()) });
         Assert.Equal(20, result.Number);
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesInExpression()
+    public void TypedEmitterExecutesInExpression()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -2818,17 +2904,17 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = runDel(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.True(result.Boolean);
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesThrowStatement()
+    public void TypedEmitterExecutesThrowStatement()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -2849,16 +2935,16 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         Assert.Throws<AuroraRuntimeException>(() => runDel(CreateTestContext(), Span<ScriptDatum>.Empty));
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesDeleteStatement()
+    public void TypedEmitterExecutesDeleteStatement()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -2882,17 +2968,17 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = runDel(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.True(result.Boolean);
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesBareTryStatement()
+    public void TypedEmitterExecutesBareTryStatement()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -2915,17 +3001,17 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = runDel(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(9, result.Number);
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesTryCatchFinallyStatement()
+    public void TypedEmitterExecutesTryCatchFinallyStatement()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -2954,17 +3040,17 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = runDel(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(5, result.Number);
     }
 
     [Fact]
-    public void EmissionSkeletonExecutesTryFinallyStatement()
+    public void TypedEmitterExecutesTryFinallyStatement()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -2990,17 +3076,17 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = runDel(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(3, result.Number);
     }
 
     [Fact]
-    public void EmissionSkeletonSwallowsThrowInTryFinallyWithoutCatch()
+    public void TypedEmitterSwallowsThrowInTryFinallyWithoutCatch()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -3027,17 +3113,17 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = runDel(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(2, result.Number);
     }
 
     [Fact]
-    public void EmissionSkeletonAcceptsDebuggerStatement()
+    public void TypedEmitterAcceptsDebuggerStatement()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -3058,10 +3144,10 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var session = backend.CreateModulePlans([module]);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var run = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Name == "run");
 
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(run.HasExecutableCode);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = runDel(CreateTestContext(), Span<ScriptDatum>.Empty);
         Assert.Equal(7, result.Number);
@@ -3087,10 +3173,10 @@ public sealed class CompilerBackendPlanTests
         var backend = new BackendCompiler(builder, options);
 
         var plan = backend.CreateCompileBlockPlan(block, ["value"], "compile-block-plan.as");
-        var report = new EmissionSession(plan.Session, builder, emitExecutableSkeletons: true).Emit();
+        var report = new EmissionSession(plan.Session, builder, emitExecutableCode: true).Emit();
         var entry = Assert.Single(Assert.Single(report.Modules).Functions, function => function.Function.Equals(plan.Function.Id));
 
-        Assert.True(entry.HasExecutableSkeleton);
+        Assert.True(entry.HasExecutableCode);
         Assert.Equal(FunctionCallConvention.Span, plan.Function.CallConvention);
         var del = (ScriptFunctionDelegate)entry.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var ctx = new ScriptContext(new AuroraEngine(options).CreateEmptyDomain(null));
@@ -3116,19 +3202,19 @@ public sealed class CompilerBackendPlanTests
 
         var session = backend.CreateHotPatchPlans(patch, [], ["oldValue"], out var mainModule);
         var version = Assert.Single(mainModule.Functions, function => function.Name == "version");
-        var returnStatement = Assert.IsType<LoweredReturnStatement>(Assert.Single(version.Body.Statements));
-        var binary = Assert.IsType<LoweredBinaryExpression>(returnStatement.Expression);
-        var oldValue = Assert.IsType<LoweredNameExpression>(binary.Left);
+        var binary = Assert.IsType<BinaryExpression>(GetSingleReturnExpression(mainModule, "version"));
+        var oldValue = Assert.IsType<NameExpression>(binary.Left);
+        var binding = TypedFunctionBuilder.Build(mainModule, version).GetName(oldValue);
 
         Assert.True(mainModule.TryGetSymbol("oldValue", out _));
-        Assert.True(oldValue.ModuleSymbol.IsValid);
-        Assert.False(oldValue.LocalSlot.IsValid);
-        Assert.False(oldValue.UpvalueSlot.IsValid);
+        Assert.True(binding.ModuleSymbol.IsValid);
+        Assert.False(binding.Local.IsValid);
+        Assert.False(binding.Upvalue.IsValid);
         Assert.Single(session.Modules);
     }
 
     [Fact]
-    public void EmissionSkeletonDoesNotDirectCallWhenModuleDirectCallIsDisabled()
+    public void TypedEmitterDoesNotDirectCallWhenModuleDirectCallIsDisabled()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -3150,9 +3236,10 @@ public sealed class CompilerBackendPlanTests
         var modulePlan = Assert.Single(session.Modules);
         var helperPlan = Assert.Single(modulePlan.Functions, function => function.Name == "helper");
         var runPlan = Assert.Single(modulePlan.Functions, function => function.Name == "run");
-        var runReturn = Assert.IsType<LoweredReturnStatement>(Assert.Single(runPlan.Body.Statements));
-        var call = Assert.IsType<LoweredCallExpression>(runReturn.Expression);
-        var report = new EmissionSession(session, builder, emitExecutableSkeletons: true).Emit();
+        var call = Assert.IsType<FunctionCallExpression>(GetSingleReturnExpression(modulePlan, "run"));
+        var callTarget = Assert.IsType<NameExpression>(call.Target);
+        var callBinding = TypedFunctionBuilder.Build(modulePlan, runPlan).GetName(callTarget);
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
         var moduleResult = Assert.Single(report.Modules);
         var helper = Assert.Single(moduleResult.Functions, function => function.Name == "helper");
         var run = Assert.Single(moduleResult.Functions, function => function.Name == "run");
@@ -3161,10 +3248,10 @@ public sealed class CompilerBackendPlanTests
         var runtimeModule = CreateRuntimeModule(root);
         var ctx = new ScriptContext(domain) { Module = runtimeModule };
 
-        Assert.False(call.DirectFunction.IsValid);
+        Assert.False(callBinding.DirectFunction.IsValid);
         Assert.Equal(FunctionCallConvention.Span, helperPlan.CallConvention);
-        Assert.True(helper.HasExecutableSkeleton);
-        Assert.True(run.HasExecutableSkeleton);
+        Assert.True(helper.HasExecutableCode);
+        Assert.True(run.HasExecutableCode);
         Assert.True(moduleResult.HasExecutableInitializer);
 
         var initialize = (ModuleInitializerDelegate)moduleResult.Initializer.CreateDelegate(typeof(ModuleInitializerDelegate));
@@ -3374,10 +3461,11 @@ public sealed class CompilerBackendPlanTests
 
     private delegate void ModuleInitializerDelegate(ScriptContext ctx, Span<ScriptDatum> args);
 
-    private static LoweredExpression GetSingleReturnExpression(ModulePlan modulePlan, string functionName)
+    private static Expression GetSingleReturnExpression(ModulePlan modulePlan, string functionName)
     {
         var function = Assert.Single(modulePlan.Functions, candidate => candidate.Name == functionName);
-        var statement = Assert.IsType<LoweredReturnStatement>(Assert.Single(function.Body.Statements));
+        var body = Assert.IsType<BlockStatement>(function.Declaration.Body);
+        var statement = Assert.Single(body.Statements.OfType<ReturnStatement>());
         return statement.Expression;
     }
 
@@ -3507,24 +3595,24 @@ public sealed class CompilerBackendPlanTests
         }
     }
 
-    private static void CollectLoweredNames(LoweredExpression expression, List<LoweredNameExpression> names)
+    private static void CollectNames(Expression expression, List<NameExpression> names)
     {
         switch (expression)
         {
             case null:
                 return;
-            case LoweredNameExpression name:
+            case NameExpression name:
                 names.Add(name);
                 return;
-            case LoweredBinaryExpression binary:
-                CollectLoweredNames(binary.Left, names);
-                CollectLoweredNames(binary.Right, names);
+            case BinaryExpression binary:
+                CollectNames(binary.Left, names);
+                CollectNames(binary.Right, names);
                 return;
-            case LoweredCallExpression call:
-                CollectLoweredNames(call.Target, names);
-                for (var i = 0; i < call.Arguments.Length; i++)
+            case FunctionCallExpression call:
+                CollectNames(call.Target, names);
+                for (var i = 0; i < call.Arguments.Count; i++)
                 {
-                    CollectLoweredNames(call.Arguments[i], names);
+                    CollectNames(call.Arguments[i], names);
                 }
                 return;
         }

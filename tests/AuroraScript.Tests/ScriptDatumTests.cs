@@ -4,12 +4,51 @@ using AuroraScript.Runtime.Types;
 using AuroraScript.Tests.Infrastructure;
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Xunit;
 
 namespace AuroraScript.Tests;
 
 public sealed class ScriptDatumTests
 {
+    [Fact]
+    public void CompactRepresentationIsSixteenBytesAndDefaultIsNull()
+    {
+        Assert.Equal(16, Unsafe.SizeOf<ScriptDatum>());
+        Assert.Equal(ValueKind.Null, default(ScriptDatum).Kind);
+    }
+
+    [Fact]
+    public void MutableCompatibilityPropertiesKeepObjectInitializerSourceCompatible()
+    {
+        var number = new ScriptDatum { Kind = ValueKind.Number, Number = 42 };
+        var arrayObject = new ScriptArray();
+        var array = new ScriptDatum { Kind = ValueKind.Array, Object = arrayObject };
+        var text = new ScriptDatum { Kind = ValueKind.String, String = StringValue.Of("Aurora") };
+
+        Assert.Equal(42, number.Number);
+        Assert.Equal(ValueKind.Array, array.Kind);
+        Assert.Same(arrayObject, array.Object);
+        Assert.Equal("Aurora", text.String.Value);
+    }
+
+    [Fact]
+    public void CompactNumberEncodingPreservesReservedBitPatterns()
+    {
+        var positiveZero = ScriptDatum.FromNumber(0d);
+        var negativeZero = ScriptDatum.FromNumber(BitConverter.UInt64BitsToDouble(0x8000_0000_0000_0000UL));
+        var firstSubnormal = ScriptDatum.FromNumber(BitConverter.UInt64BitsToDouble(1));
+        var secondSubnormal = ScriptDatum.FromNumber(BitConverter.UInt64BitsToDouble(2));
+        var nan = ScriptDatum.FromNumber(BitConverter.UInt64BitsToDouble(0x7ff8_1234_5678_9abcUL));
+
+        Assert.Equal(ValueKind.Number, positiveZero.Kind);
+        Assert.Equal(0UL, BitConverter.DoubleToUInt64Bits(positiveZero.Number));
+        Assert.Equal(0x8000_0000_0000_0000UL, BitConverter.DoubleToUInt64Bits(negativeZero.Number));
+        Assert.Equal(1UL, BitConverter.DoubleToUInt64Bits(firstSubnormal.Number));
+        Assert.Equal(2UL, BitConverter.DoubleToUInt64Bits(secondSubnormal.Number));
+        Assert.True(double.IsNaN(nan.Number));
+    }
+
     [Fact]
     public void FactoryMethodsPreserveKindAndPayload()
     {

@@ -62,22 +62,5 @@ namespace AuroraScript.Compiler.Backend.Builders
             return null;
         }
 
-        public sealed override void SetLocalSymInfo(LocalBuilder local, string name)
-        {
-            //local.SetLocalSymInfo(ConfuseTypeName(IsDebugMode ? name : String.Empty, ConfuseTarget.Local));
-        }
-
-        public sealed override void MarkSequencePoint(AstNode node, ILGenerator il)
-        {
-        }
-
-        public sealed override void MarkSequencePoint(SourceSpan range, ILGenerator il)
-        {
-        }
-
-        public sealed override (MethodInfo Method, ILGenerator IL) DefineDynamicMethod(ModuleDeclaration module)
-        {
-            throw new NotImplementedException();
-        }
     }
 }

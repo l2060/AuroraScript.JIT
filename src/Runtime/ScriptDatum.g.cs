@@ -206,7 +206,7 @@ namespace AuroraScript.Runtime
 
                 case ValueKind.String:
                     return double.TryParse(
-                        d.String.Value,
+                        d.StringText,
                         NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint,
                         CultureInfo.InvariantCulture,
                         out value
@@ -235,7 +235,7 @@ namespace AuroraScript.Runtime
 
                 case ValueKind.String:
                     return long.TryParse(
-                        d.String.Value,
+                        d.StringText,
                         NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint,
                         CultureInfo.InvariantCulture,
                         out value

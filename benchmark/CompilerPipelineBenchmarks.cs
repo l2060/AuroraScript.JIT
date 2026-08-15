@@ -133,7 +133,7 @@ namespace AuroraBenchmark
             var builder = new DynamicBuilder(benchmarkOptions);
             var backend = new BackendCompiler(builder, benchmarkOptions);
             var compileSession = backend.CreateModulePlans(parsedLargeModules);
-            new BackendBuildEmitter(new EmissionSession(compileSession, builder, emitExecutableSkeletons: true)).Emit();
+            new BackendBuildEmitter(new EmissionSession(compileSession, builder, emitExecutableCode: true)).Emit();
         }
 
         [BenchmarkCategory("compile")]

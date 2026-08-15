@@ -4,7 +4,6 @@ using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Compiler.Backend.Analysis;
 using AuroraScript.Compiler.Backend.Binding;
 using AuroraScript.Compiler.Backend.Builders;
-using AuroraScript.Compiler.Backend.Lowering;
 using AuroraScript.Compiler.Backend.Plans;
 using AuroraScript.Compiler.GlobalDeclarations;
 using AuroraScript.Tokens;
@@ -78,7 +77,6 @@ namespace AuroraScript.Compiler.Backend
             FunctionBinder.BindFunctionBodies(session, modulePlan, functionMaps[0]);
             ClosurePlanner.PlanModule(modulePlan);
             ValidateConstAssignments(session, [modulePlan], cancellationToken);
-            FunctionLowerer.LowerModule(modulePlan, functionMaps[0]);
 
             blockPlan.Session = session;
             blockPlan.Module = modulePlan;
@@ -203,7 +201,7 @@ namespace AuroraScript.Compiler.Backend
             FunctionBinder.FunctionPlanRegistry[] functionMaps,
             CancellationToken cancellationToken)
         {
-            if (!session.Capabilities.CanAnalyzeModulesInParallel || plans.Length <= 1)
+            if (plans.Length <= 1)
             {
                 for (var i = 0; i < plans.Length; i++)
                 {
@@ -211,7 +209,6 @@ namespace AuroraScript.Compiler.Backend
                     ModuleUsageAnalyzer.Apply(session, plans[i]);
                     FunctionBinder.BindFunctionBodies(session, plans[i], functionMaps[i]);
                     ClosurePlanner.PlanModule(plans[i]);
-                    FunctionLowerer.LowerModule(plans[i], functionMaps[i]);
                 }
                 return;
             }
@@ -225,7 +222,6 @@ namespace AuroraScript.Compiler.Backend
                 ModuleUsageAnalyzer.Apply(session, plans[i]);
                 FunctionBinder.BindFunctionBodies(session, plans[i], functionMaps[i]);
                 ClosurePlanner.PlanModule(plans[i]);
-                FunctionLowerer.LowerModule(plans[i], functionMaps[i]);
             });
         }
 

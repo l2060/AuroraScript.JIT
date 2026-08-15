@@ -36,7 +36,8 @@ namespace AuroraScript.Runtime.Types
         /// <summary> Prototype object. </summary>
         public ScriptObject Prototype => prototype;
 
-        internal PropertyDescriptor[] propertyValues = Array.Empty<PropertyDescriptor>();
+        internal ScriptDatum[] propertyValues = Array.Empty<ScriptDatum>();
+        private PropertyAccessor[] propertyAccessors;
 
         internal HiddenClass hiddenClass = HiddenClass.Root;
 
@@ -80,7 +81,7 @@ namespace AuroraScript.Runtime.Types
             this.prototype = prototype;
         }
 
-        internal ScriptObject(HiddenClass hiddenClass, PropertyDescriptor[] propertyValues)
+        internal ScriptObject(HiddenClass hiddenClass, ScriptDatum[] propertyValues)
         {
             prototype = Prototypes.ObjectPrototype;
             this.hiddenClass = hiddenClass;
@@ -296,8 +297,8 @@ namespace AuroraScript.Runtime.Types
         {
             if (hiddenClass.TryGet(key, out var meta))
             {
-                property = propertyValues[meta.Slot];
-                return property.IsDefined;
+                property = GetOwnProperty(meta.Slot);
+                return true;
             }
             if (prototype != null)
             {
@@ -305,6 +306,27 @@ namespace AuroraScript.Runtime.Types
             }
             property = default;
             return false;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private PropertyDescriptor GetOwnProperty(ushort slot)
+        {
+            var accessor = propertyAccessors != null && slot < propertyAccessors.Length
+                ? propertyAccessors[slot]
+                : null;
+            return new PropertyDescriptor(propertyValues[slot], accessor);
+        }
+
+        internal bool TryGetOwnProperty(ushort slot, out PropertyDescriptor property)
+        {
+            if (slot >= propertyValues.Length)
+            {
+                property = default;
+                return false;
+            }
+
+            property = GetOwnProperty(slot);
+            return true;
         }
 
         /// <summary>
@@ -381,15 +403,7 @@ namespace AuroraScript.Runtime.Types
 
             if (meta.Slot >= propertyValues.Length) Resize();
 
-            // Optimization: If the property existed and we're just updating the value, reuse the descriptor
-            if (alreadyExists && propertyValues[meta.Slot].IsDefined)
-            {
-                propertyValues[meta.Slot].Datum = value;
-            }
-            else
-            {
-                propertyValues[meta.Slot] = new PropertyDescriptor(null, null, value);
-            }
+            propertyValues[meta.Slot] = value;
         }
 
 
@@ -400,8 +414,12 @@ namespace AuroraScript.Runtime.Types
 
         private void Resize()
         {
-            var cap = Math.Max(propertyValues.Length, 2) * 2;
+            var cap = propertyValues.Length == 0 ? 2 : propertyValues.Length * 2;
             Array.Resize(ref this.propertyValues, cap);
+            if (propertyAccessors != null)
+            {
+                Array.Resize(ref propertyAccessors, cap);
+            }
         }
 
 
@@ -417,7 +435,10 @@ namespace AuroraScript.Runtime.Types
                 }
 
                 var value = property.Datum;
-                var valueObject = value.Object;
+                // Inspect only the stored managed payload here. Calling the public
+                // Object compatibility view would materialize a StringValue wrapper
+                // every time a CLR string property is read.
+                var valueObject = value.Reference as ScriptObject;
                 if (valueObject is BondingGetter getter)
                 {
                     ScriptDatum datum = default;
@@ -472,6 +493,10 @@ namespace AuroraScript.Runtime.Types
                 if (!meta.Writable) ThrowHelper.ThrowDisableWritable();
                 hiddenClass = hiddenClass.RemoveProperty(key);
                 propertyValues[meta.Slot] = default;
+                if (propertyAccessors != null && meta.Slot < propertyAccessors.Length)
+                {
+                    propertyAccessors[meta.Slot] = null;
+                }
                 return true;
             }
             if (prototype != null)
@@ -488,7 +513,8 @@ namespace AuroraScript.Runtime.Types
         {
             if (Immutable || IsFrozen) return;
             hiddenClass = HiddenClass.Root;
-            propertyValues = Array.Empty<PropertyDescriptor>();
+            propertyValues = Array.Empty<ScriptDatum>();
+            propertyAccessors = null;
         }
 
         /// <summary>
@@ -612,24 +638,21 @@ namespace AuroraScript.Runtime.Types
                     continue;
                 }
                 var property = propertyValues[meta.Slot];
+                var descriptor = GetOwnProperty(meta.Slot);
                 if (target.hiddenClass.TryGet(key, out var targetMeta))
                 {
                     if (targetMeta.Writable || force)
                     {
-                        // We use InternalDefine to handle the value and basic flags, 
-                        // but we also need to copy the getter/setter if they exist.
-                        target.InternalDefine(key, property.Datum, meta.Writable, meta.Enumerable, force);
-                        target.propertyValues[targetMeta.Slot].Getter = property.Getter;
-                        target.propertyValues[targetMeta.Slot].Setter = property.Setter;
+                        target.InternalDefine(key, property, meta.Writable, meta.Enumerable, force);
+                        target.SetPropertyAccessors(targetMeta.Slot, descriptor.Getter, descriptor.Setter);
                     }
                 }
                 else
                 {
-                    target.InternalDefine(key, property.Datum, meta.Writable, meta.Enumerable, force);
+                    target.InternalDefine(key, property, meta.Writable, meta.Enumerable, force);
                     if (target.hiddenClass.TryGet(key, out targetMeta))
                     {
-                        target.propertyValues[targetMeta.Slot].Getter = property.Getter;
-                        target.propertyValues[targetMeta.Slot].Setter = property.Setter;
+                        target.SetPropertyAccessors(targetMeta.Slot, descriptor.Getter, descriptor.Setter);
                     }
                 }
             }
@@ -672,25 +695,47 @@ namespace AuroraScript.Runtime.Types
 
             // Optimization: Share the HiddenClass and pre-allocate the value array
             target.hiddenClass = this.hiddenClass;
-            target.propertyValues = new PropertyDescriptor[this.propertyValues.Length];
+            target.propertyValues = new ScriptDatum[this.propertyValues.Length];
+            if (propertyAccessors != null)
+            {
+                target.propertyAccessors = new PropertyAccessor[propertyAccessors.Length];
+            }
 
             foreach (var item in hiddenClass.Properties)
             {
                 var meta = item.Meta;
-                var property = propertyValues[meta.Slot];
-
-                if (!property.IsDefined) continue;
-
-                // Recursively clone the value
-                var newValue = ScriptDatum.Null;
-                if (property.IsDefined)
-                {
-                    newValue = ScriptDatum.Clone(property.Datum, true);
-                }
-
-                target.propertyValues[meta.Slot] = new PropertyDescriptor(property.Getter, property.Setter, newValue);
+                var property = GetOwnProperty(meta.Slot);
+                target.propertyValues[meta.Slot] = ScriptDatum.Clone(property.Datum, true);
+                target.SetPropertyAccessors(meta.Slot, property.Getter, property.Setter);
             }
             return target;
+        }
+
+        private void SetPropertyAccessors(ushort slot, ClosureFunction getter, ClosureFunction setter)
+        {
+            if (getter == null && setter == null)
+            {
+                if (propertyAccessors != null && slot < propertyAccessors.Length)
+                {
+                    propertyAccessors[slot] = null;
+                }
+                return;
+            }
+
+            if (propertyAccessors == null)
+            {
+                propertyAccessors = new PropertyAccessor[propertyValues.Length];
+            }
+            else if (slot >= propertyAccessors.Length)
+            {
+                Array.Resize(ref propertyAccessors, propertyValues.Length);
+            }
+
+            propertyAccessors[slot] = new PropertyAccessor
+            {
+                Getter = getter,
+                Setter = setter
+            };
         }
 
     }

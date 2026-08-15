@@ -72,8 +72,8 @@ namespace AuroraScript.Runtime.Types
             {
                 IteratorKind.ScriptArray => _array._items[_index],
                 IteratorKind.DatumArray => _datumItems[_index],
-                IteratorKind.String => ScriptDatum.FromString(StringValue.FromChar(_stringValue[_index])),
-                _ => throw new NotImplementedException(),
+                IteratorKind.String => ScriptDatum.FromString(StringValue.TextFromChar(_stringValue[_index])),
+                _ => throw new InvalidOperationException("Unknown iterator kind."),
             };
         }
 

@@ -34,7 +34,7 @@ namespace AuroraScript.Runtime.Types
         {
             if (value.Kind == ValueKind.String)
             {
-                var result = _regex.Match(value.String.Value);
+                var result = _regex.Match(value.StringText);
                 return result.Success;
             }
             return false;

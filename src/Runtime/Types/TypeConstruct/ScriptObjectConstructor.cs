@@ -86,7 +86,7 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
                         ScriptDatum.WriteAsBoolean(ref result, var1.Number == var2.Number);
                         return;
                     case ValueKind.String:
-                        ScriptDatum.WriteAsBoolean(ref result, var1.String.Value == var2.String.Value);
+                        ScriptDatum.WriteAsBoolean(ref result, var1.StringText == var2.StringText);
                         return;
                     case ValueKind.Date:
                         ScriptDatum.WriteAsBoolean(ref result, ScriptDatum.TryGetDate(in var1, out var date1) && ScriptDatum.TryGetDate(in var2, out var date2) && date1.DateTime.Equals(date2.DateTime));
@@ -98,7 +98,7 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
             }
         }
 
-        /// <summary> Native implementation for value equality (==) comparison. (TODO) </summary>
+        /// <summary> Native implementation for value equality (==) comparison. </summary>
         internal static void VALUE_EQUAL(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             ScriptDatum var1 = default;
@@ -116,7 +116,7 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
         {
             if (left.Kind != right.Kind)
             {
-                return CILHelper.Equal(left, right).Boolean;
+                return ValueOps.EqualBoolean(left, right);
             }
 
             switch (left.Kind)
@@ -128,7 +128,7 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
                 case ValueKind.Number:
                     return left.Number == right.Number;
                 case ValueKind.String:
-                    return left.String.Value == right.String.Value;
+                    return left.StringText == right.StringText;
                 default:
                     return ShallowEqualObjects(left.Object, right.Object);
             }
@@ -177,7 +177,7 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
                     return false;
                 }
 
-                if (!CILHelper.Equal(left.GetPropertyDatum(null, leftKeys[i]), right.GetPropertyDatum(null, rightKeys[i])).Boolean)
+                if (!ValueOps.EqualBoolean(left.GetPropertyDatum(null, leftKeys[i]), right.GetPropertyDatum(null, rightKeys[i])))
                 {
                     return false;
                 }
@@ -186,7 +186,7 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
             return true;
         }
 
-        /// <summary> Native implementation for deep equality comparison. (TODO) </summary>
+        /// <summary> Native implementation for deep equality comparison. </summary>
         internal static void DEEP_EQUAL(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             ScriptDatum var1 = default;
@@ -204,7 +204,7 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
         {
             if (left.Kind != right.Kind)
             {
-                return CILHelper.Equal(left, right).Boolean;
+                return ValueOps.EqualBoolean(left, right);
             }
 
             switch (left.Kind)
@@ -216,7 +216,7 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
                 case ValueKind.Number:
                     return left.Number == right.Number;
                 case ValueKind.String:
-                    return left.String.Value == right.String.Value;
+                    return left.StringText == right.StringText;
                 default:
                     return DeepEqualObjects(left.Object, right.Object, seen);
             }
@@ -338,12 +338,6 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
         /// <summary> Native implementation for creating an object that extends another prototype. </summary>
         internal static void EXTENDS(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
-            if (args.TryGetObject(0, out var prototype))
-            {
-                //if (!args.TryGetObject(1, out var target)) target = new ScriptObject(prototype);
-                //target._prototype = prototype;
-                //ScriptDatum.WriteAsObject(ref result, target);
-            }
         }
     }
 }
