@@ -151,7 +151,8 @@ namespace AuroraScript.Compiler.Backend.Binding
                 !function.UsesArgumentsObject &&
                 function.UpvalueSlots.Length == 0 &&
                 function.CapturedLocalSlots.Length == 0 &&
-                GetParameterCount(function) <= 7;
+                (GetParameterCount(function) <= 7 ||
+                    function.DirectCallDirective == DirectCallDirective.PreserveClosure);
         }
 
         private static bool RequiresClosureObject(FunctionPlan function)

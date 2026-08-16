@@ -684,6 +684,12 @@ namespace AuroraScript.Runtime.Types
                         array.CopyProperties(newArray, true);
                         return newArray;
                     }
+                case ScriptPackedArray packedArray:
+                    {
+                        var clone = packedArray.ClonePackedArray();
+                        packedArray.CopyProperties(clone, true);
+                        return clone;
+                    }
                 default:
                     return DeepCloneObject();
             }

@@ -25,6 +25,11 @@ namespace AuroraScript.Runtime.Interop
         public static bool TryConvertArgument(ScriptObject scriptValue, Type targetType, out object result)
         {
             result = null;
+            if (scriptValue != null && targetType.IsInstanceOfType(scriptValue))
+            {
+                result = scriptValue;
+                return true;
+            }
             if (targetType == typeof(ScriptObject) || targetType == typeof(ScriptObject[]))
             {
                 result = scriptValue;
@@ -86,6 +91,12 @@ namespace AuroraScript.Runtime.Interop
                 {
                     return true;
                 }
+            }
+
+            if (scriptValue is ScriptPackedArray packedArray &&
+                TryConvertPackedArray(packedArray, targetType, out result))
+            {
+                return true;
             }
 
             if (targetType.IsAssignableFrom(typeof(ScriptObject)))
@@ -446,6 +457,28 @@ namespace AuroraScript.Runtime.Interop
         /// <summary>
         /// Attempts to convert a <see cref="ScriptArray"/> to a .NET collection type (Array, List, etc.).
         /// </summary>
+        private static bool TryConvertPackedArray(
+            ScriptPackedArray array,
+            Type targetType,
+            out object result)
+        {
+            object storage = array switch
+            {
+                ScriptInt32Array int32 => int32._items,
+                ScriptInt8Array int8 => int8._items,
+                ScriptBooleanArray boolean => boolean._items,
+                _ => null
+            };
+            if (storage != null && targetType.IsInstanceOfType(storage))
+            {
+                result = storage;
+                return true;
+            }
+
+            result = null;
+            return false;
+        }
+
         private static bool TryConvertScriptArray(ScriptArray scriptArray, Type targetType, out object result)
         {
             if (targetType == typeof(ScriptArray) || typeof(ScriptArray).IsAssignableFrom(targetType))

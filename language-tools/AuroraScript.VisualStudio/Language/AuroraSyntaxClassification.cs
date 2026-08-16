@@ -114,10 +114,13 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
     {
         "Array",
         "Boolean",
+        "BooleanArray",
         "Date",
         "Error",
         "Function",
         "HashMap",
+        "Int32Array",
+        "Int8Array",
         "Number",
         "Object",
         "Path",

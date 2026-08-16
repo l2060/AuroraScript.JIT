@@ -8,7 +8,7 @@ using System.Collections.Generic;
 namespace AuroraScript.Compiler.Backend.Code
 {
     [Flags]
-    internal enum FlowValueType : byte
+    internal enum FlowValueType : ushort
     {
         None = 0,
         Null = 1 << 0,
@@ -16,7 +16,77 @@ namespace AuroraScript.Compiler.Backend.Code
         Number = 1 << 2,
         String = 1 << 3,
         Object = 1 << 4,
-        Dynamic = Null | Boolean | Number | String | Object
+        Int32Array = 1 << 5,
+        Int8Array = 1 << 6,
+        BooleanArray = 1 << 7,
+        Int32 = 1 << 8,
+        Dynamic = Null | Boolean | Number | String | Object |
+            Int32Array | Int8Array | BooleanArray
+    }
+
+    internal static class FlowValueTypeFacts
+    {
+        public static bool IsPackedArray(FlowValueType type)
+        {
+            return type is FlowValueType.Int32Array or
+                FlowValueType.Int8Array or
+                FlowValueType.BooleanArray;
+        }
+
+        public static bool IsNativeDirectParameter(FlowValueType type)
+        {
+            return IsNumeric(type) || IsPackedArray(type);
+        }
+
+        public static bool IsNumeric(FlowValueType type)
+        {
+            return type is FlowValueType.Int32 or FlowValueType.Number;
+        }
+
+        public static bool CanPassNativeArgument(
+            FlowValueType parameterType,
+            FlowValueType argumentType)
+        {
+            return parameterType == argumentType ||
+                (parameterType == FlowValueType.Number &&
+                    argumentType == FlowValueType.Int32);
+        }
+
+        public static FlowValueType Merge(FlowValueType left, FlowValueType right)
+        {
+            if (left == FlowValueType.None) return right;
+            if (right == FlowValueType.None) return left;
+            var merged = left | right;
+            // Number is the semantic widening of the internal Int32 representation.
+            // Keeping both bits would create a union that has no single native CIL
+            // representation and would unnecessarily fall back to ScriptDatum.
+            if ((merged & FlowValueType.Number) != 0)
+            {
+                merged &= ~FlowValueType.Int32;
+            }
+            return merged;
+        }
+
+        public static FlowValueType GetPackedElementType(FlowValueType type)
+        {
+            return type == FlowValueType.BooleanArray
+                ? FlowValueType.Boolean
+                : type is FlowValueType.Int32Array or FlowValueType.Int8Array
+                    ? FlowValueType.Int32
+                    : FlowValueType.Dynamic;
+        }
+
+        public static bool TryGetPackedArrayType(string name, out FlowValueType type)
+        {
+            type = name switch
+            {
+                "Int32Array" => FlowValueType.Int32Array,
+                "Int8Array" => FlowValueType.Int8Array,
+                "BooleanArray" => FlowValueType.BooleanArray,
+                _ => FlowValueType.None
+            };
+            return type != FlowValueType.None;
+        }
     }
 
     internal readonly struct BoundName
@@ -56,6 +126,11 @@ namespace AuroraScript.Compiler.Backend.Code
         public ScriptDatum Constant { get; }
         public bool HasConstant { get; }
         public bool IsLocal => Local.IsValid && !ModuleSymbol.IsValid;
+        public bool IsUnshadowedGlobal =>
+            !Local.IsValid &&
+            !Upvalue.IsValid &&
+            !ModuleSymbol.IsValid &&
+            !HasConstant;
     }
 
     internal sealed class TypedFunctionCode

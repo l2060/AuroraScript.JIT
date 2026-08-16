@@ -43,7 +43,7 @@ The project is built as `AnyCPU`. The runtime has no native dependency, so `Dyna
 - **Explicit performance annotations**: Mark hot module functions with `@directCall` so eligible call sites can use a more direct execution path.
 - **Modules and domain isolation**: Supports `@module`, `import`, and `include`. Each `ScriptDomain` has its own global object and module instances.
 - **CompileBlock**: Compile small script blocks outside the module system for formulas, filters, and high-frequency rules.
-- **Built-in standard objects**: `Object`, `Array`, `String`, `Date`, `Regex`, `HashMap`, `StringBuffer`, `Path`, `JSON`, `Math`, `console`, `Proxy`, and `HotPatch`.
+- **Built-in standard objects**: `Object`, `Array`, `Int32Array`, `Int8Array`, `BooleanArray`, `String`, `Date`, `Regex`, `HashMap`, `StringBuffer`, `Path`, `JSON`, `Math`, `console`, `Proxy`, and `HotPatch`.
 - **Broad regression coverage**: Tests cover lexing, parsing, expressions, statements, modules, compilation modes, CLR interop, JSON, hot reload, concurrency, and release regressions.
 
 ## Installation
@@ -383,7 +383,7 @@ Usage guidance:
 
 ### directCall Call Path Optimization
 
-`@directCall` optimizes the path for calling a known module function. It is not function inlining. The target remains a separate CIL method, while return values and exception-stack behavior stay observable. Calls reuse the active `ScriptContext` with a lightweight frame instead of allocating a child context; a proven numeric-only call graph can go further and call native `double` methods without materializing runtime values inside that graph.
+`@directCall` optimizes the path for calling a known module function. It is not function inlining. The target remains a separate CIL method, while return values and exception-stack behavior stay observable. Calls reuse the active `ScriptContext` with a lightweight frame instead of allocating a child context; a proven numeric-only call graph can go further and call methods with native `int`, `double`, and `bool` signatures without materializing runtime values inside that graph.
 
 A normal module function call roughly follows this path:
 
@@ -399,7 +399,7 @@ With direct call, an eligible call site takes a shorter path:
 1. At compile time, AuroraScript proves that `addOne(value)` targets a specific function in the same module and binds the call site to that function's `FunctionId` / IL method.
 2. At runtime, arguments are still evaluated in source order; fixed arguments are stored in temporary locals, missing arguments become `null`, and extra arguments are evaluated then discarded.
 3. The generic direct adapter uses a lightweight frame on the active context for stack traces and error locations; no child `ScriptContext` is allocated.
-4. The emitted IL directly `call`s the target method. When the compiler proves a numeric-only signature and body, parameters, locals, arithmetic, comparisons, and the return value remain native CIL values (`double` / `bool`) until a dynamic boundary is required.
+4. The emitted IL directly `call`s the target method. When the compiler proves a numeric-only signature and body, parameters, locals, arithmetic, comparisons, and the return value remain native CIL values (`int` / `double` / `bool`) until a dynamic boundary is required. Proven-safe 32-bit integer loops, bitwise operations, and packed-array index values use `int`; operations that require JavaScript number semantics or may overflow use `double`.
 
 Direct call mainly removes module property lookup, function-object conversion, `CallOps.Invoke*` dispatch, `ClosureFunction.Invoke*` dispatch, delegate arity switching, and many branches on the dynamic path. Generic direct calls retain a lightweight frame; proven native numeric calls inside the compiled call graph need neither dynamic dispatch nor `ScriptDatum` conversion. The win is most visible when a small numerical function is called repeatedly in a loop.
 
@@ -407,7 +407,7 @@ An eligible direct-call site must satisfy these rules:
 
 - The call must be a static same-module name call, such as `addOne(x)`. Calls like `obj.addOne(x)`, `module.addOne(x)`, `var f = addOne; f(x)`, and cross-module import calls do not use this path.
 - The call cannot use spread arguments. `addOne(...items)` falls back to the normal call path.
-- The target function currently needs no more than 7 parameters and cannot use default parameters, `$args`, closure captures, or locals captured by nested functions.
+- The lightweight generic direct adapter and automatic direct-call inference currently cover functions with no more than 7 parameters. An explicitly marked `@directCall` function may have more than 7 parameters: when the call graph proves a native-specializable signature and body, static same-module call sites invoke that native method directly; otherwise the normal closure/span path remains available. Default parameters, `$args`, closure captures, and locals captured by nested functions still prevent this native path.
 - Explicit `@directCall` preserves the function object on the module, so the function can still be exported, read, or invoked from the host. It only lets proven module-local call sites use the direct path.
 - Automatic inference only runs when `EngineOptions.WithOptimization(optimization => optimization.EnableAutoModuleDirectCall = true)` is enabled, and only for module functions that are not assigned, not read as values, and appear only as direct call targets.
 - direct call is never applied across modules, and marking a function does not force every call site to optimize. Ineligible call sites keep the normal path.
@@ -533,6 +533,9 @@ The current test suite and examples cover:
 ### Global Objects
 
 - `Array`
+- `Int32Array`
+- `Int8Array`
+- `BooleanArray`
 - `String`
 - `Boolean`
 - `Object`
@@ -608,6 +611,27 @@ Instance members:
 - `every(callback)`
 - `flat([depth])`
 - `reduce(callback)`
+
+### Int32Array / Int8Array / BooleanArray
+
+Packed arrays use contiguous CLR primitive storage for pathfinding, image data, state tables, and numeric loops:
+
+```as
+var scores = new Int32Array(1000000);
+var costs = new Int8Array(1000000);
+var visited = new BooleanArray(1000000);
+
+scores[10] = 42;
+visited[10] = true;
+scores.fill(0);
+```
+
+- Length is fixed; new instances are initialized to `0`, `0`, and `false`, respectively.
+- Numeric index reads/writes, read-only `length`, and `fill(value)` are supported. `push`, `pop`, and element deletion are not.
+- Out-of-range access throws a runtime error. `Array.isArray(value)` returns `false` for packed arrays.
+- When the compiler retains the exact packed-array type, it emits direct CLR array CIL and converts elements to `ScriptDatum` only at dynamic object, script-call, or host boundaries.
+- Inside a native direct-call graph, packed-array parameters and locals use their `int[]`, `sbyte[]`, or `bool[]` backing storage directly. Calls between native functions neither reload a wrapper field nor re-wrap the array.
+- Keep packed arrays in locals or pass them to `@directCall` hot functions for the fastest path. Reading one back from a dynamic object preserves semantics but uses the dynamic element-access boundary.
 
 ### String
 
@@ -749,7 +773,7 @@ export func run() {
 - `JSON.parse(text)`
 - `JSON.stringify(value, [indented])`
 
-JSON supports script primitives, objects, arrays, HashMap, and related script values. Circular references throw a runtime exception.
+JSON supports script primitives, objects, general and packed arrays, HashMap, and related script values. Circular references throw a runtime exception.
 
 ### Math
 

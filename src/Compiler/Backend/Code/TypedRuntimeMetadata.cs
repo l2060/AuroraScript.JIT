@@ -81,8 +81,11 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo GetElement = Method(typeof(ObjectOps), nameof(ObjectOps.GetElement), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo GetElementNumber = Method(typeof(ObjectOps), nameof(ObjectOps.GetElementNumber), typeof(ScriptDatum), typeof(double));
         public static readonly MethodInfo SetElement = Method(typeof(ObjectOps), nameof(ObjectOps.SetElement), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum));
+        public static readonly MethodInfo SetElementNumber = Method(typeof(ObjectOps), nameof(ObjectOps.SetElementNumber), typeof(ScriptDatum), typeof(double), typeof(ScriptDatum));
         public static readonly MethodInfo CompoundAddElement = Method(typeof(ObjectOps), nameof(ObjectOps.CompoundAddElement), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum));
+        public static readonly MethodInfo CompoundAddElementNumber = Method(typeof(ObjectOps), nameof(ObjectOps.CompoundAddElementNumber), typeof(ScriptDatum), typeof(double), typeof(ScriptDatum));
         public static readonly MethodInfo ChangeElement = Method(typeof(ObjectOps), nameof(ObjectOps.ChangeElement), typeof(ScriptDatum), typeof(ScriptDatum), typeof(double), typeof(bool));
+        public static readonly MethodInfo ChangeElementNumber = Method(typeof(ObjectOps), nameof(ObjectOps.ChangeElementNumber), typeof(ScriptDatum), typeof(double), typeof(double), typeof(bool));
         public static readonly MethodInfo ChangeDatumProperty = Method(typeof(ObjectOps), nameof(ObjectOps.ChangeProperty), typeof(ScriptDatum), typeof(ScriptContext), typeof(string), typeof(double), typeof(bool));
         public static readonly MethodInfo ChangeObjectProperty = Method(typeof(ObjectOps), nameof(ObjectOps.ChangeProperty), typeof(ScriptObject), typeof(ScriptContext), typeof(string), typeof(double), typeof(bool));
         public static readonly MethodInfo CreateObject3 = Method(typeof(ObjectOps), nameof(ObjectOps.CreateObject3), typeof(string), typeof(ScriptDatum), typeof(string), typeof(ScriptDatum), typeof(string), typeof(ScriptDatum));
@@ -146,6 +149,14 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly ConstructorInfo ScriptModuleConstructor = Constructor(typeof(ScriptModule), typeof(string), typeof(string), typeof(string));
         public static readonly MethodInfo ScriptObjectClearProperties = InstanceMethod(typeof(ScriptObject), nameof(ScriptObject.ClearProperties));
 
+        public static readonly MethodInfo ValidatePackedArrayLength = Method(typeof(ScriptPackedArray), nameof(ScriptPackedArray.ValidateLength), typeof(double));
+        public static readonly ConstructorInfo ScriptInt32ArrayConstructor = Constructor(typeof(ScriptInt32Array), typeof(int));
+        public static readonly ConstructorInfo ScriptInt8ArrayConstructor = Constructor(typeof(ScriptInt8Array), typeof(int));
+        public static readonly ConstructorInfo ScriptBooleanArrayConstructor = Constructor(typeof(ScriptBooleanArray), typeof(int));
+        public static readonly FieldInfo ScriptInt32ArrayItems = Field(typeof(ScriptInt32Array), "_items");
+        public static readonly FieldInfo ScriptInt8ArrayItems = Field(typeof(ScriptInt8Array), "_items");
+        public static readonly FieldInfo ScriptBooleanArrayItems = Field(typeof(ScriptBooleanArray), "_items");
+
         public static readonly MethodInfo EnterDirectFrame = Method(typeof(CallFrameOps), nameof(CallFrameOps.EnterDirect), typeof(ScriptContext), typeof(string));
         public static readonly MethodInfo EnterModuleFrame = Method(typeof(CallFrameOps), nameof(CallFrameOps.EnterModule), typeof(ScriptContext), typeof(ScriptModule));
         public static readonly MethodInfo LeaveFrame = Method(typeof(CallFrameOps), nameof(CallFrameOps.Leave), typeof(ScriptContext), typeof(int));
@@ -177,6 +188,12 @@ namespace AuroraScript.Compiler.Backend.Code
         {
             return type.GetConstructor(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, parameterTypes, null)
                 ?? throw new MissingMethodException(type.FullName, ".ctor");
+        }
+
+        private static FieldInfo Field(Type type, string name)
+        {
+            return type.GetField(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static)
+                ?? throw new MissingFieldException(type.FullName, name);
         }
 
         private static MethodInfo[] CallMethods(bool property)

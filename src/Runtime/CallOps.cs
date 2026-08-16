@@ -182,6 +182,15 @@ namespace AuroraScript.Runtime
                 for (var i = 0; i < array.Length; i++) arguments[count++] = array.GetElement(i);
                 return arguments;
             }
+            if (value.Reference is ScriptPackedArray packedArray)
+            {
+                arguments = EnsureCapacity(arguments, count + packedArray.Length, count);
+                for (var i = 0; i < packedArray.Length; i++)
+                {
+                    arguments[count++] = packedArray.GetElementDatumUnchecked(i);
+                }
+                return arguments;
+            }
             return AppendArgument(arguments, ref count, value);
         }
 

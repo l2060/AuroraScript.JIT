@@ -76,6 +76,126 @@ export func arrayLiteralIndex(iterations = 1000) {
     return sum;
 }
 
+export func arrayFixedIndex(iterations = 1000) {
+    var values = new Array(iterations);
+    for (var i = 0; i < iterations; i++) {
+        values[i] = i;
+    }
+    var sum = 0;
+    for (var j = 0; j < iterations; j++) {
+        sum = sum + values[j];
+    }
+    return sum;
+}
+
+export func int32ArrayIndex(iterations = 1000) {
+    var values = new Int32Array(iterations);
+    for (var i = 0; i < iterations; i++) {
+        values[i] = i;
+    }
+    var sum = 0;
+    for (var j = 0; j < iterations; j++) {
+        sum = sum + values[j];
+    }
+    return sum;
+}
+
+export func int32ArrayObjectBoundary(iterations = 1000) {
+    var holder = { values: new Int32Array(iterations) };
+    var values = holder.values;
+    for (var i = 0; i < iterations; i++) {
+        values[i] = i;
+    }
+    var sum = 0;
+    for (var j = 0; j < iterations; j++) {
+        sum = sum + values[j];
+    }
+    return sum;
+}
+
+export func int8AndBooleanArrayIndex(iterations = 1000) {
+    var values = new Int8Array(iterations);
+    var flags = new BooleanArray(iterations);
+    for (var i = 0; i < iterations; i++) {
+        values[i] = i;
+        flags[i] = (i % 2) == 0;
+    }
+    var sum = 0;
+    for (var j = 0; j < iterations; j++) {
+        if (flags[j]) sum = sum + values[j];
+    }
+    return sum;
+}
+
+@directCall
+func int32PrngCore(iterations, seed) {
+    var state = seed;
+    var checksum = 0;
+    for (var i = 0; i < iterations; i++) {
+        state = state ^ (state << 13);
+        state = state ^ (state >> 17);
+        state = state ^ (state << 5);
+        checksum = checksum ^ state;
+    }
+    return checksum;
+}
+
+export func int32PrngKernel(iterations = 1000) {
+    return int32PrngCore(iterations | 0, 123456789);
+}
+
+@directCall
+func packedChecksumCore(iterations) {
+    var values = new Int32Array(iterations);
+    var state = 246353424;
+    for (var i = 0; i < iterations; i++) {
+        state = state ^ (state << 13);
+        state = state ^ (state >> 17);
+        state = state ^ (state << 5);
+        values[i] = state;
+    }
+
+    var checksum = 0;
+    for (var j = 0; j < iterations; j++) {
+        checksum = checksum ^ values[j];
+    }
+    return checksum;
+}
+
+export func packedChecksumKernel(iterations = 1000) {
+    return packedChecksumCore(iterations | 0);
+}
+
+@directCall
+func integerHeapKernelCore(iterations) {
+    var heap = new Int32Array(iterations);
+    var scores = new Int32Array(iterations);
+    var checksum = 0;
+
+    for (var node = 0; node < iterations; node++) {
+        var score = node ^ (node << 13);
+        score = score ^ (score >> 17);
+        score = score ^ (score << 5);
+        scores[node] = score;
+
+        var pos = node;
+        while (pos > 0) {
+            var parent = (pos - 1) >> 1;
+            var parentNode = heap[parent];
+            if (scores[parentNode] <= score) break;
+            heap[pos] = parentNode;
+            pos = parent;
+        }
+        heap[pos] = node;
+        checksum = checksum ^ heap[0];
+    }
+    return checksum;
+}
+
+export func integerHeapKernel(iterations = 1000) {
+    return integerHeapKernelCore(iterations | 0);
+}
+
 export func hashMapSetGet(iterations = 1000) {
     var map = new HashMap(iterations);
     for (var i = 0; i < iterations; i++) {

@@ -24,6 +24,10 @@ namespace AuroraScript.Runtime
                 {
                     return ScriptDatum.FromNumber(array.Length);
                 }
+                if (receiver.Reference is ScriptPackedArray packedArray)
+                {
+                    return ScriptDatum.FromNumber(packedArray.Length);
+                }
             }
 
             return ScriptDatum.ToObject(receiver).GetPropertyDatum(context, name);
@@ -51,6 +55,12 @@ namespace AuroraScript.Runtime
                 return value;
             }
 
+            if (receiver.Reference is ScriptPackedArray packedArray &&
+                ScriptDatum.TryToInteger(in index, out numericIndex))
+            {
+                return packedArray.GetElementDatum((int)numericIndex);
+            }
+
             var instance = ScriptDatum.ToObject(receiver);
             if (instance is ScriptArray fallbackArray && ScriptDatum.TryToInteger(in index, out numericIndex))
             {
@@ -70,6 +80,10 @@ namespace AuroraScript.Runtime
                 array.GetElement((int)index, ref value);
                 return value;
             }
+            if (receiver.Reference is ScriptPackedArray packedArray)
+            {
+                return packedArray.GetElementDatum((int)index);
+            }
             return GetElement(receiver, ScriptDatum.FromNumber(index));
         }
 
@@ -81,11 +95,32 @@ namespace AuroraScript.Runtime
             {
                 array.SetElement((int)numericIndex, in value);
             }
+            else if (instance is ScriptPackedArray packedArray &&
+                ScriptDatum.TryToInteger(in index, out numericIndex))
+            {
+                packedArray.SetElementDatum((int)numericIndex, value);
+            }
             else
             {
                 instance.SetPropertyDatum(null, ScriptDatum.ToString(index), value);
             }
             return value;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum SetElementNumber(ScriptDatum receiver, double index, ScriptDatum value)
+        {
+            if (receiver.Kind == ValueKind.Array && receiver.Object is ScriptArray array)
+            {
+                array.SetElement((int)index, in value);
+                return value;
+            }
+            if (receiver.Reference is ScriptPackedArray packedArray)
+            {
+                packedArray.SetElementDatum((int)index, value);
+                return value;
+            }
+            return SetElement(receiver, ScriptDatum.FromNumber(index), value);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -100,6 +135,17 @@ namespace AuroraScript.Runtime
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum CompoundAddElementNumber(
+            ScriptDatum receiver,
+            double index,
+            ScriptDatum value)
+        {
+            var result = ValueOps.Add(GetElementNumber(receiver, index), value);
+            SetElementNumber(receiver, index, result);
+            return result;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum ChangeElement(
             ScriptDatum receiver,
             ScriptDatum index,
@@ -109,6 +155,19 @@ namespace AuroraScript.Runtime
             var previous = GetElement(receiver, index);
             var current = ValueOps.ChangeByOne(previous, delta);
             SetElement(receiver, index, current);
+            return postfix ? previous : current;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum ChangeElementNumber(
+            ScriptDatum receiver,
+            double index,
+            double delta,
+            bool postfix)
+        {
+            var previous = GetElementNumber(receiver, index);
+            var current = ValueOps.ChangeByOne(previous, delta);
+            SetElementNumber(receiver, index, current);
             return postfix ? previous : current;
         }
 
@@ -162,6 +221,14 @@ namespace AuroraScript.Runtime
                 for (var i = 0; i < array.Length; i++) target.Push(array.GetElement(i));
                 return;
             }
+            if (source.Reference is ScriptPackedArray packedArray)
+            {
+                for (var i = 0; i < packedArray.Length; i++)
+                {
+                    target.Push(packedArray.GetElementDatumUnchecked(i));
+                }
+                return;
+            }
             target.Push(source);
         }
 
@@ -208,6 +275,8 @@ namespace AuroraScript.Runtime
         {
             var instance = ScriptDatum.ToObject(receiver);
             if (instance is ScriptArray array && int.TryParse(name, out var index)) array.Remove(index);
+            else if (instance is ScriptPackedArray && int.TryParse(name, out _))
+                ScriptPackedArray.ThrowDeleteNotSupported();
             else instance.DeletePropertyValue(context, name);
         }
 
@@ -219,6 +288,10 @@ namespace AuroraScript.Runtime
             {
                 array.Remove((int)numericIndex);
             }
+            else if (instance is ScriptPackedArray && ScriptDatum.TryToInteger(in index, out _))
+            {
+                ScriptPackedArray.ThrowDeleteNotSupported();
+            }
             else
             {
                 instance.DeletePropertyValue(context, ScriptDatum.ToString(index));
@@ -228,19 +301,41 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum GetDestructureElement(ScriptDatum source, int index, int trailingCount)
         {
-            var array = ScriptDatum.ToObject(source) as ScriptArray
-                ?? throw new AuroraRuntimeException("Array destructuring requires an array.");
-            return array.GetElement(trailingCount > 0 ? array.Length - trailingCount : index);
+            var instance = ScriptDatum.ToObject(source);
+            if (instance is ScriptArray array)
+            {
+                return array.GetElement(trailingCount > 0 ? array.Length - trailingCount : index);
+            }
+            if (instance is ScriptPackedArray packedArray)
+            {
+                return packedArray.GetElementDatum(
+                    trailingCount > 0 ? packedArray.Length - trailingCount : index);
+            }
+            throw new AuroraRuntimeException("Array destructuring requires an array.");
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum SliceDestructureArray(ScriptDatum source, int start, int trailingCount)
         {
-            var array = ScriptDatum.ToObject(source) as ScriptArray
-                ?? throw new AuroraRuntimeException("Array destructuring requires an array.");
-            var result = default(ScriptDatum);
-            array.SliceTo(start, array.Length - trailingCount, ref result);
-            return result;
+            var instance = ScriptDatum.ToObject(source);
+            if (instance is ScriptArray array)
+            {
+                var result = default(ScriptDatum);
+                array.SliceTo(start, array.Length - trailingCount, ref result);
+                return result;
+            }
+            if (instance is ScriptPackedArray packedArray)
+            {
+                var end = packedArray.Length - trailingCount;
+                var length = Math.Max(0, end - start);
+                var result = ScriptArray.CreateWithCapacity(length);
+                for (var i = start; i < end; i++)
+                {
+                    result.Push(packedArray.GetElementDatum(i));
+                }
+                return ScriptDatum.FromArray(result);
+            }
+            throw new AuroraRuntimeException("Array destructuring requires an array.");
         }
     }
 }

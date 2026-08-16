@@ -314,6 +314,9 @@ namespace AuroraScript.Runtime.Serialization
                 case ScriptArray array:
                     WriteArray(writer, array, context);
                     break;
+                case ScriptPackedArray packedArray:
+                    WritePackedArray(writer, packedArray, context);
+                    break;
                 case ScriptDate date:
                     WriteDate(writer, date, context);
                     break;
@@ -471,6 +474,27 @@ namespace AuroraScript.Runtime.Serialization
             writer.WriteEndArray();
 
             context.Visited?.Remove(array);
+        }
+
+        /// <summary>Writes a fixed-length primitive array as a JSON array.</summary>
+        protected virtual void WritePackedArray(
+            Utf8JsonWriter writer,
+            ScriptPackedArray array,
+            in ScriptSerializationContext context)
+        {
+            if (array == null)
+            {
+                writer.WriteNullValue();
+                return;
+            }
+
+            writer.WriteStartArray();
+            for (var i = 0; i < array.Length; i++)
+            {
+                var value = array.GetElementDatumUnchecked(i);
+                WriteDatum(writer, in value, context);
+            }
+            writer.WriteEndArray();
         }
 
         /// <summary> Writes a closure function to the JSON stream, including its name. </summary>

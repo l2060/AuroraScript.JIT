@@ -57,16 +57,17 @@ namespace AuroraScript.Compiler.Backend.Code
 
             var converged = false;
             var passLimit = Math.Min(64, Math.Max(6, module.Functions.Count + 2));
+            var evidence = new Dictionary<FunctionId, ParameterEvidence>();
             for (var pass = 0; pass < passLimit; pass++)
             {
-                var evidence = CollectParameterEvidence(module, functions, generic, direct);
+                CollectParameterEvidence(module, functions, generic, direct, evidence);
                 var nextReturns = new Dictionary<FunctionId, FlowValueType>(returns.Count);
                 var changed = false;
 
                 for (var i = 0; i < module.Functions.Count; i++)
                 {
                     var function = module.Functions[i];
-                    var parameterTypes = NormalizeParameterTypes(function, generic[function.Id.Value], evidence);
+                    var parameterTypes = NormalizeParameterTypes(function, evidence);
                     var oldParameterTypes = directParameters[function.Id.Value];
                     directParameters[function.Id.Value] = parameterTypes;
                     var code = TypedFunctionBuilder.Build(
@@ -75,6 +76,18 @@ namespace AuroraScript.Compiler.Backend.Code
                         parameterTypes,
                         returns,
                         directParameters);
+                    var validatedParameterTypes = ValidateParameterTypes(function, code, parameterTypes);
+                    if (!SameTypes(parameterTypes, validatedParameterTypes))
+                    {
+                        parameterTypes = validatedParameterTypes;
+                        directParameters[function.Id.Value] = parameterTypes;
+                        code = TypedFunctionBuilder.Build(
+                            module,
+                            function,
+                            parameterTypes,
+                            returns,
+                            directParameters);
+                    }
                     direct[function.Id.Value] = code;
                     nextReturns[function.Id] = code.ReturnType;
                     if (!returns.TryGetValue(function.Id, out var oldReturn) || oldReturn != code.ReturnType)
@@ -168,13 +181,13 @@ namespace AuroraScript.Compiler.Backend.Code
                 : null;
         }
 
-        private static Dictionary<FunctionId, FlowValueType[]> CollectParameterEvidence(
+        private static void CollectParameterEvidence(
             ModulePlan module,
             IReadOnlyDictionary<FunctionId, FunctionPlan> functions,
             TypedFunctionCode[] generic,
-            TypedFunctionCode[] direct)
+            TypedFunctionCode[] direct,
+            Dictionary<FunctionId, ParameterEvidence> evidence)
         {
-            var evidence = new Dictionary<FunctionId, FlowValueType[]>();
             for (var i = 0; i < module.Functions.Count; i++)
             {
                 var function = module.Functions[i];
@@ -183,13 +196,11 @@ namespace AuroraScript.Compiler.Backend.Code
                 var collector = new DirectCallCollector(code, functions, evidence);
                 collector.Visit(function.Declaration.Body);
             }
-            return evidence;
         }
 
         private static FlowValueType[] NormalizeParameterTypes(
             FunctionPlan function,
-            TypedFunctionCode genericCode,
-            IReadOnlyDictionary<FunctionId, FlowValueType[]> evidence)
+            IReadOnlyDictionary<FunctionId, ParameterEvidence> evidence)
         {
             var parameterCount = 0;
             for (var i = 0; i < function.LocalSlots.Length; i++)
@@ -204,29 +215,54 @@ namespace AuroraScript.Compiler.Backend.Code
             for (var i = 0; i < function.LocalSlots.Length; i++)
             {
                 if (!function.LocalSlots[i].IsParameter) continue;
-                var type = observed != null && parameterIndex < observed.Length
-                    ? observed[parameterIndex]
+                var type = observed != null && parameterIndex < observed.Types.Length
+                    ? observed.Types[parameterIndex]
                     : FlowValueType.None;
-                result[parameterIndex] = type == FlowValueType.Number &&
-                    genericCode != null &&
-                    !genericCode.WrittenLocals[i]
-                        ? FlowValueType.Number
-                        : FlowValueType.Dynamic;
+                result[parameterIndex] = FlowValueTypeFacts.IsNativeDirectParameter(type)
+                    ? type
+                    : FlowValueType.Dynamic;
                 parameterIndex++;
             }
             return result;
+        }
+
+        private static FlowValueType[] ValidateParameterTypes(
+            FunctionPlan function,
+            TypedFunctionCode code,
+            FlowValueType[] parameterTypes)
+        {
+            if (parameterTypes == null || parameterTypes.Length == 0 || code == null)
+            {
+                return parameterTypes ?? Array.Empty<FlowValueType>();
+            }
+
+            FlowValueType[] result = null;
+            var parameterIndex = 0;
+            for (var i = 0; i < function.LocalSlots.Length; i++)
+            {
+                if (!function.LocalSlots[i].IsParameter) continue;
+                var parameterType = parameterTypes[parameterIndex];
+                if (FlowValueTypeFacts.IsNativeDirectParameter(parameterType) &&
+                    code.LocalTypes[i] != parameterType)
+                {
+                    result ??= (FlowValueType[])parameterTypes.Clone();
+                    result[parameterIndex] = FlowValueType.Dynamic;
+                }
+                parameterIndex++;
+            }
+            return result ?? parameterTypes;
         }
 
         private sealed class DirectCallCollector
         {
             private readonly TypedFunctionCode _code;
             private readonly IReadOnlyDictionary<FunctionId, FunctionPlan> _functions;
-            private readonly Dictionary<FunctionId, FlowValueType[]> _evidence;
+            private readonly Dictionary<FunctionId, ParameterEvidence> _evidence;
 
             public DirectCallCollector(
                 TypedFunctionCode code,
                 IReadOnlyDictionary<FunctionId, FunctionPlan> functions,
-                Dictionary<FunctionId, FlowValueType[]> evidence)
+                Dictionary<FunctionId, ParameterEvidence> evidence)
             {
                 _code = code;
                 _functions = functions;
@@ -253,29 +289,48 @@ namespace AuroraScript.Compiler.Backend.Code
 
             private void AddEvidence(FunctionCallExpression call, FunctionPlan target)
             {
-                if (!_evidence.TryGetValue(target.Id, out var types))
+                if (!_evidence.TryGetValue(target.Id, out var evidence))
                 {
-                    types = new FlowValueType[target.Declaration.Parameters.Count];
-                    _evidence[target.Id] = types;
+                    evidence = new ParameterEvidence(target.Declaration.Parameters.Count);
+                    _evidence[target.Id] = evidence;
                 }
-                for (var i = 0; i < types.Length; i++)
+                for (var i = 0; i < evidence.Types.Length; i++)
                 {
                     var argumentType = i < call.Arguments.Count
                         ? _code.GetExpressionType(call.Arguments[i])
                         : FlowValueType.Null;
-                    // A native numeric method is a specialization, not the function's
-                    // only entry point. Keep exact numeric evidence even when another
-                    // call site is dynamic or passes a different kind: compatible calls
-                    // use the double ABI and all other calls retain the generic adapter.
-                    // This also lets numeric evidence enter a recursive call graph instead
-                    // of being widened away by the graph's initial dynamic pass.
-                    if (argumentType == FlowValueType.Number)
+                    // Native parameters are optional specializations; incompatible
+                    // call sites continue through the generic adapter. Exact evidence
+                    // is therefore allowed to replace an earlier dynamic graph pass.
+                    // Two different exact native kinds, however, disable specialization
+                    // deterministically instead of depending on visitation order.
+                    if (FlowValueTypeFacts.IsNativeDirectParameter(argumentType))
                     {
-                        types[i] = FlowValueType.Number;
+                        if (evidence.NativeConflict[i]) continue;
+                        var current = evidence.Types[i];
+                        if (FlowValueTypeFacts.IsNativeDirectParameter(current) &&
+                            current != argumentType)
+                        {
+                            if (FlowValueTypeFacts.IsNumeric(current) &&
+                                FlowValueTypeFacts.IsNumeric(argumentType))
+                            {
+                                evidence.Types[i] = FlowValueType.Number;
+                            }
+                            else
+                            {
+                                evidence.NativeConflict[i] = true;
+                                evidence.Types[i] = FlowValueType.Dynamic;
+                            }
+                        }
+                        else
+                        {
+                            evidence.Types[i] = argumentType;
+                        }
                     }
-                    else if (types[i] != FlowValueType.Number)
+                    else if (!FlowValueTypeFacts.IsNativeDirectParameter(evidence.Types[i]) &&
+                        !evidence.NativeConflict[i])
                     {
-                        types[i] |= argumentType;
+                        evidence.Types[i] |= argumentType;
                     }
                 }
             }
@@ -294,6 +349,18 @@ namespace AuroraScript.Compiler.Backend.Code
                     _owner.Visit(node);
                 }
             }
+        }
+
+        private sealed class ParameterEvidence
+        {
+            public ParameterEvidence(int count)
+            {
+                Types = new FlowValueType[count];
+                NativeConflict = new bool[count];
+            }
+
+            public FlowValueType[] Types { get; }
+            public bool[] NativeConflict { get; }
         }
     }
 }

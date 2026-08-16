@@ -292,6 +292,8 @@ namespace AuroraScript.Runtime
                     return origin;
                 case ScriptArray array:
                     return ScriptDatum.FromArray(new ScriptArray(array));
+                case ScriptPackedArray packedArray:
+                    return ScriptDatum.FromObject(packedArray.ClonePackedArray());
                 default:
                     var newObject = new ScriptObject();
                     origin.Object.CopyProperties(newObject);

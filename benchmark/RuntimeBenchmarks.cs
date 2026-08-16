@@ -115,6 +115,55 @@ namespace AuroraBenchmark
             return Execute("arrayLiteralIndex");
         }
 
+        [BenchmarkCategory("array")]
+        [Benchmark]
+        public ScriptDatum ArrayFixedIndex()
+        {
+            return Execute("arrayFixedIndex");
+        }
+
+        [BenchmarkCategory("array")]
+        [Benchmark]
+        public ScriptDatum Int32ArrayIndex()
+        {
+            return Execute("int32ArrayIndex");
+        }
+
+        [BenchmarkCategory("array")]
+        [Benchmark]
+        public ScriptDatum Int32ArrayObjectBoundary()
+        {
+            return Execute("int32ArrayObjectBoundary");
+        }
+
+        [BenchmarkCategory("array")]
+        [Benchmark]
+        public ScriptDatum Int8AndBooleanArrayIndex()
+        {
+            return Execute("int8AndBooleanArrayIndex");
+        }
+
+        [BenchmarkCategory("integer")]
+        [Benchmark]
+        public ScriptDatum Int32PrngKernel()
+        {
+            return Execute("int32PrngKernel");
+        }
+
+        [BenchmarkCategory("integer")]
+        [Benchmark]
+        public ScriptDatum PackedChecksumKernel()
+        {
+            return Execute("packedChecksumKernel");
+        }
+
+        [BenchmarkCategory("integer")]
+        [Benchmark]
+        public ScriptDatum IntegerHeapKernel()
+        {
+            return Execute("integerHeapKernel");
+        }
+
         [BenchmarkCategory("hashmap")]
         [Benchmark]
         public ScriptDatum HashMapSetGet()

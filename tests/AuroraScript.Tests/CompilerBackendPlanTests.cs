@@ -586,6 +586,41 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
+    public void FunctionAnnotationKeepsHighArityNativeSpecializationEligible()
+    {
+        var root = Path.GetTempPath();
+        var module = Parse(
+            """
+            @module(TEST);
+            @directCall
+            func mix(a, b, c, d, e, f, g, h) {
+                a = a ^ b;
+                return a ^ c ^ d ^ e ^ f ^ g ^ h;
+            }
+            export func run() { return mix(1, 2, 3, 4, 5, 6, 7, 8); }
+            """,
+            root);
+        var options = EngineOptions.Default
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
+            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
+            .WithRuntime(runtime => runtime.HotReload = false)
+            .WithOptimization(optimization => optimization.AutoModuleDirectCall = false);
+        var backend = new BackendCompiler(new DynamicBuilder(options), options);
+
+        var session = backend.CreateModulePlans([module]);
+        var modulePlan = Assert.Single(session.Modules);
+        var mix = Assert.Single(modulePlan.Functions, function => function.Name == "mix");
+        var run = Assert.Single(modulePlan.Functions, function => function.Name == "run");
+        var call = Assert.IsType<FunctionCallExpression>(GetSingleReturnExpression(modulePlan, "run"));
+        var target = Assert.IsType<NameExpression>(call.Target);
+        var binding = TypedFunctionBuilder.Build(modulePlan, run).GetName(target);
+
+        Assert.True(mix.IsDirectCallCandidate);
+        Assert.True(mix.RequiresClosureObject);
+        Assert.True(binding.DirectFunction.Equals(mix.Id));
+    }
+
+    [Fact]
     public void FunctionAnnotationDirectCallWorksWhenHotReloadIsEnabled()
     {
         var root = Path.GetTempPath();

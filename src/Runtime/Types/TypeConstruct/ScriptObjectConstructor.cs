@@ -161,6 +161,13 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
                 return false;
             }
 
+            if (left is ScriptPackedArray leftPacked &&
+                right is ScriptPackedArray rightPacked &&
+                leftPacked.Length != rightPacked.Length)
+            {
+                return false;
+            }
+
             var leftKeys = left.EnumerationKeys();
             var rightKeys = right.EnumerationKeys();
             if (leftKeys.Count != rightKeys.Count)
@@ -265,6 +272,12 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
                 }
             }
 
+            if (left is ScriptPackedArray leftPacked && right is ScriptPackedArray rightPacked &&
+                !PackedArrayElementsEqual(leftPacked, rightPacked))
+            {
+                return false;
+            }
+
             var leftKeys = left.EnumerationKeys();
             var rightKeys = right.EnumerationKeys();
             if (leftKeys.Count != rightKeys.Count)
@@ -288,6 +301,22 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
             }
 
             return true;
+        }
+
+        private static bool PackedArrayElementsEqual(
+            ScriptPackedArray left,
+            ScriptPackedArray right)
+        {
+            return (left, right) switch
+            {
+                (ScriptInt32Array first, ScriptInt32Array second) =>
+                    first._items.AsSpan().SequenceEqual(second._items),
+                (ScriptInt8Array first, ScriptInt8Array second) =>
+                    first._items.AsSpan().SequenceEqual(second._items),
+                (ScriptBooleanArray first, ScriptBooleanArray second) =>
+                    first._items.AsSpan().SequenceEqual(second._items),
+                _ => false
+            };
         }
 
         /// <summary> Native implementation for Object.assign(). Copies properties from source objects to a target object. </summary>

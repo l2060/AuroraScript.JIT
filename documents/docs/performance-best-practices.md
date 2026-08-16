@@ -61,6 +61,10 @@ func helper(value) {
 
 Use `@directCall(false)` to disable the directive for a function.
 
+When the compiler proves a native call graph, integer and numeric parameters, locals, arithmetic, comparisons, and returns stay as CIL `int`, `double`, and `bool` values. Conversion to `ScriptDatum` happens only at a dynamic boundary. The generic direct adapter and automatic inference currently cover up to seven parameters; an explicit `@directCall` may exceed that limit when its call graph can be specialized, with the ordinary closure/span path retained as the semantic fallback.
+
+Keep hot helper arguments type-stable. Reassigning a parameter is fine when every assignment preserves its proven native type; assigning unrelated dynamic values forces that parameter back to the dynamic path.
+
 ## Loops And Closures
 
 Avoid creating closures in hot loops unless each closure is required.
@@ -89,6 +93,33 @@ for (var i = 0; i < itemCount; i++) {
     process(items[i]);
 }
 ```
+
+## Packed Primitive Arrays
+
+Use `Int32Array`, `Int8Array`, or `BooleanArray` for fixed-size homogeneous data instead of a general `Array`:
+
+```as
+var distances = new Int32Array(nodeCount);
+var terrain = new Int8Array(nodeCount);
+var closed = new BooleanArray(nodeCount);
+
+for (var i = 0; i < nodeCount; i++) {
+    distances[i] = i;
+    closed[i] = false;
+}
+```
+
+These arrays have primitive CLR backing storage and rely on CLR zero initialization. When the exact array type remains visible to flow analysis, generated code uses native `ldelem`/`stelem` instructions and keeps numeric values unboxed through the loop.
+
+Within a specialized direct-call graph, packed-array parameters and locals are passed as raw `int[]`, `sbyte[]`, or `bool[]` storage. Native helper-to-helper calls therefore do not reload wrapper fields or allocate replacement wrappers.
+
+Keep the array in an exact local or pass it directly to an `@directCall` helper. Storing it in an ordinary object and reading it back erases the compile-time element type; access remains allocation-free apart from the array itself, but it uses the dynamic helper path and is measurably slower. This explicit boundary keeps the runtime small and predictable without speculative object-shape optimization.
+
+## Integer Kernels
+
+Use signed bitwise operations and `Int32Array`/`Int8Array` values when the algorithm is naturally 32-bit. The compiler keeps proven-safe integer literals, packed-array loads, signed bitwise results, and standard bounded loop induction variables as native CIL `int` values. It widens to `double` whenever JavaScript number semantics require it, including possible arithmetic overflow, division, unsigned right shift, negative zero, `NaN`, and infinity.
+
+This means an integer-oriented loop can avoid repeated `double` conversions without changing observable numeric behavior. Do not add manual casts solely for performance; keep values type-stable and let the flow analysis widen at the first operation that needs number semantics.
 
 ## Console
 

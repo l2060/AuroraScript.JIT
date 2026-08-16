@@ -43,7 +43,7 @@ NuGet 包名：`AuroraScript.JIT`
 - **显式性能注解**：支持 `@directCall` 标记模块内热点函数，让可优化的调用点走更直接的执行路径。
 - **模块与作用域隔离**：支持 `@module`、`import`、`include`，每个 `ScriptDomain` 拥有独立 global 和模块实例。
 - **CompileBlock**：可编译不进入模块系统的小段脚本，适合公式、过滤器、规则判断等高频小逻辑。
-- **内置标准对象**：包含 `Object`、`Array`、`String`、`Date`、`Regex`、`HashMap`、`StringBuffer`、`Path`、`JSON`、`Math`、`console`、`Proxy`、`HotPatch`。
+- **内置标准对象**：包含 `Object`、`Array`、`Int32Array`、`Int8Array`、`BooleanArray`、`String`、`Date`、`Regex`、`HashMap`、`StringBuffer`、`Path`、`JSON`、`Math`、`console`、`Proxy`、`HotPatch`。
 - **测试覆盖广**：测试覆盖词法、语法、表达式、语句、模块、编译模式、CLR 互操作、JSON、热重载、并发和回归场景。
 
 ## 安装
@@ -383,7 +383,7 @@ func normalCall(value) {
 
 ### directCall 的调用路径优化
 
-`@directCall` 优化的是“调用一个已知模块函数”的路径，不是函数内联。目标仍是独立的 CIL 方法，异常堆栈和返回值语义保持不变。调用会在当前 `ScriptContext` 上使用轻量帧，不再分配子上下文；若整个调用图被证明为纯数值路径，还会直接调用原生 `double` 方法，图内不物化运行时值。
+`@directCall` 优化的是“调用一个已知模块函数”的路径，不是函数内联。目标仍是独立的 CIL 方法，异常堆栈和返回值语义保持不变。调用会在当前 `ScriptContext` 上使用轻量帧，不再分配子上下文；若整个调用图被证明为纯数值路径，还会直接调用使用原生 `int`、`double` 和 `bool` 签名的方法，图内不物化运行时值。
 
 普通的模块函数调用大致会走下面的路径：
 
@@ -399,7 +399,7 @@ func normalCall(value) {
 1. 编译期确认 `addOne(value)` 的目标就是同一模块里的某个函数，并把调用点绑定到该函数的 `FunctionId` / IL method。
 2. 调用时仍按源码顺序计算参数；固定参数会放进临时 local，缺失参数补 `null`，多余参数会被求值后丢弃。
 3. 通用 direct adapter 只在当前上下文上使用轻量帧，用于调用栈和异常定位，不分配子 `ScriptContext`。
-4. 发射的 IL 直接 `call` 目标方法；若编译器证明函数签名和函数体是纯数值路径，参数、local、算术、比较和返回值都保持为原生 CIL 值（`double` / `bool`），直到确实需要动态边界。
+4. 发射的 IL 直接 `call` 目标方法；若编译器证明函数签名和函数体是纯数值路径，参数、local、算术、比较和返回值都保持为原生 CIL 值（`int` / `double` / `bool`），直到确实需要动态边界。可证明安全的 32 位整数循环、位运算和专业数组下标值使用 `int`；需要 JavaScript number 语义或可能溢出时使用 `double`。
 
 因此 direct call 主要省掉了：模块属性读取、函数对象转换、`CallOps.Invoke*` 分发、`ClosureFunction.Invoke*` 分发、delegate arity switch，以及动态路径上的许多分支。通用 direct call 保留轻量帧；编译调用图内部已证明安全的原生数值调用既不经过动态分发，也不转换 `ScriptDatum`。在循环里反复调用小型数值函数时收益最明显。
 
@@ -407,7 +407,7 @@ func normalCall(value) {
 
 - 调用形式必须是同模块内的静态名字调用，例如 `addOne(x)`；`obj.addOne(x)`、`module.addOne(x)`、`var f = addOne; f(x)`、跨模块 import 调用都不会走这条路径。
 - 调用参数不能使用 spread，例如 `addOne(...items)` 会回退到普通调用。
-- 目标函数当前要求参数个数不超过 7 个，且不能使用默认参数、`$args`、闭包捕获或被内部子函数捕获的局部变量。
+- 轻量通用 direct adapter 和自动 direct-call 推断当前覆盖不超过 7 个参数的函数。显式标记的 `@directCall` 函数可以超过 7 个参数；当调用图能证明其参数和函数体可原生专业化时，同模块静态调用点会直接调用原生方法，否则保留普通 closure/span 调用回退。默认参数、`$args`、闭包捕获或被内部子函数捕获的局部变量仍会阻止这条原生路径。
 - 显式 `@directCall` 会保留模块上的函数对象，因此函数仍可被导出、读取或由宿主调用；它只是让模块内可证明的调用点使用直接路径。
 - 自动推断只在 `EngineOptions.WithOptimization(optimization => optimization.EnableAutoModuleDirectCall = true)` 开启后生效，并且只会优化没有被赋值、没有被当作值读取、只作为直接调用目标出现的模块内函数。
 - direct call 不会跨模块优化，也不会因为一个函数被标记就强制所有调用点都优化；不符合条件的调用点仍走普通路径。
@@ -533,6 +533,9 @@ export const TEMPLATE = STR + BASE + '_' + TAG; // 'this is string10_10_1'
 ### 全局对象
 
 - `Array`
+- `Int32Array`
+- `Int8Array`
+- `BooleanArray`
 - `String`
 - `Boolean`
 - `Object`
@@ -608,6 +611,27 @@ export const TEMPLATE = STR + BASE + '_' + TAG; // 'this is string10_10_1'
 - `every(callback)`
 - `flat([depth])`
 - `reduce(callback)`
+
+### Int32Array / Int8Array / BooleanArray
+
+专业数组使用 CLR 原生连续存储，适合寻路、图像、状态表和数值循环：
+
+```as
+var scores = new Int32Array(1000000);
+var costs = new Int8Array(1000000);
+var visited = new BooleanArray(1000000);
+
+scores[10] = 42;
+visited[10] = true;
+scores.fill(0);
+```
+
+- 长度固定，创建后分别以 `0`、`0`、`false` 初始化。
+- 支持数值下标读写、只读 `length` 和 `fill(value)`；不支持 `push`、`pop` 或删除元素。
+- 越界访问会抛出运行时异常；`Array.isArray(value)` 对专业数组返回 `false`。
+- 编译器能确认具体数组类型时，下标访问直接发射 CLR 数组 CIL，数值仅在进入动态对象、脚本调用或宿主边界时转换为 `ScriptDatum`。
+- 在原生 direct 调用图内，专业数组参数和 local 直接使用 `int[]`、`sbyte[]`、`bool[]` backing storage；原生函数之间传递数组不会重复读取 wrapper 字段或重新包装数组。
+- 为保持最快路径，应让专业数组保存在局部变量中，或作为 `@directCall` 热点函数的参数传递；从动态对象属性重新读取后仍保持正确语义，但会经过动态访问边界。
 
 ### String
 
@@ -749,7 +773,7 @@ export func run() {
 - `JSON.parse(text)`
 - `JSON.stringify(value, [indented])`
 
-JSON 支持脚本基础值、对象、数组、HashMap 等类型；循环引用会抛出运行时异常。
+JSON 支持脚本基础值、对象、普通数组、专业数组和 HashMap 等类型；循环引用会抛出运行时异常。
 
 ### Math
 
