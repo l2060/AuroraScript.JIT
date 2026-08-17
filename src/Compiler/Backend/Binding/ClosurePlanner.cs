@@ -86,13 +86,17 @@ namespace AuroraScript.Compiler.Backend.Binding
                 var function = modulePlan.Functions[i];
                 function.UpvalueSlots = builders.Upvalues[i]?.ToArray() ?? Array.Empty<UpvalueSlot>();
                 function.CapturedLocalSlots = builders.CapturedLocals[i]?.ToArray() ?? Array.Empty<UpvalueSlot>();
-                if (function.IsDirectCallCandidate && !CanUseModuleDirectCall(function))
+                if (function.IsDirectCallCandidate && !CanBindModuleDirectCall(function))
                 {
                     function.IsDirectCallCandidate = false;
                     if (function.IsModuleFunction && function.Visibility == FunctionVisibility.InternalOnly)
                     {
                         function.Visibility = FunctionVisibility.ModuleVisible;
                     }
+                }
+                else
+                {
+                    PreserveWideCallFallback(function);
                 }
 
                 function.RequiresClosureObject = RequiresClosureObject(function);
@@ -107,13 +111,17 @@ namespace AuroraScript.Compiler.Backend.Binding
         {
             function.UpvalueSlots = Array.Empty<UpvalueSlot>();
             function.CapturedLocalSlots = Array.Empty<UpvalueSlot>();
-            if (function.IsDirectCallCandidate && !CanUseModuleDirectCall(function))
+            if (function.IsDirectCallCandidate && !CanBindModuleDirectCall(function))
             {
                 function.IsDirectCallCandidate = false;
                 if (function.IsModuleFunction && function.Visibility == FunctionVisibility.InternalOnly)
                 {
                     function.Visibility = FunctionVisibility.ModuleVisible;
                 }
+            }
+            else
+            {
+                PreserveWideCallFallback(function);
             }
 
             function.RequiresClosureObject = RequiresClosureObject(function);
@@ -144,15 +152,31 @@ namespace AuroraScript.Compiler.Backend.Binding
             }
         }
 
-        private static bool CanUseModuleDirectCall(FunctionPlan function)
+        private static bool CanBindModuleDirectCall(FunctionPlan function)
         {
             return function.IsModuleFunction &&
                 !function.HasDefaultParameters &&
                 !function.UsesArgumentsObject &&
                 function.UpvalueSlots.Length == 0 &&
-                function.CapturedLocalSlots.Length == 0 &&
-                (GetParameterCount(function) <= 7 ||
-                    function.DirectCallDirective == DirectCallDirective.PreserveClosure);
+                function.CapturedLocalSlots.Length == 0;
+        }
+
+        private static void PreserveWideCallFallback(FunctionPlan function)
+        {
+            if (!function.IsDirectCallCandidate ||
+                GetParameterCount(function) <= 7 ||
+                function.DirectCallDirective == DirectCallDirective.PreserveClosure)
+            {
+                return;
+            }
+
+            // A wide call has no fixed-arity generic direct adapter. Keep the ordinary
+            // module closure so emission can fall back safely if the body cannot use a
+            // fully native signature; proven numeric kernels still call $native directly.
+            if (function.IsModuleFunction && function.Visibility == FunctionVisibility.InternalOnly)
+            {
+                function.Visibility = FunctionVisibility.ModuleVisible;
+            }
         }
 
         private static bool RequiresClosureObject(FunctionPlan function)

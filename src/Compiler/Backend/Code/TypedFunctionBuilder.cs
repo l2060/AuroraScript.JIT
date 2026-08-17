@@ -397,7 +397,7 @@ namespace AuroraScript.Compiler.Backend.Code
                         _locals[i] = parameterTypes != null &&
                             parameterIndex < parameterTypes.Length &&
                             parameterTypes[parameterIndex] != FlowValueType.None
-                                ? parameterTypes[parameterIndex]
+                                ? FlowValueTypeFacts.GetDirectLocalType(parameterTypes[parameterIndex])
                                 : FlowValueType.Dynamic;
                         parameterIndex++;
                     }

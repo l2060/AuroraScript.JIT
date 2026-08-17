@@ -2,8 +2,59 @@
 
 import helper from "helper";
 
+@directCall(false)
 func localAdd(a, b, c) {
     return a + b + c;
+}
+
+@directCall
+func localAddNative(a, b, c) {
+    return a + b + c;
+}
+
+@directCall
+func localMaybeDirect(value, returnValue) {
+    if (returnValue) return value;
+    return null;
+}
+
+@directCall
+func localInt32Mix(value, input, salt) {
+    value = value ^ input;
+    value = value ^ salt;
+    value = value ^ (value << 13);
+    return value ^ (value >> 17);
+}
+
+func localAutoMix12(a, b, c, d, e, f, g, h, i, j, k, l) {
+    return a ^ b ^ c ^ d ^ e ^ f ^ g ^ h ^ i ^ j ^ k ^ l;
+}
+
+func md5F(x, y, z) {
+    return (x & y) | ((~x) & z);
+}
+
+func md5RotateLeft(value, shift) {
+    return (value << shift) | (value >>> (32 - shift));
+}
+
+func md5AddUnsigned(left, right) {
+    var left4 = left & 0x40000000;
+    var right4 = right & 0x40000000;
+    var left8 = left & 0x80000000;
+    var right8 = right & 0x80000000;
+    var result = (left & 0x3fffffff) + (right & 0x3fffffff);
+    if (left4 & right4) return result ^ 0x80000000 ^ left8 ^ right8;
+    if (left4 | right4) {
+        if (result & 0x40000000) return result ^ 0xc0000000 ^ left8 ^ right8;
+        return result ^ 0x40000000 ^ left8 ^ right8;
+    }
+    return result ^ left8 ^ right8;
+}
+
+func md5Round(a, b, c, d, x, shift, constant) {
+    a = md5AddUnsigned(a, md5AddUnsigned(md5AddUnsigned(md5F(b, c, d), x), constant));
+    return md5AddUnsigned(md5RotateLeft(a, shift), b);
 }
 
 export func emptyCall() {
@@ -74,6 +125,54 @@ export func arrayLiteralIndex(iterations = 1000) {
         sum = sum + values[0] + values[3];
     }
     return sum;
+}
+
+export func genericDirectCallLoop(iterations = 1000) {
+    var last = 0;
+    for (var i = 0; i < iterations; i++) {
+        last = localMaybeDirect(i, true);
+    }
+    return last;
+}
+
+export func nativeNumberCallLoop(iterations = 1000) {
+    var sum = 0;
+    for (var i = 0; i < iterations; i++) {
+        sum = sum + localAddNative(i, 1, 2);
+    }
+    return sum;
+}
+
+export func nativeInt32CallLoop(iterations = 1000) {
+    var value = 0;
+    for (var i = 0; i < iterations; i++) {
+        value = localInt32Mix(value, i, 0x9e3779b9);
+    }
+    return value;
+}
+
+export func autoHighArityCallLoop(iterations = 1000) {
+    var value = 0;
+    for (var i = 0; i < iterations; i++) {
+        value = localAutoMix12(value, i, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11);
+    }
+    return value;
+}
+
+export func md5RoundCallLoop(iterations = 1000) {
+    var a = 0x67452301;
+    var b = 0xefcdab89;
+    var c = 0x98badcfe;
+    var d = 0x10325476;
+    for (var i = 0; i < iterations; i++) {
+        a = md5Round(a, b, c, d, i, 7, 0xd76aa478);
+        var previous = d;
+        d = c;
+        c = b;
+        b = a;
+        a = previous;
+    }
+    return a ^ b ^ c ^ d;
 }
 
 export func arrayFixedIndex(iterations = 1000) {

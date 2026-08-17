@@ -182,7 +182,8 @@ namespace AuroraScript.Compiler.Backend.Emission
 
                 var code = _moduleCode.GetDirect(function.Id);
                 if (code == null ||
-                    !FlowValueTypeFacts.IsNativeDirectReturn(code.ReturnType) ||
+                    code.ReturnType == FlowValueType.None ||
+                    FlowValueTypeFacts.ContainsPackedArray(code.ReturnType) ||
                     !ReturnsOnAllPaths(function.Declaration.Body as Statement))
                 {
                     continue;
@@ -248,7 +249,8 @@ namespace AuroraScript.Compiler.Backend.Emission
                     {
                         FlowValueType.Int32 => typeof(int),
                         FlowValueType.Boolean => typeof(bool),
-                        _ => typeof(double)
+                        FlowValueType.Number => typeof(double),
+                        _ => typeof(ScriptDatum)
                     },
                     nativeParameters);
                 _directMethods[function.Id.Value] = new PreparedDirectMethod(
@@ -260,7 +262,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                         ? StackValueKind.Int32
                         : code.ReturnType == FlowValueType.Boolean
                             ? StackValueKind.Boolean
-                        : StackValueKind.Number);
+                        : code.ReturnType == FlowValueType.Number
+                            ? StackValueKind.Number
+                            : StackValueKind.Datum);
             }
         }
 
@@ -1749,7 +1753,15 @@ namespace AuroraScript.Compiler.Backend.Emission
             var commonCount = Math.Min(parameterCount, argumentCount);
             for (var i = 0; i < commonCount; i++)
             {
-                if (prepared.ParameterTypes[i] == FlowValueType.Int32)
+                if (prepared.ParameterTypes[i] == FlowValueType.Int32Bitwise)
+                {
+                    EmitInt32Operand(call.Arguments[i], truncateThroughInt64: true);
+                }
+                else if (prepared.ParameterTypes[i] == FlowValueType.Int32Shift)
+                {
+                    EmitInt32Operand(call.Arguments[i], truncateThroughInt64: false);
+                }
+                else if (prepared.ParameterTypes[i] == FlowValueType.Int32)
                 {
                     EmitInt32Value(call.Arguments[i]);
                 }
@@ -3758,7 +3770,10 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private static Type GetNativeParameterType(FlowValueType type)
         {
-            if (type == FlowValueType.Int32) return typeof(int);
+            if (type == FlowValueType.Int32 || FlowValueTypeFacts.IsInt32Coercion(type))
+            {
+                return typeof(int);
+            }
             if (type == FlowValueType.Number) return typeof(double);
             if (type == FlowValueType.Boolean) return typeof(bool);
             if (type == FlowValueType.Array) return typeof(ScriptArray);

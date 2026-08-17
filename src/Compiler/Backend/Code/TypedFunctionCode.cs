@@ -22,6 +22,12 @@ namespace AuroraScript.Compiler.Backend.Code
         Int32 = 1 << 8,
         Array = 1 << 9,
         Float64Array = 1 << 10,
+        // Direct-call ABI markers. They never escape into expression flow: the
+        // callee sees an Int32 local, while the caller performs the same numeric
+        // conversion that the corresponding bitwise operation used before the
+        // call was specialized.
+        Int32Bitwise = 1 << 11,
+        Int32Shift = 1 << 12,
         Dynamic = Null | Boolean | Number | String | Object |
             Int32Array | Int8Array | BooleanArray | Float64Array | Array
     }
@@ -36,15 +42,30 @@ namespace AuroraScript.Compiler.Backend.Code
                 FlowValueType.BooleanArray;
         }
 
+        public static bool ContainsPackedArray(FlowValueType type)
+        {
+            const FlowValueType packed = FlowValueType.Int32Array |
+                FlowValueType.Int8Array |
+                FlowValueType.Float64Array |
+                FlowValueType.BooleanArray;
+            return (type & packed) != 0;
+        }
+
         public static bool IsNativeDirectParameter(FlowValueType type)
         {
             return type == FlowValueType.Boolean || IsNumeric(type) ||
+                IsInt32Coercion(type) ||
                 IsPackedArray(type) || type == FlowValueType.Array;
         }
 
-        public static bool IsNativeDirectReturn(FlowValueType type)
+        public static bool IsInt32Coercion(FlowValueType type)
         {
-            return type == FlowValueType.Boolean || IsNumeric(type);
+            return type is FlowValueType.Int32Bitwise or FlowValueType.Int32Shift;
+        }
+
+        public static FlowValueType GetDirectLocalType(FlowValueType type)
+        {
+            return IsInt32Coercion(type) ? FlowValueType.Int32 : type;
         }
 
         public static bool IsNumeric(FlowValueType type)
@@ -58,7 +79,8 @@ namespace AuroraScript.Compiler.Backend.Code
         {
             return parameterType == argumentType ||
                 (parameterType == FlowValueType.Number &&
-                    argumentType == FlowValueType.Int32);
+                    argumentType == FlowValueType.Int32) ||
+                (IsInt32Coercion(parameterType) && IsNumeric(argumentType));
         }
 
         public static FlowValueType Merge(FlowValueType left, FlowValueType right)

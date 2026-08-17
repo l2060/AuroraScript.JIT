@@ -2552,7 +2552,7 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
-    public void TypedEmitterMaterializesWideModuleCallsInsteadOfInvalidDirectCall()
+    public void TypedEmitterSpecializesWideNativeCallsAndKeepsDynamicFallback()
     {
         var root = Path.GetTempPath();
         var module = Parse(
@@ -2582,8 +2582,9 @@ public sealed class CompilerBackendPlanTests
         var runtimeModule = CreateRuntimeModule(root);
         var ctx = new ScriptContext(domain) { Module = runtimeModule };
 
-        Assert.False(helperPlan.IsDirectCallCandidate);
+        Assert.True(helperPlan.IsDirectCallCandidate);
         Assert.Equal(FunctionVisibility.ModuleVisible, helperPlan.Visibility);
+        Assert.True(helperPlan.RequiresClosureObject);
         Assert.Equal(FunctionCallConvention.Span, helperPlan.CallConvention);
         Assert.True(helper.HasExecutableCode);
         Assert.True(run.HasExecutableCode);
@@ -2595,6 +2596,55 @@ public sealed class CompilerBackendPlanTests
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = runDel(ctx, Span<ScriptDatum>.Empty);
         Assert.Equal(10, result.Number);
+    }
+
+    [Fact]
+    public void TypedEmitterExecutesWideClosureFallbackWhenNativeEmissionIsNotPossible()
+    {
+        var root = Path.GetTempPath();
+        var module = Parse(
+            """
+            @module(TEST);
+            func helper(a, b, c, d, e, f, g, h, i) {
+                a.push(i);
+                return a[0];
+            }
+            export func run() { return helper([], 2, 3, 4, 5, 6, 7, 8, 9); }
+            """,
+            root);
+        var options = EngineOptions.Default
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
+            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
+            .WithRuntime(runtime => runtime.HotReload = false)
+            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+        var builder = new DynamicBuilder(options);
+        var backend = new BackendCompiler(builder, options);
+
+        var session = backend.CreateModulePlans([module]);
+        var modulePlan = Assert.Single(session.Modules);
+        var helperPlan = Assert.Single(modulePlan.Functions, function => function.Name == "helper");
+        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
+        var moduleResult = Assert.Single(report.Modules);
+        var helper = Assert.Single(moduleResult.Functions, function => function.Name == "helper");
+        var run = Assert.Single(moduleResult.Functions, function => function.Name == "run");
+        var engine = new AuroraEngine(options);
+        var domain = engine.CreateEmptyDomain(null);
+        var runtimeModule = CreateRuntimeModule(root);
+        var ctx = new ScriptContext(domain) { Module = runtimeModule };
+
+        Assert.True(helperPlan.IsDirectCallCandidate);
+        Assert.Equal(FunctionVisibility.ModuleVisible, helperPlan.Visibility);
+        Assert.True(helperPlan.RequiresClosureObject);
+        Assert.Equal(FunctionCallConvention.Span, helperPlan.CallConvention);
+        Assert.True(helper.HasExecutableCode);
+        Assert.True(run.HasExecutableCode);
+
+        var initialize = (ModuleInitializerDelegate)moduleResult.Initializer.CreateDelegate(typeof(ModuleInitializerDelegate));
+        initialize(ctx, Span<ScriptDatum>.Empty);
+
+        var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
+        var result = runDel(ctx, Span<ScriptDatum>.Empty);
+        Assert.Equal(9, result.Number);
     }
 
     [Fact]

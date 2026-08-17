@@ -43,7 +43,11 @@ namespace AuroraBenchmark
                 .WithOutput(output => output.AssemblyFile = Path.Combine(AppContext.BaseDirectory, "runtime-benchmark.dll"))
                 .WithOutput(output => output.Confused = false)
                 .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
-                .WithOptimization(optimization => optimization.Level = OptimizeOptions.Release);
+                .WithOptimization(optimization =>
+                {
+                    optimization.Level = OptimizeOptions.Release;
+                    optimization.AutoModuleDirectCall = true;
+                });
 
             engine = new AuroraEngine(options);
             engine.RegisterType<HostObject>();
@@ -71,6 +75,41 @@ namespace AuroraBenchmark
         public ScriptDatum FunctionCallLoop()
         {
             return Execute("functionCallLoop");
+        }
+
+        [BenchmarkCategory("call")]
+        [Benchmark]
+        public ScriptDatum GenericDirectCallLoop()
+        {
+            return Execute("genericDirectCallLoop");
+        }
+
+        [BenchmarkCategory("call")]
+        [Benchmark]
+        public ScriptDatum NativeNumberCallLoop()
+        {
+            return Execute("nativeNumberCallLoop");
+        }
+
+        [BenchmarkCategory("call")]
+        [Benchmark]
+        public ScriptDatum NativeInt32CallLoop()
+        {
+            return Execute("nativeInt32CallLoop");
+        }
+
+        [BenchmarkCategory("call")]
+        [Benchmark]
+        public ScriptDatum AutoHighArityCallLoop()
+        {
+            return Execute("autoHighArityCallLoop");
+        }
+
+        [BenchmarkCategory("call")]
+        [Benchmark]
+        public ScriptDatum Md5RoundCallLoop()
+        {
+            return Execute("md5RoundCallLoop");
         }
 
         [BenchmarkCategory("call")]
