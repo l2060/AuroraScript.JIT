@@ -131,6 +131,13 @@ namespace AuroraBenchmark
 
         [BenchmarkCategory("array")]
         [Benchmark]
+        public ScriptDatum Float64ArrayIndex()
+        {
+            return Execute("float64ArrayIndex");
+        }
+
+        [BenchmarkCategory("array")]
+        [Benchmark]
         public ScriptDatum Int32ArrayObjectBoundary()
         {
             return Execute("int32ArrayObjectBoundary");

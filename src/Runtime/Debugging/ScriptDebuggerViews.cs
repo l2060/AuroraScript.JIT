@@ -127,6 +127,7 @@ namespace AuroraScript.Runtime.Debugging
                 ScriptArray => "array",
                 ScriptInt32Array => "Int32Array",
                 ScriptInt8Array => "Int8Array",
+                ScriptFloat64Array => "Float64Array",
                 ScriptBooleanArray => "BooleanArray",
                 StringValue => "string",
                 NumberValue => "number",

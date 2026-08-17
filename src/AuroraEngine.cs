@@ -71,6 +71,7 @@ namespace AuroraScript
             Global.Define("Array", ArrayConstructor.INSTANCE, writeable: false, enumerable: false);
             Global.Define("Int32Array", PackedArrayConstructor.Int32, writeable: false, enumerable: false);
             Global.Define("Int8Array", PackedArrayConstructor.Int8, writeable: false, enumerable: false);
+            Global.Define("Float64Array", PackedArrayConstructor.Float64, writeable: false, enumerable: false);
             Global.Define("BooleanArray", PackedArrayConstructor.Boolean, writeable: false, enumerable: false);
             Global.Define("String", StringConstructor.INSTANCE, writeable: false, enumerable: false);
             Global.Define("Boolean", BooleanConstructor.INSTANCE, writeable: false, enumerable: false);

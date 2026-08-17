@@ -43,7 +43,7 @@ NuGet 包名：`AuroraScript.JIT`
 - **显式性能注解**：支持 `@directCall` 标记模块内热点函数，让可优化的调用点走更直接的执行路径。
 - **模块与作用域隔离**：支持 `@module`、`import`、`include`，每个 `ScriptDomain` 拥有独立 global 和模块实例。
 - **CompileBlock**：可编译不进入模块系统的小段脚本，适合公式、过滤器、规则判断等高频小逻辑。
-- **内置标准对象**：包含 `Object`、`Array`、`Int32Array`、`Int8Array`、`BooleanArray`、`String`、`Date`、`Regex`、`HashMap`、`StringBuffer`、`Path`、`JSON`、`Math`、`console`、`Proxy`、`HotPatch`。
+- **内置标准对象**：包含 `Object`、`Array`、`Int32Array`、`Float64Array`、`Int8Array`、`BooleanArray`、`String`、`Date`、`Regex`、`HashMap`、`StringBuffer`、`Path`、`JSON`、`Math`、`console`、`Proxy`、`HotPatch`。
 - **测试覆盖广**：测试覆盖词法、语法、表达式、语句、模块、编译模式、CLR 互操作、JSON、热重载、并发和回归场景。
 
 ## 安装
@@ -534,6 +534,7 @@ export const TEMPLATE = STR + BASE + '_' + TAG; // 'this is string10_10_1'
 
 - `Array`
 - `Int32Array`
+- `Float64Array`
 - `Int8Array`
 - `BooleanArray`
 - `String`
@@ -586,6 +587,8 @@ export const TEMPLATE = STR + BASE + '_' + TAG; // 'this is string10_10_1'
 
 `Array.withCapacity(capacity)` 创建 `length` 为 0 的数组并预留底层容量；不同于 `new Array(n)`，它不会创建 `n` 个空/null 槽位，适合已知追加规模的 `push` 场景。
 
+普通 `Array` 仍支持异构元素、动态属性和扩容。只要具体数组类型没有经过对象属性等动态边界，编译器会让 local 和 direct-call 参数保持为 `ScriptArray`，并为 `length`、数值下标读写和未覆写的 `push` 发射直接调用。若脚本给实例定义了自己的 `push`，调用会可靠地回退到动态语义。
+
 实例成员：
 
 - `length`
@@ -612,26 +615,29 @@ export const TEMPLATE = STR + BASE + '_' + TAG; // 'this is string10_10_1'
 - `flat([depth])`
 - `reduce(callback)`
 
-### Int32Array / Int8Array / BooleanArray
+### Int32Array / Float64Array / Int8Array / BooleanArray
 
 专业数组使用 CLR 原生连续存储，适合寻路、图像、状态表和数值循环：
 
 ```as
 var scores = new Int32Array(1000000);
+var weights = new Float64Array(1000000);
 var costs = new Int8Array(1000000);
 var visited = new BooleanArray(1000000);
 
 scores[10] = 42;
+weights[10] = 1.25;
 visited[10] = true;
 scores.fill(0);
 ```
 
-- 长度固定，创建后分别以 `0`、`0`、`false` 初始化。
+- 长度固定，创建后数值数组以 `0`、布尔数组以 `false` 初始化。
 - 支持数值下标读写、只读 `length` 和 `fill(value)`；不支持 `push`、`pop` 或删除元素。
 - 越界访问会抛出运行时异常；`Array.isArray(value)` 对专业数组返回 `false`。
 - 编译器能确认具体数组类型时，下标访问直接发射 CLR 数组 CIL，数值仅在进入动态对象、脚本调用或宿主边界时转换为 `ScriptDatum`。
-- 在原生 direct 调用图内，专业数组参数和 local 直接使用 `int[]`、`sbyte[]`、`bool[]` backing storage；原生函数之间传递数组不会重复读取 wrapper 字段或重新包装数组。
+- 在原生 direct 调用图内，专业数组参数和 local 直接使用 `int[]`、`double[]`、`sbyte[]`、`bool[]` backing storage；原生函数之间传递数组不会重复读取 wrapper 字段或重新包装数组。
 - 为保持最快路径，应让专业数组保存在局部变量中，或作为 `@directCall` 热点函数的参数传递；从动态对象属性重新读取后仍保持正确语义，但会经过动态访问边界。
+- `Int32Array` 适合确定为 32 位有符号整数的索引、距离和队列表；`Float64Array` 适合小数、`NaN`、无穷值或需要通用 number 语义的数据；`Int8Array` 适合紧凑的有符号小值；`BooleanArray` 适合标记表。
 
 ### String
 

@@ -118,6 +118,7 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
         "Date",
         "Error",
         "Function",
+        "Float64Array",
         "HashMap",
         "Int32Array",
         "Int8Array",

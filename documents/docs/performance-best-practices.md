@@ -94,12 +94,26 @@ for (var i = 0; i < itemCount; i++) {
 }
 ```
 
+## General Arrays
+
+Use a general `Array` when elements are heterogeneous or the collection must grow. Exact local arrays and direct-call parameters use a precise `ScriptArray` path for `length`, numeric index reads/writes, compound assignments, increment/decrement, and an unshadowed `push`.
+
+```as
+var values = Array.withCapacity(count);
+for (var i = 0; i < count; i++) {
+    values.push(i);
+}
+```
+
+Prefer `Array.withCapacity(count)` when the final capacity is known but the logical length must start at zero. `new Array(count)` creates `count` actual null slots and has different semantics. If an array crosses an ordinary object property or another dynamic boundary, subsequent access keeps full behavior but no longer has an exact compile-time array type.
+
 ## Packed Primitive Arrays
 
-Use `Int32Array`, `Int8Array`, or `BooleanArray` for fixed-size homogeneous data instead of a general `Array`:
+Use `Int32Array`, `Float64Array`, `Int8Array`, or `BooleanArray` for fixed-size homogeneous data instead of a general `Array`:
 
 ```as
 var distances = new Int32Array(nodeCount);
+var scores = new Float64Array(nodeCount);
 var terrain = new Int8Array(nodeCount);
 var closed = new BooleanArray(nodeCount);
 
@@ -109,11 +123,18 @@ for (var i = 0; i < nodeCount; i++) {
 }
 ```
 
-These arrays have primitive CLR backing storage and rely on CLR zero initialization. When the exact array type remains visible to flow analysis, generated code uses native `ldelem`/`stelem` instructions and keeps numeric values unboxed through the loop.
+These arrays have primitive CLR backing storage and rely on CLR zero initialization. When the exact array type remains visible to flow analysis, generated code uses native `ldelem`/`stelem` instructions and keeps numeric and boolean values unboxed through the loop.
 
-Within a specialized direct-call graph, packed-array parameters and locals are passed as raw `int[]`, `sbyte[]`, or `bool[]` storage. Native helper-to-helper calls therefore do not reload wrapper fields or allocate replacement wrappers.
+Within a specialized direct-call graph, packed-array parameters and locals are passed as raw `int[]`, `double[]`, `sbyte[]`, or `bool[]` storage. Native helper-to-helper calls therefore do not reload wrapper fields or allocate replacement wrappers.
 
 Keep the array in an exact local or pass it directly to an `@directCall` helper. Storing it in an ordinary object and reading it back erases the compile-time element type; access remains allocation-free apart from the array itself, but it uses the dynamic helper path and is measurably slower. This explicit boundary keeps the runtime small and predictable without speculative object-shape optimization.
+
+Choose the narrowest type that matches the required semantics:
+
+- `Int32Array`: signed 32-bit indexes, distances, parents, and queue tables.
+- `Float64Array`: fractional values, `NaN`, infinities, and general script-number data.
+- `Int8Array`: compact signed values in the `-128..127` range.
+- `BooleanArray`: flags and visited/closed tables.
 
 ## Integer Kernels
 

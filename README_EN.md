@@ -43,7 +43,7 @@ The project is built as `AnyCPU`. The runtime has no native dependency, so `Dyna
 - **Explicit performance annotations**: Mark hot module functions with `@directCall` so eligible call sites can use a more direct execution path.
 - **Modules and domain isolation**: Supports `@module`, `import`, and `include`. Each `ScriptDomain` has its own global object and module instances.
 - **CompileBlock**: Compile small script blocks outside the module system for formulas, filters, and high-frequency rules.
-- **Built-in standard objects**: `Object`, `Array`, `Int32Array`, `Int8Array`, `BooleanArray`, `String`, `Date`, `Regex`, `HashMap`, `StringBuffer`, `Path`, `JSON`, `Math`, `console`, `Proxy`, and `HotPatch`.
+- **Built-in standard objects**: `Object`, `Array`, `Int32Array`, `Float64Array`, `Int8Array`, `BooleanArray`, `String`, `Date`, `Regex`, `HashMap`, `StringBuffer`, `Path`, `JSON`, `Math`, `console`, `Proxy`, and `HotPatch`.
 - **Broad regression coverage**: Tests cover lexing, parsing, expressions, statements, modules, compilation modes, CLR interop, JSON, hot reload, concurrency, and release regressions.
 
 ## Installation
@@ -534,6 +534,7 @@ The current test suite and examples cover:
 
 - `Array`
 - `Int32Array`
+- `Float64Array`
 - `Int8Array`
 - `BooleanArray`
 - `String`
@@ -586,6 +587,8 @@ Static members:
 
 `Array.withCapacity(capacity)` creates an empty array with reserved backing storage. Unlike `new Array(n)`, it does not create `n` null slots, so it is intended for known-size push-heavy paths.
 
+A general `Array` still supports heterogeneous elements, dynamic properties, and growth. As long as its exact type does not cross a dynamic boundary such as an object property, the compiler keeps locals and direct-call parameters as `ScriptArray` and emits direct operations for `length`, numeric index reads/writes, and an unshadowed `push`. Defining an own `push` property on an instance reliably falls back to dynamic semantics.
+
 Instance members:
 
 - `length`
@@ -612,26 +615,29 @@ Instance members:
 - `flat([depth])`
 - `reduce(callback)`
 
-### Int32Array / Int8Array / BooleanArray
+### Int32Array / Float64Array / Int8Array / BooleanArray
 
 Packed arrays use contiguous CLR primitive storage for pathfinding, image data, state tables, and numeric loops:
 
 ```as
 var scores = new Int32Array(1000000);
+var weights = new Float64Array(1000000);
 var costs = new Int8Array(1000000);
 var visited = new BooleanArray(1000000);
 
 scores[10] = 42;
+weights[10] = 1.25;
 visited[10] = true;
 scores.fill(0);
 ```
 
-- Length is fixed; new instances are initialized to `0`, `0`, and `false`, respectively.
+- Length is fixed; numeric arrays are initialized to `0` and boolean arrays to `false`.
 - Numeric index reads/writes, read-only `length`, and `fill(value)` are supported. `push`, `pop`, and element deletion are not.
 - Out-of-range access throws a runtime error. `Array.isArray(value)` returns `false` for packed arrays.
 - When the compiler retains the exact packed-array type, it emits direct CLR array CIL and converts elements to `ScriptDatum` only at dynamic object, script-call, or host boundaries.
-- Inside a native direct-call graph, packed-array parameters and locals use their `int[]`, `sbyte[]`, or `bool[]` backing storage directly. Calls between native functions neither reload a wrapper field nor re-wrap the array.
+- Inside a native direct-call graph, packed-array parameters and locals use their `int[]`, `double[]`, `sbyte[]`, or `bool[]` backing storage directly. Calls between native functions neither reload a wrapper field nor re-wrap the array.
 - Keep packed arrays in locals or pass them to `@directCall` hot functions for the fastest path. Reading one back from a dynamic object preserves semantics but uses the dynamic element-access boundary.
+- Use `Int32Array` for indexes, distances, and queue tables that are known to fit signed 32-bit values; `Float64Array` for fractions, `NaN`, infinities, or general number semantics; `Int8Array` for compact signed small values; and `BooleanArray` for flag tables.
 
 ### String
 

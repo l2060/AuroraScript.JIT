@@ -596,7 +596,11 @@ namespace AuroraScript.Compiler.Backend.Code
                     case FunctionCallExpression call:
                         AnalyzeExpression(call.Target);
                         for (var i = 0; i < call.Arguments.Count; i++) AnalyzeExpression(call.Arguments[i]);
-                        if (call.Target is NameExpression targetName &&
+                        if (IsArrayFactoryCall(call))
+                        {
+                            type = FlowValueType.Array;
+                        }
+                        else if (call.Target is NameExpression targetName &&
                             _names.TryGetValue(targetName, out var targetBinding) &&
                             targetBinding.DirectFunction.IsValid &&
                             _directReturnTypes != null &&
@@ -614,7 +618,8 @@ namespace AuroraScript.Compiler.Backend.Code
                         break;
                     case GetPropertyExpression property:
                         var propertyObjectType = AnalyzeExpression(property.Object);
-                        type = FlowValueTypeFacts.IsPackedArray(propertyObjectType) &&
+                        type = (FlowValueTypeFacts.IsPackedArray(propertyObjectType) ||
+                                propertyObjectType == FlowValueType.Array) &&
                             IsStaticProperty(property.Property, "length")
                                 ? FlowValueType.Int32
                                 : FlowValueType.Dynamic;
@@ -638,7 +643,7 @@ namespace AuroraScript.Compiler.Backend.Code
                         break;
                     case ArrayLiteralExpression array:
                         for (var i = 0; i < array.Elements.Count; i++) AnalyzeExpression(array.Elements[i]);
-                        type = FlowValueType.Object;
+                        type = FlowValueType.Array;
                         break;
                     case MapExpression map:
                         for (var i = 0; i < map.Entries.Count; i++) AnalyzeExpression(map.Entries[i]);
@@ -665,7 +670,9 @@ namespace AuroraScript.Compiler.Backend.Code
                         AnalyzeExpression(@new.Expression);
                         type = GetPackedArrayConstructionType(@new, out var packedType)
                             ? packedType
-                            : FlowValueType.Object;
+                            : IsArrayConstruction(@new)
+                                ? FlowValueType.Array
+                                : FlowValueType.Object;
                         break;
                     case LambdaExpression:
                         type = FlowValueType.Object;
@@ -753,6 +760,27 @@ namespace AuroraScript.Compiler.Backend.Code
                     return false;
                 }
                 return FlowValueTypeFacts.TryGetPackedArrayType(binding.Name, out type);
+            }
+
+            private bool IsArrayConstruction(NewExpression expression)
+            {
+                return expression?.Expression?.Target is NameExpression name &&
+                    _names.TryGetValue(name, out var binding) &&
+                    binding.IsUnshadowedGlobal &&
+                    StringComparer.Ordinal.Equals(binding.Name, "Array");
+            }
+
+            private bool IsArrayFactoryCall(FunctionCallExpression expression)
+            {
+                if (expression?.Target is not GetPropertyExpression property ||
+                    !IsStaticProperty(property.Property, "withCapacity") ||
+                    property.Object is not NameExpression name ||
+                    !_names.TryGetValue(name, out var binding))
+                {
+                    return false;
+                }
+                return binding.IsUnshadowedGlobal &&
+                    StringComparer.Ordinal.Equals(binding.Name, "Array");
             }
 
             private static bool IsStaticProperty(Expression property, string expected)
@@ -903,7 +931,8 @@ namespace AuroraScript.Compiler.Backend.Code
                     if (left == FlowValueType.String || right == FlowValueType.String) return FlowValueType.String;
                     var nonNumeric = FlowValueType.String | FlowValueType.Object |
                         FlowValueType.Int32Array | FlowValueType.Int8Array |
-                        FlowValueType.BooleanArray;
+                        FlowValueType.BooleanArray | FlowValueType.Float64Array |
+                        FlowValueType.Array;
                     if ((left & nonNumeric) != 0 || (right & nonNumeric) != 0)
                     {
                         return FlowValueType.Dynamic;
@@ -1136,7 +1165,9 @@ namespace AuroraScript.Compiler.Backend.Code
                     {
                         Runtime.Types.ScriptInt32Array => FlowValueType.Int32Array,
                         Runtime.Types.ScriptInt8Array => FlowValueType.Int8Array,
+                        Runtime.Types.ScriptFloat64Array => FlowValueType.Float64Array,
                         Runtime.Types.ScriptBooleanArray => FlowValueType.BooleanArray,
+                        Runtime.Types.ScriptArray => FlowValueType.Array,
                         _ => FlowValueType.Object
                     }
                 };

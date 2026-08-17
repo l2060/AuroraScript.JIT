@@ -132,8 +132,14 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo DeleteElement = Method(typeof(ObjectOps), nameof(ObjectOps.DeleteElement), typeof(ScriptContext), typeof(ScriptDatum), typeof(ScriptDatum));
 
         public static readonly ConstructorInfo ScriptArrayCapacity = Constructor(typeof(ScriptArray), typeof(int));
+        public static readonly MethodInfo ScriptArrayCreateWithLength = StaticMethod(typeof(ScriptArray), nameof(ScriptArray.CreateWithLength), typeof(ScriptDatum));
+        public static readonly MethodInfo ScriptArrayCreateEmptyWithCapacity = StaticMethod(typeof(ScriptArray), nameof(ScriptArray.CreateEmptyWithCapacity), typeof(ScriptDatum));
+        public static readonly MethodInfo ScriptArrayGetElement = InstanceMethod(typeof(ScriptArray), nameof(ScriptArray.GetElementValue), typeof(int));
         public static readonly MethodInfo ScriptArraySetElement = InstanceMethod(typeof(ScriptArray), nameof(ScriptArray.SetElementValue), typeof(int), typeof(ScriptDatum));
         public static readonly MethodInfo ScriptArrayPush = InstanceMethod(typeof(ScriptArray), nameof(ScriptArray.Push), typeof(ScriptDatum));
+        public static readonly MethodInfo ScriptArrayHasOwnPushProperty = InstanceMethod(typeof(ScriptArray), nameof(ScriptArray.HasOwnPushProperty));
+        public static readonly MethodInfo ScriptArrayLength = typeof(ScriptArray).GetProperty(nameof(ScriptArray.Length))?.GetMethod
+            ?? throw new MissingMethodException(typeof(ScriptArray).FullName, "get_" + nameof(ScriptArray.Length));
         public static readonly ConstructorInfo ScriptObjectConstructor = Constructor(typeof(ScriptObject));
         public static readonly MethodInfo ScriptObjectSetProperty = InstanceMethod(typeof(ScriptObject), nameof(ScriptObject.SetPropertyDatum), typeof(ScriptContext), typeof(string), typeof(ScriptDatum));
         public static readonly MethodInfo ScriptObjectGetProperty = InstanceMethod(typeof(ScriptObject), nameof(ScriptObject.GetPropertyDatum), typeof(ScriptContext), typeof(string));
@@ -152,9 +158,11 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo ValidatePackedArrayLength = Method(typeof(ScriptPackedArray), nameof(ScriptPackedArray.ValidateLength), typeof(double));
         public static readonly ConstructorInfo ScriptInt32ArrayConstructor = Constructor(typeof(ScriptInt32Array), typeof(int));
         public static readonly ConstructorInfo ScriptInt8ArrayConstructor = Constructor(typeof(ScriptInt8Array), typeof(int));
+        public static readonly ConstructorInfo ScriptFloat64ArrayConstructor = Constructor(typeof(ScriptFloat64Array), typeof(int));
         public static readonly ConstructorInfo ScriptBooleanArrayConstructor = Constructor(typeof(ScriptBooleanArray), typeof(int));
         public static readonly FieldInfo ScriptInt32ArrayItems = Field(typeof(ScriptInt32Array), "_items");
         public static readonly FieldInfo ScriptInt8ArrayItems = Field(typeof(ScriptInt8Array), "_items");
+        public static readonly FieldInfo ScriptFloat64ArrayItems = Field(typeof(ScriptFloat64Array), "_items");
         public static readonly FieldInfo ScriptBooleanArrayItems = Field(typeof(ScriptBooleanArray), "_items");
 
         public static readonly MethodInfo EnterDirectFrame = Method(typeof(CallFrameOps), nameof(CallFrameOps.EnterDirect), typeof(ScriptContext), typeof(string));
@@ -175,6 +183,17 @@ namespace AuroraScript.Compiler.Backend.Code
         private static MethodInfo Method(Type type, string name, params Type[] parameterTypes)
         {
             return type.GetMethod(name, BindingFlags.Public | BindingFlags.Static, parameterTypes)
+                ?? throw new MissingMethodException(type.FullName, name);
+        }
+
+        private static MethodInfo StaticMethod(Type type, string name, params Type[] parameterTypes)
+        {
+            return type.GetMethod(
+                    name,
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static,
+                    null,
+                    parameterTypes,
+                    null)
                 ?? throw new MissingMethodException(type.FullName, name);
         }
 

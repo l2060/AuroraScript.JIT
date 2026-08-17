@@ -161,6 +161,22 @@ namespace AuroraScript.Runtime.Types
             return CreateWithCapacity(capacity);
         }
 
+        internal static ScriptArray CreateWithLength(ScriptDatum length)
+        {
+            var capacity = length.Kind == ValueKind.Number ? (int)length.Number : 0;
+            return new ScriptArray(capacity);
+        }
+
+        internal static ScriptArray CreateEmptyWithCapacity(ScriptDatum value)
+        {
+            var capacity = 0;
+            if (ScriptDatum.TryToInteger(in value, out var requested) && requested > 0)
+            {
+                capacity = requested > int.MaxValue ? int.MaxValue : (int)requested;
+            }
+            return CreateEmptyWithCapacity(capacity);
+        }
+
         /// <summary> Gets the element at the specified index. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ScriptDatum GetElement(int index)
@@ -179,6 +195,20 @@ namespace AuroraScript.Runtime.Types
                 return;
             }
             GetElementSlow(index, ref scriptDatum);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal ScriptDatum GetElementValue(int index)
+        {
+            if ((uint)index < (uint)_count) return _items[index];
+            return GetElementValueSlow(index);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private ScriptDatum GetElementValueSlow(int index)
+        {
+            if (index < 0) index += _count;
+            return (uint)index < (uint)_count ? _items[index] : default;
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -257,9 +287,16 @@ namespace AuroraScript.Runtime.Types
             _items[index] = datum;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void SetElementValue(int index, ScriptDatum datum)
         {
             SetElement(index, in datum);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal bool HasOwnPushProperty()
+        {
+            return hiddenClass.TryGet("push", out _);
         }
 
 

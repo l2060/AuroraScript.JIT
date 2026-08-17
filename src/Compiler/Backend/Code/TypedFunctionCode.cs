@@ -20,8 +20,10 @@ namespace AuroraScript.Compiler.Backend.Code
         Int8Array = 1 << 6,
         BooleanArray = 1 << 7,
         Int32 = 1 << 8,
+        Array = 1 << 9,
+        Float64Array = 1 << 10,
         Dynamic = Null | Boolean | Number | String | Object |
-            Int32Array | Int8Array | BooleanArray
+            Int32Array | Int8Array | BooleanArray | Float64Array | Array
     }
 
     internal static class FlowValueTypeFacts
@@ -30,12 +32,19 @@ namespace AuroraScript.Compiler.Backend.Code
         {
             return type is FlowValueType.Int32Array or
                 FlowValueType.Int8Array or
+                FlowValueType.Float64Array or
                 FlowValueType.BooleanArray;
         }
 
         public static bool IsNativeDirectParameter(FlowValueType type)
         {
-            return IsNumeric(type) || IsPackedArray(type);
+            return type == FlowValueType.Boolean || IsNumeric(type) ||
+                IsPackedArray(type) || type == FlowValueType.Array;
+        }
+
+        public static bool IsNativeDirectReturn(FlowValueType type)
+        {
+            return type == FlowValueType.Boolean || IsNumeric(type);
         }
 
         public static bool IsNumeric(FlowValueType type)
@@ -71,6 +80,8 @@ namespace AuroraScript.Compiler.Backend.Code
         {
             return type == FlowValueType.BooleanArray
                 ? FlowValueType.Boolean
+                : type == FlowValueType.Float64Array
+                    ? FlowValueType.Number
                 : type is FlowValueType.Int32Array or FlowValueType.Int8Array
                     ? FlowValueType.Int32
                     : FlowValueType.Dynamic;
@@ -82,6 +93,7 @@ namespace AuroraScript.Compiler.Backend.Code
             {
                 "Int32Array" => FlowValueType.Int32Array,
                 "Int8Array" => FlowValueType.Int8Array,
+                "Float64Array" => FlowValueType.Float64Array,
                 "BooleanArray" => FlowValueType.BooleanArray,
                 _ => FlowValueType.None
             };

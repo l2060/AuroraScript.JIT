@@ -180,6 +180,38 @@
         ]
       }
     },
+    "Float64Array": {
+      "kind": "constructor",
+      "callable": false,
+      "constructors": [
+        {
+          "parameters": [
+            {
+              "name": "length",
+              "type": "number",
+              "optional": true
+            }
+          ],
+          "returns": "Float64Array",
+          "notes": {
+            "en": [
+              "Creates a fixed-length, zero-initialized 64-bit floating-point array."
+            ],
+            "zh-CN": [
+              "创建固定长度、以零初始化的 64 位浮点数数组。"
+            ]
+          }
+        }
+      ],
+      "notes": {
+        "en": [
+          "Primitive-backed array for allocation-efficient floating-point workloads."
+        ],
+        "zh-CN": [
+          "使用原生双精度浮点存储，适合低分配数值计算。"
+        ]
+      }
+    },
     "BooleanArray": {
       "kind": "constructor",
       "callable": false,
@@ -2414,6 +2446,39 @@
           ],
           "zh-CN": [
             "将值转换为 8 位有符号整数后填充全部元素。"
+          ]
+        }
+      }
+    },
+    "Float64Array": {
+      "length": {
+        "kind": "property",
+        "returns": "number",
+        "notes": {
+          "en": [
+            "Returns the fixed array length."
+          ],
+          "zh-CN": [
+            "返回不可变的数组长度。"
+          ]
+        }
+      },
+      "fill": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "value",
+            "type": "number",
+            "optional": true
+          }
+        ],
+        "returns": "Float64Array",
+        "notes": {
+          "en": [
+            "Fills every element with the numeric conversion of the value."
+          ],
+          "zh-CN": [
+            "使用参数的数值转换结果填充全部元素。"
           ]
         }
       }

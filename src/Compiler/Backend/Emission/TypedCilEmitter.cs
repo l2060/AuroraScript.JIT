@@ -48,6 +48,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         private LocalBuilder[] _locals;
         private LocalBuilder[] _parameterNumbers;
         private LocalBuilder[] _parameterNumberValid;
+        private LocalBuilder[] _parameterBooleans;
         private int _localCount;
         private bool _prepared;
         private bool _directMode;
@@ -65,6 +66,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         private LocalBuilder _capturedUpvalues;
         private LocalBuilder _contextUpvalues;
         private bool[] _numericCacheNeeded;
+        private bool[] _booleanCacheNeeded;
         private bool _hasArgumentBufferCleanup;
         private List<(LocalBuilder Arguments, LocalBuilder Count)> _argumentBuffers;
 
@@ -180,7 +182,7 @@ namespace AuroraScript.Compiler.Backend.Emission
 
                 var code = _moduleCode.GetDirect(function.Id);
                 if (code == null ||
-                    !FlowValueTypeFacts.IsNumeric(code.ReturnType) ||
+                    !FlowValueTypeFacts.IsNativeDirectReturn(code.ReturnType) ||
                     !ReturnsOnAllPaths(function.Declaration.Body as Statement))
                 {
                     continue;
@@ -242,7 +244,12 @@ namespace AuroraScript.Compiler.Backend.Emission
                 var (method, il) = _session.Builder.DefineMethod(
                     _module.Name,
                     name + "$native",
-                    code.ReturnType == FlowValueType.Int32 ? typeof(int) : typeof(double),
+                    code.ReturnType switch
+                    {
+                        FlowValueType.Int32 => typeof(int),
+                        FlowValueType.Boolean => typeof(bool),
+                        _ => typeof(double)
+                    },
                     nativeParameters);
                 _directMethods[function.Id.Value] = new PreparedDirectMethod(
                     method,
@@ -251,6 +258,8 @@ namespace AuroraScript.Compiler.Backend.Emission
                     parameterTypes,
                     code.ReturnType == FlowValueType.Int32
                         ? StackValueKind.Int32
+                        : code.ReturnType == FlowValueType.Boolean
+                            ? StackValueKind.Boolean
                         : StackValueKind.Number);
             }
         }
@@ -394,7 +403,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             _methodReturnKind = returnKind;
             _localCount = 0;
             _capturedLocalBySlot = BuildCapturedLocalMap(function);
-            _numericCacheNeeded = FindNumericParameterCaches(code);
+            FindParameterCaches(code, out _numericCacheNeeded, out _booleanCacheNeeded);
             _locals = DeclareLocals();
             try
             {
@@ -415,6 +424,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     {
                         StackValueKind.Int32 => typeof(int),
                         StackValueKind.Number => typeof(double),
+                        StackValueKind.Boolean => typeof(bool),
                         _ => typeof(ScriptDatum)
                     });
                 }
@@ -438,7 +448,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     InitializeParameters(convention);
                 }
                 EmitStatement(body);
-                if (returnKind == StackValueKind.Int32) _il.Emit(OpCodes.Ldc_I4_0);
+                if (returnKind is StackValueKind.Int32 or StackValueKind.Boolean) _il.Emit(OpCodes.Ldc_I4_0);
                 else if (returnKind == StackValueKind.Number) _il.Emit(OpCodes.Ldc_R8, double.NaN);
                 else EmitNull();
                 if (_usesReturnEpilogue)
@@ -484,6 +494,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 _locals = null;
                 _parameterNumbers = null;
                 _parameterNumberValid = null;
+                _parameterBooleans = null;
                 _directParameterTypes = null;
                 _directMode = false;
                 _convention = FunctionCallConvention.Span;
@@ -496,6 +507,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 _capturedUpvalues = null;
                 _contextUpvalues = null;
                 _numericCacheNeeded = null;
+                _booleanCacheNeeded = null;
                 _hasArgumentBufferCleanup = false;
                 _argumentBuffers = null;
                 _methodReturnKind = StackValueKind.Datum;
@@ -509,6 +521,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             var result = new LocalBuilder[_function.LocalSlots.Length];
             _parameterNumbers = new LocalBuilder[result.Length];
             _parameterNumberValid = new LocalBuilder[result.Length];
+            _parameterBooleans = new LocalBuilder[result.Length];
             for (var i = 0; i < result.Length; i++)
             {
                 var type = _code.LocalTypes[i] switch
@@ -517,8 +530,10 @@ namespace AuroraScript.Compiler.Backend.Emission
                     FlowValueType.Number => typeof(double),
                     FlowValueType.Boolean => typeof(bool),
                     FlowValueType.String => typeof(string),
+                    FlowValueType.Array => typeof(ScriptArray),
                     FlowValueType.Int32Array => GetPackedLocalClrType(FlowValueType.Int32Array),
                     FlowValueType.Int8Array => GetPackedLocalClrType(FlowValueType.Int8Array),
+                    FlowValueType.Float64Array => GetPackedLocalClrType(FlowValueType.Float64Array),
                     FlowValueType.BooleanArray => GetPackedLocalClrType(FlowValueType.BooleanArray),
                     _ => typeof(ScriptDatum),
                 };
@@ -533,16 +548,27 @@ namespace AuroraScript.Compiler.Backend.Emission
                     _parameterNumbers[i] = DeclareLocal(typeof(double));
                     _parameterNumberValid[i] = DeclareLocal(typeof(bool));
                 }
+                if (!_directMode &&
+                    _function.LocalSlots[i].IsParameter &&
+                    _booleanCacheNeeded[i] &&
+                    (_capturedLocalBySlot == null || !_capturedLocalBySlot.ContainsKey(i)) &&
+                    !_code.WrittenLocals[i])
+                {
+                    _parameterBooleans[i] = DeclareLocal(typeof(bool));
+                }
             }
             return result;
         }
 
-        private static bool[] FindNumericParameterCaches(TypedFunctionCode code)
+        private static void FindParameterCaches(
+            TypedFunctionCode code,
+            out bool[] numeric,
+            out bool[] boolean)
         {
-            var result = new bool[code.LocalTypes.Length];
-            var collector = new ComparisonParameterCollector(code, result);
+            numeric = new bool[code.LocalTypes.Length];
+            boolean = new bool[code.LocalTypes.Length];
+            var collector = new ParameterCacheCollector(code, numeric, boolean);
             collector.Visit(code.Function.Declaration?.Body);
-            return result;
         }
 
         private static Dictionary<int, int> BuildCapturedLocalMap(FunctionPlan function)
@@ -728,6 +754,20 @@ namespace AuroraScript.Compiler.Backend.Emission
                     _il.Emit(OpCodes.Ldloca, _parameterNumbers[slot.Id.Value]);
                     _il.Emit(OpCodes.Call, TypedRuntimeMetadata.TryToNumber);
                     _il.Emit(OpCodes.Stloc, _parameterNumberValid[slot.Id.Value]);
+
+                    var numericReady = _il.DefineLabel();
+                    _il.Emit(OpCodes.Ldloc, _parameterNumberValid[slot.Id.Value]);
+                    _il.Emit(OpCodes.Brtrue, numericReady);
+                    EmitLoadLocal(slot.Id);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ToArithmeticNumber);
+                    _il.Emit(OpCodes.Stloc, _parameterNumbers[slot.Id.Value]);
+                    _il.MarkLabel(numericReady);
+                }
+                if (_parameterBooleans[slot.Id.Value] != null)
+                {
+                    EmitLoadLocal(slot.Id);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ToBooleanDatum);
+                    _il.Emit(OpCodes.Stloc, _parameterBooleans[slot.Id.Value]);
                 }
                 parameterIndex++;
             }
@@ -772,6 +812,11 @@ namespace AuroraScript.Compiler.Backend.Emission
                     {
                         if (@return.Expression == null) _il.Emit(OpCodes.Ldc_R8, double.NaN);
                         else EmitNumber(@return.Expression);
+                    }
+                    else if (_methodReturnKind == StackValueKind.Boolean)
+                    {
+                        if (@return.Expression == null) _il.Emit(OpCodes.Ldc_I4_0);
+                        else EmitCondition(@return.Expression);
                     }
                     else
                     {
@@ -876,8 +921,13 @@ namespace AuroraScript.Compiler.Backend.Emission
                     if (variable.Initializer == null) _session.Builder.LoadStringConstant(_il, string.Empty);
                     else EmitString(variable.Initializer);
                     break;
+                case FlowValueType.Array:
+                    if (variable.Initializer == null) _il.Emit(OpCodes.Ldnull);
+                    else EmitArrayReference(variable.Initializer);
+                    break;
                 case FlowValueType.Int32Array:
                 case FlowValueType.Int8Array:
+                case FlowValueType.Float64Array:
                 case FlowValueType.BooleanArray:
                     if (variable.Initializer == null)
                     {
@@ -1331,6 +1381,13 @@ namespace AuroraScript.Compiler.Backend.Emission
                 throw new NotSupportedException("Dynamic dot-property name.");
             }
             var receiverType = _code.GetExpressionType(expression.Object);
+            if (receiverType == FlowValueType.Array &&
+                StringComparer.Ordinal.Equals(name, "length"))
+            {
+                EmitArrayReference(expression.Object);
+                _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptArrayLength);
+                return StackValueKind.Int32;
+            }
             if (FlowValueTypeFacts.IsPackedArray(receiverType) &&
                 StringComparer.Ordinal.Equals(name, "length"))
             {
@@ -1362,6 +1419,14 @@ namespace AuroraScript.Compiler.Backend.Emission
         private StackValueKind EmitGetElement(GetElementExpression expression)
         {
             var receiverType = _code.GetExpressionType(expression.Object);
+            if (receiverType == FlowValueType.Array &&
+                FlowValueTypeFacts.IsNumeric(_code.GetExpressionType(expression.Index)))
+            {
+                EmitArrayReference(expression.Object);
+                EmitInt32Value(expression.Index);
+                _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptArrayGetElement);
+                return StackValueKind.Datum;
+            }
             if (FlowValueTypeFacts.IsPackedArray(receiverType) &&
                 FlowValueTypeFacts.IsNumeric(_code.GetExpressionType(expression.Index)))
             {
@@ -1385,6 +1450,25 @@ namespace AuroraScript.Compiler.Backend.Emission
         private StackValueKind EmitSetElement(SetElementExpression expression)
         {
             var receiverType = _code.GetExpressionType(expression.Object);
+            if (receiverType == FlowValueType.Array &&
+                FlowValueTypeFacts.IsNumeric(_code.GetExpressionType(expression.Index)))
+            {
+                var receiver = DeclareLocal(typeof(ScriptArray));
+                var index = DeclareLocal(typeof(int));
+                var value = DeclareLocal(typeof(ScriptDatum));
+                EmitArrayReference(expression.Object);
+                _il.Emit(OpCodes.Stloc, receiver);
+                EmitInt32Value(expression.Index);
+                _il.Emit(OpCodes.Stloc, index);
+                EmitDatum(expression.Value);
+                _il.Emit(OpCodes.Stloc, value);
+                _il.Emit(OpCodes.Ldloc, receiver);
+                _il.Emit(OpCodes.Ldloc, index);
+                _il.Emit(OpCodes.Ldloc, value);
+                _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptArraySetElement);
+                _il.Emit(OpCodes.Ldloc, value);
+                return StackValueKind.Datum;
+            }
             if (FlowValueTypeFacts.IsPackedArray(receiverType) &&
                 FlowValueTypeFacts.IsNumeric(_code.GetExpressionType(expression.Index)))
             {
@@ -1417,6 +1501,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                 case FlowValueType.Int8Array:
                     _il.Emit(OpCodes.Ldelem_I1);
                     return StackValueKind.Int32;
+                case FlowValueType.Float64Array:
+                    _il.Emit(OpCodes.Ldelem_R8);
+                    return StackValueKind.Number;
                 case FlowValueType.BooleanArray:
                     _il.Emit(OpCodes.Ldelem_U1);
                     return StackValueKind.Boolean;
@@ -1444,7 +1531,12 @@ namespace AuroraScript.Compiler.Backend.Emission
             _il.Emit(OpCodes.Ldloc, receiver);
             _il.Emit(OpCodes.Ldloc, index);
             _il.Emit(OpCodes.Ldloc, value);
-            if (arrayType == FlowValueType.BooleanArray)
+            if (arrayType == FlowValueType.Float64Array)
+            {
+                ConvertStackToNumber(valueKind);
+                _il.Emit(OpCodes.Stelem_R8);
+            }
+            else if (arrayType == FlowValueType.BooleanArray)
             {
                 ConvertStackToBoolean(valueKind);
                 _il.Emit(OpCodes.Stelem_I1);
@@ -1496,8 +1588,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptArraySetElement);
                 }
             }
-            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
-            return StackValueKind.Datum;
+            return StackValueKind.Array;
         }
 
         private StackValueKind EmitMap(MapExpression expression)
@@ -1666,6 +1757,14 @@ namespace AuroraScript.Compiler.Backend.Emission
                 {
                     EmitNumber(call.Arguments[i]);
                 }
+                else if (prepared.ParameterTypes[i] == FlowValueType.Array)
+                {
+                    EmitArrayReference(call.Arguments[i]);
+                }
+                else if (prepared.ParameterTypes[i] == FlowValueType.Boolean)
+                {
+                    EmitCondition(call.Arguments[i]);
+                }
                 else if (FlowValueTypeFacts.IsPackedArray(prepared.ParameterTypes[i]))
                 {
                     EmitPackedArrayStorage(call.Arguments[i], prepared.ParameterTypes[i]);
@@ -1760,6 +1859,10 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private StackValueKind EmitCall(FunctionCallExpression call)
         {
+            if (TryEmitArrayFactoryCall(call, out var arrayFactoryResult))
+            {
+                return arrayFactoryResult;
+            }
             if (_directMode)
             {
                 throw new NotSupportedException("Native direct code cannot cross a dynamic call boundary.");
@@ -1805,6 +1908,14 @@ namespace AuroraScript.Compiler.Backend.Emission
             Expression receiver,
             string name)
         {
+            if (_code.GetExpressionType(receiver) == FlowValueType.Array &&
+                StringComparer.Ordinal.Equals(name, "push") &&
+                !HasSpread(call.Arguments) &&
+                call.Arguments.Count <= 7)
+            {
+                return EmitArrayPushCall(call, receiver);
+            }
+
             var hasSpread = HasSpread(call.Arguments);
             if (!hasSpread && call.Arguments.Count <= 7)
             {
@@ -1834,6 +1945,84 @@ namespace AuroraScript.Compiler.Backend.Emission
             ReleaseArgumentBuffer(arguments, count);
             _il.Emit(OpCodes.Ldloc, result);
             return StackValueKind.Datum;
+        }
+
+        private StackValueKind EmitArrayPushCall(
+            FunctionCallExpression call,
+            Expression receiverExpression)
+        {
+            var receiver = DeclareLocal(typeof(ScriptArray));
+            EmitArrayReference(receiverExpression);
+            _il.Emit(OpCodes.Stloc, receiver);
+
+            var arguments = new LocalBuilder[call.Arguments.Count];
+            for (var i = 0; i < arguments.Length; i++)
+            {
+                arguments[i] = DeclareLocal(typeof(ScriptDatum));
+                EmitDatum(call.Arguments[i]);
+                _il.Emit(OpCodes.Stloc, arguments[i]);
+            }
+
+            var fallback = _il.DefineLabel();
+            var end = _il.DefineLabel();
+            _il.Emit(OpCodes.Ldloc, receiver);
+            _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptArrayHasOwnPushProperty);
+            _il.Emit(OpCodes.Brtrue, fallback);
+
+            for (var i = 0; i < arguments.Length; i++)
+            {
+                _il.Emit(OpCodes.Ldloc, receiver);
+                _il.Emit(OpCodes.Ldloc, arguments[i]);
+                _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptArrayPush);
+            }
+            _il.Emit(OpCodes.Ldloc, receiver);
+            _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptArrayLength);
+            _il.Emit(OpCodes.Conv_R8);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromNumber);
+            _il.Emit(OpCodes.Br, end);
+
+            _il.MarkLabel(fallback);
+            _il.Emit(OpCodes.Ldloc, receiver);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
+            _il.Emit(OpCodes.Ldarg_0);
+            _session.Builder.LoadStringConstant(_il, "push");
+            for (var i = 0; i < arguments.Length; i++)
+            {
+                _il.Emit(OpCodes.Ldloc, arguments[i]);
+            }
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.InvokeProperty[arguments.Length]);
+            _il.MarkLabel(end);
+            return StackValueKind.Datum;
+        }
+
+        private bool TryEmitArrayFactoryCall(
+            FunctionCallExpression call,
+            out StackValueKind result)
+        {
+            result = StackValueKind.Datum;
+            if (!IsArrayFactoryCall(_code, call) || HasSpread(call.Arguments))
+            {
+                return false;
+            }
+
+            LocalBuilder capacity = null;
+            if (call.Arguments.Count > 0)
+            {
+                capacity = DeclareLocal(typeof(ScriptDatum));
+                EmitArrayFactoryCapacityDatum(call.Arguments[0]);
+                _il.Emit(OpCodes.Stloc, capacity);
+            }
+            for (var i = 1; i < call.Arguments.Count; i++)
+            {
+                EmitExpression(call.Arguments[i]);
+                _il.Emit(OpCodes.Pop);
+            }
+
+            if (capacity == null) EmitNull();
+            else _il.Emit(OpCodes.Ldloc, capacity);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ScriptArrayCreateEmptyWithCapacity);
+            result = StackValueKind.Array;
+            return true;
         }
 
         private void EmitArgumentBuffer(
@@ -1917,6 +2106,28 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return GetPackedLocalStackKind(resultType);
             }
 
+            if (resultType == FlowValueType.Array &&
+                IsArrayConstruction(_code, expression) &&
+                !HasSpread(call.Arguments))
+            {
+                if (call.Arguments.Count == 1)
+                {
+                    EmitArrayLengthDatum(call.Arguments[0]);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ScriptArrayCreateWithLength);
+                }
+                else
+                {
+                    for (var i = 0; i < call.Arguments.Count; i++)
+                    {
+                        EmitExpression(call.Arguments[i]);
+                        _il.Emit(OpCodes.Pop);
+                    }
+                    EmitInt32(0);
+                    _il.Emit(OpCodes.Newobj, TypedRuntimeMetadata.ScriptArrayCapacity);
+                }
+                return StackValueKind.Array;
+            }
+
             var hasSpread = HasSpread(call.Arguments);
             if (!hasSpread && call.Arguments.Count <= 2)
             {
@@ -1948,6 +2159,34 @@ namespace AuroraScript.Compiler.Backend.Emission
             ReleaseArgumentBuffer(arguments, count);
             _il.Emit(OpCodes.Ldloc, result);
             return StackValueKind.Datum;
+        }
+
+        private void EmitArrayLengthDatum(Expression expression)
+        {
+            var type = _code.GetExpressionType(expression);
+            if ((type & (FlowValueType.Int32 | FlowValueType.Number)) != 0 ||
+                type == FlowValueType.Dynamic)
+            {
+                EmitDatum(expression);
+                return;
+            }
+
+            EmitExpression(expression);
+            _il.Emit(OpCodes.Pop);
+            EmitNull();
+        }
+
+        private void EmitArrayFactoryCapacityDatum(Expression expression)
+        {
+            if (_directMode &&
+                FlowValueTypeFacts.IsPackedArray(_code.GetExpressionType(expression)))
+            {
+                EmitExpression(expression);
+                _il.Emit(OpCodes.Pop);
+                EmitNull();
+                return;
+            }
+            EmitDatum(expression);
         }
 
         private void EmitFunctionDeclaration(FunctionDeclaration declaration)
@@ -1985,6 +2224,31 @@ namespace AuroraScript.Compiler.Backend.Emission
                 if (expressions[i] is SpreadExpression) return true;
             }
             return false;
+        }
+
+        private static bool IsArrayConstruction(TypedFunctionCode code, NewExpression expression)
+        {
+            if (expression?.Expression?.Target is not NameExpression name)
+            {
+                return false;
+            }
+            var binding = code.GetName(name);
+            return binding.IsUnshadowedGlobal &&
+                StringComparer.Ordinal.Equals(binding.Name, "Array");
+        }
+
+        private static bool IsArrayFactoryCall(TypedFunctionCode code, FunctionCallExpression expression)
+        {
+            if (expression?.Target is not GetPropertyExpression property ||
+                !TryGetStaticPropertyName(property.Property, out var propertyName) ||
+                !StringComparer.Ordinal.Equals(propertyName, "withCapacity") ||
+                property.Object is not NameExpression name)
+            {
+                return false;
+            }
+            var binding = code.GetName(name);
+            return binding.IsUnshadowedGlobal &&
+                StringComparer.Ordinal.Equals(binding.Name, "Array");
         }
 
         private StackValueKind EmitLiteral(LiteralExpression literal)
@@ -2071,8 +2335,10 @@ namespace AuroraScript.Compiler.Backend.Emission
                 FlowValueType.Number => StackValueKind.Number,
                 FlowValueType.Boolean => StackValueKind.Boolean,
                 FlowValueType.String => StackValueKind.String,
+                FlowValueType.Array => StackValueKind.Array,
                 FlowValueType.Int32Array => GetPackedLocalStackKind(FlowValueType.Int32Array),
                 FlowValueType.Int8Array => GetPackedLocalStackKind(FlowValueType.Int8Array),
+                FlowValueType.Float64Array => GetPackedLocalStackKind(FlowValueType.Float64Array),
                 FlowValueType.BooleanArray => GetPackedLocalStackKind(FlowValueType.BooleanArray),
                 _ => StackValueKind.Datum,
             };
@@ -2209,7 +2475,15 @@ namespace AuroraScript.Compiler.Backend.Emission
             EmitDatum(binary.Left);
             _il.Emit(OpCodes.Dup);
             _il.Emit(OpCodes.Stloc, result);
-            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ToBooleanDatum);
+            if (TryGetCachedBoolean(binary.Left, out var cachedBoolean))
+            {
+                _il.Emit(OpCodes.Pop);
+                _il.Emit(OpCodes.Ldloc, cachedBoolean);
+            }
+            else
+            {
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ToBooleanDatum);
+            }
             _il.Emit(branchWhenTrue ? OpCodes.Brtrue : OpCodes.Brfalse, end);
             EmitDatum(binary.Right);
             _il.Emit(OpCodes.Stloc, result);
@@ -2317,6 +2591,33 @@ namespace AuroraScript.Compiler.Backend.Emission
 
             value = null;
             valid = null;
+            return false;
+        }
+
+        private bool TryEmitCachedNumber(Expression expression)
+        {
+            if (!TryGetCachedParameter(expression, out var value, out _))
+            {
+                return false;
+            }
+            _il.Emit(OpCodes.Ldloc, value);
+            return true;
+        }
+
+        private bool TryGetCachedBoolean(Expression expression, out LocalBuilder value)
+        {
+            if (expression is NameExpression name)
+            {
+                var binding = _code.GetName(name);
+                if (binding.IsLocal &&
+                    (uint)binding.Local.Value < (uint)_parameterBooleans.Length &&
+                    _parameterBooleans[binding.Local.Value] != null)
+                {
+                    value = _parameterBooleans[binding.Local.Value];
+                    return true;
+                }
+            }
+            value = null;
             return false;
         }
 
@@ -2431,6 +2732,11 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitInt32Operand(Expression expression, bool truncateThroughInt64)
         {
+            if (TryEmitCachedNumber(expression))
+            {
+                ConvertStackToInt32(StackValueKind.Number, truncateThroughInt64);
+                return;
+            }
             var kind = EmitExpression(expression);
             ConvertStackToInt32(kind, truncateThroughInt64);
         }
@@ -2490,6 +2796,13 @@ namespace AuroraScript.Compiler.Backend.Emission
                 _il.Emit(OpCodes.Dup);
                 _il.Emit(OpCodes.Stloc, _locals[binding.Local.Value]);
                 return StackValueKind.String;
+            }
+            if (localType == FlowValueType.Array)
+            {
+                EmitArrayReference(assignment.Right);
+                _il.Emit(OpCodes.Dup);
+                _il.Emit(OpCodes.Stloc, _locals[binding.Local.Value]);
+                return StackValueKind.Array;
             }
             if (FlowValueTypeFacts.IsPackedArray(localType))
             {
@@ -2563,6 +2876,11 @@ namespace AuroraScript.Compiler.Backend.Emission
             if (expression.Left is GetElementExpression element)
             {
                 var arrayType = _code.GetExpressionType(element.Object);
+                if (arrayType == FlowValueType.Array &&
+                    FlowValueTypeFacts.IsNumeric(_code.GetExpressionType(element.Index)))
+                {
+                    return EmitArrayCompound(expression, element, op);
+                }
                 if (FlowValueTypeFacts.IsPackedArray(arrayType) &&
                     FlowValueTypeFacts.IsNumeric(_code.GetExpressionType(element.Index)) &&
                     FlowValueTypeFacts.IsNumeric(_code.GetExpressionType(expression)))
@@ -2599,6 +2917,35 @@ namespace AuroraScript.Compiler.Backend.Emission
             throw new NotSupportedException("Typed compound target.");
         }
 
+        private StackValueKind EmitArrayCompound(
+            CompoundExpression expression,
+            GetElementExpression element,
+            Operator op)
+        {
+            var receiver = DeclareLocal(typeof(ScriptArray));
+            EmitArrayReference(element.Object);
+            _il.Emit(OpCodes.Stloc, receiver);
+
+            var index = DeclareLocal(typeof(int));
+            EmitInt32Value(element.Index);
+            _il.Emit(OpCodes.Stloc, index);
+
+            _il.Emit(OpCodes.Ldloc, receiver);
+            _il.Emit(OpCodes.Ldloc, index);
+            _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptArrayGetElement);
+            EmitDatum(expression.Right);
+            _il.Emit(OpCodes.Call, GetDynamicBinary(op));
+            var result = DeclareLocal(typeof(ScriptDatum));
+            _il.Emit(OpCodes.Stloc, result);
+
+            _il.Emit(OpCodes.Ldloc, receiver);
+            _il.Emit(OpCodes.Ldloc, index);
+            _il.Emit(OpCodes.Ldloc, result);
+            _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptArraySetElement);
+            _il.Emit(OpCodes.Ldloc, result);
+            return StackValueKind.Datum;
+        }
+
         private StackValueKind EmitPackedNumericCompound(
             CompoundExpression expression,
             GetElementExpression element,
@@ -2621,7 +2968,11 @@ namespace AuroraScript.Compiler.Backend.Emission
             _il.Emit(OpCodes.Ldloc, receiver);
             _il.Emit(OpCodes.Ldloc, index);
             _il.Emit(OpCodes.Ldloc, result);
-            if (arrayType == FlowValueType.BooleanArray)
+            if (arrayType == FlowValueType.Float64Array)
+            {
+                _il.Emit(OpCodes.Stelem_R8);
+            }
+            else if (arrayType == FlowValueType.BooleanArray)
             {
                 _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ToBooleanNumber);
                 _il.Emit(OpCodes.Stelem_I1);
@@ -2652,10 +3003,11 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 FlowValueType.Int32Array => OpCodes.Ldelem_I4,
                 FlowValueType.Int8Array => OpCodes.Ldelem_I1,
+                FlowValueType.Float64Array => OpCodes.Ldelem_R8,
                 FlowValueType.BooleanArray => OpCodes.Ldelem_U1,
                 _ => throw new NotSupportedException("Unknown packed-array element type.")
             });
-            _il.Emit(OpCodes.Conv_R8);
+            if (arrayType != FlowValueType.Float64Array) _il.Emit(OpCodes.Conv_R8);
         }
 
         private void EmitNumericBinaryRight(Operator op, Expression right)
@@ -2779,8 +3131,13 @@ namespace AuroraScript.Compiler.Backend.Emission
                     case FlowValueType.String:
                         _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumToString);
                         break;
+                    case FlowValueType.Array:
+                        _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumToObject);
+                        _il.Emit(OpCodes.Castclass, typeof(ScriptArray));
+                        break;
                     case FlowValueType.Int32Array:
                     case FlowValueType.Int8Array:
+                    case FlowValueType.Float64Array:
                     case FlowValueType.BooleanArray:
                         _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumToObject);
                         _il.Emit(OpCodes.Castclass, GetPackedClrType(_code.GetLocalType(binding.Local)));
@@ -2866,7 +3223,13 @@ namespace AuroraScript.Compiler.Backend.Emission
             if (unary.Expression is GetElementExpression element)
             {
                 var arrayType = _code.GetExpressionType(element.Object);
-                if (arrayType is FlowValueType.Int32Array or FlowValueType.Int8Array &&
+                if (arrayType == FlowValueType.Array &&
+                    FlowValueTypeFacts.IsNumeric(_code.GetExpressionType(element.Index)))
+                {
+                    return EmitArrayNumericMutation(unary, element);
+                }
+                if (arrayType is FlowValueType.Int32Array or FlowValueType.Int8Array or
+                    FlowValueType.Float64Array &&
                     FlowValueTypeFacts.IsNumeric(_code.GetExpressionType(element.Index)))
                 {
                     return EmitPackedNumericMutation(unary, element, arrayType);
@@ -2938,7 +3301,11 @@ namespace AuroraScript.Compiler.Backend.Emission
             _il.Emit(OpCodes.Ldloc, receiver);
             _il.Emit(OpCodes.Ldloc, index);
             _il.Emit(OpCodes.Ldloc, current);
-            if (arrayType == FlowValueType.Int8Array)
+            if (arrayType == FlowValueType.Float64Array)
+            {
+                _il.Emit(OpCodes.Stelem_R8);
+            }
+            else if (arrayType == FlowValueType.Int8Array)
             {
                 _il.Emit(OpCodes.Conv_I1);
                 _il.Emit(OpCodes.Stelem_I1);
@@ -2953,6 +3320,44 @@ namespace AuroraScript.Compiler.Backend.Emission
                 unary.Operator == Operator.PostDecrement;
             _il.Emit(OpCodes.Ldloc, postfix ? previous : current);
             return StackValueKind.Number;
+        }
+
+        private StackValueKind EmitArrayNumericMutation(
+            UnaryExpression unary,
+            GetElementExpression element)
+        {
+            var receiver = DeclareLocal(typeof(ScriptArray));
+            EmitArrayReference(element.Object);
+            _il.Emit(OpCodes.Stloc, receiver);
+
+            var index = DeclareLocal(typeof(int));
+            EmitInt32Value(element.Index);
+            _il.Emit(OpCodes.Stloc, index);
+
+            var previous = DeclareLocal(typeof(ScriptDatum));
+            _il.Emit(OpCodes.Ldloc, receiver);
+            _il.Emit(OpCodes.Ldloc, index);
+            _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptArrayGetElement);
+            _il.Emit(OpCodes.Stloc, previous);
+
+            var current = DeclareLocal(typeof(ScriptDatum));
+            _il.Emit(OpCodes.Ldloc, previous);
+            _il.Emit(OpCodes.Ldc_R8,
+                unary.Operator == Operator.PreIncrement || unary.Operator == Operator.PostIncrement
+                    ? 1d
+                    : -1d);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ChangeByOne);
+            _il.Emit(OpCodes.Stloc, current);
+
+            _il.Emit(OpCodes.Ldloc, receiver);
+            _il.Emit(OpCodes.Ldloc, index);
+            _il.Emit(OpCodes.Ldloc, current);
+            _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptArraySetElement);
+
+            var postfix = unary.Operator == Operator.PostIncrement ||
+                unary.Operator == Operator.PostDecrement;
+            _il.Emit(OpCodes.Ldloc, postfix ? previous : current);
+            return StackValueKind.Datum;
         }
 
         private StackValueKind EmitDynamicMutation(UnaryExpression unary)
@@ -3062,6 +3467,22 @@ namespace AuroraScript.Compiler.Backend.Emission
             _il.Emit(OpCodes.Castclass, GetPackedClrType(expectedType));
         }
 
+        private void EmitArrayReference(Expression expression)
+        {
+            var kind = EmitExpression(expression);
+            if (kind == StackValueKind.Array) return;
+            if (kind == StackValueKind.Datum)
+            {
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumToObject);
+            }
+            else if (kind != StackValueKind.Object)
+            {
+                ConvertToDatum(kind);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumToObject);
+            }
+            _il.Emit(OpCodes.Castclass, typeof(ScriptArray));
+        }
+
         private void EmitPackedArrayStorage(Expression expression, FlowValueType expectedType)
         {
             var kind = EmitExpression(expression);
@@ -3107,15 +3528,18 @@ namespace AuroraScript.Compiler.Backend.Emission
                     _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromString);
                     return;
                 case StackValueKind.Object:
+                case StackValueKind.Array:
                     _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
                     return;
                 case StackValueKind.Int32Array:
                 case StackValueKind.Int8Array:
+                case StackValueKind.Float64Array:
                 case StackValueKind.BooleanArray:
                     _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
                     return;
                 case StackValueKind.Int32Buffer:
                 case StackValueKind.Int8Buffer:
+                case StackValueKind.Float64Buffer:
                 case StackValueKind.BooleanBuffer:
                     throw new NotSupportedException("Native packed-array storage cannot cross a dynamic value boundary.");
             }
@@ -3123,6 +3547,7 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitNumber(Expression expression)
         {
+            if (TryEmitCachedNumber(expression)) return;
             var kind = EmitExpression(expression);
             ConvertStackToNumber(kind);
         }
@@ -3151,6 +3576,11 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitInt32Value(Expression expression)
         {
+            if (TryEmitCachedNumber(expression))
+            {
+                ConvertStackToInt32(StackValueKind.Number, truncateThroughInt64: false);
+                return;
+            }
             var kind = EmitExpression(expression);
             ConvertStackToInt32(kind, truncateThroughInt64: false);
         }
@@ -3203,6 +3633,11 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitCondition(Expression expression)
         {
+            if (TryGetCachedBoolean(expression, out var value))
+            {
+                _il.Emit(OpCodes.Ldloc, value);
+                return;
+            }
             var kind = EmitExpression(expression);
             ConvertStackToBoolean(kind);
         }
@@ -3226,15 +3661,18 @@ namespace AuroraScript.Compiler.Backend.Emission
                     EmitBooleanNot();
                     return;
                 case StackValueKind.Object:
+                case StackValueKind.Array:
                     _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ToBooleanObject);
                     return;
                 case StackValueKind.Int32Array:
                 case StackValueKind.Int8Array:
+                case StackValueKind.Float64Array:
                 case StackValueKind.BooleanArray:
                     _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ToBooleanObject);
                     return;
                 case StackValueKind.Int32Buffer:
                 case StackValueKind.Int8Buffer:
+                case StackValueKind.Float64Buffer:
                 case StackValueKind.BooleanBuffer:
                     _il.Emit(OpCodes.Ldnull);
                     _il.Emit(OpCodes.Ceq);
@@ -3250,9 +3688,11 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             return kind is StackValueKind.Int32Array or
                 StackValueKind.Int8Array or
+                StackValueKind.Float64Array or
                 StackValueKind.BooleanArray or
                 StackValueKind.Int32Buffer or
                 StackValueKind.Int8Buffer or
+                StackValueKind.Float64Buffer or
                 StackValueKind.BooleanBuffer;
         }
 
@@ -3262,6 +3702,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 FlowValueType.Int32Array => StackValueKind.Int32Array,
                 FlowValueType.Int8Array => StackValueKind.Int8Array,
+                FlowValueType.Float64Array => StackValueKind.Float64Array,
                 FlowValueType.BooleanArray => StackValueKind.BooleanArray,
                 _ => throw new ArgumentOutOfRangeException(nameof(type))
             };
@@ -3273,6 +3714,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 FlowValueType.Int32Array => StackValueKind.Int32Buffer,
                 FlowValueType.Int8Array => StackValueKind.Int8Buffer,
+                FlowValueType.Float64Array => StackValueKind.Float64Buffer,
                 FlowValueType.BooleanArray => StackValueKind.BooleanBuffer,
                 _ => throw new ArgumentOutOfRangeException(nameof(type))
             };
@@ -3291,6 +3733,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 FlowValueType.Int32Array => typeof(ScriptInt32Array),
                 FlowValueType.Int8Array => typeof(ScriptInt8Array),
+                FlowValueType.Float64Array => typeof(ScriptFloat64Array),
                 FlowValueType.BooleanArray => typeof(ScriptBooleanArray),
                 _ => throw new ArgumentOutOfRangeException(nameof(type))
             };
@@ -3302,6 +3745,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 FlowValueType.Int32Array => typeof(int[]),
                 FlowValueType.Int8Array => typeof(sbyte[]),
+                FlowValueType.Float64Array => typeof(double[]),
                 FlowValueType.BooleanArray => typeof(bool[]),
                 _ => throw new ArgumentOutOfRangeException(nameof(type))
             };
@@ -3316,6 +3760,8 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             if (type == FlowValueType.Int32) return typeof(int);
             if (type == FlowValueType.Number) return typeof(double);
+            if (type == FlowValueType.Boolean) return typeof(bool);
+            if (type == FlowValueType.Array) return typeof(ScriptArray);
             if (FlowValueTypeFacts.IsPackedArray(type)) return GetPackedStorageType(type);
             return typeof(ScriptDatum);
         }
@@ -3330,11 +3776,14 @@ namespace AuroraScript.Compiler.Backend.Emission
                 StackValueKind.Boolean => typeof(bool),
                 StackValueKind.String => typeof(string),
                 StackValueKind.Object => typeof(ScriptObject),
+                StackValueKind.Array => typeof(ScriptArray),
                 StackValueKind.Int32Array => typeof(ScriptInt32Array),
                 StackValueKind.Int8Array => typeof(ScriptInt8Array),
+                StackValueKind.Float64Array => typeof(ScriptFloat64Array),
                 StackValueKind.BooleanArray => typeof(ScriptBooleanArray),
                 StackValueKind.Int32Buffer => typeof(int[]),
                 StackValueKind.Int8Buffer => typeof(sbyte[]),
+                StackValueKind.Float64Buffer => typeof(double[]),
                 StackValueKind.BooleanBuffer => typeof(bool[]),
                 _ => throw new ArgumentOutOfRangeException(nameof(kind))
             };
@@ -3346,6 +3795,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 FlowValueType.Int32Array => TypedRuntimeMetadata.ScriptInt32ArrayItems,
                 FlowValueType.Int8Array => TypedRuntimeMetadata.ScriptInt8ArrayItems,
+                FlowValueType.Float64Array => TypedRuntimeMetadata.ScriptFloat64ArrayItems,
                 FlowValueType.BooleanArray => TypedRuntimeMetadata.ScriptBooleanArrayItems,
                 _ => throw new ArgumentOutOfRangeException(nameof(type))
             };
@@ -3357,6 +3807,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 FlowValueType.Int32Array => TypedRuntimeMetadata.ScriptInt32ArrayConstructor,
                 FlowValueType.Int8Array => TypedRuntimeMetadata.ScriptInt8ArrayConstructor,
+                FlowValueType.Float64Array => TypedRuntimeMetadata.ScriptFloat64ArrayConstructor,
                 FlowValueType.BooleanArray => TypedRuntimeMetadata.ScriptBooleanArrayConstructor,
                 _ => throw new ArgumentOutOfRangeException(nameof(type))
             };
@@ -3845,11 +4296,14 @@ namespace AuroraScript.Compiler.Backend.Emission
             Boolean,
             String,
             Object,
+            Array,
             Int32Array,
             Int8Array,
+            Float64Array,
             BooleanArray,
             Int32Buffer,
             Int8Buffer,
+            Float64Buffer,
             BooleanBuffer
         }
 
@@ -3867,45 +4321,111 @@ namespace AuroraScript.Compiler.Backend.Emission
             public int FinallyDepth { get; }
         }
 
-        private sealed class ComparisonParameterCollector
+        private sealed class ParameterCacheCollector
         {
             private readonly TypedFunctionCode _code;
-            private readonly bool[] _result;
+            private readonly bool[] _numeric;
+            private readonly bool[] _boolean;
 
-            public ComparisonParameterCollector(TypedFunctionCode code, bool[] result)
+            public ParameterCacheCollector(
+                TypedFunctionCode code,
+                bool[] numeric,
+                bool[] boolean)
             {
                 _code = code;
-                _result = result;
+                _numeric = numeric;
+                _boolean = boolean;
             }
 
             public void Visit(AstNode node)
             {
                 if (node == null || node is FunctionDeclaration || node is LambdaExpression) return;
-                if (node is BinaryExpression binary && IsComparison(binary.Operator))
+                if (node is BinaryExpression binary)
                 {
-                    Mark(binary.Left);
-                    Mark(binary.Right);
+                    if (IsComparison(binary.Operator) || IsNumericShadowOperator(binary.Operator))
+                    {
+                        MarkNumeric(binary.Left);
+                        MarkNumeric(binary.Right);
+                    }
+                    else if (binary.Operator == Operator.LogicalAnd ||
+                        binary.Operator == Operator.LogicalOr)
+                    {
+                        MarkBoolean(binary.Left);
+                    }
+                }
+                else if (node is UnaryExpression unary)
+                {
+                    if (unary.Operator == Operator.Negate)
+                    {
+                        MarkNumeric(unary.Expression);
+                    }
+                    else if (unary.Operator == Operator.LogicalNot)
+                    {
+                        MarkBoolean(unary.Expression);
+                    }
+                }
+                else if (node is IfStatement @if)
+                {
+                    MarkBoolean(@if.Condition);
+                }
+                else if (node is WhileStatement @while)
+                {
+                    MarkBoolean(@while.Condition);
+                }
+                else if (node is ForStatement @for)
+                {
+                    MarkBoolean(@for.Condition);
                 }
                 var visitor = new ChildVisitor(this);
                 AstTraversal.VisitChildren(node, ref visitor);
             }
 
-            private void Mark(Expression expression)
+            private static bool IsNumericShadowOperator(Operator op)
+            {
+                return op == Operator.Subtract || op == Operator.Multiply ||
+                    op == Operator.Divide || op == Operator.Modulo;
+            }
+
+            private void MarkNumeric(Expression expression)
+            {
+                Mark(expression, _numeric);
+            }
+
+            private void MarkBoolean(Expression expression)
+            {
+                if (expression is UnaryExpression unary &&
+                    unary.Operator == Operator.LogicalNot)
+                {
+                    MarkBoolean(unary.Expression);
+                    return;
+                }
+                if (expression is BinaryExpression binary &&
+                    (binary.Operator == Operator.LogicalAnd ||
+                        binary.Operator == Operator.LogicalOr))
+                {
+                    MarkBoolean(binary.Left);
+                    MarkBoolean(binary.Right);
+                    return;
+                }
+                Mark(expression, _boolean);
+            }
+
+            private void Mark(Expression expression, bool[] result)
             {
                 if (expression is not NameExpression name) return;
                 var binding = _code.GetName(name);
-                if (!binding.IsLocal || (uint)binding.Local.Value >= (uint)_result.Length) return;
+                if (!binding.IsLocal || (uint)binding.Local.Value >= (uint)result.Length) return;
                 if (_code.Function.LocalSlots[binding.Local.Value].IsParameter)
                 {
-                    _result[binding.Local.Value] = true;
+                    result[binding.Local.Value] = true;
                 }
             }
 
             private readonly struct ChildVisitor : IAstChildVisitor
             {
-                private readonly ComparisonParameterCollector _owner;
+                private readonly ParameterCacheCollector _owner;
 
-                public ChildVisitor(ComparisonParameterCollector owner)
+                public ChildVisitor(ParameterCacheCollector owner)
                 {
                     _owner = owner;
                 }
@@ -4034,7 +4554,13 @@ namespace AuroraScript.Compiler.Backend.Emission
                     if (node is FunctionCallExpression call)
                     {
                         if (call.Parent is NewExpression packedNew &&
-                            FlowValueTypeFacts.IsPackedArray(_code.GetExpressionType(packedNew)))
+                            (FlowValueTypeFacts.IsPackedArray(_code.GetExpressionType(packedNew)) ||
+                                IsArrayConstruction(_code, packedNew)))
+                        {
+                            AstTraversal.VisitChildren(node, ref this);
+                            return;
+                        }
+                        if (IsArrayFactoryCall(_code, call) && !HasSpread(call.Arguments))
                         {
                             AstTraversal.VisitChildren(node, ref this);
                             return;
@@ -4102,7 +4628,8 @@ namespace AuroraScript.Compiler.Backend.Emission
                 for (var i = 0; i < code.LocalTypes.Length; i++)
                 {
                     if ((FlowValueTypeFacts.IsNumeric(code.LocalTypes[i]) ||
-                        FlowValueTypeFacts.IsPackedArray(code.LocalTypes[i])) &&
+                        FlowValueTypeFacts.IsPackedArray(code.LocalTypes[i]) ||
+                        code.LocalTypes[i] == FlowValueType.Array) &&
                         !function.LocalSlots[i].IsParameter)
                     {
                         hasNativeLocal = true;
@@ -4266,6 +4793,27 @@ namespace AuroraScript.Compiler.Backend.Emission
                             {
                                 return true;
                             }
+                            if (unary.Expression is GetElementExpression elementMutation)
+                            {
+                                var receiverType = code.GetExpressionType(elementMutation.Object);
+                                var nativeMutation = receiverType is FlowValueType.Int32Array or
+                                    FlowValueType.Int8Array or FlowValueType.Float64Array or
+                                    FlowValueType.Array;
+                                if (nativeMutation &&
+                                    FlowValueTypeFacts.IsNumeric(code.GetExpressionType(elementMutation.Index)))
+                                {
+                                    return CanEmitExpression(
+                                            code,
+                                            elementMutation.Object,
+                                            canDirectCall,
+                                            allowRuntimeBoundary) &&
+                                        CanEmitExpression(
+                                            code,
+                                            elementMutation.Index,
+                                            canDirectCall,
+                                            allowRuntimeBoundary);
+                                }
+                            }
                             return allowRuntimeBoundary &&
                                 CanEmitAssignmentTarget(code, unary.Expression, canDirectCall, allowRuntimeBoundary);
                         }
@@ -4273,6 +4821,21 @@ namespace AuroraScript.Compiler.Backend.Emission
                             unary.Operator == Operator.BitwiseNot || unary.Operator == Operator.TypeOf) &&
                             CanEmitExpression(code, unary.Expression, canDirectCall, allowRuntimeBoundary);
                     case FunctionCallExpression call:
+                        if (IsArrayFactoryCall(code, call) && !HasSpread(call.Arguments))
+                        {
+                            for (var i = 0; i < call.Arguments.Count; i++)
+                            {
+                                if (!CanEmitExpression(
+                                    code,
+                                    call.Arguments[i],
+                                    canDirectCall,
+                                    allowRuntimeBoundary))
+                                {
+                                    return false;
+                                }
+                            }
+                            return true;
+                        }
                         var hasSpread = HasSpread(call.Arguments);
                         var isDirect = !hasSpread &&
                             call.Target is NameExpression callTarget &&
@@ -4302,6 +4865,22 @@ namespace AuroraScript.Compiler.Backend.Emission
                                     canDirectCall,
                                     allowRuntimeBoundary);
                         }
+                        if (IsArrayConstruction(code, @new) &&
+                            !HasSpread(@new.Expression.Arguments))
+                        {
+                            for (var i = 0; i < @new.Expression.Arguments.Count; i++)
+                            {
+                                if (!CanEmitExpression(
+                                    code,
+                                    @new.Expression.Arguments[i],
+                                    canDirectCall,
+                                    allowRuntimeBoundary))
+                                {
+                                    return false;
+                                }
+                            }
+                            return true;
+                        }
                         return allowRuntimeBoundary &&
                             CanEmitExpression(code, @new.Expression, canDirectCall, allowRuntimeBoundary);
                     case LambdaExpression lambda:
@@ -4311,7 +4890,8 @@ namespace AuroraScript.Compiler.Backend.Emission
                             CanEmitExpression(code, property.Object, canDirectCall, allowRuntimeBoundary);
                         return propertySupported &&
                             (allowRuntimeBoundary ||
-                                (FlowValueTypeFacts.IsPackedArray(code.GetExpressionType(property.Object)) &&
+                                ((FlowValueTypeFacts.IsPackedArray(code.GetExpressionType(property.Object)) ||
+                                    code.GetExpressionType(property.Object) == FlowValueType.Array) &&
                                     StringComparer.Ordinal.Equals(propertyName, "length")));
                     case SetPropertyExpression property:
                         return allowRuntimeBoundary &&
@@ -4319,13 +4899,15 @@ namespace AuroraScript.Compiler.Backend.Emission
                             CanEmitExpression(code, property.Object, canDirectCall, allowRuntimeBoundary) &&
                             CanEmitExpression(code, property.Value, canDirectCall, allowRuntimeBoundary);
                     case GetElementExpression element:
-                        var nativeGet = FlowValueTypeFacts.IsPackedArray(code.GetExpressionType(element.Object)) &&
+                        var nativeGet = (FlowValueTypeFacts.IsPackedArray(code.GetExpressionType(element.Object)) ||
+                                code.GetExpressionType(element.Object) == FlowValueType.Array) &&
                             FlowValueTypeFacts.IsNumeric(code.GetExpressionType(element.Index));
                         return (allowRuntimeBoundary || nativeGet) &&
                             CanEmitExpression(code, element.Object, canDirectCall, allowRuntimeBoundary) &&
                             CanEmitExpression(code, element.Index, canDirectCall, allowRuntimeBoundary);
                     case SetElementExpression element:
-                        var nativeSet = FlowValueTypeFacts.IsPackedArray(code.GetExpressionType(element.Object)) &&
+                        var nativeSet = (FlowValueTypeFacts.IsPackedArray(code.GetExpressionType(element.Object)) ||
+                                code.GetExpressionType(element.Object) == FlowValueType.Array) &&
                             FlowValueTypeFacts.IsNumeric(code.GetExpressionType(element.Index));
                         return (allowRuntimeBoundary || nativeSet) &&
                             CanEmitExpression(code, element.Object, canDirectCall, allowRuntimeBoundary) &&
@@ -4405,7 +4987,8 @@ namespace AuroraScript.Compiler.Backend.Emission
                 }
                 if (target is GetElementExpression element)
                 {
-                    var nativeTarget = FlowValueTypeFacts.IsPackedArray(code.GetExpressionType(element.Object)) &&
+                    var nativeTarget = (FlowValueTypeFacts.IsPackedArray(code.GetExpressionType(element.Object)) ||
+                            code.GetExpressionType(element.Object) == FlowValueType.Array) &&
                         FlowValueTypeFacts.IsNumeric(code.GetExpressionType(element.Index));
                     return (allowRuntimeBoundary || nativeTarget) &&
                         CanEmitExpression(code, element.Object, canDirectCall, allowRuntimeBoundary) &&

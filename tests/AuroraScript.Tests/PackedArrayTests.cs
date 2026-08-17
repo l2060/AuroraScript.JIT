@@ -1,4 +1,5 @@
 using AuroraScript.Runtime;
+using AuroraScript.Runtime.Interop;
 using AuroraScript.Runtime.Types;
 using AuroraScript.Tests.Infrastructure;
 using System;
@@ -31,14 +32,73 @@ public sealed class PackedArrayTests
     {
         var int32 = new ScriptInt32Array(1_000);
         var int8 = new ScriptInt8Array(1_000);
+        var float64 = new ScriptFloat64Array(1_000);
         var boolean = new ScriptBooleanArray(1_000);
 
         Assert.IsType<int[]>(int32._items);
         Assert.IsType<sbyte[]>(int8._items);
+        Assert.IsType<double[]>(float64._items);
         Assert.IsType<bool[]>(boolean._items);
         Assert.Equal(1_000, int32.Length);
         Assert.Equal(1_000, int8.Length);
+        Assert.Equal(1_000, float64.Length);
         Assert.Equal(1_000, boolean.Length);
+
+        Assert.True(ClrMarshaller.TryConvertArgument(float64, typeof(double[]), out var storage));
+        Assert.Same(float64._items, storage);
+    }
+
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+    [InlineData(CompilationMode.OnlyRun)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
+    public async Task Float64ArraysStayNativeAndPreserveNumberSemantics(CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        var (engine, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+
+            @directCall
+            func floatWork(values, count) {
+                for (var i = 0; i < count; i++) values[i] = i + 0.25;
+                values[1] *= 2;
+                values[2]++;
+                var sum = 0;
+                for (var j = 0; j < count; j++) sum += values[j];
+                return sum;
+            }
+
+            export func run() {
+                var values = new Float64Array(4);
+                var sum = floatWork(values, values.length);
+                var clone = Object.clone(values);
+                var equalBefore = Object.deepEqual(values, clone);
+                clone[0] = 9.5;
+                var spread = [...values];
+                var filled = new Float64Array(2);
+                filled.fill("1.5");
+                return [
+                    sum, values.length, values[0], values[1], values[2], values[3],
+                    spread[2], equalBefore, Object.deepEqual(values, clone),
+                    filled[0], filled[1], JSON.stringify(values)
+                ];
+            }
+            """,
+            mode);
+
+        var expected = new object?[]
+        {
+            9.25, 4, 0.25, 2.5, 3.25, 3.25,
+            3.25, true, false, 1.5, 1.5, "[0.25,2.5,3.25,3.25]"
+        };
+        ScriptAssert.Equal(expected, TestWorkspace.Execute(domain, "run"));
+        if (mode == CompilationMode.Persistence)
+        {
+            ScriptAssert.Equal(expected, TestWorkspace.Execute(engine.CreateDomain(), "run"));
+        }
     }
 
     [Theory]
@@ -334,6 +394,50 @@ public sealed class PackedArrayTests
     }
 
 #if NET9_0_OR_GREATER
+    [Fact]
+    public async Task PersistenceUsesRawFloat64ArrayAbiAndR8ElementInstructions()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            @directCall
+            func floatWork(values, count) {
+                var sum = 0;
+                for (var i = 0; i < count; i++) {
+                    values[i] = i + 0.5;
+                    sum += values[i];
+                }
+                return sum;
+            }
+            export func run() {
+                var values = new Float64Array(8);
+                return floatWork(values, values.length);
+            }
+            """,
+            CompilationMode.Persistence);
+
+        var assemblyPath = Path.Combine(workspace.Root, "test-output.dll");
+        using var stream = File.OpenRead(assemblyPath);
+        using var peReader = new PEReader(stream);
+        var reader = peReader.GetMetadataReader();
+        var handle = Assert.Single(reader.MethodDefinitions.Where(candidate =>
+            string.Equals(
+                reader.GetString(reader.GetMethodDefinition(candidate).Name),
+                "floatWork$native",
+                StringComparison.Ordinal)));
+        var method = reader.GetMethodDefinition(handle);
+
+        Assert.Equal(
+            [0x00, 0x02, 0x0d, 0x1d, 0x0d, 0x08],
+            reader.GetBlobBytes(method.Signature));
+        var opcodes = ReadOpCodes(
+            peReader.GetMethodBody(method.RelativeVirtualAddress).GetILBytes().AsSpan());
+        Assert.Contains(OpCodes.Ldelem_R8, opcodes);
+        Assert.Contains(OpCodes.Stelem_R8, opcodes);
+        Assert.DoesNotContain(OpCodes.Ldfld, opcodes);
+    }
+
     [Fact]
     public async Task PersistenceUsesRawArrayNativeAbiAndPrimitiveElementInstructions()
     {

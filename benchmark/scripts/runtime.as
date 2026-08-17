@@ -100,6 +100,18 @@ export func int32ArrayIndex(iterations = 1000) {
     return sum;
 }
 
+export func float64ArrayIndex(iterations = 1000) {
+    var values = new Float64Array(iterations);
+    for (var i = 0; i < iterations; i++) {
+        values[i] = i + 0.25;
+    }
+    var sum = 0;
+    for (var j = 0; j < iterations; j++) {
+        sum = sum + values[j];
+    }
+    return sum;
+}
+
 export func int32ArrayObjectBoundary(iterations = 1000) {
     var holder = { values: new Int32Array(iterations) };
     var values = holder.values;

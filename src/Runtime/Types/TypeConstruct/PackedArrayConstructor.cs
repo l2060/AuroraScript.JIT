@@ -2,11 +2,12 @@ using System;
 
 namespace AuroraScript.Runtime.Types.TypeConstruct
 {
-    /// <summary>Constructor shared by the three fixed-length primitive array types.</summary>
+    /// <summary>Constructor shared by the fixed-length primitive array types.</summary>
     internal sealed class PackedArrayConstructor : ScriptType
     {
         internal static readonly PackedArrayConstructor Int32 = new("Int32Array", PackedArrayKind.Int32);
         internal static readonly PackedArrayConstructor Int8 = new("Int8Array", PackedArrayKind.Int8);
+        internal static readonly PackedArrayConstructor Float64 = new("Float64Array", PackedArrayKind.Float64);
         internal static readonly PackedArrayConstructor Boolean = new("BooleanArray", PackedArrayKind.Boolean);
 
         private readonly PackedArrayKind _kind;
@@ -31,6 +32,7 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
             {
                 PackedArrayKind.Int32 => new ScriptInt32Array(length),
                 PackedArrayKind.Int8 => new ScriptInt8Array(length),
+                PackedArrayKind.Float64 => new ScriptFloat64Array(length),
                 PackedArrayKind.Boolean => new ScriptBooleanArray(length),
                 _ => throw new InvalidOperationException("Unknown packed-array kind.")
             };
@@ -41,6 +43,7 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
         {
             Int32,
             Int8,
+            Float64,
             Boolean
         }
     }

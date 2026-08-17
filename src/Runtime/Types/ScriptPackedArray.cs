@@ -47,6 +47,12 @@ namespace AuroraScript.Runtime.Types
                         ThrowIndexOutOfRange(index, int8._items.Length);
                     }
                     return ScriptDatum.FromNumber(int8._items[index]);
+                case ScriptFloat64Array float64:
+                    if ((uint)index >= (uint)float64._items.Length)
+                    {
+                        ThrowIndexOutOfRange(index, float64._items.Length);
+                    }
+                    return ScriptDatum.FromNumber(float64._items[index]);
                 case ScriptBooleanArray boolean:
                     if ((uint)index >= (uint)boolean._items.Length)
                     {
@@ -77,6 +83,13 @@ namespace AuroraScript.Runtime.Types
                         ThrowIndexOutOfRange(index, int8._items.Length);
                     }
                     int8._items[index] = unchecked((sbyte)(int)ValueOps.ToArithmeticNumber(value));
+                    return;
+                case ScriptFloat64Array float64:
+                    if ((uint)index >= (uint)float64._items.Length)
+                    {
+                        ThrowIndexOutOfRange(index, float64._items.Length);
+                    }
+                    float64._items[index] = ValueOps.ToArithmeticNumber(value);
                     return;
                 case ScriptBooleanArray boolean:
                     if ((uint)index >= (uint)boolean._items.Length)
@@ -281,6 +294,46 @@ namespace AuroraScript.Runtime.Types
 
         internal override ScriptPackedArray ClonePackedArray() =>
             new ScriptInt8Array((sbyte[])_items.Clone());
+    }
+
+    /// <summary>A fixed-length array backed by a CLR <see cref="double"/> array.</summary>
+    public sealed class ScriptFloat64Array : ScriptPackedArray
+    {
+        internal readonly double[] _items;
+
+        /// <summary>Creates a zero-initialized array with the supplied length.</summary>
+        public ScriptFloat64Array(int length)
+        {
+            _items = new double[length];
+        }
+
+        internal ScriptFloat64Array(double[] items)
+        {
+            _items = items;
+        }
+
+        /// <inheritdoc />
+        public override int Length => _items.Length;
+
+        /// <summary>Gets an element without dynamic value conversion.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public double GetElement(int index) => _items[index];
+
+        /// <summary>Sets an element without dynamic value conversion.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void SetElement(int index, double value) => _items[index] = value;
+
+        internal override ScriptDatum GetElementDatumUnchecked(int index) =>
+            ScriptDatum.FromNumber(_items[index]);
+
+        internal override void SetElementDatumUnchecked(int index, ScriptDatum value) =>
+            _items[index] = ValueOps.ToArithmeticNumber(value);
+
+        internal override void FillDatum(ScriptDatum value) =>
+            Array.Fill(_items, ValueOps.ToArithmeticNumber(value));
+
+        internal override ScriptPackedArray ClonePackedArray() =>
+            new ScriptFloat64Array((double[])_items.Clone());
     }
 
     /// <summary>A fixed-length array backed by a CLR <see cref="bool"/> array.</summary>

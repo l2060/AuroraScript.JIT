@@ -77,7 +77,7 @@ public sealed class BuiltinApiCatalogTests
     {
         var catalog = LoadCatalog();
 
-        foreach (var name in new[] { "Int32Array", "Int8Array", "BooleanArray" })
+        foreach (var name in new[] { "Int32Array", "Int8Array", "Float64Array", "BooleanArray" })
         {
             Assert.True(catalog.TryGetGlobal(name, out var constructor));
             Assert.Equal(BuiltinApiKind.Constructor, constructor.Kind);
