@@ -1,5 +1,6 @@
 ﻿using AuroraScript.Compiler.Ast;
 using AuroraScript.Runtime;
+using AuroraScript.Compiler.Backend.Code;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -21,7 +22,6 @@ namespace AuroraScript.Compiler.Backend.Builders
         Class,
         Method,
         Local,
-        Constant,
     }
     internal abstract class AbstractCILBuilder
     {
@@ -36,10 +36,14 @@ namespace AuroraScript.Compiler.Backend.Builders
             _options = options;
         }
 
-        public abstract (MethodInfo Method, ILGenerator IL) DefineDynamicMethod(ModuleDeclaration module);
+        public virtual (MethodInfo Method, ILGenerator IL) DefineDynamicMethod(ModuleDeclaration module)
+        {
+            throw new NotSupportedException($"{GetType().Name} does not support hot-patch dynamic methods.");
+        }
+
         public virtual (MethodInfo Method, ILGenerator IL) DefineBlockMethod(string methodName)
         {
-            throw new NotImplementedException();
+            throw new NotSupportedException($"{GetType().Name} does not support standalone compiled blocks.");
         }
         public abstract (MethodInfo Method, ILGenerator IL) DefineModuleInitMethod(ModuleDeclaration module);
         public abstract (MethodInfo Method, ILGenerator IL) DefineDomainInitMethod();
@@ -50,19 +54,17 @@ namespace AuroraScript.Compiler.Backend.Builders
         {
         }
 
-        public virtual FieldInfo DefineModuleField(string moduleName, string fieldName, Type fieldType)
+        public virtual void SetLocalSymInfo(LocalBuilder local, String name)
         {
-            if (!TryResolveType(moduleName, out var typeBuilder))
-            {
-                throw new Exception($"Module {moduleName} not defined");
-            }
-            return typeBuilder.DefineField(ConfuseTypeName(fieldName, ConfuseTarget.Constant), fieldType, FieldAttributes.Private | FieldAttributes.Static);
         }
 
-        public abstract void SetLocalSymInfo(LocalBuilder local, String name);
+        public virtual void MarkSequencePoint(AstNode node, ILGenerator il)
+        {
+        }
 
-        public abstract void MarkSequencePoint(AstNode node, ILGenerator il);
-        public abstract void MarkSequencePoint(SourceSpan range, ILGenerator il);
+        public virtual void MarkSequencePoint(SourceSpan range, ILGenerator il)
+        {
+        }
 
         protected bool IsDebugMode => _options.Optimization.Level == OptimizeOptions.Debug;
         protected bool IsReleaseMode => _options.Optimization.Level == OptimizeOptions.Release;
@@ -75,12 +77,6 @@ namespace AuroraScript.Compiler.Backend.Builders
             String name = typeName;
             if (_options.Output.EnableConfused)
             {
-                //if (target == ConfuseTarget.Method) return "ToString";
-                //if (target == ConfuseTarget.Class) return "record";
-                //if (target == ConfuseTarget.Local) return "String\0" + Random.Shared.Next();
-
-
-
                 name = "../..//" + GenSymbol();
             }
             return name;
@@ -120,12 +116,6 @@ namespace AuroraScript.Compiler.Backend.Builders
             }
         }
 
-        /// <summary>
-        /// 提供常量隐藏的支持
-        /// </summary>
-        /// <param name="il"></param>
-        /// <param name="number"></param>
-        /// <returns></returns>
         public virtual LoadState LoadNumber(ILGenerator il, Double number)
         {
             il.Emit(OpCodes.Ldc_R8, number);
@@ -151,7 +141,7 @@ namespace AuroraScript.Compiler.Backend.Builders
 
         public virtual LoadState LoadNull(ILGenerator il)
         {
-            il.Emit(OpCodes.Ldsfld, RuntimeMetadata.ScriptDatum_Null);
+            il.Emit(OpCodes.Ldsfld, TypedRuntimeMetadata.DatumNull);
             return LoadState.Struct;
         }
 

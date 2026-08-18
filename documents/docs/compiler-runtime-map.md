@@ -16,24 +16,28 @@ Use this map when changing language behavior.
 - Closure capture planning: `src/Compiler/Backend/Binding/ClosurePlanner.cs`
 - Const assignment checks: `src/Compiler/Backend/Analysis/ConstAssignmentAnalyzer.cs`
 - Module const inlining: `src/Compiler/Backend/Analysis/ModuleConstInliningAnalyzer.cs`
-- Lowering: `src/Compiler/Backend/Lowering/FunctionLowerer.cs`
-- Emission: `src/Compiler/Backend/Emission`
+- Typed flow analysis: `src/Compiler/Backend/Code/TypedFunctionBuilder.cs`, `src/Compiler/Backend/Code/TypedModuleCode.cs`
+- Typed CIL emission: `src/Compiler/Backend/Emission/TypedCilEmitter.cs`
+- Module and domain initialization: `src/Compiler/Backend/Emission/ModuleInitializerEmitter.cs`, `src/Compiler/Backend/Emission/BackendBuildEmitter.cs`
 
 ## Runtime
 
 - Engine entry point: `src/AuroraEngine.cs`
 - Domain: `src/Runtime/ScriptDomain.cs`
-- Value representation: `src/Runtime/ScriptDatum.cs`
-- CIL helpers: `src/Runtime/CILHelper.cs`
+- Compact value representation: `src/Runtime/ScriptDatum.cs`
+- Primitive dynamic boundaries: `src/Runtime/ValueOps.cs`
+- Object and collection boundaries: `src/Runtime/ObjectOps.cs`, `src/Runtime/IterationOps.cs`
+- Calls and lightweight frames: `src/Runtime/CallOps.cs`, `src/Runtime/CallFrameOps.cs`
+- Scope and exception boundaries: `src/Runtime/ScopeOps.cs`, `src/Runtime/ExceptionOps.cs`
 - Prototypes: `src/Runtime/Types/Prototypes.cs`
 - Console/JSON/Math/HotPatch: `src/Runtime/Extensions`
 
 ## Tests To Update
 
-- Syntax and parser behavior: `tests/ParserSyntaxTests.cs`
-- Lexer behavior: `tests/LexerTests.cs`
-- Backend plans and diagnostics: `tests/CompilerBackendPlanTests.cs`
-- Runtime language behavior: `tests/LanguageFeatureExecutionTests.cs`, `tests/StatementExecutionTests.cs`
-- Module graph and build errors: `tests/ModuleCompilationTests.cs`
-- Regression coverage: `tests/ReleaseRegressionTests.cs`
+- Syntax and parser behavior: `tests/AuroraScript.Tests/ParserSyntaxTests.cs`
+- Lexer behavior: `tests/AuroraScript.Tests/LexerTests.cs`
+- Backend plans and diagnostics: `tests/AuroraScript.Tests/CompilerBackendPlanTests.cs`
+- Runtime language behavior: `tests/AuroraScript.Tests/LanguageFeatureExecutionTests.cs`, `tests/AuroraScript.Tests/StatementExecutionTests.cs`
+- Module graph and build errors: `tests/AuroraScript.Tests/ModuleCompilationTests.cs`
+- Regression coverage: `tests/AuroraScript.Tests/ReleaseRegressionTests.cs`, `tests/AuroraScript.Tests/CompilationModeTests.cs`
 

@@ -93,7 +93,7 @@
       "patterns": [
         {
           "name": "support.type.aurora",
-          "match": "\\b(?:Array|Boolean|Date|Error|Function|HashMap|Number|Object|Path|Proxy|Regex|String|StringBuffer)\\b"
+          "match": "\\b(?:Array|Boolean|BooleanArray|Date|Error|Float64Array|Function|HashMap|Int32Array|Int8Array|Number|Object|Path|Proxy|Regex|String|StringBuffer)\\b"
         },
         {
           "name": "support.type.builtin.object.aurora",
@@ -499,7 +499,7 @@
       "patterns": [
         {
           "name": "support.type.aurora",
-          "match": "\\b(?:Any|Array|Boolean|Date|Error|Function|HashMap|Null|Number|Object|Proxy|Regex|String|StringBuffer|Void)\\b"
+          "match": "\\b(?:Any|Array|Boolean|BooleanArray|Date|Error|Float64Array|Function|HashMap|Int32Array|Int8Array|Null|Number|Object|Proxy|Regex|String|StringBuffer|Void)\\b"
         }
       ]
     }

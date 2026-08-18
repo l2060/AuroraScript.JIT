@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Diagnostics.CodeAnalysis;
 
 namespace AuroraScript.Runtime.Types
 {
@@ -11,7 +10,7 @@ namespace AuroraScript.Runtime.Types
     /// <param name="module">The script object representing the module or 'this' context.</param>
     /// <param name="args">The arguments passed from the script.</param>
     /// <param name="result">The result to be returned to the script.</param>
-    public delegate void ClrDatumDelegate([NotNull] ScriptContext ctx, ScriptObject module, [NotNull] Span<ScriptDatum> args, ref ScriptDatum result);
+    public delegate void ClrDatumDelegate(ScriptContext ctx, ScriptObject module, Span<ScriptDatum> args, ref ScriptDatum result);
 
 
 

@@ -1,5 +1,6 @@
 using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Backend.Builders;
+using AuroraScript.Compiler.Backend.Code;
 using AuroraScript.Compiler.Backend.Plans;
 using AuroraScript.Core;
 using AuroraScript.Runtime;
@@ -32,7 +33,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             _builder.SetLocalSymInfo(globalLocal, "global");
 
             il.Emit(OpCodes.Ldarg_0);
-            il.Emit(OpCodes.Ldfld, RuntimeMetadata.CILContext_Global);
+            il.Emit(OpCodes.Ldfld, TypedRuntimeMetadata.ContextGlobal);
             il.Emit(OpCodes.Stloc, globalLocal);
 
             var modules = _session.CompileSession.Modules;
@@ -58,11 +59,11 @@ namespace AuroraScript.Compiler.Backend.Emission
             _builder.LoadStringConstant(il, module.Name);
             _builder.LoadStringConstant(il, module.Path);
             _builder.LoadStringConstant(il, module.FullPath);
-            il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptGlobal_EnsureModule);
+            il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptGlobalEnsureModule);
             if ((_patchType & HotPatchType.Replace) != 0)
             {
                 il.Emit(OpCodes.Dup);
-                il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptObject_ClearProperties);
+                il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptObjectClearProperties);
             }
             il.Emit(OpCodes.Pop);
         }
@@ -74,14 +75,26 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return;
             }
 
-            il.Emit(OpCodes.Ldarg_0);
+            var moduleLocal = il.DeclareLocal(typeof(ScriptModule));
+            var frameLocal = il.DeclareLocal(typeof(int));
             il.Emit(OpCodes.Ldloc, globalLocal);
             _builder.LoadStringConstant(il, module.Name);
-            il.Emit(OpCodes.Callvirt, RuntimeMetadata.ScriptGlobal_GetModule);
-            il.Emit(OpCodes.Ldnull);
-            il.Emit(OpCodes.Callvirt, RuntimeMetadata.CILContext_With);
+            il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptGlobalGetModule);
+            il.Emit(OpCodes.Stloc, moduleLocal);
+            il.Emit(OpCodes.Ldarg_0);
+            il.Emit(OpCodes.Ldloc, moduleLocal);
+            il.Emit(OpCodes.Call, TypedRuntimeMetadata.EnterModuleFrame);
+            il.Emit(OpCodes.Stloc, frameLocal);
+
+            il.BeginExceptionBlock();
+            il.Emit(OpCodes.Ldarg_0);
             il.Emit(OpCodes.Ldarg_1);
             il.Emit(OpCodes.Call, module.Initializer);
+            il.BeginFinallyBlock();
+            il.Emit(OpCodes.Ldarg_0);
+            il.Emit(OpCodes.Ldloc, frameLocal);
+            il.Emit(OpCodes.Call, TypedRuntimeMetadata.LeaveFrame);
+            il.EndExceptionBlock();
         }
     }
 }

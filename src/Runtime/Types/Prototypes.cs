@@ -20,6 +20,8 @@ namespace AuroraScript.Runtime.Types
         public static readonly ScriptObject NumberValuePrototype = new ScriptObject(Prototypes.ObjectPrototype);
         /// <summary> The prototype for script arrays. </summary>
         public static readonly ScriptObject ScriptArrayPrototype = new ScriptObject(Prototypes.ObjectPrototype);
+        /// <summary> The shared prototype for fixed-length primitive arrays. </summary>
+        public static readonly ScriptObject ScriptPackedArrayPrototype = new ScriptObject(Prototypes.ObjectPrototype);
         /// <summary> The prototype for string primitive values. </summary>
         public static readonly ScriptObject StringValuePrototype = new ScriptObject(Prototypes.ObjectPrototype);
         /// <summary> The prototype for regular expression objects. </summary>
@@ -116,6 +118,11 @@ namespace AuroraScript.Runtime.Types
             ScriptArrayPrototype.Define("flat", ScriptDatum.FromBonding(ScriptArray.FLAT), writeable: false, enumerable: false);
             ScriptArrayPrototype.Define("reduce", ScriptDatum.FromBonding(ScriptArray.REDUCE), writeable: false, enumerable: false);
             ScriptArrayPrototype.Frozen();
+
+            // --- Fixed-length primitive arrays ---
+            ScriptPackedArrayPrototype.Define("length", ScriptDatum.FromBondingGetter(ScriptPackedArray.LENGTH), writeable: false, enumerable: false);
+            ScriptPackedArrayPrototype.Define("fill", ScriptDatum.FromBonding(ScriptPackedArray.FILL), writeable: false, enumerable: false);
+            ScriptPackedArrayPrototype.Frozen();
 
 
 

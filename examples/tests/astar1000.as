@@ -69,39 +69,56 @@ func rand01(rng) {
 // 1 = blocked
 // ------------------------------------------------------------
 
-export func makeMap(w, h, blockRate, seed) {
+@directCall
+func fillMap(map, w, h, blockRate, seed) {
     var n = w * h;
-    var map = Array.withCapacity(n);
-    var rng = { seed: seed };
-
+    var state = seed;
     for (var i = 0; i < n; i++) {
-        if (rand01(rng) < blockRate) {
-            map.push(BLOCKED);
+        state = state ^ (state << 13);
+        state = state ^ (state >> 17);
+        state = state ^ (state << 5);
+
+        var positive = state;
+        if (positive < 0) {
+            positive = -positive;
+        }
+
+        if ((positive % 1000000) / 1000000 < blockRate) {
+            map[i] = BLOCKED;
         } else {
-            map.push(WALKABLE);
+            map[i] = WALKABLE;
         }
     }
 
     // Ensure there is always a valid path:
     // clear top row and right side column.
     for (var x = 0; x < w; x++) {
-        map[idOf(x, 0, w)] = WALKABLE;
+        map[x] = WALKABLE;
 
         if (h > 1) {
-            map[idOf(x, 1, w)] = WALKABLE;
+            map[w + x] = WALKABLE;
         }
     }
 
     for (var y = 0; y < h; y++) {
-        map[idOf(w - 1, y, w)] = WALKABLE;
+        var row = y * w;
+        map[row + w - 1] = WALKABLE;
 
         if (w > 1) {
-            map[idOf(w - 2, y, w)] = WALKABLE;
+            map[row + w - 2] = WALKABLE;
         }
     }
 
     map[0] = WALKABLE;
     map[n - 1] = WALKABLE;
+
+    return state;
+}
+
+export func makeMap(w, h, blockRate, seed) {
+    var n = w * h;
+    var map = new Int8Array(n);
+    fillMap(map, w, h, blockRate, seed);
 
     return map;
 }
@@ -149,14 +166,14 @@ export func newFinder(w, h, map) {
         h: h,
         map: map,
 
-        g: Array.withCapacity(n),
-        f: Array.withCapacity(n),
-        parent: Array.withCapacity(n),
+        g: new Int32Array(n),
+        f: new Int32Array(n),
+        parent: new Int32Array(n),
 
-        open: Array.withCapacity(n),
-        closed: Array.withCapacity(n),
+        open: new Int32Array(n),
+        closed: new Int32Array(n),
 
-        heap: Array.withCapacity(n),
+        heap: new Int32Array(n),
 
         heapSize: 0,
         sid: 1
@@ -179,13 +196,13 @@ func beginSearch(pf) {
 // Reconstruct path
 // ------------------------------------------------------------
 
-func buildPath(pf, goal) {
+func buildPath(parent, goal) {
     var rev = [];
     var cur = goal;
 
     while (cur != -1) {
         rev.push(cur);
-        cur = pf.parent[cur];
+        cur = parent[cur];
     }
 
     var path = Array.withCapacity(rev.length);
@@ -201,35 +218,23 @@ func buildPath(pf, goal) {
 // A* search
 // ------------------------------------------------------------
 
-export func findPath(pf, sx, sy, gx, gy) {
-    var w = pf.w;
-    var h = pf.h;
-
+@directCall
+func findPathCore(map, g, f, parent, open, closed, heap, w, h, sx, sy, gx, gy, sid) {
     if (sx < 0 || sx >= w || sy < 0 || sy >= h) {
-        return [];
+        return 0;
     }
 
     if (gx < 0 || gx >= w || gy < 0 || gy >= h) {
-        return [];
+        return 0;
     }
 
     var start = sy * w + sx;
     var goal = gy * w + gx;
-    var map = pf.map;
 
     if (map[start] == BLOCKED || map[goal] == BLOCKED) {
-        return [];
+        return 0;
     }
 
-    beginSearch(pf);
-
-    var g = pf.g;
-    var f = pf.f;
-    var parent = pf.parent;
-    var open = pf.open;
-    var closed = pf.closed;
-    var heap = pf.heap;
-    var sid = pf.sid;
     var heapSize = 0;
     var lastX = w - 1;
     var lastY = h - 1;
@@ -287,8 +292,7 @@ export func findPath(pf, sx, sy, gx, gy) {
         }
 
         if (cur == goal) {
-            pf.heapSize = heapSize;
-            return buildPath(pf, goal);
+            return heapSize + 1;
         }
 
         closed[cur] = sid;
@@ -418,8 +422,22 @@ export func findPath(pf, sx, sy, gx, gy) {
         }
     }
 
-    pf.heapSize = 0;
-    return [];
+    return 0;
+}
+
+export func findPath(pf, sx, sy, gx, gy) {
+    beginSearch(pf);
+    var heapState = findPathCore(
+        pf.map, pf.g, pf.f, pf.parent, pf.open, pf.closed, pf.heap,
+        pf.w, pf.h, sx, sy, gx, gy, pf.sid
+    );
+
+    if (heapState == 0) {
+        return [];
+    }
+
+    pf.heapSize = heapState - 1;
+    return buildPath(pf.parent, gy * pf.w + gx);
 }
 
 // ------------------------------------------------------------
@@ -488,17 +506,30 @@ export func run() {
     console.log("generate map", w, h, "cells", cells);
 
     console.time("make 1000x1000 map");
-    var map = makeMap(w, h, 0.28, 20250701);
+    var map = new Int8Array(cells);
+    fillMap(map, w, h, 0.28, 20250701);
     console.timeEnd("make 1000x1000 map");
 
     console.log("map generated, length =", map.length);
 
     console.time("create finder");
-    var pf = newFinder(w, h, map);
+    var g = new Int32Array(cells);
+    var f = new Int32Array(cells);
+    var parent = new Int32Array(cells);
+    var open = new Int32Array(cells);
+    var closed = new Int32Array(cells);
+    var heap = new Int32Array(cells);
     console.timeEnd("create finder");
 
     console.time("astar");
-    var path = findPath(pf, 0, 0, w - 1, h - 1);
+    var heapState = findPathCore(
+        map, g, f, parent, open, closed, heap,
+        w, h, 0, 0, w - 1, h - 1, 2
+    );
+    var path = [];
+    if (heapState != 0) {
+        path = buildPath(parent, cells - 1);
+    }
     console.timeEnd("astar");
 
     var ok = validate(map, w, h, path);

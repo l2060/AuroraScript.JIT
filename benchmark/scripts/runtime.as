@@ -2,8 +2,59 @@
 
 import helper from "helper";
 
+@directCall(false)
 func localAdd(a, b, c) {
     return a + b + c;
+}
+
+@directCall
+func localAddNative(a, b, c) {
+    return a + b + c;
+}
+
+@directCall
+func localMaybeDirect(value, returnValue) {
+    if (returnValue) return value;
+    return null;
+}
+
+@directCall
+func localInt32Mix(value, input, salt) {
+    value = value ^ input;
+    value = value ^ salt;
+    value = value ^ (value << 13);
+    return value ^ (value >> 17);
+}
+
+func localAutoMix12(a, b, c, d, e, f, g, h, i, j, k, l) {
+    return a ^ b ^ c ^ d ^ e ^ f ^ g ^ h ^ i ^ j ^ k ^ l;
+}
+
+func md5F(x, y, z) {
+    return (x & y) | ((~x) & z);
+}
+
+func md5RotateLeft(value, shift) {
+    return (value << shift) | (value >>> (32 - shift));
+}
+
+func md5AddUnsigned(left, right) {
+    var left4 = left & 0x40000000;
+    var right4 = right & 0x40000000;
+    var left8 = left & 0x80000000;
+    var right8 = right & 0x80000000;
+    var result = (left & 0x3fffffff) + (right & 0x3fffffff);
+    if (left4 & right4) return result ^ 0x80000000 ^ left8 ^ right8;
+    if (left4 | right4) {
+        if (result & 0x40000000) return result ^ 0xc0000000 ^ left8 ^ right8;
+        return result ^ 0x40000000 ^ left8 ^ right8;
+    }
+    return result ^ left8 ^ right8;
+}
+
+func md5Round(a, b, c, d, x, shift, constant) {
+    a = md5AddUnsigned(a, md5AddUnsigned(md5AddUnsigned(md5F(b, c, d), x), constant));
+    return md5AddUnsigned(md5RotateLeft(a, shift), b);
 }
 
 export func emptyCall() {
@@ -74,6 +125,186 @@ export func arrayLiteralIndex(iterations = 1000) {
         sum = sum + values[0] + values[3];
     }
     return sum;
+}
+
+export func genericDirectCallLoop(iterations = 1000) {
+    var last = 0;
+    for (var i = 0; i < iterations; i++) {
+        last = localMaybeDirect(i, true);
+    }
+    return last;
+}
+
+export func nativeNumberCallLoop(iterations = 1000) {
+    var sum = 0;
+    for (var i = 0; i < iterations; i++) {
+        sum = sum + localAddNative(i, 1, 2);
+    }
+    return sum;
+}
+
+export func nativeInt32CallLoop(iterations = 1000) {
+    var value = 0;
+    for (var i = 0; i < iterations; i++) {
+        value = localInt32Mix(value, i, 0x9e3779b9);
+    }
+    return value;
+}
+
+export func autoHighArityCallLoop(iterations = 1000) {
+    var value = 0;
+    for (var i = 0; i < iterations; i++) {
+        value = localAutoMix12(value, i, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11);
+    }
+    return value;
+}
+
+export func md5RoundCallLoop(iterations = 1000) {
+    var a = 0x67452301;
+    var b = 0xefcdab89;
+    var c = 0x98badcfe;
+    var d = 0x10325476;
+    for (var i = 0; i < iterations; i++) {
+        a = md5Round(a, b, c, d, i, 7, 0xd76aa478);
+        var previous = d;
+        d = c;
+        c = b;
+        b = a;
+        a = previous;
+    }
+    return a ^ b ^ c ^ d;
+}
+
+export func arrayFixedIndex(iterations = 1000) {
+    var values = new Array(iterations);
+    for (var i = 0; i < iterations; i++) {
+        values[i] = i;
+    }
+    var sum = 0;
+    for (var j = 0; j < iterations; j++) {
+        sum = sum + values[j];
+    }
+    return sum;
+}
+
+export func int32ArrayIndex(iterations = 1000) {
+    var values = new Int32Array(iterations);
+    for (var i = 0; i < iterations; i++) {
+        values[i] = i;
+    }
+    var sum = 0;
+    for (var j = 0; j < iterations; j++) {
+        sum = sum + values[j];
+    }
+    return sum;
+}
+
+export func float64ArrayIndex(iterations = 1000) {
+    var values = new Float64Array(iterations);
+    for (var i = 0; i < iterations; i++) {
+        values[i] = i + 0.25;
+    }
+    var sum = 0;
+    for (var j = 0; j < iterations; j++) {
+        sum = sum + values[j];
+    }
+    return sum;
+}
+
+export func int32ArrayObjectBoundary(iterations = 1000) {
+    var holder = { values: new Int32Array(iterations) };
+    var values = holder.values;
+    for (var i = 0; i < iterations; i++) {
+        values[i] = i;
+    }
+    var sum = 0;
+    for (var j = 0; j < iterations; j++) {
+        sum = sum + values[j];
+    }
+    return sum;
+}
+
+export func int8AndBooleanArrayIndex(iterations = 1000) {
+    var values = new Int8Array(iterations);
+    var flags = new BooleanArray(iterations);
+    for (var i = 0; i < iterations; i++) {
+        values[i] = i;
+        flags[i] = (i % 2) == 0;
+    }
+    var sum = 0;
+    for (var j = 0; j < iterations; j++) {
+        if (flags[j]) sum = sum + values[j];
+    }
+    return sum;
+}
+
+@directCall
+func int32PrngCore(iterations, seed) {
+    var state = seed;
+    var checksum = 0;
+    for (var i = 0; i < iterations; i++) {
+        state = state ^ (state << 13);
+        state = state ^ (state >> 17);
+        state = state ^ (state << 5);
+        checksum = checksum ^ state;
+    }
+    return checksum;
+}
+
+export func int32PrngKernel(iterations = 1000) {
+    return int32PrngCore(iterations | 0, 123456789);
+}
+
+@directCall
+func packedChecksumCore(iterations) {
+    var values = new Int32Array(iterations);
+    var state = 246353424;
+    for (var i = 0; i < iterations; i++) {
+        state = state ^ (state << 13);
+        state = state ^ (state >> 17);
+        state = state ^ (state << 5);
+        values[i] = state;
+    }
+
+    var checksum = 0;
+    for (var j = 0; j < iterations; j++) {
+        checksum = checksum ^ values[j];
+    }
+    return checksum;
+}
+
+export func packedChecksumKernel(iterations = 1000) {
+    return packedChecksumCore(iterations | 0);
+}
+
+@directCall
+func integerHeapKernelCore(iterations) {
+    var heap = new Int32Array(iterations);
+    var scores = new Int32Array(iterations);
+    var checksum = 0;
+
+    for (var node = 0; node < iterations; node++) {
+        var score = node ^ (node << 13);
+        score = score ^ (score >> 17);
+        score = score ^ (score << 5);
+        scores[node] = score;
+
+        var pos = node;
+        while (pos > 0) {
+            var parent = (pos - 1) >> 1;
+            var parentNode = heap[parent];
+            if (scores[parentNode] <= score) break;
+            heap[pos] = parentNode;
+            pos = parent;
+        }
+        heap[pos] = node;
+        checksum = checksum ^ heap[0];
+    }
+    return checksum;
+}
+
+export func integerHeapKernel(iterations = 1000) {
+    return integerHeapKernelCore(iterations | 0);
 }
 
 export func hashMapSetGet(iterations = 1000) {

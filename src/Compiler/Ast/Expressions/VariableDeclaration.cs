@@ -111,7 +111,7 @@ namespace AuroraScript.Compiler.Ast.Expressions
                     else if (value.Kind == ValueKind.String)
                     {
                         token = new StringToken();
-                        token.Value = value.String.Value;
+                        token.Value = value.StringText;
                     }
                     else
                     {

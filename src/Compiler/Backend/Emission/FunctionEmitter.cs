@@ -9,22 +9,21 @@ namespace AuroraScript.Compiler.Backend.Emission
     {
         private readonly EmissionSession _session;
         private readonly ModulePlan _module;
-        private readonly LocalEmitter _locals;
-        private readonly ExpressionEmitter _expressions;
-        private readonly ControlFlowEmitter _controlFlow;
-        private readonly ExecutableSkeletonEmitter _skeleton;
+        private readonly FunctionReportCollector _reportCollector;
+        private readonly TypedCilEmitter _typed;
         private readonly HashSet<SymbolId> _directCallCandidateSymbols;
 
-        public FunctionEmitter(EmissionSession session, ModulePlan module, ExecutableSkeletonEmitter skeleton)
+        public FunctionEmitter(
+            EmissionSession session,
+            ModulePlan module,
+            TypedCilEmitter typed)
         {
             _session = session ?? throw new ArgumentNullException(nameof(session));
             _module = module ?? throw new ArgumentNullException(nameof(module));
-            _skeleton = skeleton;
-            if (session.CollectDiagnostics || skeleton == null)
+            _typed = typed;
+            if (session.CollectDiagnostics)
             {
-                _locals = new LocalEmitter();
-                _expressions = new ExpressionEmitter(_locals);
-                _controlFlow = new ControlFlowEmitter(_locals, _expressions);
+                _reportCollector = new FunctionReportCollector(module);
             }
 
             _directCallCandidateSymbols = session.CollectDiagnostics
@@ -37,14 +36,18 @@ namespace AuroraScript.Compiler.Backend.Emission
             ArgumentNullException.ThrowIfNull(function);
 
             var context = new FunctionEmissionContext(_session.CompileSession, _module, function, _directCallCandidateSymbols);
-            if (_session.CollectDiagnostics || _skeleton == null)
+            if (_session.CollectDiagnostics)
             {
-                _controlFlow.Emit(context, function.Body);
+                _reportCollector.Collect(context);
             }
 
-            if (_skeleton != null && _skeleton.TryEmit(function, out var method, out var localCount))
+            if (_typed != null && _typed.TryEmit(function, out var typedMethod, out var typedLocalCount))
             {
-                context.SetExecutableSkeleton(method, localCount);
+                context.SetExecutableCode(typedMethod, typedLocalCount);
+            }
+            else if (_typed != null)
+            {
+                throw new NotSupportedException($"Typed CIL emission does not support function '{function.Name ?? "<anonymous>"}'.");
             }
             return context.ToResult();
         }
@@ -53,20 +56,28 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             ArgumentNullException.ThrowIfNull(function);
 
-            if (_session.CollectDiagnostics || _skeleton == null)
+            if (_session.CollectDiagnostics)
             {
                 var context = new FunctionEmissionContext(_session.CompileSession, _module, function, _directCallCandidateSymbols);
-                _controlFlow.Emit(context, function.Body);
-                if (_skeleton != null && _skeleton.TryEmit(function, out var diagnosticMethod, out var diagnosticLocalCount))
+                _reportCollector.Collect(context);
+                if (_typed != null && _typed.TryEmit(function, out var typedMethod, out var typedLocalCount))
                 {
-                    context.SetExecutableSkeleton(diagnosticMethod, diagnosticLocalCount);
+                    context.SetExecutableCode(typedMethod, typedLocalCount);
+                }
+                else if (_typed != null)
+                {
+                    throw new NotSupportedException($"Typed CIL emission does not support function '{function.Name ?? "<anonymous>"}'.");
                 }
                 return;
             }
 
-            if (_skeleton != null && _skeleton.TryEmit(function, out var method, out _))
+            if (_typed != null && _typed.TryEmit(function, out var emittedTypedMethod, out _))
             {
-                function.Method = method;
+                function.Method = emittedTypedMethod;
+            }
+            else if (_typed != null)
+            {
+                throw new NotSupportedException($"Typed CIL emission does not support function '{function.Name ?? "<anonymous>"}'.");
             }
         }
 

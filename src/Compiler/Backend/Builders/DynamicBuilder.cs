@@ -86,19 +86,5 @@ namespace AuroraScript.Compiler.Backend.Builders
             return _domainInitMethod;
         }
 
-        public override void SetLocalSymInfo(LocalBuilder local, string name)
-        {
-
-        }
-
-        public override void MarkSequencePoint(AstNode node, ILGenerator il)
-        {
-
-        }
-
-        public override void MarkSequencePoint(SourceSpan range, ILGenerator il)
-        {
-
-        }
     }
 }

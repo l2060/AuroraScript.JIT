@@ -21,6 +21,7 @@ namespace AuroraScript.Runtime.Types
         {
             var capacity = array._count;
             _items = new ScriptDatum[Math.Max(4, capacity)];
+            _count = capacity;
             if (capacity > 0)
             {
                 Array.Copy(array._items, _items, capacity);
@@ -44,10 +45,6 @@ namespace AuroraScript.Runtime.Types
             {
                 _items = new ScriptDatum[Math.Max(4, capacity)];
                 _count = capacity;
-                for (int i = 0; i < _count; i++)
-                {
-                    _items[i] = ScriptDatum.Null;
-                }
             }
         }
 
@@ -164,7 +161,24 @@ namespace AuroraScript.Runtime.Types
             return CreateWithCapacity(capacity);
         }
 
+        internal static ScriptArray CreateWithLength(ScriptDatum length)
+        {
+            var capacity = length.Kind == ValueKind.Number ? (int)length.Number : 0;
+            return new ScriptArray(capacity);
+        }
+
+        internal static ScriptArray CreateEmptyWithCapacity(ScriptDatum value)
+        {
+            var capacity = 0;
+            if (ScriptDatum.TryToInteger(in value, out var requested) && requested > 0)
+            {
+                capacity = requested > int.MaxValue ? int.MaxValue : (int)requested;
+            }
+            return CreateEmptyWithCapacity(capacity);
+        }
+
         /// <summary> Gets the element at the specified index. </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ScriptDatum GetElement(int index)
         {
             if (index < 0 || index >= _count) return ScriptDatum.Null;
@@ -172,15 +186,36 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary> Gets the element at the specified index and writes it to the provided datum. </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void GetElement(int index, ref ScriptDatum scriptDatum)
         {
-            if (index < 0) index = _count + index;
-            if (index < 0 || index >= _count)
+            if ((uint)index < (uint)_count)
             {
-                scriptDatum = default;
+                scriptDatum = _items[index];
                 return;
             }
-            scriptDatum = _items[index];
+            GetElementSlow(index, ref scriptDatum);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal ScriptDatum GetElementValue(int index)
+        {
+            if ((uint)index < (uint)_count) return _items[index];
+            return GetElementValueSlow(index);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private ScriptDatum GetElementValueSlow(int index)
+        {
+            if (index < 0) index += _count;
+            return (uint)index < (uint)_count ? _items[index] : default;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void GetElementSlow(int index, ref ScriptDatum scriptDatum)
+        {
+            if (index < 0) index += _count;
+            scriptDatum = (uint)index < (uint)_count ? _items[index] : default;
         }
 
 
@@ -228,9 +263,21 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary> Sets the element at the specified index. Expands the buffer if necessary. </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void SetElement(int index, in ScriptDatum datum)
         {
-            if (index < 0) index = _count + index;
+            if ((uint)index < (uint)_count)
+            {
+                _items[index] = datum;
+                return;
+            }
+            SetElementSlow(index, in datum);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void SetElementSlow(int index, in ScriptDatum datum)
+        {
+            if (index < 0) index += _count;
             if (index < 0) return;
             if (index >= _items.Length) EnsureCapacity(index + 1);
             if (index >= _count)
@@ -240,9 +287,16 @@ namespace AuroraScript.Runtime.Types
             _items[index] = datum;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void SetElementValue(int index, ScriptDatum datum)
         {
             SetElement(index, in datum);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal bool HasOwnPushProperty()
+        {
+            return hiddenClass.TryGet("push", out _);
         }
 
 
@@ -293,9 +347,24 @@ namespace AuroraScript.Runtime.Types
 
 
         /// <summary> Appends a datum to the end of the array. </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Push(ScriptDatum datum)
         {
-            SetElement(_count, in datum);
+            var index = _count;
+            if ((uint)index < (uint)_items.Length)
+            {
+                _items[index] = datum;
+                _count = index + 1;
+                return;
+            }
+            PushSlow(datum);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void PushSlow(ScriptDatum datum)
+        {
+            EnsureCapacity(_count + 1);
+            _items[_count++] = datum;
         }
 
         internal void AddRange(Span<ScriptDatum> items)
@@ -516,6 +585,7 @@ namespace AuroraScript.Runtime.Types
 
 
 
+        [MethodImpl(MethodImplOptions.NoInlining)]
         private void EnsureCapacity(int min)
         {
             if (_items.Length >= min) return;

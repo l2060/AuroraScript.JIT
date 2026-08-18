@@ -1,4 +1,5 @@
 using AuroraScript.Runtime;
+using AuroraScript.Runtime.Types;
 using AuroraScript.Tests.Infrastructure;
 using System;
 using System.Linq;
@@ -10,6 +11,236 @@ namespace AuroraScript.Tests;
 
 public sealed class ReleaseRegressionTests
 {
+    [Fact]
+    public async Task PostfixMutationKeepsTheOriginalDynamicValueKind()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func run() {
+                var numericText = "2";
+                var invalidText = "x";
+                var truth = true;
+                var empty = null;
+                return [
+                    numericText++ + 1,
+                    numericText,
+                    invalidText++ + 1,
+                    Number.isNaN(invalidText),
+                    truth++,
+                    truth,
+                    empty++,
+                    Number.isNaN(empty)
+                ];
+            }
+            """);
+
+        ScriptAssert.Equal(
+            new object?[] { "21", 3, "x1", true, true, 2, null, true },
+            TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
+    public async Task UnsignedRightShiftKeepsUInt32ResultsOnTheNativeNumberPath()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            "@module(TEST); export func run(value) { return [value >>> 0, value >>> 1, -2147483648 >>> 0]; }");
+
+        ScriptAssert.Equal(
+            new object?[] { 4294967295d, 2147483647d, 2147483648d },
+            TestWorkspace.Execute(domain, "run", arguments: ScriptDatum.FromNumber(-1)));
+    }
+
+    [Fact]
+    public async Task NativeBitwiseTruncationMatchesTheDynamicRuntimeBoundary()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func run(value) {
+                return [
+                    4294967295 & 1, value & 1,
+                    4294967295 | 0, value | 0,
+                    4294967295 ^ 0, value ^ 0,
+                    ~4294967295, ~value
+                ];
+            }
+            """);
+
+        ScriptAssert.Equal(
+            new object?[] { 1, 1, -1, -1, -1, -1, 0, 0 },
+            TestWorkspace.Execute(domain, "run", arguments: ScriptDatum.FromNumber(4294967295d)));
+    }
+
+    [Fact]
+    public async Task ParameterComparisonCachePreservesStringEquality()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            "@module(TEST); export func run(left, right) { return [left == right, left != right, left < right]; }");
+
+        ScriptAssert.Equal(
+            new object?[] { false, true, false },
+            TestWorkspace.Execute(
+                domain,
+                "run",
+                arguments: [ScriptDatum.FromString("01"), ScriptDatum.FromString("1")]));
+        ScriptAssert.Equal(
+            new object?[] { true, false, false },
+            TestWorkspace.Execute(
+                domain,
+                "run",
+                arguments: [ScriptDatum.FromString("same"), ScriptDatum.FromString("same")]));
+    }
+
+    [Fact]
+    public async Task InOperatorPreservesSubstringAndEstablishedElementEquality()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            "@module(TEST); export func run() { return [(\"ur\" in \"Aurora\"), (\"u\" in \"Aurora\"), (1 in \"1\")]; }");
+
+        ScriptAssert.Equal(
+            new object?[] { true, true, true },
+            TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
+    public async Task StringIterationHandlesAllUtf16CodeUnits()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func run() {
+                var text = "A你😀";
+                var copy = "";
+                var count = 0;
+                for (var ch in text) {
+                    copy += ch;
+                    count++;
+                }
+                return [copy, count];
+            }
+            """);
+
+        ScriptAssert.Equal(
+            new object?[] { "A你😀", 4 },
+            TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
+    public async Task BreakAndContinueCanLeaveTryRegionsAndStillRunFinally()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func run() {
+                var total = 0;
+                for (var i = 0; i < 5; i++) {
+                    try {
+                        if (i == 1) continue;
+                        if (i == 3) break;
+                        total += i;
+                    } finally {
+                        total += 10;
+                    }
+                }
+                return total;
+            }
+            """);
+
+        ScriptAssert.Equal(42, TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
+    public async Task BreakAndContinueFromFinallyPreserveStructuredControlFlow()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            func transferTrace() {
+                var trace = "";
+                for (var i = 0; i < 4; i++) {
+                    try {
+                        trace += "T" + i;
+                    } finally {
+                        if (i == 0) { trace += "C"; continue; }
+                        if (i == 2) { trace += "B"; break; }
+                        trace += "F";
+                    }
+                    trace += "A";
+                }
+                return trace;
+            }
+            func bypassCatch() {
+                for (var i = 0; i < 1; i++) {
+                    try {
+                        try { }
+                        finally { break; }
+                    } catch (error) {
+                        return 99;
+                    }
+                }
+                return 7;
+            }
+            func overridePendingReturn() {
+                for (var i = 0; i < 1; i++) {
+                    try { return 1; }
+                    finally { break; }
+                }
+                return 2;
+            }
+            func nestedLoopInFinally() {
+                var count = 0;
+                try { }
+                finally {
+                    while (true) {
+                        count++;
+                        break;
+                    }
+                }
+                return count;
+            }
+            export func run() {
+                return [transferTrace(), bypassCatch(), overridePendingReturn(), nestedLoopInFinally()];
+            }
+            """);
+
+        ScriptAssert.Equal(
+            new object?[] { "T0CT1FAT2B", 7, 2, 1 },
+            TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
+    public async Task ReturnFromFinallyOverridesPendingReturnAndBypassesScriptCatch()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            func direct() {
+                try { return 1; }
+                finally { return 2; }
+            }
+            export func run() {
+                try {
+                    try { throw "ignored"; }
+                    finally { return direct() + 5; }
+                } catch (error) {
+                    return 99;
+                }
+            }
+            """);
+
+        ScriptAssert.Equal(7, TestWorkspace.Execute(domain, "run"));
+    }
+
     [Fact]
     public async Task DirectCallFastPathsCoverZeroThroughSevenAndFallbackArity()
     {
@@ -33,6 +264,141 @@ public sealed class ReleaseRegressionTests
         ScriptAssert.Equal(
             new object?[] { 0, 1, 3, 6, 10, 15, 21, 28, 36 },
             TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
+    public async Task DirectCallCandidateWithSpreadKeepsDynamicAritySemantics()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            @directCall
+            func join(left, right) { return left + "-" + right; }
+            export func run() { return join(...["Aurora", "Script"]); }
+            """,
+            enableHotReload: false);
+
+        ScriptAssert.Equal("Aurora-Script", TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
+    public async Task DirectCallDefaultParametersUseTheGenericAdapter()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            @directCall
+            func add(left, right = 5) { return left + right; }
+            export func run() { return [add(2), add(2, 3)]; }
+            """,
+            enableHotReload: false);
+
+        ScriptAssert.Equal(new object?[] { 7, 5 }, TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
+    public async Task NativeDirectCallsSupportRecursion()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            @directCall
+            func sum(value, total) {
+                if (value <= 0) return total;
+                return sum(value - 1, total + value);
+            }
+            export func run() { return sum(100, 0); }
+            """,
+            enableHotReload: false);
+
+        ScriptAssert.Equal(5050, TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
+    public async Task NativeDirectSpecializationDoesNotCoerceGenericEntryArguments()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            @directCall
+            func identity(value) { return value; }
+            @directCall
+            export func relay(value) { return identity(value); }
+            export func warmup() { return relay(41) + 1; }
+            """,
+            enableHotReload: false);
+
+        ScriptAssert.Equal(42, TestWorkspace.Execute(domain, "warmup"));
+        ScriptAssert.Equal(
+            "Aurora",
+            TestWorkspace.Execute(domain, "relay", arguments: ScriptDatum.FromString("Aurora")));
+    }
+
+    [Fact]
+    public async Task CapturedParameterComparisonReadsTheCurrentUpvalue()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func run(value) {
+                func overwrite() { value = 2; }
+                overwrite();
+                return value == 2;
+            }
+            """);
+
+        ScriptAssert.Equal(
+            true,
+            TestWorkspace.Execute(domain, "run", arguments: ScriptDatum.FromNumber(1)));
+    }
+
+    [Fact]
+    public async Task DynamicBitwiseOrKeepsTheEstablishedNullLeftValueSemantics()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func run() { return [null | true, null | "Aurora", null | 2]; }
+            """);
+
+        ScriptAssert.Equal(
+            new object?[] { true, "Aurora", 2 },
+            TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
+    public async Task ModuleInitializerDirectCallUsesALightweightFunctionFrame()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            @directCall
+            func captureFrame() { return HOST_FRAME(); }
+            export var capturedFrame = captureFrame();
+            export func run() { return capturedFrame; }
+            """,
+            configureGlobal: global =>
+            {
+                ClrDatumDelegate callback = static (
+                    ScriptContext context,
+                    ScriptObject receiver,
+                    Span<ScriptDatum> arguments,
+                    ref ScriptDatum result) =>
+                {
+                    ScriptDatum.WriteAsString(ref result, context.DirectName ?? string.Empty);
+                };
+                global.Define("HOST_FRAME", ScriptDatum.FromBonding(callback));
+            },
+            enableHotReload: false);
+
+        ScriptAssert.Equal("captureFrame", TestWorkspace.Execute(domain, "run"));
     }
 
     [Fact]

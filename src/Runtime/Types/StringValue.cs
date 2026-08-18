@@ -76,6 +76,11 @@ namespace AuroraScript.Runtime.Types
 
         internal static StringValue FromChar(char ch)
         {
+            if ((uint)ch >= (uint)_charCache.Length)
+            {
+                return new StringValue(ch);
+            }
+
             var cached = _charCache[ch];
             if (cached == null)
             {
@@ -83,6 +88,14 @@ namespace AuroraScript.Runtime.Types
                 _charCache[ch] = cached;
             }
             return cached;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static string TextFromChar(char ch)
+        {
+            return (uint)ch < (uint)_charCache.Length
+                ? FromChar(ch).Value
+                : ch.ToString();
         }
 
         /// <summary>

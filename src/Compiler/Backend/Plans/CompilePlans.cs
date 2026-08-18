@@ -1,7 +1,6 @@
 using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Compiler.Backend.Binding;
-using AuroraScript.Compiler.Backend.Lowering;
 using AuroraScript.Runtime;
 using System;
 using System.Collections.Generic;
@@ -134,8 +133,6 @@ namespace AuroraScript.Compiler.Backend.Plans
             UpvalueSlots = Array.Empty<UpvalueSlot>();
             CapturedLocalSlots = Array.Empty<UpvalueSlot>();
             NestedFunctions = Array.Empty<FunctionId>();
-            ParameterDefaults = Array.Empty<LoweredExpression>();
-            UnsupportedLoweredNodes = Array.Empty<LoweredUnsupportedNode>();
             DirectCallDirective = FunctionAnnotationBinder.ResolveDirectCallDirective(declaration);
             ParentLocalScopeId = -1;
         }
@@ -149,19 +146,14 @@ namespace AuroraScript.Compiler.Backend.Plans
         public FunctionVisibility Visibility { get; set; }
         public FunctionCallConvention CallConvention { get; set; }
         public MethodInfo Method { get; set; }
+        public MethodInfo DirectEntryMethod { get; set; }
         public int DynamicDelegateId { get; set; }
-        public FieldInfo DirectClosureField { get; set; }
         public LocalSlot[] LocalSlots { get; set; }
         public LocalScope[] LocalScopes { get; set; }
         public Dictionary<AstNode, int> LocalScopeByNode { get; set; }
         public UpvalueSlot[] UpvalueSlots { get; set; }
         public UpvalueSlot[] CapturedLocalSlots { get; set; }
         public FunctionId[] NestedFunctions { get; set; }
-        public LoweredExpression[] ParameterDefaults { get; set; }
-        public LoweredBlockStatement Body { get; set; }
-        public int UnsupportedLoweredStatementCount { get; set; }
-        public int UnsupportedLoweredExpressionCount { get; set; }
-        public LoweredUnsupportedNode[] UnsupportedLoweredNodes { get; set; }
         public bool IsDirectCallCandidate { get; set; }
         public DirectCallDirective DirectCallDirective { get; }
         public bool UsesArgumentsObject { get; set; }

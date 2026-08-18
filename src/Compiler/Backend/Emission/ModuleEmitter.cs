@@ -49,17 +49,17 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private ModuleEmissionState CreateState(ModulePlan module)
         {
-            ExecutableSkeletonEmitter skeleton = null;
+            TypedCilEmitter typed = null;
             ModuleInitializerEmitter initializerEmitter = null;
-            if (_session.EmitExecutableSkeletons)
+            if (_session.EmitExecutableCode)
             {
                 initializerEmitter = new ModuleInitializerEmitter(_session, module);
                 initializerEmitter.Define();
-                skeleton = new ExecutableSkeletonEmitter(_session, module);
-                skeleton.Prepare();
+                typed = new TypedCilEmitter(_session, module);
+                typed.Prepare();
             }
 
-            var functionEmitter = new FunctionEmitter(_session, module, skeleton);
+            var functionEmitter = new FunctionEmitter(_session, module, typed);
             return new ModuleEmissionState(functionEmitter, initializerEmitter);
         }
 

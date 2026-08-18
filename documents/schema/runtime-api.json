@@ -116,6 +116,134 @@
         ]
       }
     },
+    "Int32Array": {
+      "kind": "constructor",
+      "callable": false,
+      "constructors": [
+        {
+          "parameters": [
+            {
+              "name": "length",
+              "type": "number",
+              "optional": true
+            }
+          ],
+          "returns": "Int32Array",
+          "notes": {
+            "en": [
+              "Creates a fixed-length, zero-initialized signed 32-bit integer array."
+            ],
+            "zh-CN": [
+              "创建固定长度、以零初始化的 32 位有符号整数数组。"
+            ]
+          }
+        }
+      ],
+      "notes": {
+        "en": [
+          "Primitive-backed array for allocation-efficient numeric workloads."
+        ],
+        "zh-CN": [
+          "使用原生整数存储，适合低分配数值计算。"
+        ]
+      }
+    },
+    "Int8Array": {
+      "kind": "constructor",
+      "callable": false,
+      "constructors": [
+        {
+          "parameters": [
+            {
+              "name": "length",
+              "type": "number",
+              "optional": true
+            }
+          ],
+          "returns": "Int8Array",
+          "notes": {
+            "en": [
+              "Creates a fixed-length, zero-initialized signed 8-bit integer array."
+            ],
+            "zh-CN": [
+              "创建固定长度、以零初始化的 8 位有符号整数数组。"
+            ]
+          }
+        }
+      ],
+      "notes": {
+        "en": [
+          "Primitive-backed array for compact signed-byte data."
+        ],
+        "zh-CN": [
+          "使用原生有符号字节存储，适合紧凑数据。"
+        ]
+      }
+    },
+    "Float64Array": {
+      "kind": "constructor",
+      "callable": false,
+      "constructors": [
+        {
+          "parameters": [
+            {
+              "name": "length",
+              "type": "number",
+              "optional": true
+            }
+          ],
+          "returns": "Float64Array",
+          "notes": {
+            "en": [
+              "Creates a fixed-length, zero-initialized 64-bit floating-point array."
+            ],
+            "zh-CN": [
+              "创建固定长度、以零初始化的 64 位浮点数数组。"
+            ]
+          }
+        }
+      ],
+      "notes": {
+        "en": [
+          "Primitive-backed array for allocation-efficient floating-point workloads."
+        ],
+        "zh-CN": [
+          "使用原生双精度浮点存储，适合低分配数值计算。"
+        ]
+      }
+    },
+    "BooleanArray": {
+      "kind": "constructor",
+      "callable": false,
+      "constructors": [
+        {
+          "parameters": [
+            {
+              "name": "length",
+              "type": "number",
+              "optional": true
+            }
+          ],
+          "returns": "BooleanArray",
+          "notes": {
+            "en": [
+              "Creates a fixed-length Boolean array initialized to false."
+            ],
+            "zh-CN": [
+              "创建固定长度、以 false 初始化的布尔数组。"
+            ]
+          }
+        }
+      ],
+      "notes": {
+        "en": [
+          "Primitive-backed array for compact Boolean state."
+        ],
+        "zh-CN": [
+          "使用原生布尔存储，适合紧凑状态数据。"
+        ]
+      }
+    },
     "String": {
       "kind": "constructor",
       "callable": true,
@@ -1375,6 +1503,24 @@
             ]
           }
         },
+        "ceil": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "number"
+            }
+          ],
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Rounds up to the nearest integer."
+            ],
+            "zh-CN": [
+              "向上取整。"
+            ]
+          }
+        },
         "floor": {
           "kind": "method",
           "parameters": [
@@ -2234,6 +2380,138 @@
           ],
           "zh-CN": [
             "使用累加回调归约数组项。"
+          ]
+        }
+      }
+    },
+    "Int32Array": {
+      "length": {
+        "kind": "property",
+        "returns": "number",
+        "notes": {
+          "en": [
+            "Returns the fixed array length."
+          ],
+          "zh-CN": [
+            "返回不可变的数组长度。"
+          ]
+        }
+      },
+      "fill": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "value",
+            "type": "number",
+            "optional": true
+          }
+        ],
+        "returns": "Int32Array",
+        "notes": {
+          "en": [
+            "Fills every element after converting the value to a signed 32-bit integer."
+          ],
+          "zh-CN": [
+            "将值转换为 32 位有符号整数后填充全部元素。"
+          ]
+        }
+      }
+    },
+    "Int8Array": {
+      "length": {
+        "kind": "property",
+        "returns": "number",
+        "notes": {
+          "en": [
+            "Returns the fixed array length."
+          ],
+          "zh-CN": [
+            "返回不可变的数组长度。"
+          ]
+        }
+      },
+      "fill": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "value",
+            "type": "number",
+            "optional": true
+          }
+        ],
+        "returns": "Int8Array",
+        "notes": {
+          "en": [
+            "Fills every element after converting the value to a signed 8-bit integer."
+          ],
+          "zh-CN": [
+            "将值转换为 8 位有符号整数后填充全部元素。"
+          ]
+        }
+      }
+    },
+    "Float64Array": {
+      "length": {
+        "kind": "property",
+        "returns": "number",
+        "notes": {
+          "en": [
+            "Returns the fixed array length."
+          ],
+          "zh-CN": [
+            "返回不可变的数组长度。"
+          ]
+        }
+      },
+      "fill": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "value",
+            "type": "number",
+            "optional": true
+          }
+        ],
+        "returns": "Float64Array",
+        "notes": {
+          "en": [
+            "Fills every element with the numeric conversion of the value."
+          ],
+          "zh-CN": [
+            "使用参数的数值转换结果填充全部元素。"
+          ]
+        }
+      }
+    },
+    "BooleanArray": {
+      "length": {
+        "kind": "property",
+        "returns": "number",
+        "notes": {
+          "en": [
+            "Returns the fixed array length."
+          ],
+          "zh-CN": [
+            "返回不可变的数组长度。"
+          ]
+        }
+      },
+      "fill": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "value",
+            "type": "boolean",
+            "optional": true
+          }
+        ],
+        "returns": "BooleanArray",
+        "notes": {
+          "en": [
+            "Fills every element with the Boolean conversion of the value."
+          ],
+          "zh-CN": [
+            "使用参数的布尔转换结果填充全部元素。"
           ]
         }
       }

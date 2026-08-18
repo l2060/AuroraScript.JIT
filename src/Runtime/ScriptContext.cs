@@ -67,6 +67,11 @@ namespace AuroraScript.Runtime
     /// </summary>
     public class ScriptContext
     {
+        private CallFrame[] _frames;
+        private int _frameCount;
+        private AuroraStackTrace[] _exceptionStack;
+        private bool _isActive;
+
         /// <summary> The script domain associated with this context. </summary>
         public ScriptDomain Domain;
 
@@ -145,14 +150,6 @@ namespace AuroraScript.Runtime
             return next;
         }
 
-        internal ScriptContext WithDirect(ScriptModule module, string name)
-        {
-            var next = Domain.ContextPool.Rent(Domain, UserState, module, null);
-            next.DirectName = name;
-            LinkNext(next);
-            return next;
-        }
-
         /// <summary>
         /// Creates a new child execution context with a specific module, closure, and user state.
         /// </summary>
@@ -194,6 +191,125 @@ namespace AuroraScript.Runtime
             Next = null;
             Previous = null;
             Location = 0;
+            _frameCount = 0;
+            _exceptionStack = null;
+            _isActive = true;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal int EnterClosure(ClosureFunction closure)
+        {
+            ArgumentNullException.ThrowIfNull(closure);
+            EnsureActive();
+            var restoreDepth = PushCurrentFrame();
+            Module = closure.Module;
+            Target = closure;
+            DirectName = null;
+            Upvalues = closure.Upvalues;
+            Location = 0;
+            return restoreDepth;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal int EnterDirect(string name)
+        {
+            EnsureActive();
+            var restoreDepth = PushCurrentFrame();
+            Target = null;
+            DirectName = name;
+            Upvalues = null;
+            Location = 0;
+            return restoreDepth;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal int EnterModule(ScriptModule module)
+        {
+            EnsureActive();
+            var restoreDepth = PushCurrentFrame();
+            Module = module;
+            Target = null;
+            DirectName = null;
+            Upvalues = null;
+            Location = 0;
+            return restoreDepth;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void LeaveFrame(int restoreDepth)
+        {
+            if ((uint)restoreDepth > (uint)_frameCount)
+            {
+                throw new InvalidOperationException("Invalid script call frame depth.");
+            }
+
+            // Preserve the cleanup contract of the former child-context call path
+            // for compatibility code that still creates linked contexts with With().
+            if (Next != null)
+            {
+                Next.ReleaseLinked();
+            }
+
+            while (_frameCount > restoreDepth)
+            {
+                var index = --_frameCount;
+                var frame = _frames[index];
+                _frames[index] = default;
+                Module = frame.Module;
+                Target = frame.Target;
+                DirectName = frame.DirectName;
+                Upvalues = frame.Upvalues;
+                UserState = frame.UserState;
+                Location = frame.Location;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal void CaptureExceptionStack()
+        {
+            _exceptionStack ??= SnapshotActiveFrames();
+        }
+
+        internal AuroraStackTrace[] TakeExceptionStack()
+        {
+            var trace = _exceptionStack ?? SnapshotActiveFrames();
+            _exceptionStack = null;
+            return trace;
+        }
+
+        internal void ClearExceptionStack()
+        {
+            _exceptionStack = null;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private int PushCurrentFrame()
+        {
+            var frames = _frames;
+            if (frames == null)
+            {
+                frames = new CallFrame[4];
+                _frames = frames;
+            }
+            else if (_frameCount == frames.Length)
+            {
+                Array.Resize(ref _frames, frames.Length * 2);
+                frames = _frames;
+            }
+
+            var depth = _frameCount;
+            frames[_frameCount++] = new CallFrame(Module, Target, DirectName, Upvalues, UserState, Location);
+            return depth;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void EnsureActive()
+        {
+            if (!_isActive)
+            {
+                throw new InvalidOperationException(
+                    "The ScriptContext is no longer active. Use ClosureFunction.InvokeClrDetached for deferred or asynchronous callbacks.");
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -207,6 +323,13 @@ namespace AuroraScript.Runtime
             }
             Next = null;
             Location = 0;
+            if (_frameCount != 0)
+            {
+                Array.Clear(_frames, 0, _frameCount);
+                _frameCount = 0;
+            }
+            _exceptionStack = null;
+            _isActive = false;
             Domain.ContextPool.Return(this);
         }
 
@@ -240,16 +363,28 @@ namespace AuroraScript.Runtime
         /// <returns>An array of <see cref="AuroraStackTrace"/> representing the call stack.</returns>
         public AuroraStackTrace[] CallStack()
         {
-            List<AuroraStackTrace> stackTraces = new List<AuroraStackTrace>();
-            var c = this;
-            while (c != null && c.Location > 0)
+            if (_frameCount != 0)
             {
-                UnionNumber m = new UnionNumber(c.Location);
-                var moduleMeta = Global.modulePathHash[m.Int32ValueH];
-                stackTraces.Add(new AuroraStackTrace(moduleMeta.ModulePath, c.Target?.FuncName ?? c.DirectName, m.Int32ValueL));
-                c = c.Previous;
+                return SnapshotActiveFrames();
             }
-            return stackTraces.ToArray();
+
+            var count = 0;
+            for (var context = this; context != null; context = context.Previous)
+            {
+                if (context.Location > 0) count++;
+            }
+            if (count == 0) return Array.Empty<AuroraStackTrace>();
+
+            var result = new AuroraStackTrace[count];
+            var index = 0;
+            for (var context = this; context != null; context = context.Previous)
+            {
+                if (TryCreateTrace(context.Location, context.Target?.FuncName ?? context.DirectName, out var trace))
+                {
+                    result[index++] = trace;
+                }
+            }
+            return TrimTrace(result, index);
         }
 
 
@@ -260,6 +395,16 @@ namespace AuroraScript.Runtime
         /// <returns>A list of <see cref="AuroraStackTrace"/> representing the stack trace, in reverse order (most recent first).</returns>
         public List<AuroraStackTrace> StackTrace()
         {
+            if (_exceptionStack != null)
+            {
+                return new List<AuroraStackTrace>(_exceptionStack);
+            }
+
+            if (_frameCount != 0)
+            {
+                return new List<AuroraStackTrace>(SnapshotActiveFrames());
+            }
+
             List<AuroraStackTrace> stackTraces = new List<AuroraStackTrace>();
             var c = this.Next;
             while (c != null)
@@ -276,6 +421,82 @@ namespace AuroraScript.Runtime
             }
             stackTraces.Reverse();
             return stackTraces;
+        }
+
+        private AuroraStackTrace[] SnapshotActiveFrames()
+        {
+            var count = Location > 0 ? 1 : 0;
+            for (var i = _frameCount - 1; i >= 0; i--)
+            {
+                if (_frames[i].Location > 0) count++;
+            }
+            if (count == 0) return Array.Empty<AuroraStackTrace>();
+
+            var result = new AuroraStackTrace[count];
+            var index = 0;
+            if (TryCreateTrace(Location, Target?.FuncName ?? DirectName, out var current))
+            {
+                result[index++] = current;
+            }
+            for (var i = _frameCount - 1; i >= 0; i--)
+            {
+                ref readonly var frame = ref _frames[i];
+                if (TryCreateTrace(frame.Location, frame.Target?.FuncName ?? frame.DirectName, out var trace))
+                {
+                    result[index++] = trace;
+                }
+            }
+            return TrimTrace(result, index);
+        }
+
+        private bool TryCreateTrace(long location, string name, out AuroraStackTrace trace)
+        {
+            if (location > 0)
+            {
+                UnionNumber encoded = new UnionNumber(location);
+                if (Global.modulePathHash.TryGetValue(encoded.Int32ValueH, out var moduleMeta))
+                {
+                    trace = new AuroraStackTrace(moduleMeta.ModulePath, name, encoded.Int32ValueL);
+                    return true;
+                }
+            }
+
+            trace = null;
+            return false;
+        }
+
+        private static AuroraStackTrace[] TrimTrace(AuroraStackTrace[] trace, int count)
+        {
+            if (count == trace.Length) return trace;
+            if (count == 0) return Array.Empty<AuroraStackTrace>();
+            Array.Resize(ref trace, count);
+            return trace;
+        }
+
+        private readonly struct CallFrame
+        {
+            public CallFrame(
+                ScriptModule module,
+                ClosureFunction target,
+                string directName,
+                Upvalue[] upvalues,
+                ScriptObject userState,
+                long location)
+            {
+                Module = module;
+                Target = target;
+                DirectName = directName;
+                Upvalues = upvalues;
+                UserState = userState;
+                Location = location;
+            }
+
+            public ScriptModule Module { get; }
+            public ClosureFunction Target { get; }
+            public string DirectName { get; }
+            public Upvalue[] Upvalues { get; }
+            public ScriptObject UserState { get; }
+            public long Location { get; }
         }
 
 

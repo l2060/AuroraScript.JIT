@@ -73,6 +73,32 @@ public sealed class BuiltinApiCatalogTests
     }
 
     [Fact]
+    public void LoadsPackedArrayConstructorsAndMembers()
+    {
+        var catalog = LoadCatalog();
+
+        foreach (var name in new[] { "Int32Array", "Int8Array", "Float64Array", "BooleanArray" })
+        {
+            Assert.True(catalog.TryGetGlobal(name, out var constructor));
+            Assert.Equal(BuiltinApiKind.Constructor, constructor.Kind);
+            Assert.False(constructor.Callable);
+            var signature = Assert.Single(constructor.Constructors);
+            Assert.Equal(name, signature.ReturnType);
+            var length = Assert.Single(signature.Parameters);
+            Assert.Equal("length", length.Name);
+            Assert.Equal("number", length.Type);
+            Assert.True(length.Optional);
+
+            Assert.True(catalog.TryGetPrototypeMember(name, "length", out var lengthMember));
+            Assert.Equal(BuiltinApiKind.Property, lengthMember.Kind);
+            Assert.Equal("number", lengthMember.ReturnType);
+            Assert.True(catalog.TryGetPrototypeMember(name, "fill", out var fill));
+            Assert.Equal(BuiltinApiKind.Method, fill.Kind);
+            Assert.Equal(name, fill.ReturnType);
+        }
+    }
+
+    [Fact]
     public void RuntimeApiCatalogCoversRuntimeRegisteredGlobals()
     {
         var catalog = LoadCatalog();

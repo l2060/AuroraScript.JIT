@@ -98,6 +98,7 @@ namespace AuroraScript.Runtime.Debugging
             var properties = obj switch
             {
                 ScriptArray array => GetArrayProperties(array),
+                ScriptPackedArray array => GetPackedArrayProperties(array),
                 ScriptHashMap hashMap => GetHashMapProperties(hashMap),
                 _ => GetObjectProperties(obj)
             };
@@ -124,6 +125,10 @@ namespace AuroraScript.Runtime.Debugging
             return obj switch
             {
                 ScriptArray => "array",
+                ScriptInt32Array => "Int32Array",
+                ScriptInt8Array => "Int8Array",
+                ScriptFloat64Array => "Float64Array",
+                ScriptBooleanArray => "BooleanArray",
                 StringValue => "string",
                 NumberValue => "number",
                 BooleanValue => "boolean",
@@ -143,7 +148,7 @@ namespace AuroraScript.Runtime.Debugging
                 ValueKind.Null => "null",
                 ValueKind.Boolean => datum.Boolean ? "true" : "false",
                 ValueKind.Number => datum.Number.ToString(),
-                ValueKind.String => Quote(datum.String?.Value ?? string.Empty),
+                ValueKind.String => Quote(datum.StringText ?? string.Empty),
                 ValueKind.Array => FormatArray((ScriptArray)datum.Object),
                 _ => FormatObject(datum.Object)
             };
@@ -159,6 +164,7 @@ namespace AuroraScript.Runtime.Debugging
                 NumberValue number => number.DoubleValue.ToString(),
                 StringValue text => Quote(text.Value ?? string.Empty),
                 ScriptArray array => FormatArray(array),
+                ScriptPackedArray array => FormatPackedArray(array),
                 _ => FormatObject(obj)
             };
         }
@@ -208,6 +214,24 @@ namespace AuroraScript.Runtime.Debugging
             return builder.ToString();
         }
 
+        private static string FormatPackedArray(ScriptPackedArray array)
+        {
+            if (array == null) return "null";
+            if (array.Length == 0) return "[]";
+
+            var builder = new StringBuilder();
+            builder.Append('[');
+            var previewCount = Math.Min(array.Length, MaxArrayPreviewItems);
+            for (var i = 0; i < previewCount; i++)
+            {
+                if (i != 0) builder.Append(", ");
+                builder.Append(FormatValue(array.GetElementDatumUnchecked(i)));
+            }
+            if (previewCount < array.Length) builder.Append(", ...");
+            builder.Append(']');
+            return builder.ToString();
+        }
+
         private static string FormatArrayElement(ScriptDatum datum)
         {
             return datum.Kind == ValueKind.Array || TryGetObject(datum, out _)
@@ -224,6 +248,18 @@ namespace AuroraScript.Runtime.Debugging
                 result[i] = new ScriptDebugProperty("[" + i + "]", array.GetElement(i));
             }
 
+            Array.Copy(objectProperties, 0, result, array.Length, objectProperties.Length);
+            return result;
+        }
+
+        private static ScriptDebugProperty[] GetPackedArrayProperties(ScriptPackedArray array)
+        {
+            var objectProperties = GetObjectProperties(array);
+            var result = new ScriptDebugProperty[array.Length + objectProperties.Length];
+            for (var i = 0; i < array.Length; i++)
+            {
+                result[i] = new ScriptDebugProperty("[" + i + "]", array.GetElementDatumUnchecked(i));
+            }
             Array.Copy(objectProperties, 0, result, array.Length, objectProperties.Length);
             return result;
         }
@@ -306,14 +342,7 @@ namespace AuroraScript.Runtime.Debugging
         private static bool TryGetOwnPropertyDatum(ScriptObject obj, HiddenProperty property, out ScriptDatum datum)
         {
             var slot = property.Meta.Slot;
-            if ((uint)slot >= (uint)obj.propertyValues.Length)
-            {
-                datum = default;
-                return false;
-            }
-
-            var descriptor = obj.propertyValues[slot];
-            if (!descriptor.IsDefined)
+            if (!obj.TryGetOwnProperty(slot, out var descriptor))
             {
                 datum = default;
                 return false;
@@ -345,7 +374,7 @@ namespace AuroraScript.Runtime.Debugging
         private static string FormatKey(ScriptDatum key)
         {
             return key.Kind == ValueKind.String
-                ? key.String?.Value ?? string.Empty
+                ? key.StringText ?? string.Empty
                 : FormatValue(key);
         }
     }

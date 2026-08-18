@@ -57,7 +57,7 @@ namespace AuroraScript.Compiler
             var backend = new BackendCompiler(Builder, Options, globalDeclarations);
             var session = backend.CreateHotPatchPlans(mainModule, dependencies, keys, out var mainModulePlan);
             var emitter = new HotPatchEmitter(
-                new EmissionSession(session, Builder, emitExecutableSkeletons: true, forceModuleDefinitions: true),
+                new EmissionSession(session, Builder, emitExecutableCode: true, forceModuleDefinitions: true),
                 patchType);
             return emitter.Emit(mainModulePlan);
         }

@@ -2,7 +2,6 @@ using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Runtime;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics.SymbolStore;
@@ -38,7 +37,6 @@ namespace AuroraScript.Compiler.Backend.Builders
 
         public override (MethodInfo Method, ILGenerator IL) DefineModuleInitMethod(ModuleDeclaration module)
         {
-            //
             var typeBuilder = _moduleBuilder.DefineType(ConfuseTypeName(module.ModuleName, ConfuseTarget.Class), TypeAttributes.Public | TypeAttributes.Class | TypeAttributes.Sealed);
             var methodBuilder = typeBuilder.DefineMethod(ConfuseTypeName("Initialize", ConfuseTarget.Method), MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig, typeof(void), [typeof(ScriptContext), typeof(Span<ScriptDatum>)]);
             ISymbolDocumentWriter symbolDoc = null;
@@ -83,7 +81,6 @@ namespace AuroraScript.Compiler.Backend.Builders
         public byte[] Serialize()
         {
             var builder = _assemblyBuilder;
-            // 1. 生成元数据（确保只调用一次）
             var metadataBuilder = builder.GenerateMetadata(out BlobBuilder ilBuilder, out var mappedFieldData, out var pdbMetadataBuilder);
 
             DebugDirectoryBuilder debugDirectoryBuilder = null;
@@ -92,14 +89,12 @@ namespace AuroraScript.Compiler.Backend.Builders
 
             if (IsDebugMode)
             {
-                // TableIndex
                 var rowCounts = pdbMetadataBuilder.GetRowCounts();
                 var typeSystemRowCounts = rowCounts.Take(MetadataTokens.TableCount).ToArray();
-                EnsureValidPortablePdbRowCounts(ref typeSystemRowCounts);
+                EnsureValidPortablePdbRowCounts(typeSystemRowCounts);
                 var pdbBuilder = new PortablePdbBuilder(pdbMetadataBuilder, typeSystemRowCounts.ToImmutableArray(), default);
                 pdbBlob = new BlobBuilder();
                 pdbContentId = pdbBuilder.Serialize(pdbBlob);
-                // 3. 构建调试目录
                 debugDirectoryBuilder = new DebugDirectoryBuilder();
                 debugDirectoryBuilder.AddReproducibleEntry();
                 debugDirectoryBuilder.AddEmbeddedPortablePdbEntry(pdbBlob, pdbBuilder.FormatVersion);
@@ -121,13 +116,14 @@ namespace AuroraScript.Compiler.Backend.Builders
                 minorSubsystemVersion: 0,
                 subsystem: Subsystem.Unknown,
                 dllCharacteristics: GetDllCharacteristics(),
-                imageCharacteristics: Characteristics.Dll,
+                imageCharacteristics: Characteristics.ExecutableImage |
+                    Characteristics.LargeAddressAware |
+                    Characteristics.Dll,
                 sizeOfStackReserve: 0x00100000,
                 sizeOfStackCommit: 0x00001000,
                 sizeOfHeapReserve: 0x00100000,
                 sizeOfHeapCommit: 0x00001000);
 
-            // 4. 创建 PE 构建器（使用正确的参数）
             var peBuilder = new ManagedPEBuilder(
                 header: peHeader,
                 metadataRootBuilder: new MetadataRootBuilder(metadataBuilder),
@@ -139,7 +135,6 @@ namespace AuroraScript.Compiler.Backend.Builders
                 strongNameSignatureSize: 0
                 );
 
-            // 5. 执行序列化（关键：确保 PE 构建器未被重复使用）
             var peBlob = new BlobBuilder();
             peBuilder.Serialize(peBlob);
             return peBlob.ToArray();
@@ -157,24 +152,18 @@ namespace AuroraScript.Compiler.Backend.Builders
 
 
 
-        // 关键修复方法：确保 Portable PDB 行计数有效
-        private void EnsureValidPortablePdbRowCounts(ref int[] typeSystemRowCounts)
+        private static void EnsureValidPortablePdbRowCounts(int[] typeSystemRowCounts)
         {
-            // Portable PDB 允许的表格掩码
-            // 根据 ECMA-335 和 Portable PDB 规范
             const ulong ValidPortablePdbExternalTables = 0x0000041007F3D857;
 
             for (int i = 0; i < typeSystemRowCounts.Length; i++)
             {
-                // 检查是否在允许的表格掩码中
                 if (((1UL << i) & ValidPortablePdbExternalTables) == 0)
                 {
-                    // 不允许的表格必须行数为0
                     typeSystemRowCounts[i] = 0;
                 }
                 else
                 {
-                    // 允许的表格，确保行数有效
                     if (typeSystemRowCounts[i] < 0)
                     {
                         typeSystemRowCounts[i] = 0;
@@ -182,7 +171,6 @@ namespace AuroraScript.Compiler.Backend.Builders
                 }
             }
 
-            // 特别处理表 #48（ModuleRef），它必须为0
             const int MODULE_REF_TABLE_INDEX = 48;
             if (MODULE_REF_TABLE_INDEX < typeSystemRowCounts.Length)
             {
@@ -222,123 +210,6 @@ namespace AuroraScript.Compiler.Backend.Builders
                 il.Emit(OpCodes.Nop);
             }
         }
-
-
-
-
-        public override LoadState LoadNumber(ILGenerator il, double number)
-        {
-            if (IsConfused)
-            {
-                var id = "N" + number;
-                var field = consts.GetOrAdd(id, (key) =>
-                {
-                    var bytes = new Byte[24];
-                    bytes[0] = (byte)ValueKind.Number;
-                    BitConverter.TryWriteBytes(new Span<Byte>(bytes, 8, 8), number);
-                    var name = ConfuseTypeName(id, ConfuseTarget.Constant);
-                    return _moduleBuilder.DefineInitializedData(name, bytes, FieldAttributes.Public | FieldAttributes.Static);
-                });
-                il.Emit(OpCodes.Ldsfld, field);
-                return LoadState.Struct;
-            }
-            else
-            {
-                return base.LoadNumber(il, number);
-            }
-        }
-
-        public override LoadState LoadBoolean(ILGenerator il, Boolean b)
-        {
-            if (IsConfused)
-            {
-                var id = b ? "B1" : "B0";
-                var field = consts.GetOrAdd(id, (key) =>
-                {
-                    var bytes = new Byte[24];
-                    bytes[0] = (byte)ValueKind.Boolean;
-                    bytes[8] = (byte)(b ? 1 : 0);
-                    var name = ConfuseTypeName(id, ConfuseTarget.Constant);
-                    return _moduleBuilder.DefineInitializedData(name, bytes, FieldAttributes.Public | FieldAttributes.Static);
-                });
-                il.Emit(OpCodes.Ldsfld, field);
-                return LoadState.Struct;
-            }
-            else
-            {
-                return base.LoadBoolean(il, b);
-            }
-        }
-
-        public override LoadState LoadNull(ILGenerator il)
-        {
-            if (IsConfused)
-            {
-                var id = "Null";
-                var field = consts.GetOrAdd(id, (key) =>
-                {
-                    var bytes = new Byte[24];
-                    var name = ConfuseTypeName(id, ConfuseTarget.Constant);
-                    return _moduleBuilder.DefineInitializedData(name, bytes, FieldAttributes.Public | FieldAttributes.Static);
-                });
-                il.Emit(OpCodes.Ldsfld, field);
-                return LoadState.Struct;
-            }
-            else
-            {
-                return base.LoadNull(il);
-            }
-        }
-
-
-        public override LoadState LoadString(ILGenerator il, String value)
-        {
-            //if (IsConfused)
-            //{
-            //    if (value != null && value.Length >0)
-            //    {
-            //        var id = "S" + value.GetHashCode();
-            //        var field = consts.GetOrAdd(id, (key) =>
-            //        {
-            //            var bytes = Encoding.UTF8.GetBytes(value);
-            //            strLengths[value] = bytes.Length;
-            //            var name = ConfuseTypeName(id, ConfuseTarget.Constant);
-            //            return _moduleBuilder.DefineInitializedData(name, bytes, FieldAttributes.Public | FieldAttributes.Static);
-            //        });
-            //        il.Emit(OpCodes.Ldsflda, field);
-            //        //il.Emit(OpCodes.Conv_I);
-            //        il.Emit(OpCodes.Ldc_I4_0);
-            //        var len = strLengths[value];
-            //        il.Emit(OpCodes.Ldc_I4, len);
-            //        il.Emit(OpCodes.Call, typeof(String).GetConstructor([typeof(char).MakePointerType(), typeof(int), typeof(int)]));
-            //    }
-            //    else
-            //    {
-            //        il.Emit(OpCodes.Ldsfld, typeof(String).GetField("Empty", BindingFlags.Static | BindingFlags.Public));
-            //    }
-            //        //new String((char*)0, 1, 2);
-            //        return LoadState.Constant;
-            //}
-            //else
-            {
-                return base.LoadString(il, value);
-            }
-        }
-
-        public override LoadState LoadStringConstant(ILGenerator il, String value)
-        {
-            il.Emit(OpCodes.Ldstr, value);
-            return LoadState.Constant;
-        }
-
-        public override (MethodInfo Method, ILGenerator IL) DefineDynamicMethod(ModuleDeclaration module)
-        {
-            throw new NotImplementedException();
-        }
-
-        private ConcurrentDictionary<String, int> strLengths = new ConcurrentDictionary<string, int>();
-        private ConcurrentDictionary<String, FieldBuilder> consts = new ConcurrentDictionary<string, FieldBuilder>();
-
     }
 #else
     internal sealed class PersistedBuilder : AbstractCILBuilder
@@ -370,22 +241,6 @@ namespace AuroraScript.Compiler.Backend.Builders
 
         public override MethodInfo GetRuntimeEntryPoint() => null;
 
-        public override void SetLocalSymInfo(LocalBuilder local, string name)
-        {
-        }
-
-        public override void MarkSequencePoint(AstNode node, ILGenerator il)
-        {
-        }
-
-        public override void MarkSequencePoint(SourceSpan range, ILGenerator il)
-        {
-        }
-
-        public override (MethodInfo Method, ILGenerator IL) DefineDynamicMethod(ModuleDeclaration module)
-        {
-            throw new PlatformNotSupportedException("CompilationMode.Persistence requires .NET 9.0 or later.");
-        }
     }
 #endif
 }

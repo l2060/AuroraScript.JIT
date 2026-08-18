@@ -188,7 +188,7 @@ namespace AuroraScript.Runtime.Types
                     ValueKind.Null => true,
                     ValueKind.Boolean => x.Boolean == y.Boolean,
                     ValueKind.Number => x.Number == y.Number,
-                    ValueKind.String => string.Equals(x.String.Value, y.String.Value, StringComparison.Ordinal),
+                    ValueKind.String => string.Equals(x.StringText, y.StringText, StringComparison.Ordinal),
                     _ => ReferenceEquals(x.Object, y.Object),
                 };
             }
@@ -200,7 +200,7 @@ namespace AuroraScript.Runtime.Types
                     ValueKind.Null => 0,
                     ValueKind.Boolean => obj.Boolean.GetHashCode(),
                     ValueKind.Number => obj.Number.GetHashCode(),
-                    ValueKind.String => obj.String.Value.GetHashCode(StringComparison.Ordinal),
+                    ValueKind.String => obj.StringText.GetHashCode(StringComparison.Ordinal),
                     _ => obj.Object?.GetHashCode() ?? 0,
                 };
             }

@@ -206,7 +206,7 @@ namespace AuroraScript.Runtime
 
                 case ValueKind.String:
                     return double.TryParse(
-                        d.String.Value,
+                        d.StringText,
                         NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint,
                         CultureInfo.InvariantCulture,
                         out value
@@ -235,7 +235,7 @@ namespace AuroraScript.Runtime
 
                 case ValueKind.String:
                     return long.TryParse(
-                        d.String.Value,
+                        d.StringText,
                         NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint,
                         CultureInfo.InvariantCulture,
                         out value
@@ -292,6 +292,8 @@ namespace AuroraScript.Runtime
                     return origin;
                 case ScriptArray array:
                     return ScriptDatum.FromArray(new ScriptArray(array));
+                case ScriptPackedArray packedArray:
+                    return ScriptDatum.FromObject(packedArray.ClonePackedArray());
                 default:
                     var newObject = new ScriptObject();
                     origin.Object.CopyProperties(newObject);

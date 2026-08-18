@@ -17,13 +17,13 @@ namespace AuroraScript.Compiler.Backend.Emission
         public EmissionSession(
             CompileSession compileSession,
             AbstractCILBuilder builder,
-            bool emitExecutableSkeletons = false,
+            bool emitExecutableCode = false,
             bool forceModuleDefinitions = false,
             bool collectDiagnostics = false)
         {
             CompileSession = compileSession ?? throw new ArgumentNullException(nameof(compileSession));
             Builder = builder ?? throw new ArgumentNullException(nameof(builder));
-            EmitExecutableSkeletons = emitExecutableSkeletons;
+            EmitExecutableCode = emitExecutableCode;
             ForceModuleDefinitions = forceModuleDefinitions;
             CollectDiagnostics = collectDiagnostics;
             _dynamicDelegateCapacity = CountFunctions(compileSession);
@@ -31,7 +31,7 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         public CompileSession CompileSession { get; }
         public AbstractCILBuilder Builder { get; }
-        public bool EmitExecutableSkeletons { get; }
+        public bool EmitExecutableCode { get; }
         public bool ForceModuleDefinitions { get; }
         public bool CollectDiagnostics { get; }
         public EngineOptions Options => CompileSession.Options;

@@ -25,7 +25,7 @@ namespace AuroraBenchmark
 #pragma warning disable CS8618
         private AuroraEngine engine;
         private ScriptDomain domain;
-        private ScriptDatum iterationsDatum;
+        private ScriptDatum[] iterationArguments;
 #pragma warning restore CS8618
 
         [Params(1000, 10000)]
@@ -43,13 +43,17 @@ namespace AuroraBenchmark
                 .WithOutput(output => output.AssemblyFile = Path.Combine(AppContext.BaseDirectory, "runtime-benchmark.dll"))
                 .WithOutput(output => output.Confused = false)
                 .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
-                .WithOptimization(optimization => optimization.Level = OptimizeOptions.Release);
+                .WithOptimization(optimization =>
+                {
+                    optimization.Level = OptimizeOptions.Release;
+                    optimization.AutoModuleDirectCall = true;
+                });
 
             engine = new AuroraEngine(options);
             engine.RegisterType<HostObject>();
             await engine.BuildAsync();
             domain = engine.CreateDomain(global => global.SetPropertyValue("host", new HostObject()));
-            iterationsDatum = ScriptDatum.FromNumber(Iterations);
+            iterationArguments = [ScriptDatum.FromNumber(Iterations)];
         }
 
         [BenchmarkCategory("domain")]
@@ -71,6 +75,41 @@ namespace AuroraBenchmark
         public ScriptDatum FunctionCallLoop()
         {
             return Execute("functionCallLoop");
+        }
+
+        [BenchmarkCategory("call")]
+        [Benchmark]
+        public ScriptDatum GenericDirectCallLoop()
+        {
+            return Execute("genericDirectCallLoop");
+        }
+
+        [BenchmarkCategory("call")]
+        [Benchmark]
+        public ScriptDatum NativeNumberCallLoop()
+        {
+            return Execute("nativeNumberCallLoop");
+        }
+
+        [BenchmarkCategory("call")]
+        [Benchmark]
+        public ScriptDatum NativeInt32CallLoop()
+        {
+            return Execute("nativeInt32CallLoop");
+        }
+
+        [BenchmarkCategory("call")]
+        [Benchmark]
+        public ScriptDatum AutoHighArityCallLoop()
+        {
+            return Execute("autoHighArityCallLoop");
+        }
+
+        [BenchmarkCategory("call")]
+        [Benchmark]
+        public ScriptDatum Md5RoundCallLoop()
+        {
+            return Execute("md5RoundCallLoop");
         }
 
         [BenchmarkCategory("call")]
@@ -113,6 +152,62 @@ namespace AuroraBenchmark
         public ScriptDatum ArrayLiteralIndex()
         {
             return Execute("arrayLiteralIndex");
+        }
+
+        [BenchmarkCategory("array")]
+        [Benchmark]
+        public ScriptDatum ArrayFixedIndex()
+        {
+            return Execute("arrayFixedIndex");
+        }
+
+        [BenchmarkCategory("array")]
+        [Benchmark]
+        public ScriptDatum Int32ArrayIndex()
+        {
+            return Execute("int32ArrayIndex");
+        }
+
+        [BenchmarkCategory("array")]
+        [Benchmark]
+        public ScriptDatum Float64ArrayIndex()
+        {
+            return Execute("float64ArrayIndex");
+        }
+
+        [BenchmarkCategory("array")]
+        [Benchmark]
+        public ScriptDatum Int32ArrayObjectBoundary()
+        {
+            return Execute("int32ArrayObjectBoundary");
+        }
+
+        [BenchmarkCategory("array")]
+        [Benchmark]
+        public ScriptDatum Int8AndBooleanArrayIndex()
+        {
+            return Execute("int8AndBooleanArrayIndex");
+        }
+
+        [BenchmarkCategory("integer")]
+        [Benchmark]
+        public ScriptDatum Int32PrngKernel()
+        {
+            return Execute("int32PrngKernel");
+        }
+
+        [BenchmarkCategory("integer")]
+        [Benchmark]
+        public ScriptDatum PackedChecksumKernel()
+        {
+            return Execute("packedChecksumKernel");
+        }
+
+        [BenchmarkCategory("integer")]
+        [Benchmark]
+        public ScriptDatum IntegerHeapKernel()
+        {
+            return Execute("integerHeapKernel");
         }
 
         [BenchmarkCategory("hashmap")]
@@ -215,7 +310,7 @@ namespace AuroraBenchmark
 
         private ScriptDatum Execute(string methodName)
         {
-            return domain.Execute("RUNTIME_BENCH", methodName, iterationsDatum);
+            return domain.Execute("RUNTIME_BENCH", methodName, iterationArguments);
         }
     }
 }

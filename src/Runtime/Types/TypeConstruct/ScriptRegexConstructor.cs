@@ -35,7 +35,7 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
             {
                 if (args[0].Kind == ValueKind.String)
                 {
-                    pattern = args[0].String.Value;
+                    pattern = args[0].StringText;
                 }
                 else if (args[0].Kind == ValueKind.Regex)
                 {
@@ -46,7 +46,7 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
             }
             if (args.Length == 2 && args[1].Kind == ValueKind.String)
             {
-                flags = args[1].String.Value;
+                flags = args[1].StringText;
             }
             ScriptDatum.WriteAsRegex(ref result, RegexManager.Resolve(pattern, flags));
         }

@@ -32,11 +32,6 @@ namespace AuroraScript.Compiler
         /// </summary>
         public static readonly Operator Lambda = new Operator(Symbols.PT_LAMBDA, 2, OperatorPlacement.Binary, true);
 
-        /// <summary>
-        /// Cast Type
-        /// </summary>
-        public static readonly Operator CastType = new Operator(Symbols.OP_LESSTHAN, 19, OperatorPlacement.Prefix, false, Symbols.OP_GREATERTHAN);
-
         // Parenthesis.
         /// <summary>
         /// operator (exp)

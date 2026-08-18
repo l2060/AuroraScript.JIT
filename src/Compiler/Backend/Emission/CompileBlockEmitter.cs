@@ -19,13 +19,14 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             var module = _plan.Module ?? throw new InvalidOperationException("CompileBlock module plan is missing.");
             var function = _plan.Function ?? throw new InvalidOperationException("CompileBlock function plan is missing.");
-            var skeleton = new ExecutableSkeletonEmitter(_session, module);
-            skeleton.Prepare(forceAllExecutable: true);
+            var typed = new TypedCilEmitter(_session, module);
+            typed.Prepare(forceAllExecutable: true);
             MethodInfo entryMethod = null;
             for (var i = 0; i < module.Functions.Count; i++)
             {
                 var current = module.Functions[i];
-                if (skeleton.TryEmit(current, out var method, out _) &&
+                var emitted = typed.TryEmit(current, out var method, out _);
+                if (emitted &&
                     current.Id.Equals(function.Id))
                 {
                     entryMethod = method;

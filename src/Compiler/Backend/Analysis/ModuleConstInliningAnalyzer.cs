@@ -67,7 +67,7 @@ namespace AuroraScript.Compiler.Backend.Analysis
                 case ValueKind.Number:
                     return new NumberToken(value.Number);
                 case ValueKind.String:
-                    return new StringToken { Value = value.String?.Value ?? string.Empty };
+                    return new StringToken { Value = value.StringText ?? string.Empty };
                 default:
                     throw new ArgumentException("Only primitive const values can be inlined.", nameof(value));
             }
@@ -171,13 +171,13 @@ namespace AuroraScript.Compiler.Backend.Analysis
 
                 if (unary.Operator == Operator.Negate)
                 {
-                    value = CILHelper.Negate(inner);
+                    value = ValueOps.Negate(inner);
                     return true;
                 }
 
                 if (unary.Operator == Operator.LogicalNot)
                 {
-                    value = CILHelper.Not(inner);
+                    value = ValueOps.Not(inner);
                     return true;
                 }
 
@@ -206,28 +206,28 @@ namespace AuroraScript.Compiler.Backend.Analysis
 
                 if (binary.Operator == Operator.Add)
                 {
-                    value = CILHelper.Add(left, right);
+                    value = ValueOps.Add(left, right);
                     return true;
                 }
 
                 if (binary.Operator == Operator.Subtract)
                 {
-                    value = CILHelper.Subtract(left, right);
+                    value = ValueOps.Subtract(left, right);
                     return true;
                 }
                 if (binary.Operator == Operator.Multiply)
                 {
-                    value = CILHelper.Multiply(left, right);
+                    value = ValueOps.Multiply(left, right);
                     return true;
                 }
                 if (binary.Operator == Operator.Divide)
                 {
-                    value = CILHelper.Divide(left, right);
+                    value = ValueOps.Divide(left, right);
                     return true;
                 }
                 if (binary.Operator == Operator.Modulo)
                 {
-                    value = CILHelper.Modulo(left, right);
+                    value = ValueOps.Modulo(left, right);
                     return true;
                 }
 

@@ -13,12 +13,14 @@ namespace AuroraScript.Runtime.Types
         {
             DatumArray,
             ScriptArray,
+            PackedArray,
             String
         }
 
         private readonly IteratorKind _kind;
         private readonly ScriptDatum[] _datumItems;
         private readonly ScriptArray _array;
+        private readonly ScriptPackedArray _packedArray;
         private readonly string _stringValue;
         private readonly int _length;
         private int _index;
@@ -28,6 +30,15 @@ namespace AuroraScript.Runtime.Types
         {
             _kind = IteratorKind.ScriptArray;
             _array = array;
+            _length = array.Length;
+            _index = 0;
+        }
+
+        /// <summary>Initializes an enumerator over a fixed-length primitive array.</summary>
+        public ScriptEnumerator(ScriptPackedArray array)
+        {
+            _kind = IteratorKind.PackedArray;
+            _packedArray = array ?? throw new ArgumentNullException(nameof(array));
             _length = array.Length;
             _index = 0;
         }
@@ -71,9 +82,10 @@ namespace AuroraScript.Runtime.Types
             return _kind switch
             {
                 IteratorKind.ScriptArray => _array._items[_index],
+                IteratorKind.PackedArray => _packedArray.GetElementDatumUnchecked(_index),
                 IteratorKind.DatumArray => _datumItems[_index],
-                IteratorKind.String => ScriptDatum.FromString(StringValue.FromChar(_stringValue[_index])),
-                _ => throw new NotImplementedException(),
+                IteratorKind.String => ScriptDatum.FromString(StringValue.TextFromChar(_stringValue[_index])),
+                _ => throw new InvalidOperationException("Unknown iterator kind."),
             };
         }
 
