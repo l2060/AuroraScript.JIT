@@ -322,7 +322,7 @@ public sealed class AuroraLanguageServer
             ["serverInfo"] = new JsonObject
             {
                 ["name"] = "AuroraScript Language Server",
-                ["version"] = "0.1.0"
+                ["version"] = "4.0.0"
             },
             ["capabilities"] = new JsonObject
             {

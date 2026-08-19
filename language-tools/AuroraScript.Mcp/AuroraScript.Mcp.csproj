@@ -8,7 +8,7 @@
 		<PackAsTool>true</PackAsTool>
 		<ToolCommandName>aurora-mcp</ToolCommandName>
 		<PackageId>AuroraScript.Mcp</PackageId>
-		<Version>3.0.1</Version>
+		<Version>4.0.0</Version>
 		<Title>AuroraScript MCP Server</Title>
 		<Description>MCP server for AuroraScript language docs, schema, examples, and script validation.</Description>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
@@ -38,10 +38,6 @@
 			<Pack>True</Pack>
 			<Visible>false</Visible>
 			<PackagePath>\</PackagePath>
-		</None>
-		<None Include="..\..\README.md">
-		  <Pack>True</Pack>
-		  <PackagePath>\</PackagePath>
 		</None>
 		<None Include="README.md" Pack="true" PackagePath="\" />
 	</ItemGroup>

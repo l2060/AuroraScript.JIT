@@ -1,7 +1,7 @@
 {
   "$schema": "host-api.schema.json",
   "language": "AuroraScript",
-  "versionTarget": "3.0.0",
+  "versionTarget": "4.0.0",
   "assemblies": ["AuroraScript.JIT"],
   "namespaces": [
     "AuroraScript",

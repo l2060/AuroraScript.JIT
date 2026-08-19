@@ -1,7 +1,7 @@
 {
   "$schema": "runtime-api.schema.json",
   "language": "AuroraScript",
-  "versionTarget": "3.0.0",
+  "versionTarget": "4.0.0",
   "globals": {
     "Array": {
       "kind": "constructor",

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "language": "AuroraScript",
-  "versionTarget": "3.0.0",
+  "versionTarget": "4.0.0",
   "features": [
     {
       "id": "module.metadata",

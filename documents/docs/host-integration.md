@@ -1,6 +1,6 @@
 # AuroraScript Host Integration Guide
 
-Version target: AuroraScript.JIT 3.0.0
+Version target: AuroraScript.JIT 4.0.0
 
 This document describes the .NET host-side API used to embed AuroraScript, load scripts from custom stores, expose CLR services, run modules and blocks, and apply runtime patches.
 

@@ -1,6 +1,6 @@
 # AuroraScript Script Authoring Best Practices
 
-Version target: AuroraScript.JIT 3.0.0
+Version target: AuroraScript.JIT 4.0.0
 
 This document tells AI agents how to write AuroraScript code by default. Use it with `docs/aurora-script-ai.md`, `docs/language-reference.md`, and `schema/runtime-api.json`.
 

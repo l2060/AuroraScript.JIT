@@ -1,6 +1,6 @@
 # AuroraScript AI Reference
 
-Version target: AuroraScript.JIT 3.0.0
+Version target: AuroraScript.JIT 4.0.0
 
 This file is the primary AI reference for AuroraScript. Prefer these rules over JavaScript assumptions.
 For default code generation style, also read `docs/script-authoring-best-practices.md`.

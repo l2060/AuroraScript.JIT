@@ -104,7 +104,7 @@ internal sealed class AuroraMcpServer
             ["serverInfo"] = new JsonObject
             {
                 ["name"] = "AuroraScript.Mcp",
-                ["version"] = "3.0.0"
+                ["version"] = "4.0.0"
             },
             ["capabilities"] = new JsonObject
             {
