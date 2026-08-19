@@ -13,6 +13,9 @@ namespace AuroraScript.Runtime.Types
         private readonly string _flags;
         private readonly string[] _groupNames;
 
+        internal string Pattern => _regex.ToString();
+        internal string Flags => _flags ?? string.Empty;
+
         /// <summary>
         /// Initializes a new instance of the <see cref="ScriptRegex"/> class.
         /// </summary>

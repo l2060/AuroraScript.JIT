@@ -89,6 +89,8 @@ namespace AuroraScript.Runtime.Types
 
         private StringBuilder GetBuilder() => _builder ??= Borrow();
 
+        internal StringBuilder Builder => _builder;
+
         /// <summary>
         /// Initializes a new instance of the <see cref="StringBuffer"/> class with an empty buffer.
         /// </summary>

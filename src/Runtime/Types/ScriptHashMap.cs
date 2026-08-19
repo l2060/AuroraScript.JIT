@@ -40,6 +40,7 @@ namespace AuroraScript.Runtime.Types
         private readonly Dictionary<ScriptDatum, ScriptDatum> keyValues;
 
         internal IReadOnlyDictionary<ScriptDatum, ScriptDatum> DebugEntries => keyValues;
+        internal Dictionary<ScriptDatum, ScriptDatum> Entries => keyValues;
 
         /// <summary> Initializes a new instance of the <see cref="ScriptHashMap"/> class. </summary>
         public ScriptHashMap() : base(Prototypes.HashMapPrototype)

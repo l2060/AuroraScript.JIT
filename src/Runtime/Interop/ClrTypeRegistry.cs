@@ -11,6 +11,7 @@ namespace AuroraScript.Runtime.Interop
     public sealed class ClrTypeRegistry : IDisposable
     {
         private readonly Dictionary<string, ClrType> _aliasMap = new(StringComparer.Ordinal);
+        private readonly Dictionary<Type, (string Alias, ClrType Descriptor)> _typeMap = new();
 
         private readonly ReaderWriterLockSlim _lock = new(LockRecursionPolicy.SupportsRecursion);
         private bool _disposed;
@@ -37,6 +38,7 @@ namespace AuroraScript.Runtime.Interop
                 ClrTypeResolver.ResolveType(type, out var typeDescriptor);
                 var clrType = new ClrType(type, typeDescriptor, access);
                 _aliasMap.Add(alias, clrType);
+                _typeMap.TryAdd(type, (alias, clrType));
             }
             finally
             {
@@ -56,7 +58,22 @@ namespace AuroraScript.Runtime.Interop
             try
             {
                 EnsureNotDisposed();
-                return _aliasMap.Remove(alias);
+                if (!_aliasMap.Remove(alias, out var removed)) return false;
+                var type = removed._descriptor.Type;
+                if (_typeMap.TryGetValue(type, out var reverse) &&
+                    StringComparer.Ordinal.Equals(reverse.Alias, alias))
+                {
+                    _typeMap.Remove(type);
+                    foreach (var entry in _aliasMap)
+                    {
+                        if (entry.Value._descriptor.Type == type)
+                        {
+                            _typeMap.Add(type, (entry.Key, entry.Value));
+                            break;
+                        }
+                    }
+                }
+                return true;
             }
             finally
             {
@@ -86,6 +103,45 @@ namespace AuroraScript.Runtime.Interop
             }
         }
 
+        internal bool TryGetClrType(Type type, out string alias, out ClrType descriptor)
+        {
+            alias = null;
+            descriptor = null;
+            if (type == null) return false;
+
+            _lock.EnterReadLock();
+            try
+            {
+                EnsureNotDisposed();
+                if (_typeMap.TryGetValue(type, out var registration))
+                {
+                    alias = registration.Alias;
+                    descriptor = registration.Descriptor;
+                    return true;
+                }
+                return false;
+            }
+            finally
+            {
+                _lock.ExitReadLock();
+            }
+        }
+
+        internal bool ContainsAlias(string alias)
+        {
+            if (string.IsNullOrWhiteSpace(alias)) return false;
+            _lock.EnterReadLock();
+            try
+            {
+                EnsureNotDisposed();
+                return _aliasMap.ContainsKey(alias);
+            }
+            finally
+            {
+                _lock.ExitReadLock();
+            }
+        }
+
         /// <summary>
         /// Releases all resources used by the <see cref="ClrTypeRegistry"/> and clears the alias map.
         /// </summary>
@@ -96,6 +152,7 @@ namespace AuroraScript.Runtime.Interop
             try
             {
                 _aliasMap.Clear();
+                _typeMap.Clear();
                 _disposed = true;
             }
             finally

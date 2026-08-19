@@ -309,7 +309,13 @@ namespace AuroraScript.Runtime.Types
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private PropertyDescriptor GetOwnProperty(ushort slot)
+        internal bool HasOwnProperty(string key)
+        {
+            return hiddenClass.TryGet(key, out _);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal PropertyDescriptor GetOwnProperty(ushort slot)
         {
             var accessor = propertyAccessors != null && slot < propertyAccessors.Length
                 ? propertyAccessors[slot]
@@ -593,6 +599,8 @@ namespace AuroraScript.Runtime.Types
             CollectEnumerationKeys(list);
             return list;
         }
+
+        internal ReadOnlySpan<HiddenProperty> OwnProperties => hiddenClass.Properties;
 
         private void CollectEnumerationKeys(List<string> list)
         {

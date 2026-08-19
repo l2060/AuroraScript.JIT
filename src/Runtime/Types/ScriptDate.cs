@@ -35,12 +35,12 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="ScriptDate"/> class from ticks.
+        /// Initializes a new instance of the <see cref="ScriptDate"/> class from UTC ticks.
         /// </summary>
-        /// <param name="ticks">The number of ticks representing the date.</param>
+        /// <param name="ticks">The number of ticks since 0001-01-01T00:00:00+00:00.</param>
         public ScriptDate(long ticks) : this()
         {
-            this.DateTime = new DateTime(ticks);
+            this.DateTime = new DateTimeOffset(ticks, TimeSpan.Zero);
         }
 
         /// <summary> Gets the year component of the date. </summary>
