@@ -64,7 +64,7 @@ public sealed class TypedDocumentSerializationTests
 
         var text = TypedDocumentSerializer.Serialize(engine, ScriptDatum.FromObject(root));
 
-        Assert.DoesNotContain("@data", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("tdoc", text, StringComparison.Ordinal);
         Assert.DoesNotContain("Object ", text, StringComparison.Ordinal);
         Assert.Contains("readonly id \"u-001\"", text, StringComparison.Ordinal);
         Assert.Contains("Int8Array bytes", text, StringComparison.Ordinal);
@@ -294,7 +294,7 @@ public sealed class TypedDocumentSerializationTests
         Assert.Throws<TypedDocumentException>(() =>
             TypedDocumentSerializer.Deserialize(engine, "Object { name \"a\" age 1 }"));
         Assert.Throws<TypedDocumentException>(() =>
-            TypedDocumentSerializer.Deserialize(engine, "@data Object { name \"a\" }"));
+            TypedDocumentSerializer.Deserialize(engine, "tdoc Object { name \"a\" }"));
     }
 
     [Fact]

@@ -32,6 +32,7 @@ internal static class AuroraSyntaxClassificationTypes
     public const string String = "AuroraScript.String";
     public const string Character = "AuroraScript.Character";
     public const string Number = "AuroraScript.Number";
+    public const string Keyword = "AuroraScript.Keyword";
 }
 
 [Export(typeof(ITaggerProvider))]
@@ -418,7 +419,8 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
             [AuroraSyntaxClassificationTypes.EnumMember] = CreateTag(classificationTypes, AuroraSyntaxClassificationTypes.EnumMember),
             [AuroraSyntaxClassificationTypes.String] = CreateTag(classificationTypes, AuroraSyntaxClassificationTypes.String),
             [AuroraSyntaxClassificationTypes.Character] = CreateTag(classificationTypes, AuroraSyntaxClassificationTypes.Character),
-            [AuroraSyntaxClassificationTypes.Number] = CreateTag(classificationTypes, AuroraSyntaxClassificationTypes.Number)
+            [AuroraSyntaxClassificationTypes.Number] = CreateTag(classificationTypes, AuroraSyntaxClassificationTypes.Number),
+            [AuroraSyntaxClassificationTypes.Keyword] = CreateTag(classificationTypes, AuroraSyntaxClassificationTypes.Keyword)
         };
         _buffer.Changed += OnBufferChanged;
     }
@@ -434,6 +436,7 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
 
         var snapshot = spans[0].Snapshot;
         var text = snapshot.GetText();
+        var isTypedDocument = IsTypedDocumentFile();
         var enumNames = CollectEnumNames(text);
         var symbols = CollectSymbolIndex(text, WorkspaceAmbientDeclarations.Get(GetBufferFilePath()));
         var lastIdentifier = string.Empty;
@@ -483,7 +486,7 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
                     yield return tag;
                 }
 
-                if (IsMapKey(text, i, end))
+                if (IsMapKey(text, i, end) || (isTypedDocument && IsTDocMapKey(text, i, end)))
                 {
                     if (TryCreateSpan(snapshot, spans, i, end - i, AuroraSyntaxClassificationTypes.MapKey, out var mapKeyTag))
                     {
@@ -507,7 +510,7 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
                 }
 
                 var value = text.Substring(start, i - start);
-                var type = GetIdentifierClassification(text, start, i, value, enumNames, symbols, lastIdentifier, lastSignificant);
+                var type = GetIdentifierClassification(text, start, i, value, enumNames, symbols, lastIdentifier, lastSignificant, isTypedDocument);
                 if (!string.IsNullOrEmpty(type))
                 {
                     if (TryCreateSpan(snapshot, spans, start, i - start, type, out var tag))
@@ -525,7 +528,7 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
             {
                 var start = i;
                 i = ScanNumber(text, i);
-                var type = IsMapKey(text, start, i)
+                var type = IsMapKey(text, start, i) || (isTypedDocument && IsTDocMapKey(text, start, i))
                     ? AuroraSyntaxClassificationTypes.MapKey
                     : AuroraSyntaxClassificationTypes.Number;
                 if (TryCreateSpan(snapshot, spans, start, i - start, type, out var tag))
@@ -628,6 +631,13 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
         return _textDocuments.TryGetTextDocument(_buffer, out var document)
             ? document.FilePath
             : null;
+    }
+
+    private bool IsTypedDocumentFile()
+    {
+        var path = GetBufferFilePath();
+        return !string.IsNullOrWhiteSpace(path) &&
+            string.Equals(Path.GetExtension(path), ".tdoc", StringComparison.OrdinalIgnoreCase);
     }
 
     private static Dictionary<string, bool> CollectEnumNames(string text)
@@ -1180,11 +1190,18 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
         IReadOnlyDictionary<string, bool> enumNames,
         LightweightSymbolIndex symbols,
         string lastIdentifier,
-        char lastSignificant)
+        char lastSignificant,
+        bool isTypedDocument)
     {
-        if (IsMapKey(text, start, end))
+        if (IsMapKey(text, start, end) || (isTypedDocument && IsTDocMapKey(text, start, end)))
         {
             return AuroraSyntaxClassificationTypes.MapKey;
+        }
+
+        if (isTypedDocument && (string.Equals(value, "readonly", StringComparison.Ordinal) ||
+            string.Equals(value, "tdoc", StringComparison.Ordinal)))
+        {
+            return AuroraSyntaxClassificationTypes.Keyword;
         }
 
         if (lastSignificant == '.' && enumNames.ContainsKey(lastIdentifier))
@@ -1622,6 +1639,82 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
         return false;
     }
 
+    private static bool IsTDocMapKey(string text, int start, int end)
+    {
+        var valueStart = SkipWhitespace(text, end);
+        if (valueStart >= text.Length || !IsTDocValueStart(text, valueStart))
+        {
+            return false;
+        }
+
+        var value = text.Substring(start, end - start);
+        var previous = PreviousSignificant(text, start - 1);
+        if (previous < 0)
+        {
+            return false;
+        }
+
+        if (text[previous] == '{' || text[previous] == ',')
+        {
+            return !BuiltinTypes.Contains(value);
+        }
+
+        if (IsIdentifierPart(text[previous]))
+        {
+            var previousStart = previous;
+            while (previousStart > 0 && IsIdentifierPart(text[previousStart - 1]))
+            {
+                previousStart--;
+            }
+
+            var previousValue = text.Substring(previousStart, previous - previousStart + 1);
+            return (BuiltinTypes.Contains(previousValue) ||
+                string.Equals(previousValue, "readonly", StringComparison.Ordinal)) &&
+                !BuiltinTypes.Contains(value);
+        }
+
+        return false;
+    }
+
+    private static bool IsTDocValueStart(string text, int start)
+    {
+        if (start >= text.Length)
+        {
+            return false;
+        }
+
+        var value = text[start];
+        return value == '"' || value == '\'' || value == '{' || value == '[' ||
+            value == '-' || value == '$' || char.IsDigit(value) ||
+            StartsWithIdentifier(text, start, "true") ||
+            StartsWithIdentifier(text, start, "false") ||
+            StartsWithIdentifier(text, start, "null");
+    }
+
+    private static bool StartsWithIdentifier(string text, int start, string value)
+    {
+        if (start + value.Length > text.Length ||
+            !string.Equals(text.Substring(start, value.Length), value, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return start + value.Length >= text.Length || !IsIdentifierPart(text[start + value.Length]);
+    }
+
+    private static int PreviousSignificant(string text, int start)
+    {
+        for (var i = start; i >= 0; i--)
+        {
+            if (!char.IsWhiteSpace(text[i]))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
     private static bool NextNonWhitespaceIs(string text, int start, char expected)
     {
         var next = SkipWhitespace(text, start);
@@ -2001,6 +2094,11 @@ internal static class AuroraSyntaxClassificationDefinitions
     [Name(AuroraSyntaxClassificationTypes.Number)]
     [BaseDefinition("text")]
     internal static ClassificationTypeDefinition? NumberClassificationType;
+
+    [Export(typeof(ClassificationTypeDefinition))]
+    [Name(AuroraSyntaxClassificationTypes.Keyword)]
+    [BaseDefinition("text")]
+    internal static ClassificationTypeDefinition? KeywordClassificationType;
 }
 
 internal abstract class AuroraSyntaxFormatDefinition : ClassificationFormatDefinition
@@ -2181,4 +2279,13 @@ internal sealed class AuroraCharacterFormat : AuroraSyntaxFormatDefinition
 internal sealed class AuroraNumberFormat : AuroraSyntaxFormatDefinition
 {
     public AuroraNumberFormat() : base("AuroraScript Number", 0xB5, 0xCE, 0xA8) { }
+}
+
+[Export(typeof(EditorFormatDefinition))]
+[ClassificationType(ClassificationTypeNames = AuroraSyntaxClassificationTypes.Keyword)]
+[Name(AuroraSyntaxClassificationTypes.Keyword)]
+[UserVisible(true)]
+internal sealed class AuroraKeywordFormat : AuroraSyntaxFormatDefinition
+{
+    public AuroraKeywordFormat() : base("AuroraScript Keyword", 0xC5, 0x86, 0xC0) { }
 }

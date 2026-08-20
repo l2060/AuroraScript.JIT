@@ -3,6 +3,7 @@
 
 [$RootKey$\TextMate\LanguageMapping]
 ".as"="source.aurora"
+".tdoc"="source.aurora"
 
 [$RootKey$\TextMate\LanguageConfiguration\GrammarMapping]
 "source.aurora"="$PackageFolder$\language-configuration.json"

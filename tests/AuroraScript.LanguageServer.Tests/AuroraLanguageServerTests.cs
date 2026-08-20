@@ -683,6 +683,26 @@ public sealed class AuroraLanguageServerTests
     }
 
     [Fact]
+    public async Task SemanticTokensSupportStandaloneTDocDocuments()
+    {
+        var server = CreateServer();
+        const string uri = "file:///D:/workspace/config.tdoc";
+        const string source = "Object { readonly String id \"UX01\", count -1, }";
+        await DidOpen(server, uri, source);
+
+        var result = await Request(server, 81, "textDocument/semanticTokens/full", new JsonObject
+        {
+            ["textDocument"] = new JsonObject { ["uri"] = uri }
+        });
+
+        var tokenTypes = SemanticTokenTypes(result.Response!.Result!.AsObject()["data"]!.AsArray());
+        Assert.Contains(AuroraSemanticTokenTypes.Type, tokenTypes);
+        Assert.Contains(AuroraSemanticTokenTypes.MapKey, tokenTypes);
+        Assert.Contains(AuroraSemanticTokenTypes.Keyword, tokenTypes);
+        Assert.Contains(AuroraSemanticTokenTypes.Number, tokenTypes);
+    }
+
+    [Fact]
     public async Task SemanticTokensUseStartupWorkspaceDeclareDeclarations()
     {
         var server = CreateServer();

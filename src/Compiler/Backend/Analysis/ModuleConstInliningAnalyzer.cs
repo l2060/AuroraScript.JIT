@@ -106,6 +106,8 @@ namespace AuroraScript.Compiler.Backend.Analysis
                     case null:
                         value = ScriptDatum.Null;
                         return true;
+                    case TypedDocumentExpression tdoc:
+                        return TryEvaluate(tdoc.Value, ref value);
                     case GroupExpression group:
                         return TryEvaluate(group.Expression, ref value);
                     case LiteralExpression literal:

@@ -26,7 +26,7 @@ namespace AuroraScript.Runtime.Serialization
     {
         None,
         UnexpectedCharacter,
-        DataMarkerNotAllowed,
+        ScriptMarkerNotAllowed,
         UnterminatedString,
         UnterminatedComment,
         InvalidEscape,
@@ -115,7 +115,7 @@ namespace AuroraScript.Runtime.Serialization
                     return ScanString();
                 case '@':
                     Advance();
-                    return Bad(TypedDocumentScanError.DataMarkerNotAllowed, start, 1, line, column, current);
+                    return Bad(TypedDocumentScanError.ScriptMarkerNotAllowed, start, 1, line, column, current);
             }
 
             if (IsNumberStart(current)) return ScanNumber();

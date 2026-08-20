@@ -31,6 +31,7 @@ namespace AuroraScript.Compiler
         public static readonly Symbols KW_FOR = new Symbols("for", SymbolTypes.KeyWord);
         public static readonly Symbols KW_NEW = new Symbols("new", SymbolTypes.KeyWord);
         public static readonly Symbols KW_DELETE = new Symbols("delete", SymbolTypes.KeyWord);
+        public static readonly Symbols KW_TDOC = new Symbols("tdoc", SymbolTypes.KeyWord);
 
 
         public static readonly Symbols KW_WHILE = new Symbols("while", SymbolTypes.KeyWord);
@@ -425,6 +426,7 @@ namespace AuroraScript.Compiler
                     if (name.SequenceEqual("enum")) return KW_ENUM;
                     if (name.SequenceEqual("from")) return KW_FROM;
                     if (name.SequenceEqual("func")) return KW_FUNC;
+                    if (name.SequenceEqual("tdoc")) return KW_TDOC;
                     if (name.SequenceEqual("true")) return VALUE_TRUE;
                     if (name.SequenceEqual("null")) return VALUE_NULL;
                     break;

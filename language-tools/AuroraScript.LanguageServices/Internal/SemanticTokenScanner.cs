@@ -7,6 +7,7 @@ using AuroraScript.Core;
 using AuroraScript.LanguageServices.Builtins;
 using AuroraScript.LanguageServices.Features.SemanticTokens;
 using AuroraScript.LanguageServices.Internal.SymbolIndex;
+using AuroraScript.LanguageServices.Parsing;
 using AuroraScript.Source;
 using AuroraScript.Tokens;
 using System;
@@ -348,7 +349,9 @@ internal static class SemanticTokenScanner
     {
         using var lexer = new AuroraLexer(baseDirectory, new MemorySource(baseDirectory, fullPath, sourceText));
         var parser = new AuroraParser(lexer, EngineOptions.Default);
-        var module = parser.Parse();
+        var module = AuroraParseService.IsTypedDocumentPath(fullPath)
+            ? parser.ParseTDocDocument()
+            : parser.Parse();
         var visitor = new SemanticAstVisitor(builtins, externalSymbols ?? SemanticExternalSymbols.Empty, builder);
         visitor.Visit(module);
     }
@@ -773,6 +776,12 @@ internal static class SemanticTokenScanner
             node.Value.Accept(this);
         }
 
+        protected override void VisitTypedDocumentExpression(TypedDocumentExpression node)
+        {
+            _builder.AddToken(node.TypeToken, AuroraSemanticTokenTypes.Type, SemanticTokenPriority.Ast);
+            node.Value?.Accept(this);
+        }
+
         protected override void VisitMapExpression(MapExpression node)
         {
             for (var i = 0; i < node.Entries.Count; i++)
@@ -780,6 +789,7 @@ internal static class SemanticTokenScanner
                 var entry = node.Entries[i];
                 if (entry is MapKeyValueExpression property)
                 {
+                    _builder.AddToken(property.ReadOnlyToken, AuroraSemanticTokenTypes.Keyword, SemanticTokenPriority.Ast);
                     _builder.AddToken(property.Key, AuroraSemanticTokenTypes.MapKey, SemanticTokenPriority.Ast);
                     property.Value.Accept(this);
                 }

@@ -59,6 +59,9 @@ internal static class AstQuery
             case ExpressionStatement expressionStatement:
                 Visit(expressionStatement.Expression, state);
                 return;
+            case TypedDocumentExpression typedDocument:
+                Visit(typedDocument.Value, state);
+                return;
             case NameExpression name:
                 state.Expression = name;
                 state.Name = name;

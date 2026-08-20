@@ -59,7 +59,9 @@ public sealed class AuroraParseService
         {
             using var lexer = new AuroraLexer(baseDirectory, source);
             var parser = new AuroraParser(lexer, options);
-            var module = parser.Parse();
+            var module = IsTypedDocumentPath(sourceName)
+                ? parser.ParseTDocDocument()
+                : parser.Parse();
             var diagnostics = ResolveImports(module, source, options);
             return new AuroraParseResult(module, diagnostics);
         }
@@ -148,6 +150,11 @@ public sealed class AuroraParseService
             or ArgumentException
             or NotSupportedException
             or KeyNotFoundException;
+    }
+
+    internal static bool IsTypedDocumentPath(string sourceName)
+    {
+        return string.Equals(Path.GetExtension(sourceName), ".tdoc", StringComparison.OrdinalIgnoreCase);
     }
 
     private static IReadOnlyList<LanguageDiagnostic> ConvertDiagnostics(AuroraCompilationException exception)

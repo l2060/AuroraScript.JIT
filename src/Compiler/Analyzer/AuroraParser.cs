@@ -67,7 +67,18 @@ namespace AuroraScript.Compiler.Analyzer
 
             protected override void VisitMapExpression(MapExpression node)
             {
-                for (int i = 0; i < node.Entries.Count; i++) node.Entries[i]?.Accept(this);
+                for (int i = 0; i < node.Entries.Count; i++)
+                {
+                    var entry = node.Entries[i];
+                    if (entry is MapKeyValueExpression keyValue)
+                    {
+                        keyValue.Value?.Accept(this);
+                    }
+                    else
+                    {
+                        entry?.Accept(this);
+                    }
+                }
             }
 
             protected override void VisitEnumDeclaration(EnumDeclaration node)
@@ -93,6 +104,7 @@ namespace AuroraScript.Compiler.Analyzer
         private readonly SourceFileVisitor _sourceFileVisitor = new SourceFileVisitor();
 
         private readonly EngineOptions _options;
+        private bool _allowTDocInterpolation = true;
         private bool _seenEffectiveModuleStatement;
         private bool _seenExplicitModuleMetadata;
 
@@ -212,6 +224,62 @@ namespace AuroraScript.Compiler.Analyzer
             }
             this.Lexer.Dispose();
             return this.Root;
+        }
+
+        /// <summary>
+        /// Parses a standalone <c>.tdoc</c> document. The document starts
+        /// directly with the TDoc root value (for example
+        /// <c>Object { name "Aurora" }</c>) and is represented as a synthetic
+        /// expression statement so language-service consumers can reuse the
+        /// normal AST traversal and source ranges.
+        /// </summary>
+        public ModuleDeclaration ParseTDocDocument()
+        {
+            var previousInterpolationMode = _allowTDocInterpolation;
+            _allowTDocInterpolation = false;
+            try
+            {
+                using (scopeStack.Scope(ScopeType.MODULE))
+                {
+                    var value = ParseTDocValue();
+                    if (value == null)
+                    {
+                        throw new AuroraCompilationException(
+                            AuroraCompilationStage.Parsing,
+                            Lexer.FullPath,
+                            Lexer.LookAtHead(),
+                            "A TDoc document requires a root value.");
+                    }
+
+                    // A terminator is optional in a standalone document, but
+                    // accepting one keeps generated documents convenient.
+                    Lexer.TestNext(Symbols.PT_SEMICOLON);
+                    if (!Lexer.TestSymbol(Symbols.KW_EOF))
+                    {
+                        throw new AuroraCompilationException(
+                            AuroraCompilationStage.Parsing,
+                            Lexer.FullPath,
+                            Lexer.LookAtHead(),
+                            "A TDoc document must contain exactly one root value.");
+                    }
+
+                    var statement = new ExpressionStatement(value)
+                    {
+                        IsIndependent = true,
+                        Range = value.Range
+                    };
+                    Root.AddStatement(statement);
+                    SetSourceRecursive(Root);
+                }
+
+                Lexer.Expect(Symbols.KW_EOF);
+                Lexer.Dispose();
+                return Root;
+            }
+            finally
+            {
+                _allowTDocInterpolation = previousInterpolationMode;
+            }
         }
 
         public BlockStatement ParseBlockBody()
@@ -373,6 +441,20 @@ namespace AuroraScript.Compiler.Analyzer
 
         private Expression ParsePrefix(Token token)
         {
+            if (token.Symbol == Symbols.KW_TDOC)
+            {
+                var value = ParseTDocValue();
+                if (value == null)
+                {
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Parsing,
+                        this.Lexer.FullPath,
+                        token,
+                        "tdoc requires a value.");
+                }
+                return SetRange(value, token.Range, value.Range);
+            }
+
             // Literals
             if (token is ValueToken vt)
             {
@@ -1660,6 +1742,353 @@ namespace AuroraScript.Compiler.Analyzer
             }
             var rightBrace = this.Lexer.NextRangeOfKind(Symbols.PT_RIGHTBRACE);
             return SetRange(constructExpression, token, rightBrace);
+        }
+
+        // =================================================================================
+        // Native TDoc literal syntax
+        // =================================================================================
+
+        private Expression ParseTDocValue()
+        {
+            var start = this.Lexer.PeekRange();
+            string typeName = null;
+            Token typeToken = null;
+
+            // A leading identifier followed by a value-shaped token is the
+            // optional static type. Property names are parsed by the object
+            // member parser before reaching this method, so this rule is
+            // unambiguous for values.
+            var first = this.Lexer.LookAtHead();
+            if (first is IdentifierToken && IsTDocTypePrefix())
+            {
+                typeToken = this.Lexer.Next();
+                typeName = typeToken.Value;
+                start = first.Range;
+            }
+
+            bool interpolation = false;
+            Expression value;
+            if (IsTDocInterpolationStart())
+            {
+                if (!_allowTDocInterpolation)
+                {
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Parsing,
+                        this.Lexer.FullPath,
+                        this.Lexer.LookAtHead(),
+                        "Standalone TDoc documents do not support $(expression); use a literal value.");
+                }
+
+                interpolation = true;
+                value = ParseTDocInterpolation();
+            }
+            else
+            {
+                value = ParseTDocRawValue();
+            }
+
+            ValidateTDocType(typeName, value, first, interpolation);
+            var result = new TypedDocumentExpression(value, typeName, interpolation, typeToken);
+            return SetRange(result, start, value.Range);
+        }
+
+        private Expression ParseTDocRawValue()
+        {
+            var token = this.Lexer.LookAtHead();
+            if (token.Symbol == Symbols.PT_LEFTBRACE)
+            {
+                return ParseTDocObject(this.Lexer.NextRangeOfKind(Symbols.PT_LEFTBRACE));
+            }
+            if (token.Symbol == Symbols.PT_LEFTBRACKET)
+            {
+                return ParseTDocArray(this.Lexer.NextRangeOfKind(Symbols.PT_LEFTBRACKET));
+            }
+            if (token is ValueToken valueToken)
+            {
+                if (valueToken.Type == Tokens.ValueType.StringTemplate)
+                {
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Parsing,
+                        this.Lexer.FullPath,
+                        token,
+                        "TDoc string values must be quoted literals or $(expression).");
+                }
+                this.Lexer.Next();
+                return SetRange(new LiteralExpression(valueToken), valueToken.Range, valueToken.Range);
+            }
+
+            // TDoc numbers are still AuroraScript Number values, including a
+            // leading minus. Do not admit arbitrary unary expressions here.
+            if (token.Symbol == Symbols.OP_SUBTRACT && PeekToken(1) is NumberToken number)
+            {
+                var minus = this.Lexer.Next();
+                this.Lexer.Next();
+                var literal = SetRange(new LiteralExpression(number), number.Range, number.Range);
+                var unary = new UnaryExpression(Operator.Negate, UnaryType.Prefix, literal);
+                return SetRange(unary, minus.Range, number.Range);
+            }
+
+            throw new AuroraCompilationException(
+                AuroraCompilationStage.Parsing,
+                this.Lexer.FullPath,
+                token,
+                "TDoc values must be literals, arrays, objects, or $(expression).");
+        }
+
+        private Expression ParseTDocInterpolation()
+        {
+            var dollar = this.Lexer.Next();
+            this.Lexer.Expect(Symbols.PT_LEFTPARENTHESIS);
+            var expression = ParseExpression(0);
+            if (expression == null)
+            {
+                throw new AuroraCompilationException(
+                    AuroraCompilationStage.Parsing,
+                    this.Lexer.FullPath,
+                    this.Lexer.LookAtHead(),
+                    "$(...) requires an AuroraScript expression.");
+            }
+            var right = this.Lexer.NextRangeOfKind(Symbols.PT_RIGHTPARENTHESIS);
+            return SetRange(expression, dollar.Range, right);
+        }
+
+        private Expression ParseTDocArray(SourceSpan start)
+        {
+            var array = new ArrayLiteralExpression();
+            while (!this.Lexer.TestSymbol(Symbols.PT_RIGHTBRACKET))
+            {
+                if (this.Lexer.IsAtEnd)
+                {
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Parsing,
+                        this.Lexer.FullPath,
+                        this.Lexer.LookAtHead(),
+                        "Unexpected end of file in TDoc array.");
+                }
+
+                array.AddElement(ParseTDocValue());
+                if (this.Lexer.TestNext(Symbols.PT_COMMA))
+                {
+                    if (this.Lexer.TestSymbol(Symbols.PT_RIGHTBRACKET)) break;
+                    continue;
+                }
+                if (!this.Lexer.TestSymbol(Symbols.PT_RIGHTBRACKET))
+                {
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Parsing,
+                        this.Lexer.FullPath,
+                        this.Lexer.LookAtHead(),
+                        "TDoc array elements require a comma.");
+                }
+            }
+
+            var end = this.Lexer.NextRangeOfKind(Symbols.PT_RIGHTBRACKET);
+            return SetRange(array, start, end);
+        }
+
+        private Expression ParseTDocObject(SourceSpan start)
+        {
+            var map = new MapExpression(Operator.ObjectLiteral);
+            var names = new HashSet<string>(StringComparer.Ordinal);
+
+            while (!this.Lexer.TestSymbol(Symbols.PT_RIGHTBRACE))
+            {
+                if (this.Lexer.IsAtEnd)
+                {
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Parsing,
+                        this.Lexer.FullPath,
+                        this.Lexer.LookAtHead(),
+                        "Unexpected end of file in TDoc object.");
+                }
+
+                var readOnly = false;
+                Token readOnlyToken = null;
+                var first = this.Lexer.LookAtHead();
+                if (IsIdentifier(first, "readonly"))
+                {
+                    readOnly = true;
+                    readOnlyToken = this.Lexer.Next();
+                    first = this.Lexer.LookAtHead();
+                }
+
+                if (!IsTDocPropertyName(first))
+                {
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Parsing,
+                        this.Lexer.FullPath,
+                        first,
+                        "TDoc object property names must be identifiers or quoted strings.");
+                }
+
+                var typeName = (string)null;
+                Token typeToken = null;
+                var key = this.Lexer.Next();
+                var next = this.Lexer.LookAtHead();
+                if (key is IdentifierToken &&
+                    IsTDocPropertyName(next) &&
+                    next is IdentifierToken &&
+                    !IsIdentifier(next, "$"))
+                {
+                    // Two adjacent identifier positions mean type + property
+                    // name. This is intentionally positional and does not
+                    // consult a runtime registry during parsing.
+                    typeToken = key;
+                    typeName = key.Value;
+                    key = this.Lexer.Next();
+                }
+
+                var keyName = key.Value ?? string.Empty;
+                if (!names.Add(keyName))
+                {
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Parsing,
+                        this.Lexer.FullPath,
+                        key,
+                        $"Duplicate TDoc property '{keyName}'.");
+                }
+
+                if (this.Lexer.TestNext(Symbols.PT_COLON))
+                {
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Parsing,
+                        this.Lexer.FullPath,
+                        key,
+                        "TDoc object members use 'name value' syntax; ':' is not supported.");
+                }
+
+                var value = ParseTDocValue();
+                if (typeName != null)
+                {
+                    var originalValue = value;
+                    var originalRange = value.Range;
+                    var isInterpolation = originalValue is TypedDocumentExpression interpolation && interpolation.IsInterpolation;
+                    ValidateTDocType(typeName, UnwrapTDocValue(originalValue), key, isInterpolation);
+                    value = new TypedDocumentExpression(UnwrapTDocValue(originalValue), typeName, isInterpolation, typeToken);
+                    SetRange(value, key.Range, originalRange);
+                }
+
+                var entry = new MapKeyValueExpression(key, value, readOnly, readOnlyToken);
+                SetRange(entry, key.Range, value.Range);
+                map.AddEntry(entry);
+
+                if (this.Lexer.TestNext(Symbols.PT_COMMA))
+                {
+                    if (this.Lexer.TestSymbol(Symbols.PT_RIGHTBRACE)) break;
+                    continue;
+                }
+                if (!this.Lexer.TestSymbol(Symbols.PT_RIGHTBRACE))
+                {
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Parsing,
+                        this.Lexer.FullPath,
+                        this.Lexer.LookAtHead(),
+                        "TDoc object members require a comma.");
+                }
+            }
+
+            var end = this.Lexer.NextRangeOfKind(Symbols.PT_RIGHTBRACE);
+            return SetRange(map, start, end);
+        }
+
+        private void ValidateTDocType(string typeName, Expression value, Token token, bool interpolation = false)
+        {
+            if (string.IsNullOrEmpty(typeName) || value == null) return;
+            var raw = UnwrapTDocValue(value);
+            var valid = typeName switch
+            {
+                "Object" => raw is MapExpression,
+                "Array" => raw is ArrayLiteralExpression,
+                "Int32Array" or "Int8Array" or "Float64Array" or "BooleanArray" => raw is ArrayLiteralExpression,
+                "String" => IsTDocScalar(raw, typeof(StringToken)),
+                "Number" => IsTDocNumber(raw),
+                "Boolean" => IsTDocScalar(raw, typeof(BooleanToken)),
+                "StringBuffer" or "Path" => IsTDocScalar(raw, typeof(StringToken)),
+                "Date" => IsTDocScalar(raw, typeof(StringToken)) || IsTDocNumber(raw),
+                "Regex" => raw is MapExpression,
+                "HashMap" => raw is ArrayLiteralExpression,
+                _ => true // A host-registered alias is resolved by the backend.
+            };
+            if (!valid && !interpolation && !(value is TypedDocumentExpression dynamic && dynamic.IsInterpolation))
+            {
+                throw new AuroraCompilationException(
+                    AuroraCompilationStage.Parsing,
+                    this.Lexer.FullPath,
+                    token,
+                    $"TDoc type '{typeName}' does not accept this value shape.");
+            }
+        }
+
+        private static bool IsTDocScalar(Expression expression, Type tokenType)
+        {
+            return expression is LiteralExpression literal && tokenType.IsInstanceOfType(literal.Token);
+        }
+
+        private static bool IsTDocNumber(Expression expression)
+        {
+            return expression is LiteralExpression { Token: NumberToken } ||
+                expression is UnaryExpression { Operator: var op, Expression: LiteralExpression { Token: NumberToken } } &&
+                op == Operator.Negate;
+        }
+
+        private static Expression UnwrapTDocValue(Expression expression)
+        {
+            return expression is TypedDocumentExpression tdoc ? tdoc.Value : expression;
+        }
+
+        private bool IsTDocTypePrefix()
+        {
+            var next = PeekToken(1);
+            return IsTDocValueStart(next);
+        }
+
+        private bool IsTDocInterpolationStart()
+        {
+            var token = this.Lexer.LookAtHead();
+            return IsIdentifier(token, "$") && PeekSymbol(1) == Symbols.PT_LEFTPARENTHESIS;
+        }
+
+        private bool IsTDocValueStart(Token token)
+        {
+            if (token is ValueToken || token.Symbol == Symbols.PT_LEFTBRACE || token.Symbol == Symbols.PT_LEFTBRACKET)
+            {
+                return true;
+            }
+            if (token.Symbol == Symbols.OP_SUBTRACT)
+            {
+                return PeekToken(2) is NumberToken;
+            }
+            return IsIdentifier(token, "$") && PeekSymbol(2) == Symbols.PT_LEFTPARENTHESIS;
+        }
+
+        private static bool IsTDocPropertyName(Token token)
+        {
+            return token is IdentifierToken or StringToken;
+        }
+
+        private static bool IsIdentifier(Token token, string value)
+        {
+            return token is IdentifierToken && StringComparer.Ordinal.Equals(token.Value, value);
+        }
+
+        private Token PeekToken(int offset)
+        {
+            var snapshot = this.Lexer.CreateSnapshot();
+            try
+            {
+                Token token = null;
+                for (var i = 0; i <= offset; i++) token = this.Lexer.Next();
+                return token;
+            }
+            finally
+            {
+                this.Lexer.RestoreSnapshot(snapshot);
+            }
+        }
+
+        private Symbols PeekSymbol(int offset)
+        {
+            return PeekToken(offset)?.Symbol;
         }
 
         private IReadOnlyList<ParameterDeclaration> ParseFunctionArguments()

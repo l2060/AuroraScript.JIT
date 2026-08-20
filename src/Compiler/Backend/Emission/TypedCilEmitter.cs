@@ -1323,6 +1323,8 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             switch (expression)
             {
+                case TypedDocumentExpression tdoc:
+                    return EmitTypedDocument(tdoc);
                 case LiteralExpression literal:
                     return EmitLiteral(literal);
                 case NameExpression name:
@@ -1597,7 +1599,17 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private StackValueKind EmitMap(MapExpression expression)
         {
-            if (TryGetFastObject3(expression, out var first, out var second, out var third))
+            var hasReadOnly = false;
+            for (var i = 0; i < expression.Entries.Count; i++)
+            {
+                if (expression.Entries[i] is MapKeyValueExpression { ReadOnly: true })
+                {
+                    hasReadOnly = true;
+                    break;
+                }
+            }
+
+            if (!hasReadOnly && TryGetFastObject3(expression, out var first, out var second, out var third))
             {
                 EmitFastMapEntry(first);
                 EmitFastMapEntry(second);
@@ -1619,13 +1631,227 @@ namespace AuroraScript.Compiler.Backend.Emission
                     continue;
                 }
 
-                _il.Emit(OpCodes.Ldarg_0);
-                _session.Builder.LoadStringConstant(_il, GetMapEntryKey(entry));
-                EmitDatum(GetMapEntryValue(entry));
-                _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptObjectSetProperty);
+                if (entry is MapKeyValueExpression { ReadOnly: true })
+                {
+                    _session.Builder.LoadStringConstant(_il, GetMapEntryKey(entry));
+                    EmitDatum(GetMapEntryValue(entry));
+                    _il.Emit(OpCodes.Ldc_I4_0);
+                    _il.Emit(OpCodes.Ldc_I4_1);
+                    _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptObjectDefineDatum);
+                }
+                else
+                {
+                    _il.Emit(OpCodes.Ldarg_0);
+                    _session.Builder.LoadStringConstant(_il, GetMapEntryKey(entry));
+                    EmitDatum(GetMapEntryValue(entry));
+                    _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptObjectSetProperty);
+                }
             }
             _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
             return StackValueKind.Datum;
+        }
+
+        private StackValueKind EmitTypedDocument(TypedDocumentExpression expression)
+        {
+            var typeName = expression.TypeName;
+            if (string.IsNullOrEmpty(typeName))
+            {
+                return EmitExpression(expression.Value);
+            }
+
+            switch (typeName)
+            {
+                case "Null":
+                    EmitNull();
+                    return StackValueKind.Datum;
+                case "String":
+                    return EmitTypedString(expression.Value);
+                case "Number":
+                    EmitNumber(expression.Value);
+                    return StackValueKind.Number;
+                case "Boolean":
+                    EmitCondition(expression.Value);
+                    return StackValueKind.Boolean;
+                case "Object":
+                    if (expression.IsInterpolation)
+                    {
+                        EmitDatum(expression.Value);
+                        return StackValueKind.Datum;
+                    }
+                    if (expression.Value is not MapExpression objectValue)
+                    {
+                        throw new NotSupportedException("TDoc Object requires an object value.");
+                    }
+                    return EmitMap(objectValue);
+                case "Array":
+                    if (expression.IsInterpolation)
+                    {
+                        EmitDatum(expression.Value);
+                        return StackValueKind.Datum;
+                    }
+                    if (expression.Value is not ArrayLiteralExpression arrayValue)
+                    {
+                        throw new NotSupportedException("TDoc Array requires an array value.");
+                    }
+                    return EmitArrayLiteral(arrayValue);
+                case "Int32Array":
+                    return EmitTypedPackedArray(expression.Value, FlowValueType.Int32Array);
+                case "Int8Array":
+                    return EmitTypedPackedArray(expression.Value, FlowValueType.Int8Array);
+                case "Float64Array":
+                    return EmitTypedPackedArray(expression.Value, FlowValueType.Float64Array);
+                case "BooleanArray":
+                    return EmitTypedPackedArray(expression.Value, FlowValueType.BooleanArray);
+                case "StringBuffer":
+                case "Date":
+                case "Path":
+                    if (expression.IsInterpolation)
+                    {
+                        EmitDatum(expression.Value);
+                        return StackValueKind.Datum;
+                    }
+                    EmitTypedGlobalConstructor(typeName, expression.Value);
+                    return StackValueKind.Datum;
+                case "Regex":
+                    if (expression.IsInterpolation)
+                    {
+                        EmitDatum(expression.Value);
+                        return StackValueKind.Datum;
+                    }
+                    EmitTypedRegex(expression.Value);
+                    return StackValueKind.Datum;
+                case "HashMap":
+                    if (expression.IsInterpolation)
+                    {
+                        EmitDatum(expression.Value);
+                        return StackValueKind.Datum;
+                    }
+                    EmitTypedHashMap(expression.Value);
+                    return StackValueKind.Datum;
+                default:
+                    throw new NotSupportedException("TDoc type: " + typeName);
+            }
+        }
+
+        private StackValueKind EmitTypedString(Expression expression)
+        {
+            var kind = EmitExpression(expression);
+            if (kind == StackValueKind.String) return kind;
+            ConvertToDatum(kind);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumToString);
+            return StackValueKind.String;
+        }
+
+        private void EmitTypedGlobalConstructor(string typeName, Expression value)
+        {
+            _il.Emit(OpCodes.Ldarg_0);
+            _session.Builder.LoadStringConstant(_il, typeName);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetGlobal);
+            _il.Emit(OpCodes.Ldarg_0);
+            EmitDatum(value);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.New1);
+        }
+
+        private void EmitTypedRegex(Expression value)
+        {
+            if (value is not MapExpression map)
+            {
+                throw new NotSupportedException("TDoc Regex requires an object value.");
+            }
+
+            Expression pattern = null;
+            Expression flags = null;
+            for (var i = 0; i < map.Entries.Count; i++)
+            {
+                if (map.Entries[i] is not MapKeyValueExpression entry) continue;
+                if (StringComparer.Ordinal.Equals(entry.Key.Value, "pattern")) pattern = entry.Value;
+                else if (StringComparer.Ordinal.Equals(entry.Key.Value, "flags")) flags = entry.Value;
+            }
+            if (pattern == null) throw new NotSupportedException("TDoc Regex requires 'pattern'.");
+
+            _il.Emit(OpCodes.Ldarg_0);
+            _session.Builder.LoadStringConstant(_il, "Regex");
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetGlobal);
+            _il.Emit(OpCodes.Ldarg_0);
+            EmitDatum(pattern);
+            if (flags == null) EmitNull();
+            else EmitDatum(flags);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.New2);
+        }
+
+        private void EmitTypedHashMap(Expression value)
+        {
+            if (value is not ArrayLiteralExpression entries)
+            {
+                throw new NotSupportedException("TDoc HashMap requires an array value.");
+            }
+
+            EmitInt32(entries.Elements.Count);
+            _il.Emit(OpCodes.Newobj, TypedRuntimeMetadata.ScriptHashMapConstructor);
+            for (var i = 0; i < entries.Elements.Count; i++)
+            {
+                var pair = entries.Elements[i] is TypedDocumentExpression pairTDoc
+                    ? pairTDoc.Value
+                    : entries.Elements[i];
+                if (pair is not ArrayLiteralExpression pairArray || pairArray.Elements.Count != 2)
+                {
+                    throw new NotSupportedException("TDoc HashMap entries must contain two values.");
+                }
+                _il.Emit(OpCodes.Dup);
+                EmitDatum(pairArray.Elements[0]);
+                EmitDatum(pairArray.Elements[1]);
+                _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptHashMapPut);
+            }
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
+        }
+
+        private StackValueKind EmitTypedPackedArray(Expression expression, FlowValueType arrayType)
+        {
+            if (expression is not ArrayLiteralExpression array)
+            {
+                throw new NotSupportedException("TDoc packed array requires an array value.");
+            }
+
+            var elementType = GetPackedStorageType(arrayType).GetElementType();
+            EmitInt32(array.Elements.Count);
+            if (_directMode)
+            {
+                _il.Emit(OpCodes.Newarr, elementType);
+            }
+            else
+            {
+                _il.Emit(OpCodes.Newobj, GetPackedConstructor(arrayType));
+            }
+
+            for (var i = 0; i < array.Elements.Count; i++)
+            {
+                _il.Emit(OpCodes.Dup);
+                if (!_directMode)
+                {
+                    _il.Emit(OpCodes.Ldfld, GetPackedItemsField(arrayType));
+                }
+                EmitInt32(i);
+                var value = array.Elements[i];
+                if (arrayType == FlowValueType.BooleanArray)
+                {
+                    EmitCondition(value);
+                    _il.Emit(OpCodes.Stelem_I1);
+                }
+                else if (arrayType == FlowValueType.Float64Array)
+                {
+                    EmitNumber(value);
+                    _il.Emit(OpCodes.Stelem_R8);
+                }
+                else
+                {
+                    EmitInt32Value(value);
+                    if (arrayType == FlowValueType.Int8Array) _il.Emit(OpCodes.Conv_I1);
+                    _il.Emit(arrayType == FlowValueType.Int8Array
+                        ? OpCodes.Stelem_I1
+                        : OpCodes.Stelem_I4);
+                }
+            }
+            return GetPackedLocalStackKind(arrayType);
         }
 
         private void EmitFastMapEntry(MapKeyValueExpression entry)
@@ -4774,6 +5000,22 @@ namespace AuroraScript.Compiler.Backend.Emission
                 {
                     case null:
                         return true;
+                    case TypedDocumentExpression tdoc:
+                        if (string.IsNullOrEmpty(tdoc.TypeName))
+                        {
+                            return CanEmitExpression(code, tdoc.Value, canDirectCall, allowRuntimeBoundary);
+                        }
+                        if (tdoc.TypeName is "StringBuffer" or "Date" or "Regex" or "Path" or "HashMap")
+                        {
+                            return allowRuntimeBoundary &&
+                                CanEmitExpression(code, tdoc.Value, canDirectCall, allowRuntimeBoundary);
+                        }
+                        if (tdoc.TypeName is "Object" or "Array")
+                        {
+                            return allowRuntimeBoundary &&
+                                CanEmitExpression(code, tdoc.Value, canDirectCall, allowRuntimeBoundary);
+                        }
+                        return CanEmitExpression(code, tdoc.Value, canDirectCall, allowRuntimeBoundary);
                     case LiteralExpression literal:
                         return literal.Token is NullToken or BooleanToken or NumberToken or StringToken ||
                             (allowRuntimeBoundary && literal.Token is RegexToken);

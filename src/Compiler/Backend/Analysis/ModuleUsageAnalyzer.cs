@@ -162,6 +162,9 @@ namespace AuroraScript.Compiler.Backend.Analysis
                     case ModuleDeclaration module:
                         VisitModule(module);
                         return;
+                    case TypedDocumentExpression tdoc:
+                        Visit(tdoc.Value);
+                        return;
                     case NameExpression name:
                         MarkValueRead(name);
                         return;

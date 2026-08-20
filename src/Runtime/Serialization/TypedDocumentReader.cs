@@ -1079,7 +1079,7 @@ namespace AuroraScript.Runtime.Serialization
             var message = token.Error switch
             {
                 TypedDocumentScanError.UnexpectedCharacter => $"Unexpected character '{token.ErrorCharacter}'.",
-                TypedDocumentScanError.DataMarkerNotAllowed => "Independent TDoc documents do not use an @data marker.",
+                TypedDocumentScanError.ScriptMarkerNotAllowed => "Independent TDoc documents do not accept script markers.",
                 TypedDocumentScanError.UnterminatedString => "Unterminated string literal.",
                 TypedDocumentScanError.UnterminatedComment => "Unterminated block comment.",
                 TypedDocumentScanError.InvalidEscape => $"Unsupported escape sequence '\\{token.ErrorCharacter}'.",

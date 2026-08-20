@@ -3,12 +3,13 @@
   "name": "AuroraScript",
   "scopeName": "source.aurora",
   "uuid": "d8f0c7ce-3b9a-4eb3-9fd1-1c7fd4b72b59",
-  "fileTypes": ["as"],
+  "fileTypes": ["as", "tdoc"],
   "patterns": [
     { "include": "#comments" },
     { "include": "#strings" },
     { "include": "#regex" },
     { "include": "#annotations" },
+    { "include": "#tdoc" },
     { "include": "#declarations" },
     { "include": "#map-keys" },
     { "include": "#keywords" },
@@ -56,6 +57,39 @@
         }
       ]
     },
+    "tdoc": {
+      "patterns": [
+        {
+          "name": "keyword.control.tdoc.aurora",
+          "match": "\\btdoc\\b"
+        },
+        {
+          "name": "keyword.modifier.readonly.tdoc.aurora",
+          "match": "\\breadonly\\b"
+        },
+        {
+          "name": "meta.embedded.tdoc.expression.aurora",
+          "begin": "\\$\\(",
+          "beginCaptures": {
+            "0": { "name": "punctuation.section.embedded.begin.tdoc.aurora" }
+          },
+          "end": "\\)",
+          "endCaptures": {
+            "0": { "name": "punctuation.section.embedded.end.tdoc.aurora" }
+          },
+          "patterns": [
+            { "include": "#expression" }
+          ]
+        },
+        {
+          "name": "meta.tdoc.member.aurora",
+          "match": "\\b(?!(?:Array|Boolean|BooleanArray|Date|Float64Array|HashMap|Int32Array|Int8Array|Number|Object|Path|Regex|String|StringBuffer)\\b)([\\p{L}_$][\\p{L}\\p{N}_$]*)(\\s+)(?=(?:[\\\"']|0[xX]|-?\\d|true\\b|false\\b|null\\b|[\\[{]|\\$\\())",
+          "captures": {
+            "1": { "name": "variable.other.member.tdoc.aurora" }
+          }
+        }
+      ]
+    },
     "balanced-braces": {
       "patterns": [
         {
@@ -73,6 +107,7 @@
             { "include": "#strings" },
             { "include": "#regex" },
             { "include": "#annotations" },
+            { "include": "#tdoc" },
             { "include": "#declarations" },
             { "include": "#map-keys" },
             { "include": "#keywords" },
@@ -322,7 +357,7 @@
         },
         {
           "name": "keyword.declaration.aurora",
-          "match": "\\b(?:const|declare|enum|func|function|var)\\b"
+          "match": "\\b(?:const|declare|enum|func|function|var|readonly)\\b"
         },
         {
           "name": "keyword.operator.word.aurora",

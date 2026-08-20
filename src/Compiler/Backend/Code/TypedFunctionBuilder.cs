@@ -178,6 +178,9 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     switch (expression)
                     {
+                        case TypedDocumentExpression tdoc:
+                            BindExpression(tdoc.Value);
+                            break;
                         case NameExpression name:
                             Names[name] = ResolveName(name);
                             break;
@@ -551,6 +554,10 @@ namespace AuroraScript.Compiler.Backend.Code
                 FlowValueType type;
                 switch (expression)
                 {
+                    case TypedDocumentExpression tdoc:
+                        var inferredTDocType = AnalyzeExpression(tdoc.Value);
+                        type = GetTypedDocumentFlowType(tdoc, inferredTDocType);
+                        break;
                     case LiteralExpression literal:
                         type = GetLiteralType(literal);
                         break;
@@ -687,6 +694,27 @@ namespace AuroraScript.Compiler.Backend.Code
 
                 _expressionTypes[expression] = type;
                 return type;
+            }
+
+            private static FlowValueType GetTypedDocumentFlowType(
+                TypedDocumentExpression expression,
+                FlowValueType inferred)
+            {
+                return expression.TypeName switch
+                {
+                    null or "" => inferred,
+                    "Null" => FlowValueType.Null,
+                    "Boolean" => FlowValueType.Boolean,
+                    "Number" => FlowValueType.Number,
+                    "String" => FlowValueType.String,
+                    "Object" or "StringBuffer" or "Date" or "Regex" or "Path" or "HashMap" => FlowValueType.Object,
+                    "Array" => FlowValueType.Array,
+                    "Int32Array" => FlowValueType.Int32Array,
+                    "Int8Array" => FlowValueType.Int8Array,
+                    "Float64Array" => FlowValueType.Float64Array,
+                    "BooleanArray" => FlowValueType.BooleanArray,
+                    _ => FlowValueType.Object
+                };
             }
 
             private bool CanUseDirectReturn(FunctionCallExpression call, FunctionId function)

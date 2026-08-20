@@ -1,12 +1,12 @@
 
 # AuroraScript Typed Document（TDoc）设计草案
 
-> 状态：TDoc 4.0 已实现独立文本的序列化、反序列化、`readonly`、类型输出控制、脚本 `TDoc` API 与宿主文本/文件/流 API。`@data` 字面量、`$(...)` 内联表达式、语法树/注释保留和编辑器支持仍是后续设计，不应视为当前语言能力。
+> 状态：TDoc 4.0 已实现独立文本的序列化、反序列化、`readonly`、类型输出控制、脚本 `TDoc` API、宿主文本/文件/流 API，以及脚本 `tdoc` 字面量和 `.tdoc` 编辑器渲染。独立文档仍禁止 `$(...)`；语法树/注释保留属于后续设计。
 
 ## 1. 目标
 
 1. 序列化/反序列化后不丢失对象、容器及已注册类型的身份。
-2. 支持独立配置文档和脚本内原生 `@data` 字面量。
+2. 支持独立配置文档和脚本内原生 `tdoc` 字面量。
 3. 支持默认类型自动推断与显式类型声明。
 4. 支持 AuroraScript 内置类型，以及宿主通过 `AuroraEngine.RegisterType` 显式注册的 CLR/CIL 对象类型。
 5. 支持行注释、块注释、`readonly` 对象属性和脚本内联表达式。
@@ -49,14 +49,14 @@ Object {
 Int8Array [1, 2, 3, 4, 5, 6, 0x7F]
 ```
 
-> 上述示例只展示根值。独立 `.tdoc` 文档直接以根值开始，不需要 `@data` 标记；只有作为 AuroraScript 表达式时，根值之前才必须加 `@data`。
+> 上述示例只展示根值。独立 `.tdoc` 文档直接以根值开始，不需要 `tdoc` 前缀；只有作为 AuroraScript 表达式时，根值之前才必须加 `tdoc`。
 
 ## 3. 总体边界
 
 TDoc 是数据格式，不是第二套通用脚本语言。
 
 - 普通 AuroraScript 继续使用现有对象字面量、数组字面量、函数调用和下标访问。
-- TDoc 只在独立 `.tdoc` 文件或 `@data` 后启用。
+- TDoc 只在独立 `.tdoc` 文件或 `tdoc` 后启用。
 - JSON 保持面向外部互操作的 JSON 语义；TDoc 才负责保留 `Date`、`Path`、压缩数组、`StringBuffer`、已注册 CIL 对象类型等身份。
 - TDoc 的纯数据部分不执行代码。只有脚本内显式 `$(...)` 才能求值。
 - TDoc 面向树形配置，不保留循环引用、共享身份或 prototype 链；写入时按可跳过值规则截断这些运行时结构。
@@ -66,7 +66,7 @@ TDoc 是数据格式，不是第二套通用脚本语言。
 | 入口 | 用途 | 内联表达式 |
 | --- | --- | --- |
 | `.tdoc` 独立文档 | 配置、持久化数据、宿主输入输出 | 禁止 |
-| `@data` 脚本字面量 | 在 `.as` 中创建带类型数据 | 允许 `$(...)` |
+| `tdoc` 脚本字面量 | 在 `.as` 中创建带类型数据 | 允许 `$(...)` |
 
 ## 4. 文档入口与脚本标记
 
@@ -79,25 +79,25 @@ Object {
 }
 ```
 
-- 独立文档由 `.tdoc` 文件入口或反序列化 API 确定语法模式，第一个非 trivia token 就是根值，不要求也不输出 `@data` 标记。
+- 独立文档由 `.tdoc` 文件入口或反序列化 API 确定语法模式，第一个非 trivia token 就是根值，不要求也不输出 `tdoc` 标记。
 - 当前规范版本是 TDoc 1；版本由 API/实现选择，而不是写入数据文档。
 - 一个文件只允许一个根值。
 - 根值前后不允许普通 AuroraScript 语句、函数、导入、变量声明或 `$(...)`。
 
-### 4.2 脚本内 `@data` 字面量
+### 4.2 脚本内 `tdoc` 字面量
 
 ```aurorascript
-const profile = @data Object {
+const profile = tdoc Object {
     String name "Hanks",
     age 18,
 };
 ```
 
-`@data` 是明确的语法边界。因此现有语义不会改变：
+`tdoc` 是明确的语法边界。因此现有语义不会改变：
 
 ```aurorascript
 var item = Array[index]; // 仍是下标访问，不是 TDoc 数组构造
-const values = @data Array [1, 2, 3]; // 只有此处按 TDoc 规则解析
+const values = tdoc Array [1, 2, 3]; // 只有此处按 TDoc 规则解析
 ```
 
 ## 5. 规范语法
@@ -106,7 +106,7 @@ const values = @data Array [1, 2, 3]; // 只有此处按 TDoc 规则解析
 
 ```ebnf
 standalone-document = typed-value EOF ;
-embedded-data       = "@" "data" typed-value ;
+embedded-data       = "tdoc" typed-value ;
 
 typed-value         = [ type-ref ] raw-value ;
 raw-value           = "null"
@@ -236,11 +236,11 @@ Object {
 
 ## 8. 脚本内联变量与表达式
 
-仅 `@data` 字面量允许 `$(...)`。括号中是普通 AuroraScript 表达式：
+仅 `tdoc` 字面量允许 `$(...)`。括号中是普通 AuroraScript 表达式：
 
 ```aurorascript
 export func createProfile(user, baseAge) {
-    const profile = @data Object {
+    const profile = tdoc Object {
         readonly String id $(user.id),
         String name $(user.name),
         age $(baseAge + 1),
@@ -344,7 +344,7 @@ tdoc.ReadStream(stream);                           // ScriptDatum
 4. `HashMap` 必须输出键值对列表，不能降级为普通对象，否则非字符串键会丢失。
 5. `Date` 必须输出字符串，并严格使用当前引擎的 `EngineOptions.Runtime.DateTimeFormat`；不得写死 ISO 8601、改用 ticks 或在格式化失败时静默回退。
 6. `Regex` 必须输出 pattern 和 flags，不能只输出 `ToString()`。
-7. 独立文档直接输出根值，不输出 `@data` 或版本标记。
+7. 独立文档直接输出根值，不输出 `tdoc` 或版本标记。
 8. 默认输出 UTF-8、规范缩进和尾逗号；可提供紧凑输出选项。
 9. 对函数、代理、访问器、未注册 CLR/CIL 对象、非有限 `Number`、循环/共享引用等不可表示的运行时值，`stringify` 不报类型错误：对象成员省略；数组元素及 `HashMap` 条目中的不可表示键/值写为 `null`；根值写为 `null`。这是一份数据快照，不是完整对象图克隆。
 
@@ -359,7 +359,7 @@ tdoc.ReadStream(stream);                           // ScriptDatum
 
 读取顺序：
 
-1. 独立文档从第一个非 trivia token 直接读取根值，不要求 `@data` 标记。
+1. 独立文档从第一个非 trivia token 直接读取根值，不要求 `tdoc` 标记。
 2. 词法阶段识别注释、字符串、数值和源位置。
 3. `Deserialize` 热路径使用单 token 前瞻并直接绑定/构造目标值，不建立 token 列表、中间 AST 或 `DataNode`。
 4. 绑定阶段先解析内置别名，再通过当前引擎的 CLR 注册表解析 CIL 对象别名；反射契约和访问器按注册类型缓存。
@@ -375,13 +375,13 @@ TDoc 1 不保留循环引用和共享身份。写入时首次可表示的出现�
 
 ### 10.4 注释保留
 
-- `Deserialize` 必须接受不带 `@data` 标记的根值及其中的注释，并返回纯数据值。
+- `Deserialize` 必须接受不带 `tdoc` 标记的根值及其中的注释，并返回纯数据值。
 - 未来的 `TypedDocument.Parse` 应保留注释、空白和源范围，供编辑器、格式化及“读取后保存”使用。
 - 从 `ScriptDatum` 新建的规范化文档没有原始注释；只有从未来的语法文档对象修改后写回，才可能保留已有注释。
 
 ## 11. 与现有 AuroraScript 的兼容性
 
-1. 在 `.as` 源码中，`@data` 之后才进入 TDoc 子语法，不改变普通对象字面量、数组字面量、函数调用或下标访问；独立文档入口由 API 决定，因此不需要该标记。
+1. 在 `.as` 源码中，`tdoc` 之后才进入 TDoc 子语法，不改变普通对象字面量、数组字面量、函数调用或下标访问；独立文档入口由 API 决定，因此不需要该标记。
 2. 现有 `Array` 构造器接受容量，现有压缩数组构造器接受长度；TDoc 的 `Array [ ... ]` 和 `Int8Array [ ... ]` 是新数据字面量能力，不能伪装为现有构造器调用。
 3. 现有 JSON 序列化会将特殊类型降级为字符串、普通对象或普通数组；TDoc 是新增保真格式，不能改变 JSON 输出。
 4. 现有 AuroraScript 词法器已识别行/块注释；TDoc 复用其词法约定，并使用可保留 trivia 的扫描路径实现文档级注释保留。
@@ -390,7 +390,7 @@ TDoc 1 不保留循环引用和共享身份。写入时首次可表示的出现�
 
 ### 阶段 1：核心数据文档
 
-- 不带 `@data` 标记的 `.tdoc` 根值、数组、对象、逗号、注释和结构化诊断；
+- 不带 `tdoc` 标记的 `.tdoc` 根值、数组、对象、逗号、注释和结构化诊断；
 - 基础推断、显式类型、`readonly` 和严格数值范围；
 - `Object`、`Array`、四种压缩数组、`StringBuffer`、`Date`、`Regex`、`Path`、`HashMap`；
 - 自定义 `DateTimeFormat` 下的 `Date` round-trip，以及格式不匹配时的结构化诊断；
@@ -399,7 +399,7 @@ TDoc 1 不保留循环引用和共享身份。写入时首次可表示的出现�
 
 ### 阶段 2：原生脚本
 
-- `@data` 字面量；
+- `tdoc` 字面量；
 - `$(...)` 内联表达式；
 - 与普通 CIL 编译、作用域和运行时错误一致的行为；
 - 保证 TDoc 的纯数据部分不执行任意代码。
@@ -408,7 +408,7 @@ TDoc 1 不保留循环引用和共享身份。写入时首次可表示的出现�
 
 - 与 `AuroraEngine.RegisterType`/`ClrRegistry` 集成，并支持绑定到注册项的 codec、类型版本和迁移；
 - 已注册 CIL 对象的 round-trip、未注册对象写入降级，以及未知别名读取拒绝用例；
-- Language Server/VSIX 的高亮、格式化和诊断；
+- Language Server/VSIX 的 `.tdoc` 高亮、格式化和诊断（已接入）；
 - `TypedDocument` 的注释保留与安全保存；
 - 如确有需求，再评估 `UInt8Array`、带类型标量、对象图引用和深冻结。
 
@@ -433,12 +433,12 @@ Object {
 
 该文档反序列化后必须满足：
 
-- 文档无需 `@data` 标记即可读取；
+- 文档无需 `tdoc` 标记即可读取；
 - 根值和 `meta` 为 `ScriptObject`；
 - `tags` 为 `ScriptArray`；
 - `signedBytes` 为 `ScriptInt8Array`，保留 `sbyte[]` 身份；
 - `greeting` 为 `StringBuffer`，`createdAt` 为 `ScriptDate`，`scriptPath` 为 `ScriptPathValue`；
 - `id` 不可重新赋值，`meta.phone` 仍可修改；
 - 在默认 `DateTimeFormat`（`yyyy-MM-dd HH:mm:ss`）下，`createdAt` 按该格式读取并再次写出；
-- 再次序列化后仍输出 `readonly String id`、`Int8Array`、`StringBuffer`、`Date` 和 `Path` 类型信息，且不添加 `@data` 标记。
+- 再次序列化后仍输出 `readonly String id`、`Int8Array`、`StringBuffer`、`Date` 和 `Path` 类型信息，且不添加 `tdoc` 标记。
 - 增加 UInt8Array/Int16Array/UInt16Array/UInt32Array/Int64Array/UInt64Array 实现

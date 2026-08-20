@@ -17,6 +17,7 @@ public sealed class TextMateGrammarTests
         var repository = document.RootElement.GetProperty("repository");
 
         Assert.Equal("source.aurora", document.RootElement.GetProperty("scopeName").GetString());
+        Assert.Contains("tdoc", document.RootElement.GetProperty("fileTypes").EnumerateArray().Select(item => item.GetString()));
         AssertPattern(repository, "builtins", "support.type.aurora", "Path");
         AssertPattern(repository, "builtins", "support.type.builtin.object.aurora", "JSON console Math HotPatch");
         AssertPattern(repository, "builtins", "variable.language.aurora", "$args $state global");
@@ -42,6 +43,12 @@ public sealed class TextMateGrammarTests
         AssertBlockStringPattern(repository, "  |> text", "  |>错误");
         AssertBeginPattern(repository, "strings", "meta.string.template.aurora", "`hello ${abc()}`");
         AssertNestedBeginPattern(repository, "strings", "meta.embedded.expression.aurora", "${abc()}");
+
+        AssertPattern(repository, "tdoc", "keyword.control.tdoc.aurora", "tdoc");
+        AssertPattern(repository, "tdoc", "keyword.modifier.readonly.tdoc.aurora", "readonly");
+        AssertPattern(repository, "tdoc", "meta.tdoc.member.aurora", "id \"UX01\"");
+        AssertPattern(repository, "tdoc", "meta.tdoc.member.aurora", "count -1");
+        AssertBeginPattern(repository, "tdoc", "meta.embedded.tdoc.expression.aurora", "$(value)");
     }
 
     [Fact]
@@ -54,6 +61,21 @@ public sealed class TextMateGrammarTests
             _ = new Regex(pattern, RegexOptions.CultureInvariant);
             Assert.True(pattern.Length > 0, propertyName);
         }
+    }
+
+    [Fact]
+    public void VisualStudioRegistersStandaloneTDocExtension()
+    {
+        var packageDefinitionPath = GetVisualStudioPath("AuroraScript.TextMate.pkgdef");
+
+        Assert.True(File.Exists(packageDefinitionPath), packageDefinitionPath);
+        var packageDefinition = File.ReadAllText(packageDefinitionPath);
+        Assert.Contains("\".tdoc\"=\"source.aurora\"", packageDefinition, StringComparison.Ordinal);
+
+        var contentTypePath = GetVisualStudioPath(Path.Combine("Language", "AuroraContentTypeDefinition.cs"));
+        Assert.True(File.Exists(contentTypePath), contentTypePath);
+        var contentType = File.ReadAllText(contentTypePath);
+        Assert.Contains("TypedDocumentFileExtension = \".tdoc\"", contentType, StringComparison.Ordinal);
     }
 
     private static void AssertPattern(JsonElement repository, string sectionName, string scopeName, string sample)
@@ -226,5 +248,36 @@ public sealed class TextMateGrammarTests
         }
 
         throw new FileNotFoundException("AuroraScript.tmLanguage.json was not found from test output path.", directory);
+    }
+
+    private static string GetVisualStudioPath(string relativePath)
+    {
+        var directory = AppContext.BaseDirectory;
+        for (var i = 0; i < 12; i++)
+        {
+            var candidate = Path.GetFullPath(Path.Combine(
+                directory,
+                "language-tools",
+                "AuroraScript.VisualStudio",
+                relativePath));
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+
+            var parent = Directory.GetParent(directory);
+            if (parent == null)
+            {
+                break;
+            }
+
+            directory = parent.FullName;
+        }
+
+        return Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory,
+            "language-tools",
+            "AuroraScript.VisualStudio",
+            relativePath));
     }
 }

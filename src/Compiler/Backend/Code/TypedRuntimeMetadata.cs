@@ -160,6 +160,8 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly ConstructorInfo ScriptInt8ArrayConstructor = Constructor(typeof(ScriptInt8Array), typeof(int));
         public static readonly ConstructorInfo ScriptFloat64ArrayConstructor = Constructor(typeof(ScriptFloat64Array), typeof(int));
         public static readonly ConstructorInfo ScriptBooleanArrayConstructor = Constructor(typeof(ScriptBooleanArray), typeof(int));
+        public static readonly ConstructorInfo ScriptHashMapConstructor = Constructor(typeof(ScriptHashMap), typeof(int));
+        public static readonly MethodInfo ScriptHashMapPut = InstanceMethod(typeof(ScriptHashMap), nameof(ScriptHashMap.Put), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly FieldInfo ScriptInt32ArrayItems = Field(typeof(ScriptInt32Array), "_items");
         public static readonly FieldInfo ScriptInt8ArrayItems = Field(typeof(ScriptInt8Array), "_items");
         public static readonly FieldInfo ScriptFloat64ArrayItems = Field(typeof(ScriptFloat64Array), "_items");

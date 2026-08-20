@@ -399,6 +399,9 @@ namespace AuroraScript.Compiler.Backend.Binding
                     case VariableDeclaration variable:
                         Visit(variable.Initializer);
                         return;
+                    case TypedDocumentExpression tdoc:
+                        Visit(tdoc.Value);
+                        return;
                     case NameExpression name:
                         AddName(name);
                         return;

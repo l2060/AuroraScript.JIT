@@ -9,6 +9,7 @@ internal static class AuroraContentTypeDefinition
 {
     public const string ContentTypeName = "aurorascript";
     public const string FileExtension = ".as";
+    public const string TypedDocumentFileExtension = ".tdoc";
 
     [Export]
     [Name(ContentTypeName)]
@@ -22,4 +23,10 @@ internal static class AuroraContentTypeDefinition
     [ContentType(ContentTypeName)]
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CS0649:Field is never assigned to", Justification = "MEF composition field.")]
     internal static FileExtensionToContentTypeDefinition? AuroraFileExtension;
+
+    [Export]
+    [FileExtension(TypedDocumentFileExtension)]
+    [ContentType(ContentTypeName)]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CS0649:Field is never assigned to", Justification = "MEF composition field.")]
+    internal static FileExtensionToContentTypeDefinition? AuroraTypedDocumentFileExtension;
 }
