@@ -1,0 +1,8 @@
+Object {
+	readonly id "0x01", // this type is String
+	tags ['a', 'b', 'c'],
+	readonly Int8Array buff [0x01, 0x02, 0x03, 0x04, 0x05, 0x06], // this type is Int8Array
+	readonly BooleanArray mask [true, true, false, false, false, true],
+	names ['bolon', 'holl', 'frol'], // this type is ScriptArray
+	HashMap map [['a', 100000], ['b', 200000]]
+}

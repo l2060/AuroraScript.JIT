@@ -36,6 +36,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Update="config.tdoc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="conflict_test\file1.as">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
