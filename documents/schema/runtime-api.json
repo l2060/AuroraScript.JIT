@@ -847,10 +847,10 @@
           "returns": "date",
           "notes": {
             "en": [
-              "Creates a date from ticks or a supported formatted date string. Use Date.now() or Date.utcNow() for the current time."
+              "Creates a date from ticks or a supported formatted date string. The host Runtime.DateTimeFormat is tried first, followed by the built-in invariant formats. Use Date.now() or Date.utcNow() for the current time."
             ],
             "zh-CN": [
-              "根据 ticks 或受支持的格式化日期字符串创建日期。当前时间请使用 Date.now() 或 Date.utcNow()。"
+              "根据 ticks 或受支持的格式化日期字符串创建日期。优先尝试宿主 Runtime.DateTimeFormat，然后尝试内置的不变区域格式。当前时间请使用 Date.now() 或 Date.utcNow()。"
             ]
           }
         }
@@ -893,10 +893,10 @@
           "returns": "date",
           "notes": {
             "en": [
-              "Parses a date/time string."
+              "Parses a date/time string using the host Runtime.DateTimeFormat first, then the built-in invariant formats."
             ],
             "zh-CN": [
-              "解析日期时间字符串。"
+              "优先按宿主 Runtime.DateTimeFormat，再按内置不变区域格式解析日期时间字符串。"
             ]
           }
         }
