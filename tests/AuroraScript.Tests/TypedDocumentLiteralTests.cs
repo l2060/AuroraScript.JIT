@@ -97,7 +97,7 @@ public sealed class TypedDocumentLiteralTests
             """);
 
         ScriptAssert.Equal(
-            new object?[] { 1991, 666, "1991-02-01 12:32:55 666", "{\"birthday\":\"1991-02-01 12:32:55\"}", "{Date birthday \"1991-02-01 12:32:55\",}" },
+            new object?[] { 1991, 666, "1991-02-01 12:32:55 666", "{\"birthday\":\"1991-02-01 12:32:55\"}", "{Date birthday \"1991-02-01 12:32:55\"}" },
             TestWorkspace.Execute(domain, "run"));
     }
 

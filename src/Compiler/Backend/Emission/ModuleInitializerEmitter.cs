@@ -7,12 +7,15 @@ using AuroraScript.Compiler.Backend.Builders;
 using AuroraScript.Compiler.Backend.Code;
 using AuroraScript.Compiler.Backend.Plans;
 using AuroraScript.Runtime;
+using AuroraScript.Runtime.Interop;
+using AuroraScript.Runtime.Serialization;
 using AuroraScript.Runtime.Types;
 using AuroraScript.Tokens;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Text;
 
 namespace AuroraScript.Compiler.Backend.Emission
 {
@@ -28,6 +31,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         private bool _emitted;
         private bool _hasArgumentBufferCleanup;
         private List<(LocalBuilder Arguments, LocalBuilder Count)> _argumentBuffers;
+        private string _typedDocumentPath;
 
         public ModuleInitializerEmitter(EmissionSession session, ModulePlan module)
         {
@@ -1064,18 +1068,18 @@ namespace AuroraScript.Compiler.Backend.Emission
                 var element = expression.Elements[i];
                 if (element is SpreadExpression spread)
                 {
-                    EmitExpression(spread.Expression);
+                    EmitExpressionAtTDocIndex(spread.Expression, i);
                     _il.Emit(OpCodes.Call, TypedRuntimeMetadata.SpreadIntoArray);
                 }
                 else if (hasSpread)
                 {
-                    EmitExpressionOrNull(element);
+                    EmitExpressionOrNullAtTDocIndex(element, i);
                     _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptArrayPush);
                 }
                 else
                 {
                     _il.Emit(OpCodes.Ldc_I4, i);
-                    EmitExpressionOrNull(element);
+                    EmitExpressionOrNullAtTDocIndex(element, i);
                     _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptArraySetElement);
                 }
             }
@@ -1094,7 +1098,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     if (entry.ReadOnly)
                     {
                         _session.Builder.LoadStringConstant(_il, entry.Key.Value);
-                        EmitExpressionOrNull(entry.Value);
+                        EmitExpressionAtTDocProperty(entry.Value, entry.Key.Value);
                         _il.Emit(OpCodes.Ldc_I4_0);
                         _il.Emit(OpCodes.Ldc_I4_1);
                         _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptObjectDefineDatum);
@@ -1103,7 +1107,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     {
                         _il.Emit(OpCodes.Ldarg_0);
                         _session.Builder.LoadStringConstant(_il, entry.Key.Value);
-                        EmitExpressionOrNull(entry.Value);
+                        EmitExpressionAtTDocProperty(entry.Value, entry.Key.Value);
                         _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptObjectSetProperty);
                     }
                     continue;
@@ -1130,48 +1134,150 @@ namespace AuroraScript.Compiler.Backend.Emission
             _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
         }
 
+        private void EmitExpressionAtTDocProperty(Expression expression, string propertyName)
+        {
+            if (_typedDocumentPath == null)
+            {
+                EmitExpressionOrNull(expression);
+                return;
+            }
+
+            var previous = _typedDocumentPath;
+            _typedDocumentPath = AppendTDocPropertyPath(previous, propertyName);
+            try { EmitExpressionOrNull(expression); }
+            finally { _typedDocumentPath = previous; }
+        }
+
+        private void EmitExpressionAtTDocIndex(Expression expression, int index)
+        {
+            if (_typedDocumentPath == null)
+            {
+                EmitExpressionOrNull(expression);
+                return;
+            }
+
+            var previous = _typedDocumentPath;
+            _typedDocumentPath = previous + "[" + index + "]";
+            try { EmitExpressionOrNull(expression); }
+            finally { _typedDocumentPath = previous; }
+        }
+
+        private void EmitExpressionOrNullAtTDocIndex(Expression expression, int index)
+        {
+            EmitExpressionAtTDocIndex(expression, index);
+        }
+
+        private static string AppendTDocPropertyPath(string path, string propertyName)
+        {
+            if (TypedDocumentPath.IsIdentifier(propertyName))
+            {
+                return path + "." + propertyName;
+            }
+
+            var builder = new StringBuilder(path.Length + (propertyName?.Length ?? 0) + 4);
+            builder.Append(path).Append("[\"");
+            foreach (var value in propertyName ?? string.Empty)
+            {
+                if (value is '\\' or '"') builder.Append('\\');
+                builder.Append(value);
+            }
+            return builder.Append("\"]").ToString();
+        }
+
         private void EmitTypedDocument(TypedDocumentExpression expression)
         {
-            switch (expression.TypeName)
+            var ownsPath = _typedDocumentPath == null;
+            if (ownsPath) _typedDocumentPath = "$";
+            try
             {
-                case null:
-                case "":
-                case "String":
-                case "Number":
-                case "Boolean":
-                case "Object":
-                case "Array":
-                    EmitExpression(expression.Value);
-                    return;
-                case "Null":
-                    _session.Builder.LoadNull(_il);
-                    return;
-                case "Int32Array":
-                    EmitTypedPackedDocument(expression.Value, typeof(int), TypedRuntimeMetadata.ScriptInt32ArrayConstructor, TypedRuntimeMetadata.ScriptInt32ArrayItems, OpCodes.Stelem_I4);
-                    return;
-                case "Int8Array":
-                    EmitTypedPackedDocument(expression.Value, typeof(sbyte), TypedRuntimeMetadata.ScriptInt8ArrayConstructor, TypedRuntimeMetadata.ScriptInt8ArrayItems, OpCodes.Stelem_I1);
-                    return;
-                case "Float64Array":
-                    EmitTypedPackedDocument(expression.Value, typeof(double), TypedRuntimeMetadata.ScriptFloat64ArrayConstructor, TypedRuntimeMetadata.ScriptFloat64ArrayItems, OpCodes.Stelem_R8);
-                    return;
-                case "BooleanArray":
-                    EmitTypedPackedDocument(expression.Value, typeof(bool), TypedRuntimeMetadata.ScriptBooleanArrayConstructor, TypedRuntimeMetadata.ScriptBooleanArrayItems, OpCodes.Stelem_I1);
-                    return;
-                case "StringBuffer":
-                case "Date":
-                case "Path":
-                    EmitTypedGlobalConstructor(expression.TypeName, expression.Value);
-                    return;
-                case "Regex":
+                EmitTypedDocumentCore(expression);
+            }
+            finally
+            {
+                if (ownsPath) _typedDocumentPath = null;
+            }
+        }
+
+        private void EmitTypedDocumentCore(TypedDocumentExpression expression)
+        {
+            var typeName = expression.TypeName;
+            if (string.IsNullOrEmpty(typeName))
+            {
+                EmitExpression(expression.Value);
+                return;
+            }
+
+            // Module initializers use the same runtime binding boundary as
+            // function literals.  In particular, packed arrays are validated
+            // before any primitive narrowing and aliases are resolved against
+            // the current engine registry.
+            if (!expression.IsInterpolation && typeName == "Regex")
+            {
                     EmitTypedRegex(expression.Value);
                     return;
-                case "HashMap":
+            }
+            if (!expression.IsInterpolation && typeName == "HashMap")
+            {
                     EmitTypedHashMap(expression.Value);
                     return;
-                default:
-                    throw new NotSupportedException("Module TDoc type " + expression.TypeName);
             }
+
+            if (!IsBuiltInTDocTypeName(typeName) && expression.Value is MapExpression clrObject)
+            {
+                EmitTypedClrObject(typeName, clrObject);
+                return;
+            }
+
+            EmitBoundTypedLiteral(typeName, expression.Value);
+        }
+
+        private void EmitBoundTypedLiteral(string typeName, Expression value)
+        {
+            var path = _typedDocumentPath ?? "$";
+            _il.Emit(OpCodes.Ldarg_0);
+            _session.Builder.LoadStringConstant(_il, typeName);
+            EmitExpression(value);
+            _session.Builder.LoadStringConstant(_il, path);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.BindTypedDocumentAtPath);
+        }
+
+        private void EmitTypedClrObject(string alias, MapExpression expression)
+        {
+            var target = DeclareLocal(typeof(ClrInstanceObject));
+            _il.Emit(OpCodes.Ldarg_0);
+            _session.Builder.LoadStringConstant(_il, alias);
+            _session.Builder.LoadStringConstant(_il, _typedDocumentPath ?? "$");
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CreateTypedDocumentClrObject);
+            _il.Emit(OpCodes.Stloc, target);
+
+            for (var i = 0; i < expression.Entries.Count; i++)
+            {
+                if (expression.Entries[i] is not MapKeyValueExpression entry)
+                {
+                    throw new NotSupportedException("TDoc CLR aliases require named members.");
+                }
+                _il.Emit(OpCodes.Ldloc, target);
+                _session.Builder.LoadStringConstant(_il, alias);
+                _session.Builder.LoadStringConstant(_il, entry.Key.Value);
+                _il.Emit(entry.ReadOnly ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
+                EmitExpressionAtTDocProperty(entry.Value, entry.Key.Value);
+                _session.Builder.LoadStringConstant(
+                    _il,
+                    AppendTDocPropertyPath(_typedDocumentPath ?? "$", entry.Key.Value));
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.SetTypedDocumentClrMember);
+            }
+
+            _il.Emit(OpCodes.Ldloc, target);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
+        }
+
+        private static bool IsBuiltInTDocTypeName(string typeName)
+        {
+            return typeName is "Null" or "Object" or "Array" or "String" or "Number" or
+                "Boolean" or "StringBuffer" or "Date" or "Regex" or "Path" or "HashMap" or
+                "Int32Array" or "Int8Array" or "Float64Array" or "BooleanArray" or
+                "UInt8Array" or "Int16Array" or "UInt16Array" or "UInt32Array" or
+                "Int64Array" or "UInt64Array";
         }
 
         private void EmitTypedGlobalConstructor(string typeName, Expression value)

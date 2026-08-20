@@ -489,6 +489,18 @@ namespace AuroraScript.Runtime.Serialization
             }
 
             writer.WriteStartArray();
+            if (array is ScriptInt64Array int64)
+            {
+                for (var i = 0; i < int64._items.Length; i++) writer.WriteNumberValue(int64._items[i]);
+                writer.WriteEndArray();
+                return;
+            }
+            if (array is ScriptUInt64Array uint64)
+            {
+                for (var i = 0; i < uint64._items.Length; i++) writer.WriteNumberValue(uint64._items[i]);
+                writer.WriteEndArray();
+                return;
+            }
             for (var i = 0; i < array.Length; i++)
             {
                 var value = array.GetElementDatumUnchecked(i);

@@ -468,6 +468,12 @@ namespace AuroraScript.Runtime.Interop
                 ScriptInt8Array int8 => int8._items,
                 ScriptFloat64Array float64 => float64._items,
                 ScriptBooleanArray boolean => boolean._items,
+                ScriptUInt8Array uint8 => uint8._items,
+                ScriptInt16Array int16 => int16._items,
+                ScriptUInt16Array uint16 => uint16._items,
+                ScriptUInt32Array uint32 => uint32._items,
+                ScriptInt64Array int64 => int64._items,
+                ScriptUInt64Array uint64 => uint64._items,
                 _ => null
             };
             if (storage != null && targetType.IsInstanceOfType(storage))

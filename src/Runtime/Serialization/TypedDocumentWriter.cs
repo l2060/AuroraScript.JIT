@@ -185,6 +185,24 @@ namespace AuroraScript.Runtime.Serialization
                 case ScriptBooleanArray boolean:
                     WritePackedArray(boolean);
                     return;
+                case ScriptUInt8Array uint8:
+                    WritePackedArray(uint8);
+                    return;
+                case ScriptInt16Array int16:
+                    WritePackedArray(int16);
+                    return;
+                case ScriptUInt16Array uint16:
+                    WritePackedArray(uint16);
+                    return;
+                case ScriptUInt32Array uint32:
+                    WritePackedArray(uint32);
+                    return;
+                case ScriptInt64Array int64:
+                    WritePackedArray(int64);
+                    return;
+                case ScriptUInt64Array uint64:
+                    WritePackedArray(uint64);
+                    return;
                 case ScriptDate date:
                     WriteDate(date);
                     return;
@@ -237,7 +255,11 @@ namespace AuroraScript.Runtime.Serialization
                 }
             }
             _depth--;
-            if (writtenCount != 0) WriteIndent();
+            if (writtenCount != 0)
+            {
+                RemoveTrailingComma();
+                WriteIndent();
+            }
             _builder.Append('}');
         }
 
@@ -270,7 +292,11 @@ namespace AuroraScript.Runtime.Serialization
                 }
             }
             _depth--;
-            if (writtenCount != 0) WriteIndent();
+            if (writtenCount != 0)
+            {
+                RemoveTrailingComma();
+                WriteIndent();
+            }
             _builder.Append('}');
         }
 
@@ -297,6 +323,49 @@ namespace AuroraScript.Runtime.Serialization
         private void WritePackedArray(ScriptPackedArray value)
         {
             BeginComposite('[', value.Length);
+
+            // Int64/UInt64 elements do not always have an exact ScriptDatum.Number
+            // representation.  TDoc still has an integer lexical space, so write
+            // those backing values directly instead of routing them through
+            // GetElementDatumUnchecked (which deliberately rejects a lossy dynamic
+            // conversion).
+            if (value is ScriptInt64Array int64)
+            {
+                for (var index = 0; index < int64._items.Length; index++)
+                {
+                    WriteIndent();
+                    _path.PushIndex(index);
+                    try
+                    {
+                        EnterValue();
+                        try { _builder.Append(int64._items[index].ToString(CultureInfo.InvariantCulture)); }
+                        finally { _valueDepth--; }
+                    }
+                    finally { _path.Pop(); }
+                    WriteItemEnd();
+                }
+                EndComposite(']', value.Length);
+                return;
+            }
+            if (value is ScriptUInt64Array uint64)
+            {
+                for (var index = 0; index < uint64._items.Length; index++)
+                {
+                    WriteIndent();
+                    _path.PushIndex(index);
+                    try
+                    {
+                        EnterValue();
+                        try { _builder.Append(uint64._items[index].ToString(CultureInfo.InvariantCulture)); }
+                        finally { _valueDepth--; }
+                    }
+                    finally { _path.Pop(); }
+                    WriteItemEnd();
+                }
+                EndComposite(']', value.Length);
+                return;
+            }
+
             for (var index = 0; index < value.Length; index++)
             {
                 WriteIndent();
@@ -471,7 +540,11 @@ namespace AuroraScript.Runtime.Serialization
                 }
             }
             _depth--;
-            if (writtenCount != 0) WriteIndent();
+            if (writtenCount != 0)
+            {
+                RemoveTrailingComma();
+                WriteIndent();
+            }
             _builder.Append('}');
         }
 
@@ -583,6 +656,24 @@ namespace AuroraScript.Runtime.Serialization
                 case ScriptBooleanArray:
                     typeName = "BooleanArray";
                     return true;
+                case ScriptUInt8Array:
+                    typeName = "UInt8Array";
+                    return true;
+                case ScriptInt16Array:
+                    typeName = "Int16Array";
+                    return true;
+                case ScriptUInt16Array:
+                    typeName = "UInt16Array";
+                    return true;
+                case ScriptUInt32Array:
+                    typeName = "UInt32Array";
+                    return true;
+                case ScriptInt64Array:
+                    typeName = "Int64Array";
+                    return true;
+                case ScriptUInt64Array:
+                    typeName = "UInt64Array";
+                    return true;
                 case ScriptArray:
                     typeName = "Array";
                     return true;
@@ -656,10 +747,18 @@ namespace AuroraScript.Runtime.Serialization
         {
             if (count != 0)
             {
+                RemoveTrailingComma();
                 _depth--;
                 WriteIndent();
             }
             _builder.Append(closing);
+        }
+
+        private void RemoveTrailingComma()
+        {
+            var index = _builder.Length - 1;
+            while (index >= 0 && char.IsWhiteSpace(_builder[index])) index--;
+            if (index >= 0 && _builder[index] == ',') _builder.Remove(index, 1);
         }
 
         private void WriteItemEnd()
@@ -796,7 +895,9 @@ namespace AuroraScript.Runtime.Serialization
         {
             return value is "Object" or "Array" or "String" or "Number" or "Boolean" or
                 "StringBuffer" or "Date" or "Regex" or "Path" or "HashMap" or
-                "Int32Array" or "Int8Array" or "Float64Array" or "BooleanArray";
+                "Int32Array" or "Int8Array" or "Float64Array" or "BooleanArray" or
+                "UInt8Array" or "Int16Array" or "UInt16Array" or "UInt32Array" or
+                "Int64Array" or "UInt64Array";
         }
 
         private static bool IsUsableTypeAlias(string value)

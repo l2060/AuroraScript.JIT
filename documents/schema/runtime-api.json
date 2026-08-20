@@ -244,6 +244,78 @@
         ]
       }
     },
+    "UInt8Array": {
+      "kind": "constructor",
+      "callable": false,
+      "constructors": [
+        {
+          "parameters": [
+            { "name": "length", "type": "number", "optional": true }
+          ],
+          "returns": "UInt8Array"
+        }
+      ]
+    },
+    "Int16Array": {
+      "kind": "constructor",
+      "callable": false,
+      "constructors": [
+        {
+          "parameters": [
+            { "name": "length", "type": "number", "optional": true }
+          ],
+          "returns": "Int16Array"
+        }
+      ]
+    },
+    "UInt16Array": {
+      "kind": "constructor",
+      "callable": false,
+      "constructors": [
+        {
+          "parameters": [
+            { "name": "length", "type": "number", "optional": true }
+          ],
+          "returns": "UInt16Array"
+        }
+      ]
+    },
+    "UInt32Array": {
+      "kind": "constructor",
+      "callable": false,
+      "constructors": [
+        {
+          "parameters": [
+            { "name": "length", "type": "number", "optional": true }
+          ],
+          "returns": "UInt32Array"
+        }
+      ]
+    },
+    "Int64Array": {
+      "kind": "constructor",
+      "callable": false,
+      "constructors": [
+        {
+          "parameters": [
+            { "name": "length", "type": "number", "optional": true }
+          ],
+          "returns": "Int64Array"
+        }
+      ]
+    },
+    "UInt64Array": {
+      "kind": "constructor",
+      "callable": false,
+      "constructors": [
+        {
+          "parameters": [
+            { "name": "length", "type": "number", "optional": true }
+          ],
+          "returns": "UInt64Array"
+        }
+      ]
+    },
     "String": {
       "kind": "constructor",
       "callable": true,
@@ -2575,6 +2647,66 @@
             "使用参数的布尔转换结果填充全部元素。"
           ]
         }
+      }
+    },
+    "UInt8Array": {
+      "length": { "kind": "property", "returns": "number" },
+      "fill": {
+        "kind": "method",
+        "parameters": [
+          { "name": "value", "type": "number", "optional": true }
+        ],
+        "returns": "UInt8Array"
+      }
+    },
+    "Int16Array": {
+      "length": { "kind": "property", "returns": "number" },
+      "fill": {
+        "kind": "method",
+        "parameters": [
+          { "name": "value", "type": "number", "optional": true }
+        ],
+        "returns": "Int16Array"
+      }
+    },
+    "UInt16Array": {
+      "length": { "kind": "property", "returns": "number" },
+      "fill": {
+        "kind": "method",
+        "parameters": [
+          { "name": "value", "type": "number", "optional": true }
+        ],
+        "returns": "UInt16Array"
+      }
+    },
+    "UInt32Array": {
+      "length": { "kind": "property", "returns": "number" },
+      "fill": {
+        "kind": "method",
+        "parameters": [
+          { "name": "value", "type": "number", "optional": true }
+        ],
+        "returns": "UInt32Array"
+      }
+    },
+    "Int64Array": {
+      "length": { "kind": "property", "returns": "number" },
+      "fill": {
+        "kind": "method",
+        "parameters": [
+          { "name": "value", "type": "number", "optional": true }
+        ],
+        "returns": "Int64Array"
+      }
+    },
+    "UInt64Array": {
+      "length": { "kind": "property", "returns": "number" },
+      "fill": {
+        "kind": "method",
+        "parameters": [
+          { "name": "value", "type": "number", "optional": true }
+        ],
+        "returns": "UInt64Array"
       }
     },
     "String": {

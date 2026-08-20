@@ -3,7 +3,6 @@ using AuroraScript.Runtime.Pool;
 using AuroraScript.Runtime.Types;
 using System;
 using System.Buffers;
-using System.Globalization;
 
 namespace AuroraScript.Runtime.Serialization
 {
@@ -12,7 +11,13 @@ namespace AuroraScript.Runtime.Serialization
         Int32,
         Int8,
         Float64,
-        Boolean
+        Boolean,
+        UInt8,
+        Int16,
+        UInt16,
+        UInt32,
+        Int64,
+        UInt64
     }
 
     internal readonly struct TypedDocumentMemberHeader
@@ -153,6 +158,14 @@ namespace AuroraScript.Runtime.Serialization
 
         private ScriptDatum ReadExplicitValue(TypedDocumentToken typeToken)
         {
+            if (TypeEquals(typeToken, "Null"))
+            {
+                if (!Match(TypedDocumentTokenKind.Null))
+                {
+                    throw Error(Current(), "Type 'Null' requires a null value.");
+                }
+                return ScriptDatum.Null;
+            }
             if (TypeEquals(typeToken, "Object")) return ReadObject();
             if (TypeEquals(typeToken, "Array")) return ReadArray();
             if (TypeEquals(typeToken, "String")) return ReadStringValue("String");
@@ -173,6 +186,12 @@ namespace AuroraScript.Runtime.Serialization
             if (TypeEquals(typeToken, "Int8Array")) return ReadPackedArray(TypedDocumentPackedKind.Int8);
             if (TypeEquals(typeToken, "Float64Array")) return ReadPackedArray(TypedDocumentPackedKind.Float64);
             if (TypeEquals(typeToken, "BooleanArray")) return ReadPackedArray(TypedDocumentPackedKind.Boolean);
+            if (TypeEquals(typeToken, "UInt8Array")) return ReadPackedArray(TypedDocumentPackedKind.UInt8);
+            if (TypeEquals(typeToken, "Int16Array")) return ReadPackedArray(TypedDocumentPackedKind.Int16);
+            if (TypeEquals(typeToken, "UInt16Array")) return ReadPackedArray(TypedDocumentPackedKind.UInt16);
+            if (TypeEquals(typeToken, "UInt32Array")) return ReadPackedArray(TypedDocumentPackedKind.UInt32);
+            if (TypeEquals(typeToken, "Int64Array")) return ReadPackedArray(TypedDocumentPackedKind.Int64);
+            if (TypeEquals(typeToken, "UInt64Array")) return ReadPackedArray(TypedDocumentPackedKind.UInt64);
 
             var alias = _scanner.GetIdentifier(typeToken);
             if (!_engine.ClrRegistry.TryGetClrType(alias, out var registration))
@@ -347,12 +366,7 @@ namespace AuroraScript.Runtime.Serialization
             }
             try
             {
-                if (DateTimeOffset.TryParseExact(
-                        text,
-                        format,
-                        CultureInfo.InvariantCulture,
-                        DateTimeStyles.None,
-                        out var value))
+                if (TypedDocumentBinder.TryParseDate(text, format, out var value))
                 {
                     return ScriptDatum.FromDate(new ScriptDate(value));
                 }
@@ -497,7 +511,14 @@ namespace AuroraScript.Runtime.Serialization
                 TypedDocumentPackedKind.Int32 => ReadInt32PackedArray(),
                 TypedDocumentPackedKind.Int8 => ReadInt8PackedArray(),
                 TypedDocumentPackedKind.Float64 => ReadFloat64PackedArray(),
-                _ => ReadBooleanPackedArray()
+                TypedDocumentPackedKind.Boolean => ReadBooleanPackedArray(),
+                TypedDocumentPackedKind.UInt8 => ReadUInt8PackedArray(),
+                TypedDocumentPackedKind.Int16 => ReadInt16PackedArray(),
+                TypedDocumentPackedKind.UInt16 => ReadUInt16PackedArray(),
+                TypedDocumentPackedKind.UInt32 => ReadUInt32PackedArray(),
+                TypedDocumentPackedKind.Int64 => ReadInt64PackedArray(),
+                TypedDocumentPackedKind.UInt64 => ReadUInt64PackedArray(),
+                _ => throw new InvalidOperationException("Unknown TDoc packed-array kind.")
             };
         }
 
@@ -619,7 +640,7 @@ namespace AuroraScript.Runtime.Serialization
                             var location = Current();
                             var value = ReadTypedValue();
                             ValidatePackedElement(TypedDocumentPackedKind.Boolean, value, location);
-                            buffer.Add(value.Boolean);
+                            buffer.Add(value.Kind == ValueKind.Boolean ? value.Boolean : value.Number == 1d);
                         }
                         finally
                         {
@@ -637,23 +658,242 @@ namespace AuroraScript.Runtime.Serialization
             }
         }
 
+        private ScriptDatum ReadUInt8PackedArray() =>
+            ReadIntegerPackedArray(
+                TypedDocumentPackedKind.UInt8,
+                (double)byte.MinValue,
+                (double)byte.MaxValue,
+                static value => (byte)value,
+                static values => new ScriptUInt8Array(values));
+
+        private ScriptDatum ReadInt16PackedArray() =>
+            ReadIntegerPackedArray(
+                TypedDocumentPackedKind.Int16,
+                (double)short.MinValue,
+                (double)short.MaxValue,
+                static value => (short)value,
+                static values => new ScriptInt16Array(values));
+
+        private ScriptDatum ReadUInt16PackedArray() =>
+            ReadIntegerPackedArray(
+                TypedDocumentPackedKind.UInt16,
+                (double)ushort.MinValue,
+                (double)ushort.MaxValue,
+                static value => (ushort)value,
+                static values => new ScriptUInt16Array(values));
+
+        private ScriptDatum ReadUInt32PackedArray() =>
+            ReadIntegerPackedArray(
+                TypedDocumentPackedKind.UInt32,
+                (double)uint.MinValue,
+                (double)uint.MaxValue,
+                static value => (uint)value,
+                static values => new ScriptUInt32Array(values));
+
+        private ScriptDatum ReadInt64PackedArray()
+        {
+            Expect(TypedDocumentTokenKind.LeftBracket, "Type 'Int64Array' requires an array value.");
+            var buffer = new TypedDocumentPooledBuffer<long>(8);
+            try
+            {
+                if (!Match(TypedDocumentTokenKind.RightBracket))
+                {
+                    while (true)
+                    {
+                        _path.PushIndex(buffer.Count);
+                        try
+                        {
+                            var location = Current();
+                            if (TryReadExactInt64(out var exact))
+                            {
+                                buffer.Add(exact);
+                            }
+                            else
+                            {
+                                var value = ReadTypedValue();
+                                ValidatePackedElement(TypedDocumentPackedKind.Int64, value, location);
+                                if (!_scanner.TryGetInt64Exact(location, out exact))
+                                {
+                                    throw Error(location, "Int64Array elements must be exactly representable integers.");
+                                }
+                                buffer.Add(exact);
+                            }
+                        }
+                        finally
+                        {
+                            _path.Pop();
+                        }
+                        if (ReadArraySeparator()) break;
+                    }
+                }
+                return ScriptDatum.FromObject(new ScriptInt64Array(buffer.ToArray()));
+            }
+            finally
+            {
+                buffer.Dispose();
+            }
+        }
+
+        private ScriptDatum ReadUInt64PackedArray()
+        {
+            Expect(TypedDocumentTokenKind.LeftBracket, "Type 'UInt64Array' requires an array value.");
+            var buffer = new TypedDocumentPooledBuffer<ulong>(8);
+            try
+            {
+                if (!Match(TypedDocumentTokenKind.RightBracket))
+                {
+                    while (true)
+                    {
+                        _path.PushIndex(buffer.Count);
+                        try
+                        {
+                            var location = Current();
+                            if (TryReadExactUInt64(out var exact))
+                            {
+                                buffer.Add(exact);
+                            }
+                            else
+                            {
+                                var value = ReadTypedValue();
+                                ValidatePackedElement(TypedDocumentPackedKind.UInt64, value, location);
+                                if (!_scanner.TryGetUInt64Exact(location, out exact))
+                                {
+                                    throw Error(location, "UInt64Array elements must be exactly representable integers.");
+                                }
+                                buffer.Add(exact);
+                            }
+                        }
+                        finally
+                        {
+                            _path.Pop();
+                        }
+                        if (ReadArraySeparator()) break;
+                    }
+                }
+                return ScriptDatum.FromObject(new ScriptUInt64Array(buffer.ToArray()));
+            }
+            finally
+            {
+                buffer.Dispose();
+            }
+        }
+
+        private bool TryReadExactInt64(out long value)
+        {
+            var token = Current();
+            if (token.Kind == TypedDocumentTokenKind.Number)
+            {
+                if (!_scanner.TryGetInt64Exact(token, out value)) return false;
+                Advance();
+                return true;
+            }
+            if (token.Kind == TypedDocumentTokenKind.Identifier && TypeEquals(token, "Number"))
+            {
+                Advance();
+                token = Current();
+                if (token.Kind != TypedDocumentTokenKind.Number)
+                {
+                    throw Error(token, "Type 'Number' requires a number value.");
+                }
+                if (!_scanner.TryGetInt64Exact(token, out value))
+                {
+                    Advance();
+                    throw Error(token, "Int64Array elements must be exactly representable integers.");
+                }
+                Advance();
+                return true;
+            }
+            value = 0;
+            return false;
+        }
+
+        private bool TryReadExactUInt64(out ulong value)
+        {
+            var token = Current();
+            if (token.Kind == TypedDocumentTokenKind.Number)
+            {
+                if (!_scanner.TryGetUInt64Exact(token, out value)) return false;
+                Advance();
+                return true;
+            }
+            if (token.Kind == TypedDocumentTokenKind.Identifier && TypeEquals(token, "Number"))
+            {
+                Advance();
+                token = Current();
+                if (token.Kind != TypedDocumentTokenKind.Number)
+                {
+                    throw Error(token, "Type 'Number' requires a number value.");
+                }
+                if (!_scanner.TryGetUInt64Exact(token, out value))
+                {
+                    Advance();
+                    throw Error(token, "UInt64Array elements must be exactly representable integers.");
+                }
+                Advance();
+                return true;
+            }
+            value = 0;
+            return false;
+        }
+
+        private ScriptDatum ReadIntegerPackedArray<T>(
+            TypedDocumentPackedKind kind,
+            double minimum,
+            double maximum,
+            Func<double, T> convert,
+            Func<T[], ScriptPackedArray> create)
+            where T : unmanaged
+        {
+            Expect(
+                TypedDocumentTokenKind.LeftBracket,
+                $"Type '{PackedTypeName(kind)}' requires an array value.");
+            var buffer = new TypedDocumentPooledBuffer<T>(8);
+            try
+            {
+                if (!Match(TypedDocumentTokenKind.RightBracket))
+                {
+                    while (true)
+                    {
+                        _path.PushIndex(buffer.Count);
+                        try
+                        {
+                            var location = Current();
+                            var value = ReadTypedValue();
+                            ValidatePackedElement(kind, value, location);
+                            try
+                            {
+                                buffer.Add(convert(value.Number));
+                            }
+                            catch (Exception exception) when (exception is OverflowException or InvalidCastException)
+                            {
+                                throw Error(location, $"{PackedTypeName(kind)} element is outside the supported range.", exception);
+                            }
+                        }
+                        finally
+                        {
+                            _path.Pop();
+                        }
+                        if (ReadArraySeparator()) break;
+                    }
+                }
+
+                return ScriptDatum.FromObject(create(buffer.ToArray()));
+            }
+            finally
+            {
+                buffer.Dispose();
+            }
+        }
+
         private ScriptDatum ReadRegisteredObject(
             string alias,
             ClrType registration,
             TypedDocumentToken typeToken)
         {
-            var type = registration._descriptor.Type;
-            if (!type.IsClass ||
-                type.IsAbstract ||
-                type.IsArray ||
-                type.ContainsGenericParameters ||
-                typeof(Delegate).IsAssignableFrom(type))
+            var registrationError = TypedDocumentBinder.GetClrRegistrationError(registration, alias);
+            if (registrationError != null)
             {
-                throw Error(typeToken, $"Registered type '{alias}' is not a constructible object type.");
-            }
-            if ((registration._access & TypeAccess.Constructor) == 0)
-            {
-                throw Error(typeToken, $"Registered type '{alias}' does not allow construction.");
+                throw Error(typeToken, registrationError);
             }
             var contract = registration._descriptor.DataContract;
             var factory = contract.Factory;
@@ -756,7 +996,7 @@ namespace AuroraScript.Runtime.Serialization
             {
                 throw Error(header.NameToken, $"CLR member '{header.Name}' is not writable.");
             }
-            if (!TryConvertClrValue(value, member.Type, out var converted))
+            if (!TypedDocumentBinder.TryConvertClrValue(value, member.Type, out var converted))
             {
                 throw Error(
                     header.NameToken,
@@ -856,11 +1096,11 @@ namespace AuroraScript.Runtime.Serialization
         {
             if (kind == TypedDocumentPackedKind.Boolean)
             {
-                if (value.Kind != ValueKind.Boolean)
+                if (TypedDocumentBinder.TryGetBooleanElement(value, out _))
                 {
-                    throw Error(location, "BooleanArray elements must be booleans.");
+                    return;
                 }
-                return;
+                throw Error(location, "BooleanArray elements must be true, false, 0, or 1.");
             }
             if (value.Kind != ValueKind.Number || !double.IsFinite(value.Number))
             {
@@ -871,152 +1111,9 @@ namespace AuroraScript.Runtime.Serialization
             {
                 throw Error(location, $"{PackedTypeName(kind)} elements must be integers.");
             }
-
-            var minimum = kind == TypedDocumentPackedKind.Int8 ? sbyte.MinValue : int.MinValue;
-            var maximum = kind == TypedDocumentPackedKind.Int8 ? sbyte.MaxValue : int.MaxValue;
-            if (value.Number < minimum || value.Number > maximum)
+            if (!TypedDocumentBinder.IsPackedRange(kind, value.Number))
             {
-                throw Error(location, $"Integer value must be in the range {minimum}..{maximum}.");
-            }
-        }
-
-        private static bool TryConvertClrValue(ScriptDatum value, Type targetType, out object converted)
-        {
-            if (value.Object != null && targetType.IsInstanceOfType(value.Object))
-            {
-                converted = value.Object;
-                return true;
-            }
-            if (value.Object is ScriptDate date)
-            {
-                if (targetType == typeof(DateTimeOffset) || targetType == typeof(DateTimeOffset?))
-                {
-                    converted = date.DateTime;
-                    return true;
-                }
-                if (targetType == typeof(DateTime) || targetType == typeof(DateTime?))
-                {
-                    converted = date.DateTime.DateTime;
-                    return true;
-                }
-            }
-
-            var effectiveType = Nullable.GetUnderlyingType(targetType) ?? targetType;
-            if (effectiveType.IsEnum)
-            {
-                if (value.Kind == ValueKind.Number &&
-                    TryConvertClrNumber(value.Number, Enum.GetUnderlyingType(effectiveType), out var underlying))
-                {
-                    converted = Enum.ToObject(effectiveType, underlying);
-                    return true;
-                }
-                converted = null;
-                return false;
-            }
-            if (IsClrNumericType(effectiveType))
-            {
-                if (value.Kind == ValueKind.Number)
-                {
-                    return TryConvertClrNumber(value.Number, effectiveType, out converted);
-                }
-                converted = null;
-                return false;
-            }
-            if (effectiveType == typeof(bool))
-            {
-                if (value.Kind == ValueKind.Boolean)
-                {
-                    converted = value.Boolean;
-                    return true;
-                }
-                converted = null;
-                return false;
-            }
-            if (effectiveType == typeof(char))
-            {
-                if (value.Kind == ValueKind.String && value.StringText.Length == 1)
-                {
-                    converted = value.StringText[0];
-                    return true;
-                }
-                converted = null;
-                return false;
-            }
-            return ClrMarshaller.TryConvertArgument(in value, targetType, out converted);
-        }
-
-        private static bool IsClrNumericType(Type type)
-        {
-            return Type.GetTypeCode(type) is
-                TypeCode.Byte or TypeCode.SByte or TypeCode.UInt16 or TypeCode.UInt32 or
-                TypeCode.UInt64 or TypeCode.Int16 or TypeCode.Int32 or TypeCode.Int64 or
-                TypeCode.Decimal or TypeCode.Double or TypeCode.Single;
-        }
-
-        private static bool TryConvertClrNumber(double value, Type type, out object converted)
-        {
-            if (!double.IsFinite(value))
-            {
-                converted = null;
-                return false;
-            }
-
-            switch (Type.GetTypeCode(type))
-            {
-                case TypeCode.Double:
-                    converted = value;
-                    return true;
-                case TypeCode.Single:
-                    var single = (float)value;
-                    converted = single;
-                    return float.IsFinite(single);
-                case TypeCode.Decimal:
-                    try
-                    {
-                        converted = (decimal)value;
-                        return true;
-                    }
-                    catch (OverflowException)
-                    {
-                        converted = null;
-                        return false;
-                    }
-            }
-
-            if (Math.Truncate(value) != value)
-            {
-                converted = null;
-                return false;
-            }
-            switch (Type.GetTypeCode(type))
-            {
-                case TypeCode.SByte when value >= sbyte.MinValue && value <= sbyte.MaxValue:
-                    converted = (sbyte)value;
-                    return true;
-                case TypeCode.Byte when value >= byte.MinValue && value <= byte.MaxValue:
-                    converted = (byte)value;
-                    return true;
-                case TypeCode.Int16 when value >= short.MinValue && value <= short.MaxValue:
-                    converted = (short)value;
-                    return true;
-                case TypeCode.UInt16 when value >= ushort.MinValue && value <= ushort.MaxValue:
-                    converted = (ushort)value;
-                    return true;
-                case TypeCode.Int32 when value >= int.MinValue && value <= int.MaxValue:
-                    converted = (int)value;
-                    return true;
-                case TypeCode.UInt32 when value >= uint.MinValue && value <= uint.MaxValue:
-                    converted = (uint)value;
-                    return true;
-                case TypeCode.Int64 when value >= -9223372036854775808d && value < 9223372036854775808d:
-                    converted = (long)value;
-                    return true;
-                case TypeCode.UInt64 when value >= 0d && value < 18446744073709551616d:
-                    converted = (ulong)value;
-                    return true;
-                default:
-                    converted = null;
-                    return false;
+                throw Error(location, $"{PackedTypeName(kind)} value is outside its supported range.");
             }
         }
 
@@ -1123,7 +1220,14 @@ namespace AuroraScript.Runtime.Serialization
                 TypedDocumentPackedKind.Int32 => "Int32Array",
                 TypedDocumentPackedKind.Int8 => "Int8Array",
                 TypedDocumentPackedKind.Float64 => "Float64Array",
-                _ => "BooleanArray"
+                TypedDocumentPackedKind.Boolean => "BooleanArray",
+                TypedDocumentPackedKind.UInt8 => "UInt8Array",
+                TypedDocumentPackedKind.Int16 => "Int16Array",
+                TypedDocumentPackedKind.UInt16 => "UInt16Array",
+                TypedDocumentPackedKind.UInt32 => "UInt32Array",
+                TypedDocumentPackedKind.Int64 => "Int64Array",
+                TypedDocumentPackedKind.UInt64 => "UInt64Array",
+                _ => "PackedArray"
             };
         }
     }

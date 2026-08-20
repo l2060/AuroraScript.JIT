@@ -317,6 +317,18 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
                     first._items.AsSpan().SequenceEqual(second._items),
                 (ScriptBooleanArray first, ScriptBooleanArray second) =>
                     first._items.AsSpan().SequenceEqual(second._items),
+                (ScriptUInt8Array first, ScriptUInt8Array second) =>
+                    first._items.AsSpan().SequenceEqual(second._items),
+                (ScriptInt16Array first, ScriptInt16Array second) =>
+                    first._items.AsSpan().SequenceEqual(second._items),
+                (ScriptUInt16Array first, ScriptUInt16Array second) =>
+                    first._items.AsSpan().SequenceEqual(second._items),
+                (ScriptUInt32Array first, ScriptUInt32Array second) =>
+                    first._items.AsSpan().SequenceEqual(second._items),
+                (ScriptInt64Array first, ScriptInt64Array second) =>
+                    first._items.AsSpan().SequenceEqual(second._items),
+                (ScriptUInt64Array first, ScriptUInt64Array second) =>
+                    first._items.AsSpan().SequenceEqual(second._items),
                 _ => false
             };
         }

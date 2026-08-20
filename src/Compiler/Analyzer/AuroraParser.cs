@@ -2,9 +2,11 @@ using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Core;
+using AuroraScript.Runtime.Serialization;
 using AuroraScript.Source;
 using AuroraScript.Tokens;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -104,6 +106,7 @@ namespace AuroraScript.Compiler.Analyzer
         private readonly SourceFileVisitor _sourceFileVisitor = new SourceFileVisitor();
 
         private readonly EngineOptions _options;
+        private List<TDocPathSegment> _tdocPath;
         private bool _allowTDocInterpolation = true;
         private bool _seenEffectiveModuleStatement;
         private bool _seenExplicitModuleMetadata;
@@ -1866,7 +1869,15 @@ namespace AuroraScript.Compiler.Analyzer
                         "Unexpected end of file in TDoc array.");
                 }
 
-                array.AddElement(ParseTDocValue());
+                PushTDocIndex(array.Elements.Count);
+                try
+                {
+                    array.AddElement(ParseTDocValue());
+                }
+                finally
+                {
+                    PopTDocPath();
+                }
                 if (this.Lexer.TestNext(Symbols.PT_COMMA))
                 {
                     if (this.Lexer.TestSymbol(Symbols.PT_RIGHTBRACKET)) break;
@@ -1927,8 +1938,8 @@ namespace AuroraScript.Compiler.Analyzer
                 var next = this.Lexer.LookAtHead();
                 if (key is IdentifierToken &&
                     IsTDocPropertyName(next) &&
-                    next is IdentifierToken &&
-                    !IsIdentifier(next, "$"))
+                    ((next is IdentifierToken && !IsIdentifier(next, "$")) ||
+                        (next is StringToken && IsTDocValueStart(PeekToken(1)))))
                 {
                     // Two adjacent identifier positions mean type + property
                     // name. This is intentionally positional and does not
@@ -1957,15 +1968,30 @@ namespace AuroraScript.Compiler.Analyzer
                         "TDoc object members use 'name value' syntax; ':' is not supported.");
                 }
 
-                var value = ParseTDocValue();
-                if (typeName != null)
+                PushTDocProperty(keyName);
+                Expression value;
+                try
                 {
-                    var originalValue = value;
-                    var originalRange = value.Range;
-                    var isInterpolation = originalValue is TypedDocumentExpression interpolation && interpolation.IsInterpolation;
-                    ValidateTDocType(typeName, UnwrapTDocValue(originalValue), key, isInterpolation);
-                    value = new TypedDocumentExpression(UnwrapTDocValue(originalValue), typeName, isInterpolation, typeToken);
-                    SetRange(value, key.Range, originalRange);
+                    value = ParseTDocValue();
+
+                    // Keep the member path active while validating an
+                    // explicitly typed property.  Besides making nested
+                    // array diagnostics point at the right member, this
+                    // also keeps errors raised by Date/packed-array checks
+                    // consistent with the runtime binder.
+                    if (typeName != null)
+                    {
+                        var originalValue = value;
+                        var originalRange = value.Range;
+                        var isInterpolation = originalValue is TypedDocumentExpression interpolation && interpolation.IsInterpolation;
+                        ValidateTDocType(typeName, UnwrapTDocValue(originalValue), key, isInterpolation);
+                        value = new TypedDocumentExpression(UnwrapTDocValue(originalValue), typeName, isInterpolation, typeToken);
+                        SetRange(value, key.Range, originalRange);
+                    }
+                }
+                finally
+                {
+                    PopTDocPath();
                 }
 
                 var entry = new MapKeyValueExpression(key, value, readOnly, readOnlyToken);
@@ -1995,28 +2021,388 @@ namespace AuroraScript.Compiler.Analyzer
         {
             if (string.IsNullOrEmpty(typeName) || value == null) return;
             var raw = UnwrapTDocValue(value);
+            // Runtime expressions are deliberately deferred to TypedDocumentBinder;
+            // only literal values are checked here.  This keeps compile-time
+            // diagnostics useful without weakening the runtime contract.
+            if (interpolation || value is TypedDocumentExpression { IsInterpolation: true })
+            {
+                return;
+            }
+
             var valid = typeName switch
             {
+                "Null" => raw is LiteralExpression { Token: NullToken },
                 "Object" => raw is MapExpression,
                 "Array" => raw is ArrayLiteralExpression,
-                "Int32Array" or "Int8Array" or "Float64Array" or "BooleanArray" => raw is ArrayLiteralExpression,
+                "Int32Array" or "Int8Array" or "Float64Array" or "BooleanArray" or
+                    "UInt8Array" or "Int16Array" or "UInt16Array" or "UInt32Array" or
+                    "Int64Array" or "UInt64Array" => ValidateTDocPackedArray(typeName, raw, token),
                 "String" => IsTDocScalar(raw, typeof(StringToken)),
-                "Number" => IsTDocNumber(raw),
+                "Number" => IsTDocNumber(raw) && IsTDocFiniteNumber(raw),
                 "Boolean" => IsTDocScalar(raw, typeof(BooleanToken)),
                 "StringBuffer" or "Path" => IsTDocScalar(raw, typeof(StringToken)),
-                "Date" => IsTDocScalar(raw, typeof(StringToken)) || IsTDocNumber(raw),
+                "Date" => ValidateTDocDate(raw),
                 "Regex" => raw is MapExpression,
                 "HashMap" => raw is ArrayLiteralExpression,
                 _ => true // A host-registered alias is resolved by the backend.
             };
-            if (!valid && !interpolation && !(value is TypedDocumentExpression dynamic && dynamic.IsInterpolation))
+            if (!valid)
             {
                 throw new AuroraCompilationException(
                     AuroraCompilationStage.Parsing,
                     this.Lexer.FullPath,
                     token,
-                    $"TDoc type '{typeName}' does not accept this value shape.");
+                    TDocPathMessage($"TDoc type '{typeName}' does not accept this value shape."));
             }
+        }
+
+        private bool ValidateTDocPackedArray(string typeName, Expression raw, Token token)
+        {
+            if (raw is not ArrayLiteralExpression array)
+            {
+                return false;
+            }
+
+            for (var index = 0; index < array.Elements.Count; index++)
+            {
+                var element = array.Elements[index];
+                if (element is TypedDocumentExpression { IsInterpolation: true })
+                {
+                    continue;
+                }
+
+                var value = UnwrapTDocValue(element);
+                if (typeName == "BooleanArray")
+                {
+                    if (value is LiteralExpression { Token: BooleanToken }) continue;
+                    if (TryGetTDocNumber(value, out var booleanNumber) &&
+                        double.IsFinite(booleanNumber) &&
+                        (booleanNumber == 0d || booleanNumber == 1d))
+                    {
+                        continue;
+                    }
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Parsing,
+                        this.Lexer.FullPath,
+                        value.Range,
+                        TDocPathMessage("BooleanArray elements must be true, false, 0, or 1.", index));
+                }
+
+                if (!TryGetTDocNumber(value, out var number) || !double.IsFinite(number))
+                {
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Parsing,
+                        this.Lexer.FullPath,
+                        value.Range,
+                        TDocPathMessage($"{typeName} elements must be finite numbers.", index));
+                }
+                if (typeName != "Float64Array" && Math.Truncate(number) != number)
+                {
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Parsing,
+                        this.Lexer.FullPath,
+                        value.Range,
+                        TDocPathMessage($"{typeName} elements must be integers.", index));
+                }
+
+                if (!IsTDocPackedRange(typeName, value, number))
+                {
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Parsing,
+                        this.Lexer.FullPath,
+                        value.Range,
+                        TDocPathMessage($"{typeName} element is outside its supported range.", index));
+                }
+            }
+            return true;
+        }
+
+        private static bool IsTDocPackedRange(string typeName, Expression value, double number)
+        {
+            if (typeName == "Int64Array")
+            {
+                return TryGetExactTDocInt64(value, out _);
+            }
+            if (typeName == "UInt64Array")
+            {
+                return TryGetExactTDocUInt64(value, out _);
+            }
+            return !TypedDocumentBinder.TryGetPackedKind(typeName, out var kind) ||
+                TypedDocumentBinder.IsPackedRange(kind, number);
+        }
+
+        private static bool TryGetExactTDocInt64(Expression value, out long result)
+        {
+            result = 0;
+            if (!TryGetTDocNumberToken(value, out var token, out var negative)) return false;
+            var number = negative ? -token.NumberValue : token.NumberValue;
+            if (!double.IsFinite(number) || Math.Truncate(number) != number ||
+                number < -9223372036854775808d || number >= 9223372036854775808d)
+            {
+                return false;
+            }
+            if (Math.Abs(number) <= 9007199254740991d)
+            {
+                result = (long)number;
+                return true;
+            }
+
+            if (!TryParseExactTDocInt64(token.Value.AsSpan(), negative, out result) ||
+                (double)result != number)
+            {
+                return false;
+            }
+            return true;
+        }
+
+        private static bool TryGetExactTDocUInt64(Expression value, out ulong result)
+        {
+            result = 0;
+            if (!TryGetTDocNumberToken(value, out var token, out var negative) || negative)
+            {
+                return false;
+            }
+            var number = token.NumberValue;
+            if (!double.IsFinite(number) || Math.Truncate(number) != number ||
+                number < 0d || number >= 18446744073709551616d)
+            {
+                return false;
+            }
+            if (number <= 9007199254740991d)
+            {
+                result = (ulong)number;
+                return true;
+            }
+            return TryParseExactTDocUInt64(token.Value.AsSpan(), out result) &&
+                (double)result == number;
+        }
+
+        private static bool TryParseExactTDocInt64(
+            ReadOnlySpan<char> source,
+            bool negative,
+            out long result)
+        {
+            if (!negative && source.IndexOf('_') < 0)
+            {
+                return TypedDocumentScanner.TryParseInt64Exact(source, out result);
+            }
+
+            var capacity = source.Length + (negative ? 1 : 0);
+            char[] rented = null;
+            Span<char> clean = capacity <= 128
+                ? stackalloc char[capacity]
+                : (rented = ArrayPool<char>.Shared.Rent(capacity));
+            var length = 0;
+            if (negative) clean[length++] = '-';
+            for (var i = 0; i < source.Length; i++)
+            {
+                if (source[i] != '_') clean[length++] = source[i];
+            }
+            var parsed = TypedDocumentScanner.TryParseInt64Exact(clean[..length], out result);
+            if (rented != null) ArrayPool<char>.Shared.Return(rented);
+            return parsed;
+        }
+
+        private static bool TryParseExactTDocUInt64(ReadOnlySpan<char> source, out ulong result)
+        {
+            if (source.IndexOf('_') < 0)
+            {
+                return TypedDocumentScanner.TryParseUInt64Exact(source, out result);
+            }
+
+            var capacity = source.Length;
+            char[] rented = null;
+            Span<char> clean = capacity <= 128
+                ? stackalloc char[capacity]
+                : (rented = ArrayPool<char>.Shared.Rent(capacity));
+            var length = 0;
+            for (var i = 0; i < source.Length; i++)
+            {
+                if (source[i] != '_') clean[length++] = source[i];
+            }
+            var parsed = TypedDocumentScanner.TryParseUInt64Exact(clean[..length], out result);
+            if (rented != null) ArrayPool<char>.Shared.Return(rented);
+            return parsed;
+        }
+
+        private static bool TryGetTDocNumberToken(
+            Expression value,
+            out NumberToken token,
+            out bool negative)
+        {
+            value = UnwrapTDocValue(value);
+            if (value is LiteralExpression { Token: NumberToken number })
+            {
+                token = number;
+                negative = false;
+                return true;
+            }
+            if (value is UnaryExpression unary && unary.Operator == Operator.Negate &&
+                unary.Expression is LiteralExpression { Token: NumberToken numberToken })
+            {
+                token = numberToken;
+                negative = true;
+                return true;
+            }
+            token = null;
+            negative = false;
+            return false;
+        }
+
+        private static bool TryGetTDocNumber(Expression value, out double number)
+        {
+            if (TryGetTDocNumberToken(value, out var token, out var negative))
+            {
+                number = negative ? -token.NumberValue : token.NumberValue;
+                return true;
+            }
+            number = 0d;
+            return false;
+        }
+
+        private static bool IsTDocFiniteNumber(Expression value)
+        {
+            return TryGetTDocNumber(value, out var number) && double.IsFinite(number);
+        }
+
+        private bool ValidateTDocDate(Expression raw)
+        {
+            if (TryGetTDocNumber(raw, out var number))
+            {
+                var valid = double.IsFinite(number) && Math.Truncate(number) == number &&
+                    number >= DateTimeOffset.MinValue.Ticks &&
+                    number <= DateTimeOffset.MaxValue.Ticks &&
+                    TryGetExactTDocInt64(raw, out var ticks) &&
+                    ticks >= DateTimeOffset.MinValue.Ticks && ticks <= DateTimeOffset.MaxValue.Ticks;
+                if (!valid)
+                {
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Parsing,
+                        this.Lexer.FullPath,
+                        raw.Range,
+                        TDocPathMessage($"Date ticks must be an exactly representable integer in the range 0..{DateTimeOffset.MaxValue.Ticks}."));
+                }
+                return true;
+            }
+            if (raw is not LiteralExpression { Token: StringToken text }) return false;
+            var format = _options.Runtime.DateTimeFormat;
+            if (string.IsNullOrEmpty(format))
+            {
+                throw new AuroraCompilationException(
+                    AuroraCompilationStage.Parsing,
+                    this.Lexer.FullPath,
+                    raw.Range,
+                    TDocPathMessage("EngineOptions.Runtime.DateTimeFormat cannot be null or empty."));
+            }
+            try
+            {
+                if (TypedDocumentBinder.TryParseDate(text.Value, format, out _))
+                {
+                    return true;
+                }
+            }
+            catch (Exception exception) when (exception is FormatException or ArgumentException)
+            {
+                throw new AuroraCompilationException(
+                    AuroraCompilationStage.Parsing,
+                    this.Lexer.FullPath,
+                    raw.Range,
+                    TDocPathMessage($"Invalid EngineOptions.Runtime.DateTimeFormat '{format}'."));
+            }
+            throw new AuroraCompilationException(
+                AuroraCompilationStage.Parsing,
+                this.Lexer.FullPath,
+                raw.Range,
+                TDocPathMessage($"Date value must match EngineOptions.Runtime.DateTimeFormat '{format}'."));
+        }
+
+        private void PushTDocProperty(string name)
+        {
+            (_tdocPath ??= new List<TDocPathSegment>(4)).Add(new TDocPathSegment(name));
+        }
+
+        private void PushTDocIndex(int index)
+        {
+            (_tdocPath ??= new List<TDocPathSegment>(4)).Add(new TDocPathSegment(index));
+        }
+
+        private void PopTDocPath()
+        {
+            if (_tdocPath is { Count: > 0 }) _tdocPath.RemoveAt(_tdocPath.Count - 1);
+        }
+
+        private string TDocPathMessage(string message, int? childIndex = null)
+        {
+            var path = FormatTDocPath(childIndex);
+            return message + " (data path " + path + ")";
+        }
+
+        private string FormatTDocPath(int? childIndex = null)
+        {
+            var builder = new StringBuilder("$");
+            var count = _tdocPath?.Count ?? 0;
+            for (var i = 0; i < count; i++)
+            {
+                var segment = _tdocPath[i];
+                if (segment.IsIndex)
+                {
+                    builder.Append('[').Append(segment.Index).Append(']');
+                }
+                else if (IsTDocPathIdentifier(segment.Property))
+                {
+                    builder.Append('.').Append(segment.Property);
+                }
+                else
+                {
+                    builder.Append("[\"");
+                    foreach (var value in segment.Property ?? string.Empty)
+                    {
+                        if (value is '\\' or '"') builder.Append('\\');
+                        builder.Append(value);
+                    }
+                    builder.Append("\"]");
+                }
+            }
+            if (childIndex.HasValue) builder.Append('[').Append(childIndex.Value).Append(']');
+            return builder.ToString();
+        }
+
+        private static bool IsTDocPathIdentifier(string value)
+        {
+            if (string.IsNullOrEmpty(value) || !IsTDocPathIdentifierStart(value[0])) return false;
+            for (var i = 1; i < value.Length; i++)
+            {
+                var current = value[i];
+                if (!IsTDocPathIdentifierStart(current) && !char.IsDigit(current)) return false;
+            }
+            return true;
+        }
+
+        private static bool IsTDocPathIdentifierStart(char value)
+        {
+            return value is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or '_' or '$' ||
+                   value is >= '\u4e00' and <= '\u9fbb';
+        }
+
+        private readonly struct TDocPathSegment
+        {
+            internal TDocPathSegment(string property)
+            {
+                Property = property;
+                Index = 0;
+                IsIndex = false;
+            }
+
+            internal TDocPathSegment(int index)
+            {
+                Property = null;
+                Index = index;
+                IsIndex = true;
+            }
+
+            internal string Property { get; }
+            internal int Index { get; }
+            internal bool IsIndex { get; }
         }
 
         private static bool IsTDocScalar(Expression expression, Type tokenType)
@@ -2026,9 +2412,7 @@ namespace AuroraScript.Compiler.Analyzer
 
         private static bool IsTDocNumber(Expression expression)
         {
-            return expression is LiteralExpression { Token: NumberToken } ||
-                expression is UnaryExpression { Operator: var op, Expression: LiteralExpression { Token: NumberToken } } &&
-                op == Operator.Negate;
+            return TryGetTDocNumber(expression, out _);
         }
 
         private static Expression UnwrapTDocValue(Expression expression)

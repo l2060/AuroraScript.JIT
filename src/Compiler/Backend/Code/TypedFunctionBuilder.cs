@@ -700,6 +700,10 @@ namespace AuroraScript.Compiler.Backend.Code
                 TypedDocumentExpression expression,
                 FlowValueType inferred)
             {
+                if (expression.IsInterpolation || ContainsTDocInterpolation(expression.Value))
+                {
+                    return FlowValueType.Dynamic;
+                }
                 return expression.TypeName switch
                 {
                     null or "" => inferred,
@@ -713,8 +717,41 @@ namespace AuroraScript.Compiler.Backend.Code
                     "Int8Array" => FlowValueType.Int8Array,
                     "Float64Array" => FlowValueType.Float64Array,
                     "BooleanArray" => FlowValueType.BooleanArray,
+                    "UInt8Array" => FlowValueType.UInt8Array,
+                    "Int16Array" => FlowValueType.Int16Array,
+                    "UInt16Array" => FlowValueType.UInt16Array,
+                    "UInt32Array" => FlowValueType.UInt32Array,
+                    "Int64Array" => FlowValueType.Int64Array,
+                    "UInt64Array" => FlowValueType.UInt64Array,
                     _ => FlowValueType.Object
                 };
+            }
+
+            private static bool ContainsTDocInterpolation(Expression expression)
+            {
+                if (expression is TypedDocumentExpression tdoc)
+                {
+                    return tdoc.IsInterpolation || ContainsTDocInterpolation(tdoc.Value);
+                }
+                if (expression is ArrayLiteralExpression array)
+                {
+                    for (var i = 0; i < array.Elements.Count; i++)
+                    {
+                        if (ContainsTDocInterpolation(array.Elements[i])) return true;
+                    }
+                }
+                else if (expression is MapExpression map)
+                {
+                    for (var i = 0; i < map.Entries.Count; i++)
+                    {
+                        if (ContainsTDocInterpolation(map.Entries[i])) return true;
+                    }
+                }
+                else if (expression is MapKeyValueExpression entry)
+                {
+                    return ContainsTDocInterpolation(entry.Value);
+                }
+                return false;
             }
 
             private bool CanUseDirectReturn(FunctionCallExpression call, FunctionId function)
@@ -960,6 +997,9 @@ namespace AuroraScript.Compiler.Backend.Code
                     var nonNumeric = FlowValueType.String | FlowValueType.Object |
                         FlowValueType.Int32Array | FlowValueType.Int8Array |
                         FlowValueType.BooleanArray | FlowValueType.Float64Array |
+                        FlowValueType.UInt8Array | FlowValueType.Int16Array |
+                        FlowValueType.UInt16Array | FlowValueType.UInt32Array |
+                        FlowValueType.Int64Array | FlowValueType.UInt64Array |
                         FlowValueType.Array;
                     if ((left & nonNumeric) != 0 || (right & nonNumeric) != 0)
                     {
@@ -1195,6 +1235,12 @@ namespace AuroraScript.Compiler.Backend.Code
                         Runtime.Types.ScriptInt8Array => FlowValueType.Int8Array,
                         Runtime.Types.ScriptFloat64Array => FlowValueType.Float64Array,
                         Runtime.Types.ScriptBooleanArray => FlowValueType.BooleanArray,
+                        Runtime.Types.ScriptUInt8Array => FlowValueType.UInt8Array,
+                        Runtime.Types.ScriptInt16Array => FlowValueType.Int16Array,
+                        Runtime.Types.ScriptUInt16Array => FlowValueType.UInt16Array,
+                        Runtime.Types.ScriptUInt32Array => FlowValueType.UInt32Array,
+                        Runtime.Types.ScriptInt64Array => FlowValueType.Int64Array,
+                        Runtime.Types.ScriptUInt64Array => FlowValueType.UInt64Array,
                         Runtime.Types.ScriptArray => FlowValueType.Array,
                         _ => FlowValueType.Object
                     }

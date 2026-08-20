@@ -33,7 +33,7 @@ export func testTypedDocument() {
 		Int8Array points [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
 		readonly age 32,
 		readonly name 'Hanks',
-		Date Birthday '1991-02-01 12:32:55 666',
+		Date Birthday '1991-02-01 12:32:55',
 		StringBuffer buff 'Hello Hanks'
 	};
 	doc.buff.append('!');

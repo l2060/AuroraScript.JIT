@@ -59,6 +59,42 @@ namespace AuroraScript.Runtime.Types
                         ThrowIndexOutOfRange(index, boolean._items.Length);
                     }
                     return ScriptDatum.FromBoolean(boolean._items[index]);
+                case ScriptUInt8Array uint8:
+                    if ((uint)index >= (uint)uint8._items.Length)
+                    {
+                        ThrowIndexOutOfRange(index, uint8._items.Length);
+                    }
+                    return ScriptDatum.FromNumber(uint8._items[index]);
+                case ScriptInt16Array int16:
+                    if ((uint)index >= (uint)int16._items.Length)
+                    {
+                        ThrowIndexOutOfRange(index, int16._items.Length);
+                    }
+                    return ScriptDatum.FromNumber(int16._items[index]);
+                case ScriptUInt16Array uint16:
+                    if ((uint)index >= (uint)uint16._items.Length)
+                    {
+                        ThrowIndexOutOfRange(index, uint16._items.Length);
+                    }
+                    return ScriptDatum.FromNumber(uint16._items[index]);
+                case ScriptUInt32Array uint32:
+                    if ((uint)index >= (uint)uint32._items.Length)
+                    {
+                        ThrowIndexOutOfRange(index, uint32._items.Length);
+                    }
+                    return ScriptDatum.FromNumber(uint32._items[index]);
+                case ScriptInt64Array int64:
+                    if ((uint)index >= (uint)int64._items.Length)
+                    {
+                        ThrowIndexOutOfRange(index, int64._items.Length);
+                    }
+                    return ScriptDatum.FromNumber(ToExactNumber(int64._items[index], "Int64Array", index));
+                case ScriptUInt64Array uint64:
+                    if ((uint)index >= (uint)uint64._items.Length)
+                    {
+                        ThrowIndexOutOfRange(index, uint64._items.Length);
+                    }
+                    return ScriptDatum.FromNumber(ToExactNumber(uint64._items[index], "UInt64Array", index));
                 default:
                     ValidateIndex(index);
                     return GetElementDatumUnchecked(index);
@@ -97,6 +133,48 @@ namespace AuroraScript.Runtime.Types
                         ThrowIndexOutOfRange(index, boolean._items.Length);
                     }
                     boolean._items[index] = ValueOps.ToBoolean(value);
+                    return;
+                case ScriptUInt8Array uint8:
+                    if ((uint)index >= (uint)uint8._items.Length)
+                    {
+                        ThrowIndexOutOfRange(index, uint8._items.Length);
+                    }
+                    uint8._items[index] = unchecked((byte)(int)ValueOps.ToArithmeticNumber(value));
+                    return;
+                case ScriptInt16Array int16:
+                    if ((uint)index >= (uint)int16._items.Length)
+                    {
+                        ThrowIndexOutOfRange(index, int16._items.Length);
+                    }
+                    int16._items[index] = unchecked((short)(int)ValueOps.ToArithmeticNumber(value));
+                    return;
+                case ScriptUInt16Array uint16:
+                    if ((uint)index >= (uint)uint16._items.Length)
+                    {
+                        ThrowIndexOutOfRange(index, uint16._items.Length);
+                    }
+                    uint16._items[index] = unchecked((ushort)(int)ValueOps.ToArithmeticNumber(value));
+                    return;
+                case ScriptUInt32Array uint32:
+                    if ((uint)index >= (uint)uint32._items.Length)
+                    {
+                        ThrowIndexOutOfRange(index, uint32._items.Length);
+                    }
+                    uint32._items[index] = unchecked((uint)ValueOps.ToArithmeticNumber(value));
+                    return;
+                case ScriptInt64Array int64:
+                    if ((uint)index >= (uint)int64._items.Length)
+                    {
+                        ThrowIndexOutOfRange(index, int64._items.Length);
+                    }
+                    int64._items[index] = unchecked((long)ValueOps.ToArithmeticNumber(value));
+                    return;
+                case ScriptUInt64Array uint64:
+                    if ((uint)index >= (uint)uint64._items.Length)
+                    {
+                        ThrowIndexOutOfRange(index, uint64._items.Length);
+                    }
+                    uint64._items[index] = unchecked((ulong)ValueOps.ToArithmeticNumber(value));
                     return;
                 default:
                     ValidateIndex(index);
@@ -151,6 +229,40 @@ namespace AuroraScript.Runtime.Types
             throw new AuroraRuntimeException(
                 "Packed-array index " + index + " is outside the valid range [0, " + length + ").");
         }
+
+        internal static double ToExactNumber(long value, string typeName, int index)
+        {
+            var number = (double)value;
+            // Casting a double at 2^63 saturates to long.MaxValue on the CLR,
+            // so the round-trip comparison alone would incorrectly accept that
+            // boundary value.  Keep the exclusive upper bound explicit.
+            if (!double.IsFinite(number) || number >= 9223372036854775808d ||
+                (long)number != value)
+            {
+                throw new AuroraRuntimeException(
+                    $"{typeName} element at index {index} cannot be represented exactly as a Number.");
+            }
+            return number;
+        }
+
+        internal static double ToExactNumber(ulong value, string typeName, int index)
+        {
+            var number = (double)value;
+            if (number >= 18446744073709551616d || (ulong)number != value)
+            {
+                throw new AuroraRuntimeException(
+                    $"{typeName} element at index {index} cannot be represented exactly as a Number.");
+            }
+            return number;
+        }
+
+        /// <summary>Converts a signed 64-bit element to a script number without loss.</summary>
+        public static double ToExactInt64Number(long value, int index) =>
+            ToExactNumber(value, "Int64Array", index);
+
+        /// <summary>Converts an unsigned 64-bit element to a script number without loss.</summary>
+        public static double ToExactUInt64Number(ulong value, int index) =>
+            ToExactNumber(value, "UInt64Array", index);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static void ThrowDeleteNotSupported()
@@ -374,5 +486,209 @@ namespace AuroraScript.Runtime.Types
 
         internal override ScriptPackedArray ClonePackedArray() =>
             new ScriptBooleanArray((bool[])_items.Clone());
+    }
+
+    /// <summary>A fixed-length array backed by a CLR <see cref="byte"/> array.</summary>
+    public sealed class ScriptUInt8Array : ScriptPackedArray
+    {
+        internal readonly byte[] _items;
+
+        /// <summary>Creates a zero-initialized array with the supplied length.</summary>
+        public ScriptUInt8Array(int length) => _items = new byte[length];
+
+        internal ScriptUInt8Array(byte[] items) => _items = items;
+
+        /// <inheritdoc />
+        public override int Length => _items.Length;
+
+        /// <summary>Gets an element without dynamic value conversion.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public byte GetElement(int index) => _items[index];
+
+        /// <summary>Sets an element without dynamic value conversion.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void SetElement(int index, byte value) => _items[index] = value;
+
+        internal override ScriptDatum GetElementDatumUnchecked(int index) =>
+            ScriptDatum.FromNumber(_items[index]);
+
+        internal override void SetElementDatumUnchecked(int index, ScriptDatum value) =>
+            _items[index] = unchecked((byte)(int)ValueOps.ToArithmeticNumber(value));
+
+        internal override void FillDatum(ScriptDatum value) =>
+            Array.Fill(_items, unchecked((byte)(int)ValueOps.ToArithmeticNumber(value)));
+
+        internal override ScriptPackedArray ClonePackedArray() =>
+            new ScriptUInt8Array((byte[])_items.Clone());
+    }
+
+    /// <summary>A fixed-length array backed by a CLR <see cref="short"/> array.</summary>
+    public sealed class ScriptInt16Array : ScriptPackedArray
+    {
+        internal readonly short[] _items;
+
+        /// <summary>Creates a zero-initialized array with the supplied length.</summary>
+        public ScriptInt16Array(int length) => _items = new short[length];
+
+        internal ScriptInt16Array(short[] items) => _items = items;
+
+        /// <inheritdoc />
+        public override int Length => _items.Length;
+
+        /// <summary>Gets an element without dynamic value conversion.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public short GetElement(int index) => _items[index];
+
+        /// <summary>Sets an element without dynamic value conversion.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void SetElement(int index, short value) => _items[index] = value;
+
+        internal override ScriptDatum GetElementDatumUnchecked(int index) =>
+            ScriptDatum.FromNumber(_items[index]);
+
+        internal override void SetElementDatumUnchecked(int index, ScriptDatum value) =>
+            _items[index] = unchecked((short)(int)ValueOps.ToArithmeticNumber(value));
+
+        internal override void FillDatum(ScriptDatum value) =>
+            Array.Fill(_items, unchecked((short)(int)ValueOps.ToArithmeticNumber(value)));
+
+        internal override ScriptPackedArray ClonePackedArray() =>
+            new ScriptInt16Array((short[])_items.Clone());
+    }
+
+    /// <summary>A fixed-length array backed by a CLR <see cref="ushort"/> array.</summary>
+    public sealed class ScriptUInt16Array : ScriptPackedArray
+    {
+        internal readonly ushort[] _items;
+
+        /// <summary>Creates a zero-initialized array with the supplied length.</summary>
+        public ScriptUInt16Array(int length) => _items = new ushort[length];
+
+        internal ScriptUInt16Array(ushort[] items) => _items = items;
+
+        /// <inheritdoc />
+        public override int Length => _items.Length;
+
+        /// <summary>Gets an element without dynamic value conversion.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ushort GetElement(int index) => _items[index];
+
+        /// <summary>Sets an element without dynamic value conversion.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void SetElement(int index, ushort value) => _items[index] = value;
+
+        internal override ScriptDatum GetElementDatumUnchecked(int index) =>
+            ScriptDatum.FromNumber(_items[index]);
+
+        internal override void SetElementDatumUnchecked(int index, ScriptDatum value) =>
+            _items[index] = unchecked((ushort)(int)ValueOps.ToArithmeticNumber(value));
+
+        internal override void FillDatum(ScriptDatum value) =>
+            Array.Fill(_items, unchecked((ushort)(int)ValueOps.ToArithmeticNumber(value)));
+
+        internal override ScriptPackedArray ClonePackedArray() =>
+            new ScriptUInt16Array((ushort[])_items.Clone());
+    }
+
+    /// <summary>A fixed-length array backed by a CLR <see cref="uint"/> array.</summary>
+    public sealed class ScriptUInt32Array : ScriptPackedArray
+    {
+        internal readonly uint[] _items;
+
+        /// <summary>Creates a zero-initialized array with the supplied length.</summary>
+        public ScriptUInt32Array(int length) => _items = new uint[length];
+
+        internal ScriptUInt32Array(uint[] items) => _items = items;
+
+        /// <inheritdoc />
+        public override int Length => _items.Length;
+
+        /// <summary>Gets an element without dynamic value conversion.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public uint GetElement(int index) => _items[index];
+
+        /// <summary>Sets an element without dynamic value conversion.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void SetElement(int index, uint value) => _items[index] = value;
+
+        internal override ScriptDatum GetElementDatumUnchecked(int index) =>
+            ScriptDatum.FromNumber(_items[index]);
+
+        internal override void SetElementDatumUnchecked(int index, ScriptDatum value) =>
+            _items[index] = unchecked((uint)ValueOps.ToArithmeticNumber(value));
+
+        internal override void FillDatum(ScriptDatum value) =>
+            Array.Fill(_items, unchecked((uint)ValueOps.ToArithmeticNumber(value)));
+
+        internal override ScriptPackedArray ClonePackedArray() =>
+            new ScriptUInt32Array((uint[])_items.Clone());
+    }
+
+    /// <summary>A fixed-length array backed by a CLR <see cref="long"/> array.</summary>
+    public sealed class ScriptInt64Array : ScriptPackedArray
+    {
+        internal readonly long[] _items;
+
+        /// <summary>Creates a zero-initialized array with the supplied length.</summary>
+        public ScriptInt64Array(int length) => _items = new long[length];
+
+        internal ScriptInt64Array(long[] items) => _items = items;
+
+        /// <inheritdoc />
+        public override int Length => _items.Length;
+
+        /// <summary>Gets an element without dynamic value conversion.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public long GetElement(int index) => _items[index];
+
+        /// <summary>Sets an element without dynamic value conversion.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void SetElement(int index, long value) => _items[index] = value;
+
+        internal override ScriptDatum GetElementDatumUnchecked(int index) =>
+            ScriptDatum.FromNumber(ToExactNumber(_items[index], "Int64Array", index));
+
+        internal override void SetElementDatumUnchecked(int index, ScriptDatum value) =>
+            _items[index] = unchecked((long)ValueOps.ToArithmeticNumber(value));
+
+        internal override void FillDatum(ScriptDatum value) =>
+            Array.Fill(_items, unchecked((long)ValueOps.ToArithmeticNumber(value)));
+
+        internal override ScriptPackedArray ClonePackedArray() =>
+            new ScriptInt64Array((long[])_items.Clone());
+    }
+
+    /// <summary>A fixed-length array backed by a CLR <see cref="ulong"/> array.</summary>
+    public sealed class ScriptUInt64Array : ScriptPackedArray
+    {
+        internal readonly ulong[] _items;
+
+        /// <summary>Creates a zero-initialized array with the supplied length.</summary>
+        public ScriptUInt64Array(int length) => _items = new ulong[length];
+
+        internal ScriptUInt64Array(ulong[] items) => _items = items;
+
+        /// <inheritdoc />
+        public override int Length => _items.Length;
+
+        /// <summary>Gets an element without dynamic value conversion.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ulong GetElement(int index) => _items[index];
+
+        /// <summary>Sets an element without dynamic value conversion.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void SetElement(int index, ulong value) => _items[index] = value;
+
+        internal override ScriptDatum GetElementDatumUnchecked(int index) =>
+            ScriptDatum.FromNumber(ToExactNumber(_items[index], "UInt64Array", index));
+
+        internal override void SetElementDatumUnchecked(int index, ScriptDatum value) =>
+            _items[index] = unchecked((ulong)ValueOps.ToArithmeticNumber(value));
+
+        internal override void FillDatum(ScriptDatum value) =>
+            Array.Fill(_items, unchecked((ulong)ValueOps.ToArithmeticNumber(value)));
+
+        internal override ScriptPackedArray ClonePackedArray() =>
+            new ScriptUInt64Array((ulong[])_items.Clone());
     }
 }

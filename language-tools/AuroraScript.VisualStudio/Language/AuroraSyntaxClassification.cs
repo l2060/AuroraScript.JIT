@@ -121,7 +121,9 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
         "Function",
         "Float64Array",
         "HashMap",
+        "Int16Array",
         "Int32Array",
+        "Int64Array",
         "Int8Array",
         "Number",
         "Object",
@@ -129,7 +131,11 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
         "Proxy",
         "Regex",
         "String",
-        "StringBuffer"
+        "StringBuffer",
+        "UInt16Array",
+        "UInt32Array",
+        "UInt64Array",
+        "UInt8Array"
     };
 
     private const int MaxWorkspaceDeclareFiles = 2000;

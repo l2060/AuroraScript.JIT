@@ -128,13 +128,13 @@ public sealed class TypedDocumentSerializationTests
             ScriptDatum.FromObject(wrapper),
             new TypedDocumentOptions { Indented = false });
 
-        Assert.Equal("{name \"Aurora\",readonly version 4,}", text);
+        Assert.Equal("{name \"Aurora\",readonly version 4}", text);
 
         var allTypes = TypedDocumentSerializer.Serialize(
             engine,
             ScriptDatum.FromObject(wrapper),
             new TypedDocumentOptions { Indented = false, EmitTypeNames = true });
-        Assert.Equal("Object {String name \"Aurora\",readonly Number version 4,}", allTypes);
+        Assert.Equal("Object {String name \"Aurora\",readonly Number version 4}", allTypes);
 
         var restored = Assert.IsType<ScriptObject>(TypedDocumentSerializer.Deserialize(engine, allTypes).Object);
         Assert.Equal("Aurora", restored.GetPropertyDatum(null, "name").StringText);

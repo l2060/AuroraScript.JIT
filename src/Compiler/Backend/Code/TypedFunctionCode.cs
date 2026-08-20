@@ -8,7 +8,7 @@ using System.Collections.Generic;
 namespace AuroraScript.Compiler.Backend.Code
 {
     [Flags]
-    internal enum FlowValueType : ushort
+    internal enum FlowValueType : uint
     {
         None = 0,
         Null = 1 << 0,
@@ -28,8 +28,15 @@ namespace AuroraScript.Compiler.Backend.Code
         // call was specialized.
         Int32Bitwise = 1 << 11,
         Int32Shift = 1 << 12,
+        UInt8Array = 1 << 13,
+        Int16Array = 1 << 14,
+        UInt16Array = 1 << 15,
+        UInt32Array = 1 << 16,
+        Int64Array = 1 << 17,
+        UInt64Array = 1 << 18,
         Dynamic = Null | Boolean | Number | String | Object |
-            Int32Array | Int8Array | BooleanArray | Float64Array | Array
+            Int32Array | Int8Array | BooleanArray | Float64Array |
+            UInt8Array | Int16Array | UInt16Array | UInt32Array | Int64Array | UInt64Array | Array
     }
 
     internal static class FlowValueTypeFacts
@@ -39,7 +46,13 @@ namespace AuroraScript.Compiler.Backend.Code
             return type is FlowValueType.Int32Array or
                 FlowValueType.Int8Array or
                 FlowValueType.Float64Array or
-                FlowValueType.BooleanArray;
+                FlowValueType.BooleanArray or
+                FlowValueType.UInt8Array or
+                FlowValueType.Int16Array or
+                FlowValueType.UInt16Array or
+                FlowValueType.UInt32Array or
+                FlowValueType.Int64Array or
+                FlowValueType.UInt64Array;
         }
 
         public static bool ContainsPackedArray(FlowValueType type)
@@ -47,7 +60,13 @@ namespace AuroraScript.Compiler.Backend.Code
             const FlowValueType packed = FlowValueType.Int32Array |
                 FlowValueType.Int8Array |
                 FlowValueType.Float64Array |
-                FlowValueType.BooleanArray;
+                FlowValueType.BooleanArray |
+                FlowValueType.UInt8Array |
+                FlowValueType.Int16Array |
+                FlowValueType.UInt16Array |
+                FlowValueType.UInt32Array |
+                FlowValueType.Int64Array |
+                FlowValueType.UInt64Array;
             return (type & packed) != 0;
         }
 
@@ -104,7 +123,11 @@ namespace AuroraScript.Compiler.Backend.Code
                 ? FlowValueType.Boolean
                 : type == FlowValueType.Float64Array
                     ? FlowValueType.Number
-                : type is FlowValueType.Int32Array or FlowValueType.Int8Array
+                : type is FlowValueType.UInt8Array or FlowValueType.Int16Array or
+                    FlowValueType.UInt16Array or FlowValueType.UInt32Array or
+                    FlowValueType.Int64Array or FlowValueType.UInt64Array
+                    ? FlowValueType.Number
+                : IsPackedArray(type)
                     ? FlowValueType.Int32
                     : FlowValueType.Dynamic;
         }
@@ -117,6 +140,12 @@ namespace AuroraScript.Compiler.Backend.Code
                 "Int8Array" => FlowValueType.Int8Array,
                 "Float64Array" => FlowValueType.Float64Array,
                 "BooleanArray" => FlowValueType.BooleanArray,
+                "UInt8Array" => FlowValueType.UInt8Array,
+                "Int16Array" => FlowValueType.Int16Array,
+                "UInt16Array" => FlowValueType.UInt16Array,
+                "UInt32Array" => FlowValueType.UInt32Array,
+                "Int64Array" => FlowValueType.Int64Array,
+                "UInt64Array" => FlowValueType.UInt64Array,
                 _ => FlowValueType.None
             };
             return type != FlowValueType.None;

@@ -23,12 +23,12 @@ namespace AuroraScript.Tokens
 
             if (value.Length > 2 && value[0] == '0' && (value[1] == 'x' || value[1] == 'X'))
             {
-                long number = 0;
+                ulong number = 0;
                 for (int i = 2; i < value.Length; i++)
                 {
                     var c = value[i];
                     int digit = c <= '9' ? c - '0' : (c <= 'F' ? c - 'A' + 10 : c - 'a' + 10);
-                    number = (number << 4) + digit;
+                    number = (number << 4) + (uint)digit;
                 }
                 this.NumberValue = number;
             }
@@ -49,6 +49,14 @@ namespace AuroraScript.Tokens
                     }
                     this.NumberValue = Double.Parse(clean.Slice(0, length), CultureInfo.InvariantCulture);
                 }
+            }
+
+            // Only large numbers need their original spelling for TDoc's exact
+            // Int64/UInt64 checks. Normal numeric tokens retain the existing lazy
+            // Value allocation behavior.
+            if (Math.Abs(this.NumberValue) > 9007199254740991d)
+            {
+                base.Value = value.ToString();
             }
         }
 

@@ -1,6 +1,8 @@
 using AuroraScript.Runtime;
+using AuroraScript.Runtime.Interop;
 using AuroraScript.Runtime.Types;
 using AuroraScript.Runtime.Pool;
+using AuroraScript.Runtime.Serialization;
 using System;
 using System.Reflection;
 using System.Text;
@@ -130,6 +132,10 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo IsContinue = Method(typeof(ExceptionOps), nameof(ExceptionOps.IsContinue), typeof(ScriptLoopTransferSignal));
         public static readonly MethodInfo DeleteProperty = Method(typeof(ObjectOps), nameof(ObjectOps.DeleteProperty), typeof(ScriptContext), typeof(ScriptDatum), typeof(string));
         public static readonly MethodInfo DeleteElement = Method(typeof(ObjectOps), nameof(ObjectOps.DeleteElement), typeof(ScriptContext), typeof(ScriptDatum), typeof(ScriptDatum));
+        public static readonly MethodInfo BindTypedDocument = Method(typeof(TypedDocumentBinder), nameof(TypedDocumentBinder.BindInterpolation), typeof(ScriptContext), typeof(string), typeof(ScriptDatum));
+        public static readonly MethodInfo BindTypedDocumentAtPath = Method(typeof(TypedDocumentBinder), nameof(TypedDocumentBinder.BindInterpolationAtPath), typeof(ScriptContext), typeof(string), typeof(ScriptDatum), typeof(string));
+        public static readonly MethodInfo CreateTypedDocumentClrObject = Method(typeof(TypedDocumentBinder), nameof(TypedDocumentBinder.CreateClrObject), typeof(ScriptContext), typeof(string), typeof(string));
+        public static readonly MethodInfo SetTypedDocumentClrMember = Method(typeof(TypedDocumentBinder), nameof(TypedDocumentBinder.SetClrObjectMember), typeof(ClrInstanceObject), typeof(string), typeof(string), typeof(bool), typeof(ScriptDatum), typeof(string));
 
         public static readonly ConstructorInfo ScriptArrayCapacity = Constructor(typeof(ScriptArray), typeof(int));
         public static readonly MethodInfo ScriptArrayCreateWithLength = StaticMethod(typeof(ScriptArray), nameof(ScriptArray.CreateWithLength), typeof(ScriptDatum));
@@ -156,16 +162,30 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo ScriptObjectClearProperties = InstanceMethod(typeof(ScriptObject), nameof(ScriptObject.ClearProperties));
 
         public static readonly MethodInfo ValidatePackedArrayLength = Method(typeof(ScriptPackedArray), nameof(ScriptPackedArray.ValidateLength), typeof(double));
+        public static readonly MethodInfo ToExactInt64Number = Method(typeof(ScriptPackedArray), nameof(ScriptPackedArray.ToExactInt64Number), typeof(long), typeof(int));
+        public static readonly MethodInfo ToExactUInt64Number = Method(typeof(ScriptPackedArray), nameof(ScriptPackedArray.ToExactUInt64Number), typeof(ulong), typeof(int));
         public static readonly ConstructorInfo ScriptInt32ArrayConstructor = Constructor(typeof(ScriptInt32Array), typeof(int));
         public static readonly ConstructorInfo ScriptInt8ArrayConstructor = Constructor(typeof(ScriptInt8Array), typeof(int));
         public static readonly ConstructorInfo ScriptFloat64ArrayConstructor = Constructor(typeof(ScriptFloat64Array), typeof(int));
         public static readonly ConstructorInfo ScriptBooleanArrayConstructor = Constructor(typeof(ScriptBooleanArray), typeof(int));
+        public static readonly ConstructorInfo ScriptUInt8ArrayConstructor = Constructor(typeof(ScriptUInt8Array), typeof(int));
+        public static readonly ConstructorInfo ScriptInt16ArrayConstructor = Constructor(typeof(ScriptInt16Array), typeof(int));
+        public static readonly ConstructorInfo ScriptUInt16ArrayConstructor = Constructor(typeof(ScriptUInt16Array), typeof(int));
+        public static readonly ConstructorInfo ScriptUInt32ArrayConstructor = Constructor(typeof(ScriptUInt32Array), typeof(int));
+        public static readonly ConstructorInfo ScriptInt64ArrayConstructor = Constructor(typeof(ScriptInt64Array), typeof(int));
+        public static readonly ConstructorInfo ScriptUInt64ArrayConstructor = Constructor(typeof(ScriptUInt64Array), typeof(int));
         public static readonly ConstructorInfo ScriptHashMapConstructor = Constructor(typeof(ScriptHashMap), typeof(int));
         public static readonly MethodInfo ScriptHashMapPut = InstanceMethod(typeof(ScriptHashMap), nameof(ScriptHashMap.Put), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly FieldInfo ScriptInt32ArrayItems = Field(typeof(ScriptInt32Array), "_items");
         public static readonly FieldInfo ScriptInt8ArrayItems = Field(typeof(ScriptInt8Array), "_items");
         public static readonly FieldInfo ScriptFloat64ArrayItems = Field(typeof(ScriptFloat64Array), "_items");
         public static readonly FieldInfo ScriptBooleanArrayItems = Field(typeof(ScriptBooleanArray), "_items");
+        public static readonly FieldInfo ScriptUInt8ArrayItems = Field(typeof(ScriptUInt8Array), "_items");
+        public static readonly FieldInfo ScriptInt16ArrayItems = Field(typeof(ScriptInt16Array), "_items");
+        public static readonly FieldInfo ScriptUInt16ArrayItems = Field(typeof(ScriptUInt16Array), "_items");
+        public static readonly FieldInfo ScriptUInt32ArrayItems = Field(typeof(ScriptUInt32Array), "_items");
+        public static readonly FieldInfo ScriptInt64ArrayItems = Field(typeof(ScriptInt64Array), "_items");
+        public static readonly FieldInfo ScriptUInt64ArrayItems = Field(typeof(ScriptUInt64Array), "_items");
 
         public static readonly MethodInfo EnterDirectFrame = Method(typeof(CallFrameOps), nameof(CallFrameOps.EnterDirect), typeof(ScriptContext), typeof(string));
         public static readonly MethodInfo EnterModuleFrame = Method(typeof(CallFrameOps), nameof(CallFrameOps.EnterModule), typeof(ScriptContext), typeof(ScriptModule));

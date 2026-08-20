@@ -172,6 +172,30 @@ namespace AuroraScript.Runtime.Serialization
             return parsed;
         }
 
+        internal bool TryGetUInt64Exact(in TypedDocumentToken token, out ulong value)
+        {
+            var source = _source.AsSpan(token.Start, token.Length);
+            if (source.IndexOf('_') < 0)
+            {
+                return TryParseUInt64Exact(source, out value);
+            }
+
+            char[] rented = null;
+            Span<char> clean = source.Length <= 128
+                ? stackalloc char[source.Length]
+                : (rented = ArrayPool<char>.Shared.Rent(source.Length));
+            var length = 0;
+            for (var index = 0; index < source.Length; index++)
+            {
+                var current = source[index];
+                if (current != '_') clean[length++] = current;
+            }
+
+            var parsed = TryParseUInt64Exact(clean[..length], out value);
+            if (rented != null) ArrayPool<char>.Shared.Return(rented);
+            return parsed;
+        }
+
         private static void DecodeString(Span<char> destination, string source, int start, int length)
         {
             var input = source.AsSpan(start, length);
@@ -228,7 +252,7 @@ namespace AuroraScript.Runtime.Serialization
             return value;
         }
 
-        private static bool TryParseInt64Exact(ReadOnlySpan<char> source, out long value)
+        internal static bool TryParseInt64Exact(ReadOnlySpan<char> source, out long value)
         {
             var negative = source.Length != 0 && source[0] == '-';
             var numberStart = negative ? 1 : 0;
@@ -286,6 +310,49 @@ namespace AuroraScript.Runtime.Serialization
                 decimalValue <= long.MaxValue)
             {
                 value = decimal.ToInt64(decimalValue);
+                return true;
+            }
+            value = 0;
+            return false;
+        }
+
+        internal static bool TryParseUInt64Exact(ReadOnlySpan<char> source, out ulong value)
+        {
+            if (source.Length != 0 && source[0] == '-')
+            {
+                value = 0;
+                return false;
+            }
+            var numberStart = source.Length != 0 && source[0] == '+' ? 1 : 0;
+            if (source.Length >= numberStart + 3 &&
+                source[numberStart] == '0' &&
+                source[numberStart + 1] is 'x' or 'X')
+            {
+                return ulong.TryParse(
+                    source[(numberStart + 2)..],
+                    NumberStyles.AllowHexSpecifier,
+                    CultureInfo.InvariantCulture,
+                    out value);
+            }
+
+            if (source.IndexOfAny('.', 'e', 'E') < 0)
+            {
+                return ulong.TryParse(
+                    source[numberStart..],
+                    NumberStyles.AllowLeadingSign,
+                    CultureInfo.InvariantCulture,
+                    out value);
+            }
+
+            if (decimal.TryParse(
+                    source[numberStart..],
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out var decimalValue) &&
+                decimal.Truncate(decimalValue) == decimalValue &&
+                decimalValue >= 0m && decimalValue <= ulong.MaxValue)
+            {
+                value = decimal.ToUInt64(decimalValue);
                 return true;
             }
             value = 0;

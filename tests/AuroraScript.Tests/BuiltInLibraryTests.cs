@@ -111,7 +111,7 @@ public sealed class BuiltInLibraryTests
             """);
 
         ScriptAssert.Equal(
-            new object?[] { 42.5, "u-1", 2, "{readonly id \"u-1\",Int8Array bytes [1,2,],}", "Object {readonly String id \"u-1\",Int8Array bytes [1,2,],}", true },
+            new object?[] { 42.5, "u-1", 2, "{readonly id \"u-1\",Int8Array bytes [1,2]}", "Object {readonly String id \"u-1\",Int8Array bytes [1,2]}", true },
             TestWorkspace.Execute(domain, "roundTrip"));
 
         var error = Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, "invalid"));
@@ -141,7 +141,7 @@ public sealed class BuiltInLibraryTests
             """);
 
         Assert.Equal(
-            "{name \"Aurora\",nested {count 2,},values [1,null,3,],}",
+            "{name \"Aurora\",nested {count 2},values [1,null,3]}",
             TestWorkspace.Execute(domain, "objectValue"));
         Assert.Equal("null", TestWorkspace.Execute(domain, "rootValue"));
     }
