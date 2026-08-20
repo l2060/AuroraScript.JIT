@@ -90,6 +90,17 @@
       "notes": ["Interpolations evaluate left to right.", "Compiler selects concat or StringBuilder strategy by element count."]
     },
     {
+      "id": "expression.tdoc-literal",
+      "syntax": "tdoc [TypeName] value",
+      "scope": "expression",
+      "notes": [
+        "Constructs a TDoc value directly inside an AuroraScript expression.",
+        "Object members use optional readonly and type-name prefixes followed by a static property name and value.",
+        "Only value positions accept $(expression); property names and type names are static.",
+        "Standalone .tdoc documents omit the tdoc prefix and do not allow interpolation."
+      ]
+    },
+    {
       "id": "control.for",
       "syntax": "for (var i = 0; i < n; i++) statement",
       "scope": "statement",

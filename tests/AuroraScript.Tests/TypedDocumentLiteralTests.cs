@@ -82,6 +82,26 @@ public sealed class TypedDocumentLiteralTests
     }
 
     [Fact]
+    public async Task TDocLiteralBuildsDateValuesWithMilliseconds()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func run() {
+                var value = tdoc Object {
+                    Date birthday "1991-02-01 12:32:55 666",
+                };
+                return [value.birthday.year, value.birthday.millisecond, value.birthday.toString("yyyy-MM-dd HH:mm:ss fff"), JSON.stringify(value, false), TDoc.stringify(value, false)];
+            }
+            """);
+
+        ScriptAssert.Equal(
+            new object?[] { 1991, 666, "1991-02-01 12:32:55 666", "{\"birthday\":\"1991-02-01 12:32:55\"}", "{Date birthday \"1991-02-01 12:32:55\",}" },
+            TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
     public async Task TDocLiteralWorksInModuleInitializers()
     {
         using var workspace = new TestWorkspace();

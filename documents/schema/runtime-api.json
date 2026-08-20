@@ -1269,10 +1269,12 @@
       },
       "notes": {
         "en": [
-          "TDoc parsing and serialization API."
+          "TDoc parsing and serialization API.",
+          "The native script literal uses the separate `tdoc [TypeName] value` expression syntax; standalone .tdoc documents omit that prefix."
         ],
         "zh-CN": [
-          "TDoc 类型文档解析与序列化 API。"
+          "TDoc 类型文档解析与序列化 API。",
+          "脚本原生字面量使用独立的 `tdoc [TypeName] value` 表达式语法；独立 .tdoc 文档省略此前缀。"
         ]
       }
     },

@@ -25,6 +25,22 @@ export func testEmpty() {
 }
 
 
+
+
+export func testTypedDocument() {
+	// empty body
+	var doc = tdoc Object {
+		Int8Array points [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+		readonly age 32,
+		readonly name 'Hanks',
+		Date Birthday '1991-02-01 12:32:55 666',
+		StringBuffer buff 'Hello Hanks'
+	};
+	doc.buff.append('!');
+	console.log(JSON.stringify(doc));
+	console.log(TDoc.stringify(doc,false));
+}
+
 var node = {
 	A: 1,
 	B: 2,

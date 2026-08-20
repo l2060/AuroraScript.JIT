@@ -154,6 +154,20 @@ var values = [1, 2, 3];
 var copy = [...values];
 ```
 
+Native TDoc literals:
+
+```as
+func createProfile(user) {
+    return tdoc Object {
+        readonly String id $(user.id),
+        name "Aurora",
+        tags [String "system", Number 4],
+    };
+}
+```
+
+The `tdoc` prefix is valid only in script expressions. It accepts optional explicit type names, `readonly` object members, arrays, objects, and `$(expression)` in value positions. Property names and type names are static. Standalone `.tdoc` documents start directly with the root value and do not allow the prefix or interpolation. Use `TDoc.parse` and `TDoc.stringify` to convert between text and runtime values.
+
 Lambdas:
 
 ```as
