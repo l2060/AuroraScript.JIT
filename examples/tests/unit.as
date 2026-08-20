@@ -213,6 +213,8 @@ func testJson() {
 	var obj = time.createTimer();
 	var json = JSON.stringify(obj, true);
 	var obj2 = JSON.parse(json);
+	console.log(TDoc.stringify(obj, false));
+	console.log(TDoc.stringify(obj));
 	console.log(json, obj2);
 }
 
@@ -906,7 +908,7 @@ func testDraw() {
 
 
 export func externalDeclare() {
-	
+
 	console.log(APP_VERSION, ONLINE_TOTAL);
 	if (true) {
 		var APP_VERSION = "a.b.c";

@@ -7,7 +7,7 @@ using System.Globalization;
 
 namespace AuroraScript.Runtime.Serialization
 {
-    internal enum TypedDataPackedKind : byte
+    internal enum TypedDocumentPackedKind : byte
     {
         Int32,
         Int8,
@@ -15,14 +15,14 @@ namespace AuroraScript.Runtime.Serialization
         Boolean
     }
 
-    internal readonly struct TypedDataMemberHeader
+    internal readonly struct TypedDocumentMemberHeader
     {
-        internal TypedDataMemberHeader(
+        internal TypedDocumentMemberHeader(
             string name,
             bool readOnly,
             bool hasType,
-            TypedDataToken typeToken,
-            TypedDataToken nameToken)
+            TypedDocumentToken typeToken,
+            TypedDocumentToken nameToken)
         {
             Name = name;
             ReadOnly = readOnly;
@@ -34,32 +34,84 @@ namespace AuroraScript.Runtime.Serialization
         internal string Name { get; }
         internal bool ReadOnly { get; }
         internal bool HasType { get; }
-        internal TypedDataToken TypeToken { get; }
-        internal TypedDataToken NameToken { get; }
+        internal TypedDocumentToken TypeToken { get; }
+        internal TypedDocumentToken NameToken { get; }
     }
 
-    internal ref struct TypedDataReader
+    /// <summary>
+    /// A pooled staging buffer for a packed primitive array. It never becomes part of
+    /// the result object; the parser copies exactly once into the result's owned array.
+    /// </summary>
+    internal ref struct TypedDocumentPooledBuffer<T> where T : unmanaged
+    {
+        private T[] _items;
+        private int _count;
+
+        internal TypedDocumentPooledBuffer(int initialCapacity)
+        {
+            _items = ArrayPool<T>.Shared.Rent(Math.Max(4, initialCapacity));
+            _count = 0;
+        }
+
+        internal int Count => _count;
+
+        internal void Add(T value)
+        {
+            if (_count == _items.Length) Grow();
+            _items[_count++] = value;
+        }
+
+        internal T[] ToArray()
+        {
+            if (_count == 0) return Array.Empty<T>();
+            var result = new T[_count];
+            _items.AsSpan(0, _count).CopyTo(result);
+            return result;
+        }
+
+        public void Dispose()
+        {
+            var items = _items;
+            _items = null;
+            _count = 0;
+            if (items != null) ArrayPool<T>.Shared.Return(items, clearArray: false);
+        }
+
+        private void Grow()
+        {
+            var replacement = ArrayPool<T>.Shared.Rent(_items.Length * 2);
+            _items.AsSpan(0, _count).CopyTo(replacement);
+            ArrayPool<T>.Shared.Return(_items, clearArray: false);
+            _items = replacement;
+        }
+    }
+
+    internal ref struct TypedDocumentReader
     {
         private readonly AuroraEngine _engine;
         private readonly string _sourceName;
         private readonly int _maxDepth;
-        private TypedDataScanner _scanner;
-        private TypedDataToken _current;
-        private TypedDataToken _lookahead;
+        private TypedDocumentScanner _scanner;
+        private TypedDocumentToken _current;
+        private TypedDocumentToken _lookahead;
         private bool _hasLookahead;
-        private TypedDataPath _path;
+        private TypedDocumentPath _path;
         private int _depth;
 
-        internal TypedDataReader(AuroraEngine engine, string text, TypedDataOptions options)
+        internal TypedDocumentReader(
+            AuroraEngine engine,
+            string text,
+            TypedDocumentOptions options,
+            string sourceName)
         {
             _engine = engine;
-            _sourceName = string.IsNullOrWhiteSpace(options.SourceName) ? "<atd>" : options.SourceName;
+            _sourceName = string.IsNullOrWhiteSpace(sourceName) ? "<tdoc>" : sourceName;
             _maxDepth = options.MaxDepth;
-            _scanner = new TypedDataScanner(text);
+            _scanner = new TypedDocumentScanner(text);
             _current = _scanner.Read();
             _lookahead = default;
             _hasLookahead = false;
-            _path = new TypedDataPath(16);
+            _path = new TypedDocumentPath(16);
             _depth = 0;
         }
 
@@ -67,7 +119,7 @@ namespace AuroraScript.Runtime.Serialization
         {
             var result = ReadTypedValue();
             var trailing = Current();
-            if (trailing.Kind != TypedDataTokenKind.EndOfFile)
+            if (trailing.Kind != TypedDocumentTokenKind.EndOfFile)
             {
                 throw Error(trailing, "Only one root value is allowed.");
             }
@@ -85,7 +137,7 @@ namespace AuroraScript.Runtime.Serialization
             EnterValue(token);
             try
             {
-                if (token.Kind != TypedDataTokenKind.Identifier)
+                if (token.Kind != TypedDocumentTokenKind.Identifier)
                 {
                     return ReadInferredValue();
                 }
@@ -99,7 +151,7 @@ namespace AuroraScript.Runtime.Serialization
             }
         }
 
-        private ScriptDatum ReadExplicitValue(TypedDataToken typeToken)
+        private ScriptDatum ReadExplicitValue(TypedDocumentToken typeToken)
         {
             if (TypeEquals(typeToken, "Object")) return ReadObject();
             if (TypeEquals(typeToken, "Array")) return ReadArray();
@@ -117,10 +169,10 @@ namespace AuroraScript.Runtime.Serialization
                 return ScriptDatum.FromObject(new ScriptPathValue(ReadRequiredString("Path")));
             }
             if (TypeEquals(typeToken, "HashMap")) return ReadHashMap();
-            if (TypeEquals(typeToken, "Int32Array")) return ReadPackedArray(TypedDataPackedKind.Int32);
-            if (TypeEquals(typeToken, "Int8Array")) return ReadPackedArray(TypedDataPackedKind.Int8);
-            if (TypeEquals(typeToken, "Float64Array")) return ReadPackedArray(TypedDataPackedKind.Float64);
-            if (TypeEquals(typeToken, "BooleanArray")) return ReadPackedArray(TypedDataPackedKind.Boolean);
+            if (TypeEquals(typeToken, "Int32Array")) return ReadPackedArray(TypedDocumentPackedKind.Int32);
+            if (TypeEquals(typeToken, "Int8Array")) return ReadPackedArray(TypedDocumentPackedKind.Int8);
+            if (TypeEquals(typeToken, "Float64Array")) return ReadPackedArray(TypedDocumentPackedKind.Float64);
+            if (TypeEquals(typeToken, "BooleanArray")) return ReadPackedArray(TypedDocumentPackedKind.Boolean);
 
             var alias = _scanner.GetIdentifier(typeToken);
             if (!_engine.ClrRegistry.TryGetClrType(alias, out var registration))
@@ -135,25 +187,25 @@ namespace AuroraScript.Runtime.Serialization
             var token = Current();
             switch (token.Kind)
             {
-                case TypedDataTokenKind.Null:
+                case TypedDocumentTokenKind.Null:
                     Advance();
                     return ScriptDatum.Null;
-                case TypedDataTokenKind.True:
+                case TypedDocumentTokenKind.True:
                     Advance();
                     return ScriptDatum.True;
-                case TypedDataTokenKind.False:
+                case TypedDocumentTokenKind.False:
                     Advance();
                     return ScriptDatum.False;
-                case TypedDataTokenKind.Number:
+                case TypedDocumentTokenKind.Number:
                     Advance();
                     return ScriptDatum.FromNumber(token.Number);
-                case TypedDataTokenKind.String:
+                case TypedDocumentTokenKind.String:
                     var text = _scanner.GetString(token);
                     Advance();
                     return ScriptDatum.FromString(text);
-                case TypedDataTokenKind.LeftBracket:
+                case TypedDocumentTokenKind.LeftBracket:
                     return ReadArray();
-                case TypedDataTokenKind.LeftBrace:
+                case TypedDocumentTokenKind.LeftBrace:
                     return ReadObject();
                 default:
                     throw Error(token, "Expected a data value.");
@@ -162,9 +214,9 @@ namespace AuroraScript.Runtime.Serialization
 
         private ScriptDatum ReadObject()
         {
-            Expect(TypedDataTokenKind.LeftBrace, "Type 'Object' requires an object value.");
+            Expect(TypedDocumentTokenKind.LeftBrace, "Type 'Object' requires an object value.");
             var result = new ScriptObject();
-            if (Match(TypedDataTokenKind.RightBrace))
+            if (Match(TypedDocumentTokenKind.RightBrace))
             {
                 return ScriptDatum.FromObject(result);
             }
@@ -194,9 +246,9 @@ namespace AuroraScript.Runtime.Serialization
 
         private ScriptDatum ReadArray()
         {
-            Expect(TypedDataTokenKind.LeftBracket, "Type 'Array' requires an array value.");
+            Expect(TypedDocumentTokenKind.LeftBracket, "Type 'Array' requires an array value.");
             var result = new ScriptArray();
-            if (Match(TypedDataTokenKind.RightBracket))
+            if (Match(TypedDocumentTokenKind.RightBracket))
             {
                 return ScriptDatum.FromArray(result);
             }
@@ -227,7 +279,7 @@ namespace AuroraScript.Runtime.Serialization
         private ScriptDatum ReadNumberValue(string typeName)
         {
             var token = Current();
-            if (token.Kind != TypedDataTokenKind.Number)
+            if (token.Kind != TypedDocumentTokenKind.Number)
             {
                 throw Error(token, $"Type '{typeName}' requires a number value.");
             }
@@ -238,12 +290,12 @@ namespace AuroraScript.Runtime.Serialization
         private ScriptDatum ReadBooleanValue(string typeName)
         {
             var token = Current();
-            if (token.Kind == TypedDataTokenKind.True)
+            if (token.Kind == TypedDocumentTokenKind.True)
             {
                 Advance();
                 return ScriptDatum.True;
             }
-            if (token.Kind == TypedDataTokenKind.False)
+            if (token.Kind == TypedDocumentTokenKind.False)
             {
                 Advance();
                 return ScriptDatum.False;
@@ -254,7 +306,7 @@ namespace AuroraScript.Runtime.Serialization
         private string ReadRequiredString(string typeName)
         {
             var token = Current();
-            if (token.Kind != TypedDataTokenKind.String)
+            if (token.Kind != TypedDocumentTokenKind.String)
             {
                 throw Error(token, $"Type '{typeName}' requires a string value.");
             }
@@ -266,7 +318,7 @@ namespace AuroraScript.Runtime.Serialization
         private ScriptDatum ReadDate()
         {
             var token = Current();
-            if (token.Kind == TypedDataTokenKind.Number)
+            if (token.Kind == TypedDocumentTokenKind.Number)
             {
                 var numericTicks = token.Number;
                 if (Math.Truncate(numericTicks) != numericTicks ||
@@ -282,7 +334,7 @@ namespace AuroraScript.Runtime.Serialization
                 Advance();
                 return ScriptDatum.FromDate(new ScriptDate(ticks));
             }
-            if (token.Kind != TypedDataTokenKind.String)
+            if (token.Kind != TypedDocumentTokenKind.String)
             {
                 throw Error(token, "Type 'Date' requires a formatted string or an integer ticks value.");
             }
@@ -314,10 +366,10 @@ namespace AuroraScript.Runtime.Serialization
 
         private ScriptDatum ReadRegex()
         {
-            Expect(TypedDataTokenKind.LeftBrace, "Type 'Regex' requires an object value.");
+            Expect(TypedDocumentTokenKind.LeftBrace, "Type 'Regex' requires an object value.");
             string pattern = null;
             string flags = null;
-            if (!Match(TypedDataTokenKind.RightBrace))
+            if (!Match(TypedDocumentTokenKind.RightBrace))
             {
                 while (true)
                 {
@@ -372,9 +424,9 @@ namespace AuroraScript.Runtime.Serialization
 
         private ScriptDatum ReadHashMap()
         {
-            Expect(TypedDataTokenKind.LeftBracket, "Type 'HashMap' requires an array value.");
+            Expect(TypedDocumentTokenKind.LeftBracket, "Type 'HashMap' requires an array value.");
             var result = new ScriptHashMap();
-            if (Match(TypedDataTokenKind.RightBracket))
+            if (Match(TypedDocumentTokenKind.RightBracket))
             {
                 return ScriptDatum.FromObject(result);
             }
@@ -385,7 +437,7 @@ namespace AuroraScript.Runtime.Serialization
                 _path.PushIndex(entryIndex);
                 try
                 {
-                    if (Current().Kind == TypedDataTokenKind.Identifier)
+                    if (Current().Kind == TypedDocumentTokenKind.Identifier)
                     {
                         var pairType = Current();
                         if (!TypeEquals(pairType, "Array"))
@@ -394,7 +446,7 @@ namespace AuroraScript.Runtime.Serialization
                         }
                         Advance();
                     }
-                    Expect(TypedDataTokenKind.LeftBracket, "Each HashMap entry must be a two-element array.");
+                    Expect(TypedDocumentTokenKind.LeftBracket, "Each HashMap entry must be a two-element array.");
 
                     ScriptDatum key;
                     ScriptDatum value;
@@ -407,7 +459,7 @@ namespace AuroraScript.Runtime.Serialization
                     {
                         _path.Pop();
                     }
-                    Expect(TypedDataTokenKind.Comma, "HashMap entries require a key and value.");
+                    Expect(TypedDocumentTokenKind.Comma, "HashMap entries require a key and value.");
                     _path.PushIndex(1);
                     try
                     {
@@ -417,13 +469,13 @@ namespace AuroraScript.Runtime.Serialization
                     {
                         _path.Pop();
                     }
-                    if (Match(TypedDataTokenKind.Comma))
+                    if (Match(TypedDocumentTokenKind.Comma))
                     {
-                        Expect(TypedDataTokenKind.RightBracket, "HashMap entries contain exactly two values.");
+                        Expect(TypedDocumentTokenKind.RightBracket, "HashMap entries contain exactly two values.");
                     }
                     else
                     {
-                        Expect(TypedDataTokenKind.RightBracket, "HashMap entries contain exactly two values.");
+                        Expect(TypedDocumentTokenKind.RightBracket, "HashMap entries contain exactly two values.");
                     }
                     result.Put(key, value);
                 }
@@ -438,33 +490,34 @@ namespace AuroraScript.Runtime.Serialization
             return ScriptDatum.FromObject(result);
         }
 
-        private ScriptDatum ReadPackedArray(TypedDataPackedKind kind)
+        private ScriptDatum ReadPackedArray(TypedDocumentPackedKind kind)
         {
-            Expect(TypedDataTokenKind.LeftBracket, $"Type '{PackedTypeName(kind)}' requires an array value.");
-            var buffer = ArrayPool<ScriptDatum>.Shared.Rent(8);
-            var count = 0;
+            return kind switch
+            {
+                TypedDocumentPackedKind.Int32 => ReadInt32PackedArray(),
+                TypedDocumentPackedKind.Int8 => ReadInt8PackedArray(),
+                TypedDocumentPackedKind.Float64 => ReadFloat64PackedArray(),
+                _ => ReadBooleanPackedArray()
+            };
+        }
+
+        private ScriptDatum ReadInt32PackedArray()
+        {
+            Expect(TypedDocumentTokenKind.LeftBracket, "Type 'Int32Array' requires an array value.");
+            var buffer = new TypedDocumentPooledBuffer<int>(8);
             try
             {
-                if (!Match(TypedDataTokenKind.RightBracket))
+                if (!Match(TypedDocumentTokenKind.RightBracket))
                 {
                     while (true)
                     {
-                        if (count == buffer.Length)
-                        {
-                            var replacement = ArrayPool<ScriptDatum>.Shared.Rent(buffer.Length * 2);
-                            Array.Copy(buffer, replacement, count);
-                            Array.Clear(buffer, 0, count);
-                            ArrayPool<ScriptDatum>.Shared.Return(buffer);
-                            buffer = replacement;
-                        }
-
-                        _path.PushIndex(count);
+                        _path.PushIndex(buffer.Count);
                         try
                         {
                             var location = Current();
                             var value = ReadTypedValue();
-                            ValidatePackedElement(kind, value, location);
-                            buffer[count++] = value;
+                            ValidatePackedElement(TypedDocumentPackedKind.Int32, value, location);
+                            buffer.Add((int)value.Number);
                         }
                         finally
                         {
@@ -474,19 +527,120 @@ namespace AuroraScript.Runtime.Serialization
                     }
                 }
 
-                return CreatePackedArray(kind, buffer, count);
+                return ScriptDatum.FromObject(new ScriptInt32Array(buffer.ToArray()));
             }
             finally
             {
-                Array.Clear(buffer, 0, count);
-                ArrayPool<ScriptDatum>.Shared.Return(buffer);
+                buffer.Dispose();
+            }
+        }
+
+        private ScriptDatum ReadInt8PackedArray()
+        {
+            Expect(TypedDocumentTokenKind.LeftBracket, "Type 'Int8Array' requires an array value.");
+            var buffer = new TypedDocumentPooledBuffer<sbyte>(8);
+            try
+            {
+                if (!Match(TypedDocumentTokenKind.RightBracket))
+                {
+                    while (true)
+                    {
+                        _path.PushIndex(buffer.Count);
+                        try
+                        {
+                            var location = Current();
+                            var value = ReadTypedValue();
+                            ValidatePackedElement(TypedDocumentPackedKind.Int8, value, location);
+                            buffer.Add((sbyte)value.Number);
+                        }
+                        finally
+                        {
+                            _path.Pop();
+                        }
+                        if (ReadArraySeparator()) break;
+                    }
+                }
+
+                return ScriptDatum.FromObject(new ScriptInt8Array(buffer.ToArray()));
+            }
+            finally
+            {
+                buffer.Dispose();
+            }
+        }
+
+        private ScriptDatum ReadFloat64PackedArray()
+        {
+            Expect(TypedDocumentTokenKind.LeftBracket, "Type 'Float64Array' requires an array value.");
+            var buffer = new TypedDocumentPooledBuffer<double>(8);
+            try
+            {
+                if (!Match(TypedDocumentTokenKind.RightBracket))
+                {
+                    while (true)
+                    {
+                        _path.PushIndex(buffer.Count);
+                        try
+                        {
+                            var location = Current();
+                            var value = ReadTypedValue();
+                            ValidatePackedElement(TypedDocumentPackedKind.Float64, value, location);
+                            buffer.Add(value.Number);
+                        }
+                        finally
+                        {
+                            _path.Pop();
+                        }
+                        if (ReadArraySeparator()) break;
+                    }
+                }
+
+                return ScriptDatum.FromObject(new ScriptFloat64Array(buffer.ToArray()));
+            }
+            finally
+            {
+                buffer.Dispose();
+            }
+        }
+
+        private ScriptDatum ReadBooleanPackedArray()
+        {
+            Expect(TypedDocumentTokenKind.LeftBracket, "Type 'BooleanArray' requires an array value.");
+            var buffer = new TypedDocumentPooledBuffer<bool>(8);
+            try
+            {
+                if (!Match(TypedDocumentTokenKind.RightBracket))
+                {
+                    while (true)
+                    {
+                        _path.PushIndex(buffer.Count);
+                        try
+                        {
+                            var location = Current();
+                            var value = ReadTypedValue();
+                            ValidatePackedElement(TypedDocumentPackedKind.Boolean, value, location);
+                            buffer.Add(value.Boolean);
+                        }
+                        finally
+                        {
+                            _path.Pop();
+                        }
+                        if (ReadArraySeparator()) break;
+                    }
+                }
+
+                return ScriptDatum.FromObject(new ScriptBooleanArray(buffer.ToArray()));
+            }
+            finally
+            {
+                buffer.Dispose();
             }
         }
 
         private ScriptDatum ReadRegisteredObject(
             string alias,
             ClrType registration,
-            TypedDataToken typeToken)
+            TypedDocumentToken typeToken)
         {
             var type = registration._descriptor.Type;
             if (!type.IsClass ||
@@ -508,7 +662,7 @@ namespace AuroraScript.Runtime.Serialization
                 throw Error(typeToken, $"Registered type '{alias}' requires a public parameterless constructor.");
             }
 
-            Expect(TypedDataTokenKind.LeftBrace, $"Registered type '{alias}' requires an object value.");
+            Expect(TypedDocumentTokenKind.LeftBrace, $"Registered type '{alias}' requires an object value.");
             object instance;
             try
             {
@@ -519,7 +673,7 @@ namespace AuroraScript.Runtime.Serialization
                 throw Error(typeToken, $"Could not construct registered type '{alias}'.", exception);
             }
 
-            if (!Match(TypedDataTokenKind.RightBrace))
+            if (!Match(TypedDocumentTokenKind.RightBrace))
             {
                 var seenMask = 0UL;
                 ulong[] rentedSeen = null;
@@ -594,7 +748,7 @@ namespace AuroraScript.Runtime.Serialization
         private void AssignRegisteredMember(
             object instance,
             ClrDataMember member,
-            TypedDataMemberHeader header,
+            TypedDocumentMemberHeader header,
             ScriptDatum value)
         {
             var setter = member.Setter;
@@ -618,7 +772,7 @@ namespace AuroraScript.Runtime.Serialization
             }
         }
 
-        private ScriptDatum ReadMemberValue(TypedDataMemberHeader header)
+        private ScriptDatum ReadMemberValue(TypedDocumentMemberHeader header)
         {
             var token = header.HasType ? header.TypeToken : Current();
             EnterValue(token);
@@ -632,75 +786,75 @@ namespace AuroraScript.Runtime.Serialization
             }
         }
 
-        private void EnterValue(TypedDataToken token)
+        private void EnterValue(TypedDocumentToken token)
         {
             if (_depth >= _maxDepth)
             {
-                throw Error(token, $"ATD value depth exceeds the configured limit of {_maxDepth}.");
+                throw Error(token, $"TDoc value depth exceeds the configured limit of {_maxDepth}.");
             }
             _depth++;
         }
 
-        private TypedDataMemberHeader ReadMemberHeader()
+        private TypedDocumentMemberHeader ReadMemberHeader()
         {
-            var readOnly = Match(TypedDataTokenKind.ReadOnly);
+            var readOnly = Match(TypedDocumentTokenKind.ReadOnly);
             var first = Current();
-            if (first.Kind is not (TypedDataTokenKind.Identifier or TypedDataTokenKind.String))
+            if (first.Kind is not (TypedDocumentTokenKind.Identifier or TypedDocumentTokenKind.String))
             {
                 throw Error(first, "Expected a property name.");
             }
             Advance();
 
-            if (first.Kind == TypedDataTokenKind.Identifier &&
-                Current().Kind == TypedDataTokenKind.Identifier)
+            if (first.Kind == TypedDocumentTokenKind.Identifier &&
+                Current().Kind == TypedDocumentTokenKind.Identifier)
             {
                 var nameToken = Current();
                 var name = _scanner.GetIdentifier(nameToken);
                 Advance();
-                return new TypedDataMemberHeader(name, readOnly, true, first, nameToken);
+                return new TypedDocumentMemberHeader(name, readOnly, true, first, nameToken);
             }
-            if (first.Kind == TypedDataTokenKind.Identifier &&
-                Current().Kind == TypedDataTokenKind.String &&
+            if (first.Kind == TypedDocumentTokenKind.Identifier &&
+                Current().Kind == TypedDocumentTokenKind.String &&
                 IsRawValueStart(PeekNextKind()))
             {
                 var nameToken = Current();
                 var name = _scanner.GetString(nameToken);
                 Advance();
-                return new TypedDataMemberHeader(name, readOnly, true, first, nameToken);
+                return new TypedDocumentMemberHeader(name, readOnly, true, first, nameToken);
             }
 
-            var propertyName = first.Kind == TypedDataTokenKind.Identifier
+            var propertyName = first.Kind == TypedDocumentTokenKind.Identifier
                 ? _scanner.GetIdentifier(first)
                 : _scanner.GetString(first);
-            return new TypedDataMemberHeader(propertyName, readOnly, false, default, first);
+            return new TypedDocumentMemberHeader(propertyName, readOnly, false, default, first);
         }
 
         private bool ReadObjectSeparator()
         {
-            if (Match(TypedDataTokenKind.Comma))
+            if (Match(TypedDocumentTokenKind.Comma))
             {
-                return Match(TypedDataTokenKind.RightBrace);
+                return Match(TypedDocumentTokenKind.RightBrace);
             }
-            if (Match(TypedDataTokenKind.RightBrace)) return true;
+            if (Match(TypedDocumentTokenKind.RightBrace)) return true;
             throw Error(Current(), "Expected ',' or '}'.");
         }
 
         private bool ReadArraySeparator()
         {
-            if (Match(TypedDataTokenKind.Comma))
+            if (Match(TypedDocumentTokenKind.Comma))
             {
-                return Match(TypedDataTokenKind.RightBracket);
+                return Match(TypedDocumentTokenKind.RightBracket);
             }
-            if (Match(TypedDataTokenKind.RightBracket)) return true;
+            if (Match(TypedDocumentTokenKind.RightBracket)) return true;
             throw Error(Current(), "Expected ',' or ']'.");
         }
 
         private void ValidatePackedElement(
-            TypedDataPackedKind kind,
+            TypedDocumentPackedKind kind,
             ScriptDatum value,
-            TypedDataToken location)
+            TypedDocumentToken location)
         {
-            if (kind == TypedDataPackedKind.Boolean)
+            if (kind == TypedDocumentPackedKind.Boolean)
             {
                 if (value.Kind != ValueKind.Boolean)
                 {
@@ -712,43 +866,17 @@ namespace AuroraScript.Runtime.Serialization
             {
                 throw Error(location, $"{PackedTypeName(kind)} elements must be finite numbers.");
             }
-            if (kind == TypedDataPackedKind.Float64) return;
+            if (kind == TypedDocumentPackedKind.Float64) return;
             if (Math.Truncate(value.Number) != value.Number)
             {
                 throw Error(location, $"{PackedTypeName(kind)} elements must be integers.");
             }
 
-            var minimum = kind == TypedDataPackedKind.Int8 ? sbyte.MinValue : int.MinValue;
-            var maximum = kind == TypedDataPackedKind.Int8 ? sbyte.MaxValue : int.MaxValue;
+            var minimum = kind == TypedDocumentPackedKind.Int8 ? sbyte.MinValue : int.MinValue;
+            var maximum = kind == TypedDocumentPackedKind.Int8 ? sbyte.MaxValue : int.MaxValue;
             if (value.Number < minimum || value.Number > maximum)
             {
                 throw Error(location, $"Integer value must be in the range {minimum}..{maximum}.");
-            }
-        }
-
-        private static ScriptDatum CreatePackedArray(
-            TypedDataPackedKind kind,
-            ScriptDatum[] values,
-            int count)
-        {
-            switch (kind)
-            {
-                case TypedDataPackedKind.Int32:
-                    var int32 = new ScriptInt32Array(count);
-                    for (var index = 0; index < count; index++) int32.SetElement(index, (int)values[index].Number);
-                    return ScriptDatum.FromObject(int32);
-                case TypedDataPackedKind.Int8:
-                    var int8 = new ScriptInt8Array(count);
-                    for (var index = 0; index < count; index++) int8.SetElement(index, (sbyte)values[index].Number);
-                    return ScriptDatum.FromObject(int8);
-                case TypedDataPackedKind.Float64:
-                    var float64 = new ScriptFloat64Array(count);
-                    for (var index = 0; index < count; index++) float64.SetElement(index, values[index].Number);
-                    return ScriptDatum.FromObject(float64);
-                default:
-                    var boolean = new ScriptBooleanArray(count);
-                    for (var index = 0; index < count; index++) boolean.SetElement(index, values[index].Boolean);
-                    return ScriptDatum.FromObject(boolean);
             }
         }
 
@@ -892,16 +1020,16 @@ namespace AuroraScript.Runtime.Serialization
             }
         }
 
-        private TypedDataToken Current()
+        private TypedDocumentToken Current()
         {
-            if (_current.Kind == TypedDataTokenKind.Bad)
+            if (_current.Kind == TypedDocumentTokenKind.Bad)
             {
                 throw ScanError(_current);
             }
             return _current;
         }
 
-        private TypedDataTokenKind PeekNextKind()
+        private TypedDocumentTokenKind PeekNextKind()
         {
             if (!_hasLookahead)
             {
@@ -926,14 +1054,14 @@ namespace AuroraScript.Runtime.Serialization
             }
         }
 
-        private bool Match(TypedDataTokenKind kind)
+        private bool Match(TypedDocumentTokenKind kind)
         {
             if (Current().Kind != kind) return false;
             Advance();
             return true;
         }
 
-        private TypedDataToken Expect(TypedDataTokenKind kind, string message)
+        private TypedDocumentToken Expect(TypedDocumentTokenKind kind, string message)
         {
             var token = Current();
             if (token.Kind != kind) throw Error(token, message);
@@ -941,34 +1069,34 @@ namespace AuroraScript.Runtime.Serialization
             return token;
         }
 
-        private bool TypeEquals(TypedDataToken token, string typeName)
+        private bool TypeEquals(TypedDocumentToken token, string typeName)
         {
             return _scanner.TextEquals(token, typeName);
         }
 
-        private TypedDataException ScanError(TypedDataToken token)
+        private TypedDocumentException ScanError(TypedDocumentToken token)
         {
             var message = token.Error switch
             {
-                TypedDataScanError.UnexpectedCharacter => $"Unexpected character '{token.ErrorCharacter}'.",
-                TypedDataScanError.DataMarkerNotAllowed => "Independent ATD documents do not use an @data marker.",
-                TypedDataScanError.UnterminatedString => "Unterminated string literal.",
-                TypedDataScanError.UnterminatedComment => "Unterminated block comment.",
-                TypedDataScanError.InvalidEscape => $"Unsupported escape sequence '\\{token.ErrorCharacter}'.",
-                TypedDataScanError.InvalidUnicodeEscape => "Invalid Unicode escape sequence.",
-                TypedDataScanError.InvalidHexEscape => "Invalid hexadecimal escape sequence.",
-                TypedDataScanError.InvalidNumber => "Invalid number.",
-                _ => "Invalid ATD token."
+                TypedDocumentScanError.UnexpectedCharacter => $"Unexpected character '{token.ErrorCharacter}'.",
+                TypedDocumentScanError.DataMarkerNotAllowed => "Independent TDoc documents do not use an @data marker.",
+                TypedDocumentScanError.UnterminatedString => "Unterminated string literal.",
+                TypedDocumentScanError.UnterminatedComment => "Unterminated block comment.",
+                TypedDocumentScanError.InvalidEscape => $"Unsupported escape sequence '\\{token.ErrorCharacter}'.",
+                TypedDocumentScanError.InvalidUnicodeEscape => "Invalid Unicode escape sequence.",
+                TypedDocumentScanError.InvalidHexEscape => "Invalid hexadecimal escape sequence.",
+                TypedDocumentScanError.InvalidNumber => "Invalid number.",
+                _ => "Invalid TDoc token."
             };
             return Error(token, message);
         }
 
-        private TypedDataException Error(
-            TypedDataToken token,
+        private TypedDocumentException Error(
+            TypedDocumentToken token,
             string message,
             Exception innerException = null)
         {
-            return new TypedDataException(
+            return new TypedDocumentException(
                 message,
                 _sourceName,
                 token.Line,
@@ -977,24 +1105,24 @@ namespace AuroraScript.Runtime.Serialization
                 innerException);
         }
 
-        private static bool IsRawValueStart(TypedDataTokenKind kind)
+        private static bool IsRawValueStart(TypedDocumentTokenKind kind)
         {
-            return kind is TypedDataTokenKind.Null or
-                TypedDataTokenKind.True or
-                TypedDataTokenKind.False or
-                TypedDataTokenKind.Number or
-                TypedDataTokenKind.String or
-                TypedDataTokenKind.LeftBracket or
-                TypedDataTokenKind.LeftBrace;
+            return kind is TypedDocumentTokenKind.Null or
+                TypedDocumentTokenKind.True or
+                TypedDocumentTokenKind.False or
+                TypedDocumentTokenKind.Number or
+                TypedDocumentTokenKind.String or
+                TypedDocumentTokenKind.LeftBracket or
+                TypedDocumentTokenKind.LeftBrace;
         }
 
-        private static string PackedTypeName(TypedDataPackedKind kind)
+        private static string PackedTypeName(TypedDocumentPackedKind kind)
         {
             return kind switch
             {
-                TypedDataPackedKind.Int32 => "Int32Array",
-                TypedDataPackedKind.Int8 => "Int8Array",
-                TypedDataPackedKind.Float64 => "Float64Array",
+                TypedDocumentPackedKind.Int32 => "Int32Array",
+                TypedDocumentPackedKind.Int8 => "Int8Array",
+                TypedDocumentPackedKind.Float64 => "Float64Array",
                 _ => "BooleanArray"
             };
         }

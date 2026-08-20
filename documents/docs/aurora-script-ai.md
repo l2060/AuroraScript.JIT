@@ -200,12 +200,13 @@ Constructors and globals:
 
 - `Array`, `String`, `Boolean`, `Object`, `Number`, `Date`
 - `Error`, `HashMap`, `Regex`, `Proxy`, `StringBuffer`, `Path`
-- `console`, `JSON`, `Math`, `HotPatch`
+- `console`, `JSON`, `TDoc`, `Math`, `HotPatch`
 
 Common APIs:
 
 - `console.log(...values)`, `console.error(...values)`, `console.time(label)`, `console.timeEnd(label)`
 - `JSON.parse(text)`, `JSON.stringify(value, indented = false)`
+- `TDoc.parse(text)`, `TDoc.stringify(value, indented = true, emitTypes = false)`；`emitTypes = true` 强制输出所有可用类型名
 - `Math.PI`, `Math.E`, `Math.Tau`, `Math.abs`, `Math.max`, `Math.min`, `Math.random`, `Math.log`, `Math.pow`, `Math.exp`, `Math.cos`, `Math.sin`, `Math.tan`, `Math.acos`, `Math.asin`, `Math.atan`, `Math.floor`, `Math.round`
 - Array: `length`, `push`, `pop`, `sort`, `join`, `slice`, `reverse`, `unshift`, `shift`, `concat`, `find`, `findIndex`, `findLast`, `findLastIndex`, `map`, `filter`, `some`, `every`, `flat`, `reduce`, `indexOf`, `lastIndexOf`, `has`
 - String: `length`, `contains`, `indexOf`, `lastIndexOf`, `startsWith`, `endsWith`, `substring`, `split`, `match`, `matchAll`, `replace`, `padLeft`, `padRight`, `trim`, `trimLeft`, `trimRight`, `slice`, `toString`, `charCodeAt`, `toLowerCase`, `toUpperCase`

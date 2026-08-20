@@ -1217,6 +1217,65 @@
         ]
       }
     },
+    "TDoc": {
+      "kind": "object",
+      "members": {
+        "parse": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "text",
+              "type": "string"
+            }
+          ],
+          "returns": "any",
+          "notes": {
+            "en": [
+              "Parses a TDoc document into an AuroraScript value."
+            ],
+            "zh-CN": [
+              "将 TDoc 类型文档解析为 AuroraScript 值。"
+            ]
+          }
+        },
+        "stringify": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "any"
+            },
+            {
+              "name": "indented",
+              "type": "boolean",
+              "optional": true
+            },
+            {
+              "name": "emitTypes",
+              "type": "boolean",
+              "optional": true
+            }
+          ],
+          "returns": "string",
+          "notes": {
+            "en": [
+              "Serializes a value to a TDoc document. By default, inferable types are omitted; set emitTypes to true to force every available type name. Packed arrays and registered CLR types always retain their type names. Runtime-only values are skipped from object members and become null in array or root positions."
+            ],
+            "zh-CN": [
+              "将值序列化为 TDoc 类型文档。默认省略可推断类型；emitTypes 为 true 时强制输出所有可用类型名。Packed Array 与已注册 CLR 类型始终保留类型名。运行时专用值会从对象成员中跳过，并在数组或根值位置写为 null。"
+            ]
+          }
+        }
+      },
+      "notes": {
+        "en": [
+          "TDoc parsing and serialization API."
+        ],
+        "zh-CN": [
+          "TDoc 类型文档解析与序列化 API。"
+        ]
+      }
+    },
     "Math": {
       "kind": "object",
       "members": {

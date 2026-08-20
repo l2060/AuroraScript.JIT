@@ -4,36 +4,36 @@ using System.Text;
 
 namespace AuroraScript.Runtime.Serialization
 {
-    internal enum TypedDataPathSegmentKind : byte
+    internal enum TypedDocumentPathSegmentKind : byte
     {
         Property,
         Index
     }
 
-    internal struct TypedDataPathSegment
+    internal struct TypedDocumentPathSegment
     {
-        internal TypedDataPathSegmentKind Kind;
+        internal TypedDocumentPathSegmentKind Kind;
         internal string PropertyName;
         internal int Index;
     }
 
-    internal struct TypedDataPath : IDisposable
+    internal struct TypedDocumentPath : IDisposable
     {
-        private TypedDataPathSegment[] _segments;
+        private TypedDocumentPathSegment[] _segments;
         private int _count;
 
-        internal TypedDataPath(int initialCapacity)
+        internal TypedDocumentPath(int initialCapacity)
         {
-            _segments = ArrayPool<TypedDataPathSegment>.Shared.Rent(Math.Max(4, initialCapacity));
+            _segments = ArrayPool<TypedDocumentPathSegment>.Shared.Rent(Math.Max(4, initialCapacity));
             _count = 0;
         }
 
         internal void PushProperty(string propertyName)
         {
             EnsureCapacity();
-            _segments[_count++] = new TypedDataPathSegment
+            _segments[_count++] = new TypedDocumentPathSegment
             {
-                Kind = TypedDataPathSegmentKind.Property,
+                Kind = TypedDocumentPathSegmentKind.Property,
                 PropertyName = propertyName
             };
         }
@@ -41,9 +41,9 @@ namespace AuroraScript.Runtime.Serialization
         internal void PushIndex(int index)
         {
             EnsureCapacity();
-            _segments[_count++] = new TypedDataPathSegment
+            _segments[_count++] = new TypedDocumentPathSegment
             {
-                Kind = TypedDataPathSegmentKind.Index,
+                Kind = TypedDocumentPathSegmentKind.Index,
                 Index = index
             };
         }
@@ -61,7 +61,7 @@ namespace AuroraScript.Runtime.Serialization
             for (var index = 0; index < _count; index++)
             {
                 ref readonly var segment = ref _segments[index];
-                if (segment.Kind == TypedDataPathSegmentKind.Index)
+                if (segment.Kind == TypedDocumentPathSegmentKind.Index)
                 {
                     builder.Append('[').Append(segment.Index).Append(']');
                     continue;
@@ -92,18 +92,18 @@ namespace AuroraScript.Runtime.Serialization
             Array.Clear(segments, 0, _count);
             _segments = null;
             _count = 0;
-            ArrayPool<TypedDataPathSegment>.Shared.Return(segments);
+            ArrayPool<TypedDocumentPathSegment>.Shared.Return(segments);
         }
 
         internal static bool IsIdentifier(string value)
         {
-            if (string.IsNullOrEmpty(value) || !TypedDataScanner.IsIdentifierStart(value[0]))
+            if (string.IsNullOrEmpty(value) || !TypedDocumentScanner.IsIdentifierStart(value[0]))
             {
                 return false;
             }
             for (var index = 1; index < value.Length; index++)
             {
-                if (!TypedDataScanner.IsIdentifierPart(value[index])) return false;
+                if (!TypedDocumentScanner.IsIdentifierPart(value[index])) return false;
             }
             return true;
         }
@@ -111,10 +111,10 @@ namespace AuroraScript.Runtime.Serialization
         private void EnsureCapacity()
         {
             if (_count < _segments.Length) return;
-            var replacement = ArrayPool<TypedDataPathSegment>.Shared.Rent(_segments.Length * 2);
+            var replacement = ArrayPool<TypedDocumentPathSegment>.Shared.Rent(_segments.Length * 2);
             Array.Copy(_segments, replacement, _count);
             Array.Clear(_segments, 0, _count);
-            ArrayPool<TypedDataPathSegment>.Shared.Return(_segments);
+            ArrayPool<TypedDocumentPathSegment>.Shared.Return(_segments);
             _segments = replacement;
         }
     }

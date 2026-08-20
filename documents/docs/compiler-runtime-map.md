@@ -30,7 +30,7 @@ Use this map when changing language behavior.
 - Calls and lightweight frames: `src/Runtime/CallOps.cs`, `src/Runtime/CallFrameOps.cs`
 - Scope and exception boundaries: `src/Runtime/ScopeOps.cs`, `src/Runtime/ExceptionOps.cs`
 - Prototypes: `src/Runtime/Types/Prototypes.cs`
-- Console/JSON/Math/HotPatch: `src/Runtime/Extensions`
+- Console/JSON/TDoc/Math/HotPatch: `src/Runtime/Extensions`
 
 ## Tests To Update
 

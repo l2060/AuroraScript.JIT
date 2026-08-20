@@ -8,7 +8,7 @@ using System.Text;
 
 namespace AuroraScript.Runtime.Serialization
 {
-    internal ref struct TypedDataWriter
+    internal ref struct TypedDocumentWriter
     {
         private const int MaxRetainedCapacity = 1024 * 1024;
         private const int MaxRetainedVisitedCount = 4096;
@@ -23,29 +23,37 @@ namespace AuroraScript.Runtime.Serialization
         private readonly AuroraEngine _engine;
         private readonly string _sourceName;
         private readonly bool _indented;
+        private readonly bool _emitTypeNames;
         private readonly int _maxDepth;
         private StringBuilder _builder;
         private HashSet<object> _visited;
-        private TypedDataPath _path;
+        private TypedDocumentPath _path;
         private int _depth;
         private int _valueDepth;
 
-        internal TypedDataWriter(AuroraEngine engine, TypedDataOptions options)
+        internal TypedDocumentWriter(AuroraEngine engine, TypedDocumentOptions options, string sourceName)
         {
             _engine = engine;
-            _sourceName = string.IsNullOrWhiteSpace(options.SourceName) ? "<atd>" : options.SourceName;
+            _sourceName = string.IsNullOrWhiteSpace(sourceName) ? "<tdoc>" : sourceName;
             _indented = options.Indented;
+            _emitTypeNames = options.EmitTypeNames;
             _maxDepth = options.MaxDepth;
             _builder = RentBuilder();
             _visited = RentVisited();
-            _path = new TypedDataPath(16);
+            _path = new TypedDocumentPath(16);
             _depth = 0;
             _valueDepth = 0;
         }
 
         internal string Write(ScriptDatum value)
         {
-            WriteTypedValue(value);
+            if (!TryWriteTypedValue(value))
+            {
+                // A root value has no surrounding member to omit. Keep the document
+                // valid and make the loss explicit as null instead of failing a
+                // snapshot merely because it contains a runtime-only value.
+                _builder.Append("null");
+            }
             return _builder.ToString();
         }
 
@@ -58,9 +66,9 @@ namespace AuroraScript.Runtime.Serialization
             if (visited != null)
             {
                 var visitedCount = visited.Count;
-                visited.Clear();
                 if (visitedCount <= MaxRetainedVisitedCount && s_cachedVisited == null)
                 {
+                    visited.Clear();
                     s_cachedVisited = visited;
                 }
             }
@@ -75,12 +83,12 @@ namespace AuroraScript.Runtime.Serialization
             }
         }
 
-        private void WriteTypedValue(ScriptDatum value)
+        private bool TryWriteTypedValue(ScriptDatum value)
         {
             EnterValue();
             try
             {
-                WriteTypedValueCore(value);
+                return TryWriteTypedValueCore(value);
             }
             finally
             {
@@ -88,35 +96,42 @@ namespace AuroraScript.Runtime.Serialization
             }
         }
 
-        private void WriteTypedValueCore(ScriptDatum value)
+        private bool TryWriteTypedValueCore(ScriptDatum value)
         {
-            var typeName = ResolveTypeName(value, out var clrRegistration);
-            if (typeName == null)
+            if (!TryResolveTypeName(value, out var typeName, out var clrRegistration) ||
+                !TryTrackReference(value))
             {
-                _builder.Append("null");
-                return;
+                return false;
             }
 
-            _builder.Append(typeName).Append(' ');
+            if (typeName != null && ShouldWriteTypeName(typeName)) _builder.Append(typeName).Append(' ');
             WriteRawValue(value, clrRegistration);
+            return true;
         }
 
-        private void WriteMember(string name, ScriptDatum value, bool writable)
+        private bool TryWriteMember(string name, ScriptDatum value, bool writable, bool writeLeadingLine = false)
         {
-            WriteIndent();
             _path.PushProperty(name);
             try
             {
                 EnterValue();
                 try
                 {
+                    if (!TryResolveTypeName(value, out var typeName, out var clrRegistration) ||
+                        !TryTrackReference(value))
+                    {
+                        return false;
+                    }
+
+                    if (writeLeadingLine) WriteNewLine();
+                    WriteIndent();
                     if (!writable) _builder.Append("readonly ");
-                    var typeName = ResolveTypeName(value, out var clrRegistration);
-                    if (typeName != null) _builder.Append(typeName).Append(' ');
+                    if (typeName != null && ShouldWriteTypeName(typeName)) _builder.Append(typeName).Append(' ');
                     WritePropertyName(name);
                     _builder.Append(' ');
-                    if (typeName == null) _builder.Append("null");
-                    else WriteRawValue(value, clrRegistration);
+                    WriteRawValue(value, clrRegistration);
+                    WriteItemEnd();
+                    return true;
                 }
                 finally
                 {
@@ -127,7 +142,6 @@ namespace AuroraScript.Runtime.Serialization
             {
                 _path.Pop();
             }
-            WriteItemEnd();
         }
 
         private void WriteRawValue(ScriptDatum value, ClrType clrRegistration)
@@ -154,10 +168,6 @@ namespace AuroraScript.Runtime.Serialization
                 throw Error("Object-backed datum has no value.");
             }
 
-            if (scriptObject is not (ScriptDate or ScriptRegex))
-            {
-                TrackReference(scriptObject is ClrInstanceObject clr ? clr.Instance : scriptObject);
-            }
             switch (scriptObject)
             {
                 case ScriptArray array:
@@ -199,40 +209,69 @@ namespace AuroraScript.Runtime.Serialization
                         WriteObject(scriptObject);
                         return;
                     }
-                    throw Error($"Runtime value '{scriptObject.GetType().FullName}' is not supported by ATD.");
+                    throw Error($"Runtime value '{scriptObject.GetType().FullName}' is not supported by TDoc.");
             }
         }
 
         private void WriteObject(ScriptObject value)
         {
-            var properties = value.OwnProperties;
-            var count = 0;
-            for (var index = 0; index < properties.Length; index++)
+            if (value.HasEnumerablePrototypeProperties())
             {
-                if (properties[index].Meta.Enumerable) count++;
+                WriteObjectWithEnumerablePrototypeProperties(value);
+                return;
             }
 
-            BeginComposite('{', count);
+            var properties = value.OwnProperties;
+            _builder.Append('{');
+            _depth++;
+            var writtenCount = 0;
             for (var index = 0; index < properties.Length; index++)
             {
                 ref readonly var metadata = ref properties[index];
                 if (!metadata.Meta.Enumerable) continue;
                 var property = value.GetOwnProperty(metadata.Meta.Slot);
-                if (property.IsAccessor)
+                if (property.IsAccessor) continue;
+                if (TryWriteMember(metadata.Name, property.Datum, metadata.Meta.Writable, writtenCount == 0))
                 {
-                    _path.PushProperty(metadata.Name);
-                    try
+                    writtenCount++;
+                }
+            }
+            _depth--;
+            if (writtenCount != 0) WriteIndent();
+            _builder.Append('}');
+        }
+
+        private void WriteObjectWithEnumerablePrototypeProperties(ScriptObject value)
+        {
+            // This fallback is only used for objects that expose enumerable properties
+            // through a prototype. It matches script enumeration semantics by taking
+            // the closest property for each name, then materializes the visible shape
+            // as ordinary TDoc object members.
+            var seenNames = new HashSet<string>(StringComparer.Ordinal);
+            _builder.Append('{');
+            _depth++;
+            var writtenCount = 0;
+            for (var current = value; current != null; current = current.Prototype)
+            {
+                if (current.Immutable) continue;
+
+                var properties = current.OwnProperties;
+                for (var index = 0; index < properties.Length; index++)
+                {
+                    ref readonly var metadata = ref properties[index];
+                    if (!metadata.Meta.Enumerable || !seenNames.Add(metadata.Name)) continue;
+
+                    var property = current.GetOwnProperty(metadata.Meta.Slot);
+                    if (property.IsAccessor) continue;
+                    if (TryWriteMember(metadata.Name, property.Datum, metadata.Meta.Writable, writtenCount == 0))
                     {
-                        throw Error("Accessor properties cannot be serialized as ATD data.");
-                    }
-                    finally
-                    {
-                        _path.Pop();
+                        writtenCount++;
                     }
                 }
-                WriteMember(metadata.Name, property.Datum, metadata.Meta.Writable);
             }
-            EndComposite('}', count);
+            _depth--;
+            if (writtenCount != 0) WriteIndent();
+            _builder.Append('}');
         }
 
         private void WriteArray(ScriptArray value)
@@ -244,7 +283,7 @@ namespace AuroraScript.Runtime.Serialization
                 _path.PushIndex(index);
                 try
                 {
-                    WriteTypedValue(value.GetElement(index));
+                    if (!TryWriteTypedValue(value.GetElement(index))) _builder.Append("null");
                 }
                 finally
                 {
@@ -317,8 +356,8 @@ namespace AuroraScript.Runtime.Serialization
         private void WriteRegex(ScriptRegex value)
         {
             BeginComposite('{', 2);
-            WriteMember("pattern", ScriptDatum.FromString(value.Pattern), writable: true);
-            WriteMember("flags", ScriptDatum.FromString(value.Flags), writable: true);
+            _ = TryWriteMember("pattern", ScriptDatum.FromString(value.Pattern), writable: true);
+            _ = TryWriteMember("flags", ScriptDatum.FromString(value.Flags), writable: true);
             EndComposite('}', 2);
         }
 
@@ -330,7 +369,7 @@ namespace AuroraScript.Runtime.Serialization
             foreach (var entry in value.Entries)
             {
                 WriteIndent();
-                _builder.Append("Array ");
+                if (ShouldWriteTypeName("Array")) _builder.Append("Array ");
                 BeginComposite('[', 2);
 
                 _path.PushIndex(entryIndex);
@@ -340,7 +379,7 @@ namespace AuroraScript.Runtime.Serialization
                     try
                     {
                         WriteIndent();
-                        WriteTypedValue(entry.Key);
+                        if (!TryWriteTypedValue(entry.Key)) _builder.Append("null");
                         WriteItemEnd();
                     }
                     finally
@@ -352,7 +391,7 @@ namespace AuroraScript.Runtime.Serialization
                     try
                     {
                         WriteIndent();
-                        WriteTypedValue(entry.Value);
+                        if (!TryWriteTypedValue(entry.Value)) _builder.Append("null");
                         WriteItemEnd();
                     }
                     finally
@@ -389,7 +428,9 @@ namespace AuroraScript.Runtime.Serialization
             {
                 throw Error("The registered CLR object requires a public parameterless constructor.");
             }
-            BeginComposite('{', members.Length);
+            _builder.Append('{');
+            _depth++;
+            var writtenCount = 0;
             foreach (var member in members)
             {
                 ScriptDatum memberValue;
@@ -402,37 +443,36 @@ namespace AuroraScript.Runtime.Serialization
                         var getter = member.Getter;
                         if (getter == null)
                         {
-                            throw Error($"CLR member '{member.Name}' is not readable.");
+                            continue;
                         }
                         clrValue = getter(value.Instance);
                     }
-                    catch (TypedDataException)
+                    catch (Exception)
                     {
-                        throw;
-                    }
-                    catch (Exception exception)
-                    {
-                        throw Error($"CLR member '{member.Name}' could not be read.", exception);
+                        continue;
                     }
 
                     try
                     {
                         memberValue = ConvertClrMemberValue(clrValue);
                     }
-                    catch (Exception exception)
+                    catch (Exception)
                     {
-                        throw Error(
-                            $"CLR member '{member.Name}' is not supported by the ATD contract.",
-                            exception);
+                        continue;
                     }
                 }
                 finally
                 {
                     _path.Pop();
                 }
-                WriteMember(member.Name, memberValue, writable: true);
+                if (TryWriteMember(member.Name, memberValue, writable: true, writtenCount == 0))
+                {
+                    writtenCount++;
+                }
             }
-            EndComposite('}', members.Length);
+            _depth--;
+            if (writtenCount != 0) WriteIndent();
+            _builder.Append('}');
         }
 
         private ScriptDatum ConvertClrMemberValue(object value)
@@ -452,7 +492,7 @@ namespace AuroraScript.Runtime.Serialization
                 var number = (double)integer;
                 if (number >= 9223372036854775808d || (long)number != integer)
                 {
-                    throw Error("CLR integer value cannot be represented exactly as an ATD Number.");
+                    throw Error("CLR integer value cannot be represented exactly as a TDoc Number.");
                 }
                 return ScriptDatum.FromNumber(number);
             }
@@ -462,7 +502,7 @@ namespace AuroraScript.Runtime.Serialization
                 var number = (double)integer;
                 if (number >= 18446744073709551616d || (ulong)number != integer)
                 {
-                    throw Error("CLR integer value cannot be represented exactly as an ATD Number.");
+                    throw Error("CLR integer value cannot be represented exactly as a TDoc Number.");
                 }
                 return ScriptDatum.FromNumber(number);
             }
@@ -472,57 +512,95 @@ namespace AuroraScript.Runtime.Serialization
                 var number = (double)decimalValue;
                 if (!double.IsFinite(number) || (decimal)number != decimalValue)
                 {
-                    throw Error("CLR decimal value cannot be represented exactly as an ATD Number.");
+                    throw Error("CLR decimal value cannot be represented exactly as a TDoc Number.");
                 }
                 return ScriptDatum.FromNumber(number);
             }
             return ClrMarshaller.ToDatum(value);
         }
 
-        private string ResolveTypeName(ScriptDatum value, out ClrType clrRegistration)
+        private bool TryResolveTypeName(ScriptDatum value, out string typeName, out ClrType clrRegistration)
         {
+            typeName = null;
             clrRegistration = null;
             switch (value.Kind)
             {
-                case ValueKind.Null: return null;
-                case ValueKind.Boolean: return "Boolean";
+                case ValueKind.Null: return true;
+                case ValueKind.Boolean:
+                    typeName = "Boolean";
+                    return true;
                 case ValueKind.Number:
                     if (!double.IsFinite(value.Number))
                     {
-                        throw Error("ATD cannot serialize NaN or infinity.");
+                        return false;
                     }
-                    return "Number";
-                case ValueKind.String: return "String";
+                    typeName = "Number";
+                    return true;
+                case ValueKind.String:
+                    typeName = "String";
+                    return true;
                 case ValueKind.Array:
-                    if (value.Object is ScriptArray) return "Array";
+                    if (value.Object is ScriptArray)
+                    {
+                        typeName = "Array";
+                        return true;
+                    }
                     break;
                 case ValueKind.Date:
-                    if (value.Object is ScriptDate) return "Date";
+                    if (value.Object is ScriptDate)
+                    {
+                        typeName = "Date";
+                        return true;
+                    }
                     break;
                 case ValueKind.Regex:
-                    if (value.Object is ScriptRegex) return "Regex";
+                    if (value.Object is ScriptRegex)
+                    {
+                        typeName = "Regex";
+                        return true;
+                    }
                     break;
                 case ValueKind.Function:
                 case ValueKind.Type:
                 case ValueKind.ClrFunction:
                 case ValueKind.ClrBonding:
                 case ValueKind.Error:
-                    throw Error($"ATD does not support values of kind '{value.Kind}'.");
+                    return false;
             }
 
             var scriptObject = value.Object;
             switch (scriptObject)
             {
-                case ScriptInt32Array: return "Int32Array";
-                case ScriptInt8Array: return "Int8Array";
-                case ScriptFloat64Array: return "Float64Array";
-                case ScriptBooleanArray: return "BooleanArray";
-                case ScriptArray: return "Array";
-                case ScriptDate: return "Date";
-                case ScriptRegex: return "Regex";
-                case StringBuffer: return "StringBuffer";
-                case ScriptPathValue: return "Path";
-                case ScriptHashMap: return "HashMap";
+                case ScriptInt32Array:
+                    typeName = "Int32Array";
+                    return true;
+                case ScriptInt8Array:
+                    typeName = "Int8Array";
+                    return true;
+                case ScriptFloat64Array:
+                    typeName = "Float64Array";
+                    return true;
+                case ScriptBooleanArray:
+                    typeName = "BooleanArray";
+                    return true;
+                case ScriptArray:
+                    typeName = "Array";
+                    return true;
+                case ScriptDate:
+                    typeName = "Date";
+                    return true;
+                case ScriptRegex:
+                    typeName = "Regex";
+                    return true;
+                case StringBuffer:
+                    typeName = "StringBuffer";
+                    return true;
+                case ScriptPathValue:
+                    typeName = "Path";
+                    return true;
+                case ScriptHashMap:
+                    typeName = "HashMap";
+                    return true;
                 case ClrInstanceObject clrInstance:
                     var actualType = clrInstance.Instance?.GetType();
                     if (actualType == null ||
@@ -533,29 +611,37 @@ namespace AuroraScript.Runtime.Serialization
                         typeof(Delegate).IsAssignableFrom(actualType) ||
                         !_engine.ClrRegistry.TryGetClrType(actualType, out var alias, out clrRegistration))
                     {
-                        throw Error(
-                            $"CLR object type '{actualType?.FullName ?? "<null>"}' was not registered by the host.");
+                        return false;
                     }
-                    if (!IsUsableTypeAlias(alias))
+                    if (!IsUsableTypeAlias(alias) ||
+                        (clrRegistration._access & TypeAccess.Constructor) == 0 ||
+                        clrRegistration._descriptor.DataContract.Factory == null)
                     {
-                        throw Error($"Host alias '{alias}' cannot be represented as an ATD type name.");
+                        return false;
                     }
-                    return alias;
+                    typeName = alias;
+                    return true;
                 case ScriptObject when scriptObject.GetType() == typeof(ScriptObject):
-                    return "Object";
+                    typeName = "Object";
+                    return true;
                 default:
-                    throw Error(
-                        $"Runtime value '{scriptObject?.GetType().FullName ?? value.Kind.ToString()}' is not supported by ATD.");
+                    return false;
             }
         }
 
-        private void TrackReference(object value)
+        private bool TryTrackReference(ScriptDatum value)
         {
-            if (value == null) throw Error("ATD cannot serialize a null object reference.");
-            if (!_visited.Add(value))
+            if (value.Kind is ValueKind.Null or ValueKind.Boolean or ValueKind.Number or ValueKind.String)
             {
-                throw Error("ATD does not support circular or shared object references.");
+                return true;
             }
+
+            var scriptObject = value.Object;
+            if (scriptObject == null) return false;
+            if (scriptObject is ScriptDate or ScriptRegex) return true;
+
+            var identity = scriptObject is ClrInstanceObject clr ? clr.Instance : scriptObject;
+            return identity != null && _visited.Add(identity);
         }
 
         private void BeginComposite(char opening, int count)
@@ -595,7 +681,7 @@ namespace AuroraScript.Runtime.Serialization
 
         private void WritePropertyName(string value)
         {
-            if (TypedDataPath.IsIdentifier(value) &&
+            if (TypedDocumentPath.IsIdentifier(value) &&
                 value is not ("null" or "true" or "false" or "readonly") &&
                 !IsBuiltInTypeName(value) &&
                 !_engine.ClrRegistry.ContainsAlias(value))
@@ -671,7 +757,7 @@ namespace AuroraScript.Runtime.Serialization
 
         private void WriteNumber(double value)
         {
-            if (!double.IsFinite(value)) throw Error("ATD cannot serialize NaN or infinity.");
+            if (!double.IsFinite(value)) throw Error("TDoc cannot serialize NaN or infinity.");
             Span<char> buffer = stackalloc char[32];
             if (value.TryFormat(buffer, out var written, "R", CultureInfo.InvariantCulture))
             {
@@ -681,9 +767,14 @@ namespace AuroraScript.Runtime.Serialization
             _builder.Append(value.ToString("R", CultureInfo.InvariantCulture));
         }
 
-        private TypedDataException Error(string message, Exception innerException = null)
+        private bool ShouldWriteTypeName(string typeName)
         {
-            return new TypedDataException(
+            return _emitTypeNames || typeName is not ("Boolean" or "Number" or "String" or "Object" or "Array");
+        }
+
+        private TypedDocumentException Error(string message, Exception innerException = null)
+        {
+            return new TypedDocumentException(
                 message,
                 _sourceName,
                 0,
@@ -696,7 +787,7 @@ namespace AuroraScript.Runtime.Serialization
         {
             if (_valueDepth >= _maxDepth)
             {
-                throw Error($"ATD value depth exceeds the configured limit of {_maxDepth}.");
+                throw Error($"TDoc value depth exceeds the configured limit of {_maxDepth}.");
             }
             _valueDepth++;
         }
@@ -710,7 +801,7 @@ namespace AuroraScript.Runtime.Serialization
 
         private static bool IsUsableTypeAlias(string value)
         {
-            return TypedDataPath.IsIdentifier(value) &&
+            return TypedDocumentPath.IsIdentifier(value) &&
                 value is not ("null" or "true" or "false" or "readonly") &&
                 !IsBuiltInTypeName(value);
         }

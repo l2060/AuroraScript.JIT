@@ -1809,6 +1809,113 @@
         "Most host code should expose CLR types through AuroraEngine.RegisterType instead of subclassing ScriptType."
       ]
     },
+    "AuroraTypedDocument": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Serialization",
+      "summary": "Engine-bound TDoc helper for serializing script values as text, files, and streams.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "signature": "AuroraTypedDocument(AuroraEngine engine, TypedDocumentOptions options = null)"
+        },
+        "Engine": {
+          "kind": "property",
+          "signature": "AuroraEngine Engine"
+        },
+        "Options": {
+          "kind": "property",
+          "signature": "TypedDocumentOptions Options"
+        },
+        "Serialize": {
+          "kind": "method",
+          "signature": "string Serialize(ScriptDatum value, TypedDocumentOptions options = null)"
+        },
+        "Deserialize": {
+          "kind": "method",
+          "signature": "ScriptDatum Deserialize(string text, TypedDocumentOptions options = null)"
+        },
+        "WriteFile": {
+          "kind": "method",
+          "signature": "void WriteFile(string path, ScriptDatum value, TypedDocumentOptions options = null, Encoding encoding = null)"
+        },
+        "ReadFile": {
+          "kind": "method",
+          "signature": "ScriptDatum ReadFile(string path, TypedDocumentOptions options = null, Encoding encoding = null)"
+        },
+        "WriteStream": {
+          "kind": "method",
+          "signature": "void WriteStream(Stream stream, ScriptDatum value, TypedDocumentOptions options = null, Encoding encoding = null, bool leaveOpen = true)"
+        },
+        "ReadStream": {
+          "kind": "method",
+          "signature": "ScriptDatum ReadStream(Stream stream, TypedDocumentOptions options = null, Encoding encoding = null, bool leaveOpen = true)"
+        }
+      },
+      "notes": [
+        "File and stream helpers use UTF-8 without a BOM by default. Stream helpers leave caller-owned streams open by default."
+      ]
+    },
+    "TypedDocumentOptions": {
+      "kind": "record",
+      "namespace": "AuroraScript.Runtime.Serialization",
+      "summary": "Controls TDoc formatting, type-name emission, and maximum depth.",
+      "members": {
+        "Default": {
+          "kind": "field",
+          "signature": "static readonly TypedDocumentOptions Default"
+        },
+        "Indented": {
+          "kind": "property",
+          "signature": "bool Indented"
+        },
+        "EmitTypeNames": {
+          "kind": "property",
+          "signature": "bool EmitTypeNames"
+        },
+        "MaxDepth": {
+          "kind": "property",
+          "signature": "int MaxDepth"
+        }
+      }
+    },
+    "TypedDocumentSerializer": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Serialization",
+      "summary": "Static TDoc text serializer and deserializer for one AuroraScript value; unrepresentable runtime values are skipped during serialization.",
+      "members": {
+        "Serialize": {
+          "kind": "method",
+          "signature": "static string Serialize(AuroraEngine engine, ScriptDatum value, TypedDocumentOptions options = null)"
+        },
+        "Deserialize": {
+          "kind": "method",
+          "signature": "static ScriptDatum Deserialize(AuroraEngine engine, string text, TypedDocumentOptions options = null)"
+        }
+      }
+    },
+    "TypedDocumentException": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Serialization",
+      "summary": "TDoc syntax, binding, range, and non-recoverable writing-configuration exception with source and data-path context.",
+      "members": {
+        "SourceName": {
+          "kind": "property",
+          "signature": "string SourceName"
+        },
+        "Line": {
+          "kind": "property",
+          "signature": "int Line"
+        },
+        "Column": {
+          "kind": "property",
+          "signature": "int Column"
+        },
+        "DataPath": {
+          "kind": "property",
+          "signature": "string DataPath"
+        }
+      }
+    },
     "ScriptJsonSerializer": {
       "kind": "class",
       "namespace": "AuroraScript.Runtime.Serialization",

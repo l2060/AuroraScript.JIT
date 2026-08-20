@@ -3,9 +3,9 @@ using System;
 namespace AuroraScript.Runtime.Serialization
 {
     /// <summary>
-    /// Represents an ATD syntax, binding, or serialization error.
+    /// Represents a TDoc syntax, binding, or serialization error.
     /// </summary>
-    public sealed class TypedDataException : AuroraException
+    public sealed class TypedDocumentException : AuroraException
     {
         /// <summary>Gets the source name associated with the error.</summary>
         public string SourceName { get; }
@@ -19,7 +19,7 @@ namespace AuroraScript.Runtime.Serialization
         /// <summary>Gets the data path associated with the error.</summary>
         public string DataPath { get; }
 
-        internal TypedDataException(
+        internal TypedDocumentException(
             string message,
             string sourceName,
             int line,
@@ -28,7 +28,7 @@ namespace AuroraScript.Runtime.Serialization
             Exception innerException = null)
             : base(FormatMessage(message, sourceName, line, column, dataPath), innerException)
         {
-            SourceName = string.IsNullOrWhiteSpace(sourceName) ? "<atd>" : sourceName;
+            SourceName = string.IsNullOrWhiteSpace(sourceName) ? "<tdoc>" : sourceName;
             Line = line;
             Column = column;
             DataPath = string.IsNullOrEmpty(dataPath) ? "$" : dataPath;
@@ -41,7 +41,7 @@ namespace AuroraScript.Runtime.Serialization
             int column,
             string dataPath)
         {
-            sourceName = string.IsNullOrWhiteSpace(sourceName) ? "<atd>" : sourceName;
+            sourceName = string.IsNullOrWhiteSpace(sourceName) ? "<tdoc>" : sourceName;
             dataPath = string.IsNullOrEmpty(dataPath) ? "$" : dataPath;
             return line > 0
                 ? $"{sourceName}({line},{column}) {dataPath}: {message}"

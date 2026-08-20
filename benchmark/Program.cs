@@ -25,7 +25,7 @@ namespace AuroraBenchmark
                 return;
             }
 
-            BenchmarkSwitcher.FromTypes(new[] { typeof(RuntimeBenchmarks), typeof(CompilerPipelineBenchmarks) }).Run(args);
+            BenchmarkSwitcher.FromTypes(new[] { typeof(RuntimeBenchmarks), typeof(CompilerPipelineBenchmarks), typeof(TypedDocumentBenchmarks) }).Run(args);
         }
 
         private static async Task SmokeTest()

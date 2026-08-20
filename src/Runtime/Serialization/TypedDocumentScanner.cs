@@ -4,7 +4,7 @@ using System.Globalization;
 
 namespace AuroraScript.Runtime.Serialization
 {
-    internal enum TypedDataTokenKind : byte
+    internal enum TypedDocumentTokenKind : byte
     {
         EndOfFile,
         Bad,
@@ -22,7 +22,7 @@ namespace AuroraScript.Runtime.Serialization
         Comma
     }
 
-    internal enum TypedDataScanError : byte
+    internal enum TypedDocumentScanError : byte
     {
         None,
         UnexpectedCharacter,
@@ -35,10 +35,10 @@ namespace AuroraScript.Runtime.Serialization
         InvalidNumber
     }
 
-    internal readonly struct TypedDataToken
+    internal readonly struct TypedDocumentToken
     {
-        internal TypedDataToken(
-            TypedDataTokenKind kind,
+        internal TypedDocumentToken(
+            TypedDocumentTokenKind kind,
             int start,
             int length,
             int line,
@@ -46,7 +46,7 @@ namespace AuroraScript.Runtime.Serialization
             double number = 0,
             int decodedLength = 0,
             bool hasEscapes = false,
-            TypedDataScanError error = TypedDataScanError.None,
+            TypedDocumentScanError error = TypedDocumentScanError.None,
             char errorCharacter = '\0')
         {
             Kind = kind;
@@ -61,7 +61,7 @@ namespace AuroraScript.Runtime.Serialization
             ErrorCharacter = errorCharacter;
         }
 
-        internal TypedDataTokenKind Kind { get; }
+        internal TypedDocumentTokenKind Kind { get; }
         internal int Start { get; }
         internal int Length { get; }
         internal int Line { get; }
@@ -69,18 +69,18 @@ namespace AuroraScript.Runtime.Serialization
         internal double Number { get; }
         internal int DecodedLength { get; }
         internal bool HasEscapes { get; }
-        internal TypedDataScanError Error { get; }
+        internal TypedDocumentScanError Error { get; }
         internal char ErrorCharacter { get; }
     }
 
-    internal struct TypedDataScanner
+    internal struct TypedDocumentScanner
     {
         private readonly string _source;
         private int _position;
         private int _line;
         private int _column;
 
-        internal TypedDataScanner(string source)
+        internal TypedDocumentScanner(string source)
         {
             _source = source ?? string.Empty;
             _position = 0;
@@ -88,7 +88,7 @@ namespace AuroraScript.Runtime.Serialization
             _column = 1;
         }
 
-        internal TypedDataToken Read()
+        internal TypedDocumentToken Read()
         {
             if (!SkipTrivia(out var triviaError))
             {
@@ -96,7 +96,7 @@ namespace AuroraScript.Runtime.Serialization
             }
             if (AtEnd)
             {
-                return Token(TypedDataTokenKind.EndOfFile, _position, 0, _line, _column);
+                return Token(TypedDocumentTokenKind.EndOfFile, _position, 0, _line, _column);
             }
 
             var start = _position;
@@ -105,37 +105,37 @@ namespace AuroraScript.Runtime.Serialization
             var current = Peek();
             switch (current)
             {
-                case '[': Advance(); return Token(TypedDataTokenKind.LeftBracket, start, 1, line, column);
-                case ']': Advance(); return Token(TypedDataTokenKind.RightBracket, start, 1, line, column);
-                case '{': Advance(); return Token(TypedDataTokenKind.LeftBrace, start, 1, line, column);
-                case '}': Advance(); return Token(TypedDataTokenKind.RightBrace, start, 1, line, column);
-                case ',': Advance(); return Token(TypedDataTokenKind.Comma, start, 1, line, column);
+                case '[': Advance(); return Token(TypedDocumentTokenKind.LeftBracket, start, 1, line, column);
+                case ']': Advance(); return Token(TypedDocumentTokenKind.RightBracket, start, 1, line, column);
+                case '{': Advance(); return Token(TypedDocumentTokenKind.LeftBrace, start, 1, line, column);
+                case '}': Advance(); return Token(TypedDocumentTokenKind.RightBrace, start, 1, line, column);
+                case ',': Advance(); return Token(TypedDocumentTokenKind.Comma, start, 1, line, column);
                 case '\'':
                 case '"':
                     return ScanString();
                 case '@':
                     Advance();
-                    return Bad(TypedDataScanError.DataMarkerNotAllowed, start, 1, line, column, current);
+                    return Bad(TypedDocumentScanError.DataMarkerNotAllowed, start, 1, line, column, current);
             }
 
             if (IsNumberStart(current)) return ScanNumber();
             if (IsIdentifierStart(current)) return ScanIdentifier();
 
             Advance();
-            return Bad(TypedDataScanError.UnexpectedCharacter, start, 1, line, column, current);
+            return Bad(TypedDocumentScanError.UnexpectedCharacter, start, 1, line, column, current);
         }
 
-        internal bool TextEquals(in TypedDataToken token, string value)
+        internal bool TextEquals(in TypedDocumentToken token, string value)
         {
             return _source.AsSpan(token.Start, token.Length).SequenceEqual(value);
         }
 
-        internal string GetIdentifier(in TypedDataToken token)
+        internal string GetIdentifier(in TypedDocumentToken token)
         {
             return new string(_source.AsSpan(token.Start, token.Length));
         }
 
-        internal string GetString(in TypedDataToken token)
+        internal string GetString(in TypedDocumentToken token)
         {
             if (!token.HasEscapes)
             {
@@ -148,7 +148,7 @@ namespace AuroraScript.Runtime.Serialization
                 static (destination, state) => DecodeString(destination, state.Source, state.Start, state.Length));
         }
 
-        internal bool TryGetInt64Exact(in TypedDataToken token, out long value)
+        internal bool TryGetInt64Exact(in TypedDocumentToken token, out long value)
         {
             var source = _source.AsSpan(token.Start, token.Length);
             if (source.IndexOf('_') < 0)
@@ -180,6 +180,12 @@ namespace AuroraScript.Runtime.Serialization
             while (sourceIndex < input.Length)
             {
                 var current = input[sourceIndex++];
+                if (current == '\r')
+                {
+                    if (sourceIndex < input.Length && input[sourceIndex] == '\n') sourceIndex++;
+                    destination[destinationIndex++] = '\n';
+                    continue;
+                }
                 if (current != '\\')
                 {
                     destination[destinationIndex++] = current;
@@ -286,7 +292,7 @@ namespace AuroraScript.Runtime.Serialization
             return false;
         }
 
-        private bool SkipTrivia(out TypedDataToken error)
+        private bool SkipTrivia(out TypedDocumentToken error)
         {
             error = default;
             while (!AtEnd)
@@ -319,7 +325,7 @@ namespace AuroraScript.Runtime.Serialization
                 if (AtEnd)
                 {
                     error = Bad(
-                        TypedDataScanError.UnterminatedComment,
+                        TypedDocumentScanError.UnterminatedComment,
                         start,
                         _position - start,
                         line,
@@ -332,7 +338,7 @@ namespace AuroraScript.Runtime.Serialization
             return true;
         }
 
-        private TypedDataToken ScanIdentifier()
+        private TypedDocumentToken ScanIdentifier()
         {
             var start = _position;
             var line = _line;
@@ -342,16 +348,16 @@ namespace AuroraScript.Runtime.Serialization
             var length = _position - start;
             var kind = length switch
             {
-                4 when _source.AsSpan(start, length).SequenceEqual("null") => TypedDataTokenKind.Null,
-                4 when _source.AsSpan(start, length).SequenceEqual("true") => TypedDataTokenKind.True,
-                5 when _source.AsSpan(start, length).SequenceEqual("false") => TypedDataTokenKind.False,
-                8 when _source.AsSpan(start, length).SequenceEqual("readonly") => TypedDataTokenKind.ReadOnly,
-                _ => TypedDataTokenKind.Identifier
+                4 when _source.AsSpan(start, length).SequenceEqual("null") => TypedDocumentTokenKind.Null,
+                4 when _source.AsSpan(start, length).SequenceEqual("true") => TypedDocumentTokenKind.True,
+                5 when _source.AsSpan(start, length).SequenceEqual("false") => TypedDocumentTokenKind.False,
+                8 when _source.AsSpan(start, length).SequenceEqual("readonly") => TypedDocumentTokenKind.ReadOnly,
+                _ => TypedDocumentTokenKind.Identifier
             };
             return Token(kind, start, length, line, column);
         }
 
-        private TypedDataToken ScanNumber()
+        private TypedDocumentToken ScanNumber()
         {
             var start = _position;
             var line = _line;
@@ -378,11 +384,11 @@ namespace AuroraScript.Runtime.Serialization
                         CultureInfo.InvariantCulture,
                         out var integer))
                 {
-                    return Bad(TypedDataScanError.InvalidNumber, start, length, line, column);
+                    return Bad(TypedDocumentScanError.InvalidNumber, start, length, line, column);
                 }
                 var number = (double)integer;
-                return new TypedDataToken(
-                    TypedDataTokenKind.Number,
+                return new TypedDocumentToken(
+                    TypedDocumentTokenKind.Number,
                     start,
                     length,
                     line,
@@ -392,7 +398,7 @@ namespace AuroraScript.Runtime.Serialization
 
             if (!ScanDecimalDigits(ref hasSeparators))
             {
-                return Bad(TypedDataScanError.InvalidNumber, start, _position - start, line, column);
+                return Bad(TypedDocumentScanError.InvalidNumber, start, _position - start, line, column);
             }
             if (!AtEnd && Peek() == '.')
             {
@@ -400,11 +406,11 @@ namespace AuroraScript.Runtime.Serialization
                 if (!AtEnd && Peek() == '_')
                 {
                     Advance();
-                    return Bad(TypedDataScanError.InvalidNumber, start, _position - start, line, column);
+                    return Bad(TypedDocumentScanError.InvalidNumber, start, _position - start, line, column);
                 }
                 if (!ScanDecimalDigits(ref hasSeparators, requireDigit: false))
                 {
-                    return Bad(TypedDataScanError.InvalidNumber, start, _position - start, line, column);
+                    return Bad(TypedDocumentScanError.InvalidNumber, start, _position - start, line, column);
                 }
             }
             if (!AtEnd && Peek() is 'e' or 'E')
@@ -414,7 +420,7 @@ namespace AuroraScript.Runtime.Serialization
                 if (!ScanDecimalDigits(ref hasSeparators))
                 {
                     return Bad(
-                        TypedDataScanError.InvalidNumber,
+                        TypedDocumentScanError.InvalidNumber,
                         start,
                         _position - start,
                         line,
@@ -426,12 +432,12 @@ namespace AuroraScript.Runtime.Serialization
             if (!TryParseDecimal(_source.AsSpan(start, tokenLength), hasSeparators, out var value) ||
                 !double.IsFinite(value))
             {
-                return Bad(TypedDataScanError.InvalidNumber, start, tokenLength, line, column);
+                return Bad(TypedDocumentScanError.InvalidNumber, start, tokenLength, line, column);
             }
-            return new TypedDataToken(TypedDataTokenKind.Number, start, tokenLength, line, column, value);
+            return new TypedDocumentToken(TypedDocumentTokenKind.Number, start, tokenLength, line, column, value);
         }
 
-        private TypedDataToken ScanString()
+        private TypedDocumentToken ScanString()
         {
             var line = _line;
             var column = _column;
@@ -447,8 +453,8 @@ namespace AuroraScript.Runtime.Serialization
                 {
                     var contentLength = _position - contentStart;
                     Advance();
-                    return new TypedDataToken(
-                        TypedDataTokenKind.String,
+                    return new TypedDocumentToken(
+                        TypedDocumentTokenKind.String,
                         contentStart,
                         contentLength,
                         line,
@@ -458,9 +464,12 @@ namespace AuroraScript.Runtime.Serialization
                 }
                 if (current is '\r' or '\n')
                 {
-                    var isCrLf = current == '\r' && Peek(1) == '\n';
                     Advance();
-                    decodedLength += isCrLf ? 2 : 1;
+                    // Physical line endings are normalized to LF in the decoded value.
+                    // Mark the token for decoding so the raw-string fast path cannot
+                    // expose a platform-specific CRLF sequence.
+                    hasEscapes = true;
+                    decodedLength++;
                     continue;
                 }
                 if (current != '\\')
@@ -475,7 +484,7 @@ namespace AuroraScript.Runtime.Serialization
                 if (AtEnd)
                 {
                     return Bad(
-                        TypedDataScanError.UnterminatedString,
+                        TypedDocumentScanError.UnterminatedString,
                         contentStart - 1,
                         _position - contentStart + 1,
                         line,
@@ -495,7 +504,7 @@ namespace AuroraScript.Runtime.Serialization
                         if (AtEnd || !IsHexDigit(Peek()))
                         {
                             return Bad(
-                                escaped == 'u' ? TypedDataScanError.InvalidUnicodeEscape : TypedDataScanError.InvalidHexEscape,
+                                escaped == 'u' ? TypedDocumentScanError.InvalidUnicodeEscape : TypedDocumentScanError.InvalidHexEscape,
                                 contentStart - 1,
                                 _position - contentStart + 1,
                                 line,
@@ -508,7 +517,7 @@ namespace AuroraScript.Runtime.Serialization
                 }
 
                 return Bad(
-                    TypedDataScanError.InvalidEscape,
+                    TypedDocumentScanError.InvalidEscape,
                     contentStart - 1,
                     _position - contentStart + 1,
                     line,
@@ -517,7 +526,7 @@ namespace AuroraScript.Runtime.Serialization
             }
 
             return Bad(
-                TypedDataScanError.UnterminatedString,
+                TypedDocumentScanError.UnterminatedString,
                 contentStart - 1,
                 _position - contentStart + 1,
                 line,
@@ -654,26 +663,26 @@ namespace AuroraScript.Runtime.Serialization
             return false;
         }
 
-        private static TypedDataToken Token(
-            TypedDataTokenKind kind,
+        private static TypedDocumentToken Token(
+            TypedDocumentTokenKind kind,
             int start,
             int length,
             int line,
             int column)
         {
-            return new TypedDataToken(kind, start, length, line, column);
+            return new TypedDocumentToken(kind, start, length, line, column);
         }
 
-        private static TypedDataToken Bad(
-            TypedDataScanError error,
+        private static TypedDocumentToken Bad(
+            TypedDocumentScanError error,
             int start,
             int length,
             int line,
             int column,
             char errorCharacter = '\0')
         {
-            return new TypedDataToken(
-                TypedDataTokenKind.Bad,
+            return new TypedDocumentToken(
+                TypedDocumentTokenKind.Bad,
                 start,
                 length,
                 line,

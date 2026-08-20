@@ -574,7 +574,7 @@ namespace AuroraScript.Runtime.Types
             return new ScriptEnumerator(result);
         }
 
-        private bool HasEnumerablePrototypeProperties()
+        internal bool HasEnumerablePrototypeProperties()
         {
             var current = prototype;
             while (current != null)

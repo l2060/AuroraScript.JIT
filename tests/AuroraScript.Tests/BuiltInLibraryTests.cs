@@ -91,6 +91,62 @@ public sealed class BuiltInLibraryTests
     }
 
     [Fact]
+    public async Task TDocParsesAndStringifiesTypedValuesInsideScripts()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func roundTrip() {
+                var number = TDoc.parse('Number 42.5');
+                var value = TDoc.parse('Object { readonly String id "u-1", Int8Array bytes [1, 2], }');
+                var compact = TDoc.stringify(value, false);
+                var explicit = TDoc.stringify(value, false, true);
+                var pretty = TDoc.stringify(value);
+                return [number, value.id, value.bytes[1], compact, explicit, pretty.contains('\n')];
+            }
+            export func invalid() {
+                return TDoc.parse('Object { name }');
+            }
+            """);
+
+        ScriptAssert.Equal(
+            new object?[] { 42.5, "u-1", 2, "{readonly id \"u-1\",Int8Array bytes [1,2,],}", "Object {readonly String id \"u-1\",Int8Array bytes [1,2,],}", true },
+            TestWorkspace.Execute(domain, "roundTrip"));
+
+        var error = Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, "invalid"));
+        Assert.Contains("TDoc.parse error", error.Message);
+    }
+
+    [Fact]
+    public async Task TDocStringifySkipsRuntimeOnlyValues()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func objectValue() {
+                var runtimeOnly = () => true;
+                var value = {
+                    name: 'Aurora',
+                    cancel: runtimeOnly,
+                    nested: { reset: runtimeOnly, count: 2 },
+                    values: [1, runtimeOnly, 3],
+                };
+                return TDoc.stringify(value, false);
+            }
+            export func rootValue() {
+                return TDoc.stringify(() => true, false);
+            }
+            """);
+
+        Assert.Equal(
+            "{name \"Aurora\",nested {count 2,},values [1,null,3,],}",
+            TestWorkspace.Execute(domain, "objectValue"));
+        Assert.Equal("null", TestWorkspace.Execute(domain, "rootValue"));
+    }
+
+    [Fact]
     public async Task HashMapSupportsPrimitiveAndObjectKeys()
     {
         using var workspace = new TestWorkspace();

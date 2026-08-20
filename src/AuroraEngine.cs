@@ -90,6 +90,7 @@ namespace AuroraScript
             // Optional standard libraries
             Global.Define("console", new ConsoleSupport(), writeable: false, enumerable: false);
             Global.Define("JSON", new JsonSupport(), writeable: false, enumerable: false);
+            Global.Define("TDoc", new TDocSupport(), writeable: false, enumerable: false);
             Global.Define("Math", new MathSupport(), writeable: false, enumerable: false);
 
             // Hot patch support
