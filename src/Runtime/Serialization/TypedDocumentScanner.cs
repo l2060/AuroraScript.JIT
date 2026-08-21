@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 
 namespace AuroraScript.Runtime.Serialization
 {
@@ -118,6 +119,24 @@ namespace AuroraScript.Runtime.Serialization
                     return Bad(TypedDocumentScanError.ScriptMarkerNotAllowed, start, 1, line, column, current);
             }
 
+            // Packed documents commonly contain millions of small literal values.
+            // Recognize a standalone single digit before entering the general
+            // number scanner; this avoids the digit-loop and numeric parser call
+            // while preserving decimal, exponent, separator, and hexadecimal
+            // forms for the general path.
+            if (IsDecimalDigit(current) &&
+                Peek(1) is not (>= '0' and <= '9') and not ('.' or 'e' or 'E' or '_' or 'x' or 'X'))
+            {
+                Advance();
+                return new TypedDocumentToken(
+                    TypedDocumentTokenKind.Number,
+                    start,
+                    1,
+                    line,
+                    column,
+                    current - '0');
+            }
+
             if (IsNumberStart(current)) return ScanNumber();
             if (IsIdentifierStart(current)) return ScanIdentifier();
 
@@ -194,6 +213,124 @@ namespace AuroraScript.Runtime.Serialization
             var parsed = TryParseUInt64Exact(clean[..length], out value);
             if (rented != null) ArrayPool<char>.Shared.Return(rented);
             return parsed;
+        }
+
+        /// <summary>
+        /// Advances across <c>,d</c> when <c>d</c> is a single decimal digit and
+        /// is immediately followed by another separator or a closing bracket.
+        /// This is deliberately narrow: callers use it only after consuming a
+        /// one-digit packed-array element, so all other TDoc syntax remains on the
+        /// normal token path.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal bool TryReadCompactSingleDigitAfterComma(out sbyte value)
+        {
+            if (Peek() != ',' || !IsDecimalDigit(Peek(1)))
+            {
+                value = 0;
+                return false;
+            }
+
+            var afterDigit = Peek(2);
+            if (afterDigit is not (',' or ']'))
+            {
+                value = 0;
+                return false;
+            }
+
+            Advance();
+            value = (sbyte)(Advance() - '0');
+            return true;
+        }
+
+        /// <summary>
+        /// Materializes an entire compact <c>Int8Array</c> tail such as
+        /// <c>1,0,1]</c> directly into its final storage. The scanner is changed
+        /// only after the whole tail has been verified, so callers can safely use
+        /// the regular token path when this narrow fast path does not apply.
+        /// </summary>
+        internal bool TryReadEntireCompactInt8Array(sbyte firstValue, out sbyte[] values)
+        {
+            var initialPosition = _position;
+            var position = initialPosition;
+            var count = 1;
+            while (true)
+            {
+                if ((uint)position >= (uint)_source.Length)
+                {
+                    values = null;
+                    return false;
+                }
+                if (_source[position] == ']') break;
+                if (_source[position] != ',' ||
+                    position > _source.Length - 3 ||
+                    !IsDecimalDigit(_source[position + 1]) ||
+                    _source[position + 2] is not (',' or ']'))
+                {
+                    values = null;
+                    return false;
+                }
+                count++;
+                position += 2;
+            }
+
+            values = new sbyte[count];
+            values[0] = firstValue;
+            position = initialPosition;
+            for (var index = 1; index < count; index++)
+            {
+                values[index] = (sbyte)(_source[position + 1] - '0');
+                position += 2;
+            }
+
+            _position = position;
+            _column += position - initialPosition;
+            return true;
+        }
+
+        /// <summary>
+        /// Materializes an entire compact <c>UInt8Array</c> tail such as
+        /// <c>1,0,1]</c> directly into its final storage. The scanner is changed
+        /// only after the whole tail has been verified, so callers can safely use
+        /// the regular token path when this narrow fast path does not apply.
+        /// </summary>
+        internal bool TryReadEntireCompactUInt8Array(byte firstValue, out byte[] values)
+        {
+            var initialPosition = _position;
+            var position = initialPosition;
+            var count = 1;
+            while (true)
+            {
+                if ((uint)position >= (uint)_source.Length)
+                {
+                    values = null;
+                    return false;
+                }
+                if (_source[position] == ']') break;
+                if (_source[position] != ',' ||
+                    position > _source.Length - 3 ||
+                    !IsDecimalDigit(_source[position + 1]) ||
+                    _source[position + 2] is not (',' or ']'))
+                {
+                    values = null;
+                    return false;
+                }
+                count++;
+                position += 2;
+            }
+
+            values = new byte[count];
+            values[0] = firstValue;
+            position = initialPosition;
+            for (var index = 1; index < count; index++)
+            {
+                values[index] = (byte)(_source[position + 1] - '0');
+                position += 2;
+            }
+
+            _position = position;
+            _column += position - initialPosition;
+            return true;
         }
 
         private static void DecodeString(Span<char> destination, string source, int start, int length)
@@ -633,6 +770,22 @@ namespace AuroraScript.Runtime.Serialization
         {
             if (!hasSeparators)
             {
+                if (source.IndexOfAny('.', 'e', 'E') < 0)
+                {
+                    var start = source.Length != 0 && source[0] == '-' ? 1 : 0;
+                    var result = 0d;
+                    for (var index = start; index < source.Length; index++)
+                    {
+                        result = (result * 10d) + (source[index] - '0');
+                        if (!double.IsFinite(result))
+                        {
+                            value = 0;
+                            return false;
+                        }
+                    }
+                    value = start == 0 ? result : -result;
+                    return true;
+                }
                 return double.TryParse(
                     source,
                     NumberStyles.Float,

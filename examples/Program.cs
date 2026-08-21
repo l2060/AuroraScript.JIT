@@ -207,17 +207,17 @@ namespace Examples
         {
             var domain = engine.CreateDomain(GlobalConfiguration, userState);
 
-            //var td = new AuroraTypedDocument(engine);
-            //var doc = File.ReadAllText("map.tdoc");
-            //for (int i = 0; i < 10; i++)
-            //{
-            //    td.Deserialize(doc);
-            //}
+            var td = new AuroraTypedDocument(engine);
+            var doc = File.ReadAllText("map.tdoc");
+            for (int i = 0; i < 10; i++)
+            {
+                td.Deserialize(doc);
+            }
 
-            //Benchmark("AuroraTypedDocument.Deserialize", () =>
-            //{
-            //    var p = td.Deserialize(doc);
-            //});
+            Benchmark("AuroraTypedDocument.Deserialize", () =>
+            {
+                var p = td.Deserialize(doc);
+            });
 
 
 
@@ -357,7 +357,7 @@ return clamp(x, 0, 100) + PI;
             }
             finally
             {
-                var useTime = stopwatch.ElapsedMilliseconds;
+                var useTime = stopwatch.Elapsed.TotalMilliseconds;
 
                 var afterAlloc = GC.GetAllocatedBytesForCurrentThread();
                 var allocatedBytes = afterAlloc - beforeAlloc;
@@ -385,7 +385,7 @@ return clamp(x, 0, 100) + PI;
             }
             finally
             {
-                var useTime = stopwatch.ElapsedMilliseconds;
+                var useTime = stopwatch.Elapsed.TotalMilliseconds;
                 var afterAlloc = GC.GetAllocatedBytesForCurrentThread();
                 var allocatedBytes = afterAlloc - beforeAlloc;
                 WriteBenchmarkResult("BLOCK", name, _ex == null, useTime, allocatedBytes / 1024.0);
@@ -399,7 +399,7 @@ return clamp(x, 0, 100) + PI;
             Console.ForegroundColor = status ? ConsoleColor.Green : ConsoleColor.Red;
             Console.Write($"{status,-12}");
             Console.ForegroundColor = originalColor;
-            Console.WriteLine($" | {elapsedMs,10:F3} ms | {allocatedKb,10:F2} KB");
+            Console.WriteLine($" | {elapsedMs,10:F3} ms | {allocatedKb,10:F2} KiB");
         }
 
 
@@ -424,7 +424,7 @@ return clamp(x, 0, 100) + PI;
             }
             finally
             {
-                var useTime = stopwatch.ElapsedMilliseconds;
+                var useTime = stopwatch.Elapsed.TotalMilliseconds;
                 var afterAlloc = GC.GetAllocatedBytesForCurrentThread();
                 var allocatedBytes = afterAlloc - beforeAlloc;
                 var originalColor = Console.ForegroundColor;
@@ -432,7 +432,7 @@ return clamp(x, 0, 100) + PI;
                 Console.ForegroundColor = _ex == null ? ConsoleColor.Green : ConsoleColor.Red;
                 Console.Write($"{_ex == null,-12}");
                 Console.ForegroundColor = originalColor;
-                Console.WriteLine($" | {useTime,10:F3} ms | {allocatedBytes,10:F2} KB");
+                Console.WriteLine($" | {useTime,10:F3} ms | {allocatedBytes / 1024.0,10:F2} KiB");
             }
 
 

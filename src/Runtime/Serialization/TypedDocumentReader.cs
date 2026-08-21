@@ -3,6 +3,7 @@ using AuroraScript.Runtime.Pool;
 using AuroraScript.Runtime.Types;
 using System;
 using System.Buffers;
+using System.Runtime.CompilerServices;
 
 namespace AuroraScript.Runtime.Serialization
 {
@@ -530,21 +531,34 @@ namespace AuroraScript.Runtime.Serialization
             {
                 if (!Match(TypedDocumentTokenKind.RightBracket))
                 {
+                    EnsurePackedElementDepth(CurrentPacked(0), 0);
+                    var index = 0;
                     while (true)
                     {
-                        _path.PushIndex(buffer.Count);
-                        try
+                        if (TryReadRawPackedNumber(index, out var location))
                         {
-                            var location = Current();
-                            var value = ReadTypedValue();
-                            ValidatePackedElement(TypedDocumentPackedKind.Int32, value, location);
-                            buffer.Add((int)value.Number);
+                            buffer.Add((int)ReadRawPackedNumber(
+                                TypedDocumentPackedKind.Int32,
+                                index,
+                                location));
                         }
-                        finally
+                        else
                         {
-                            _path.Pop();
+                            _path.PushIndex(index);
+                            try
+                            {
+                                location = Current();
+                                var value = ReadTypedValue();
+                                ValidatePackedElement(TypedDocumentPackedKind.Int32, value, location);
+                                buffer.Add((int)value.Number);
+                            }
+                            finally
+                            {
+                                _path.Pop();
+                            }
                         }
-                        if (ReadArraySeparator()) break;
+                        index++;
+                        if (ReadPackedArraySeparator()) break;
                     }
                 }
 
@@ -559,14 +573,59 @@ namespace AuroraScript.Runtime.Serialization
         private ScriptDatum ReadInt8PackedArray()
         {
             Expect(TypedDocumentTokenKind.LeftBracket, "Type 'Int8Array' requires an array value.");
+            if (Match(TypedDocumentTokenKind.RightBracket))
+            {
+                return ScriptDatum.FromObject(new ScriptInt8Array(Array.Empty<sbyte>()));
+            }
+
+            EnsurePackedElementDepth(CurrentPacked(0), 0);
+            var first = CurrentPacked(0);
+            if (!_hasLookahead &&
+                first.Kind == TypedDocumentTokenKind.Number &&
+                first.Length == 1 &&
+                // Verify the complete compact tail before allocating so the
+                // returned packed array is the final owned storage.
+                _scanner.TryReadEntireCompactInt8Array((sbyte)first.Number, out var compactItems))
+            {
+                AdvancePacked();
+                Expect(TypedDocumentTokenKind.RightBracket, "Expected ']'.");
+                return ScriptDatum.FromObject(new ScriptInt8Array(compactItems));
+            }
+
             var buffer = new TypedDocumentPooledBuffer<sbyte>(8);
             try
             {
-                if (!Match(TypedDocumentTokenKind.RightBracket))
+                var index = 0;
+                while (true)
                 {
-                    while (true)
+                    // A large packed array is overwhelmingly made up of raw numeric
+                    // tokens.  Avoid materializing a ScriptDatum and entering the
+                    // general value dispatcher for that hot path.  The fallback
+                    // still accepts all legal TDoc element forms (including
+                    // `Number n`) and retains the full validation/error behavior.
+                    var token = CurrentPacked(index);
+                    if (!_hasLookahead &&
+                        token.Kind == TypedDocumentTokenKind.Number &&
+                        token.Length == 1)
                     {
-                        _path.PushIndex(buffer.Count);
+                        buffer.Add((sbyte)token.Number);
+                        index++;
+                        while (_scanner.TryReadCompactSingleDigitAfterComma(out var element))
+                        {
+                            buffer.Add(element);
+                            index++;
+                        }
+                        AdvancePacked();
+                        if (ReadPackedArraySeparator()) break;
+                        continue;
+                    }
+                    if (TryReadRawInt8Element(index, out var rawElement))
+                    {
+                        buffer.Add(rawElement);
+                    }
+                    else
+                    {
+                        _path.PushIndex(index);
                         try
                         {
                             var location = Current();
@@ -578,8 +637,9 @@ namespace AuroraScript.Runtime.Serialization
                         {
                             _path.Pop();
                         }
-                        if (ReadArraySeparator()) break;
                     }
+                    index++;
+                    if (ReadPackedArraySeparator()) break;
                 }
 
                 return ScriptDatum.FromObject(new ScriptInt8Array(buffer.ToArray()));
@@ -587,6 +647,197 @@ namespace AuroraScript.Runtime.Serialization
             finally
             {
                 buffer.Dispose();
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool TryReadRawInt8Element(int index, out sbyte value)
+        {
+            if (!TryReadRawPackedNumber(index, out var token))
+            {
+                value = 0;
+                return false;
+            }
+
+            if (token.Length == 1)
+            {
+                AdvancePacked();
+                value = (sbyte)token.Number;
+                return true;
+            }
+
+            value = (sbyte)ReadRawPackedNumber(TypedDocumentPackedKind.Int8, index, token);
+            return true;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool TryReadRawPackedNumber(int index, out TypedDocumentToken token)
+        {
+            token = CurrentPacked(index);
+            if (token.Kind == TypedDocumentTokenKind.Identifier && TypeEquals(token, "Number"))
+            {
+                AdvancePacked();
+                token = CurrentPacked(index);
+                if (token.Kind != TypedDocumentTokenKind.Number)
+                {
+                    throw PackedElementError(token, index, "Type 'Number' requires a number value.");
+                }
+                return true;
+            }
+            return token.Kind == TypedDocumentTokenKind.Number;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private double ReadRawPackedNumber(
+            TypedDocumentPackedKind kind,
+            int index,
+            TypedDocumentToken token)
+        {
+            var number = token.Number;
+            // A one-character numeric token can only be a decimal digit.  It is
+            // therefore finite, integral, and within every packed numeric range.
+            // Keep the checks for multi-character forms (signs, decimals, and
+            // wide values) where they are actually needed.
+            if (token.Length == 1)
+            {
+                AdvancePacked();
+                return number;
+            }
+            if (!double.IsFinite(number))
+            {
+                throw PackedElementError(token, index, $"{PackedTypeName(kind)} elements must be finite numbers.");
+            }
+            if (kind != TypedDocumentPackedKind.Float64 && Math.Truncate(number) != number)
+            {
+                throw PackedElementError(token, index, $"{PackedTypeName(kind)} elements must be integers.");
+            }
+            if (!TypedDocumentBinder.IsPackedRange(kind, number))
+            {
+                throw PackedElementError(token, index, $"{PackedTypeName(kind)} value is outside its supported range.");
+            }
+            AdvancePacked();
+            return number;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool TryReadRawBooleanElement(int index, out bool value)
+        {
+            var token = CurrentPacked(index);
+            if (token.Kind == TypedDocumentTokenKind.True)
+            {
+                AdvancePacked();
+                value = true;
+                return true;
+            }
+            if (token.Kind == TypedDocumentTokenKind.False)
+            {
+                AdvancePacked();
+                value = false;
+                return true;
+            }
+            if (!TryReadRawPackedNumber(index, out token))
+            {
+                value = false;
+                return false;
+            }
+
+            var number = token.Number;
+            if (!double.IsFinite(number) || (number != 0d && number != 1d))
+            {
+                throw PackedElementError(
+                    token,
+                    index,
+                    "BooleanArray elements must be true, false, 0, or 1.");
+            }
+            AdvancePacked();
+            value = number == 1d;
+            return true;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private TypedDocumentToken CurrentPacked(int index)
+        {
+            if (_current.Kind != TypedDocumentTokenKind.Bad)
+            {
+                return _current;
+            }
+
+            _path.PushIndex(index);
+            try
+            {
+                return Current();
+            }
+            finally
+            {
+                _path.Pop();
+            }
+        }
+
+        private void EnsurePackedElementDepth(TypedDocumentToken token, int index)
+        {
+            if (_depth >= _maxDepth)
+            {
+                throw PackedElementError(
+                    token,
+                    index,
+                    $"TDoc value depth exceeds the configured limit of {_maxDepth}.");
+            }
+        }
+
+        private TypedDocumentException PackedElementError(
+            TypedDocumentToken token,
+            int index,
+            string message)
+        {
+            _path.PushIndex(index);
+            try
+            {
+                return Error(token, message);
+            }
+            finally
+            {
+                _path.Pop();
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool ReadPackedArraySeparator()
+        {
+            var token = Current();
+            if (token.Kind == TypedDocumentTokenKind.Comma)
+            {
+                AdvancePacked();
+                if (_current.Kind == TypedDocumentTokenKind.Bad)
+                {
+                    throw ScanError(_current);
+                }
+                if (_current.Kind == TypedDocumentTokenKind.RightBracket)
+                {
+                    AdvancePacked();
+                    return true;
+                }
+                return false;
+            }
+            if (token.Kind == TypedDocumentTokenKind.RightBracket)
+            {
+                AdvancePacked();
+                return true;
+            }
+            throw Error(token, "Expected ',' or ']'.");
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void AdvancePacked()
+        {
+            if (_hasLookahead)
+            {
+                _current = _lookahead;
+                _lookahead = default;
+                _hasLookahead = false;
+            }
+            else
+            {
+                _current = _scanner.Read();
             }
         }
 
@@ -598,21 +849,34 @@ namespace AuroraScript.Runtime.Serialization
             {
                 if (!Match(TypedDocumentTokenKind.RightBracket))
                 {
+                    EnsurePackedElementDepth(CurrentPacked(0), 0);
+                    var index = 0;
                     while (true)
                     {
-                        _path.PushIndex(buffer.Count);
-                        try
+                        if (TryReadRawPackedNumber(index, out var location))
                         {
-                            var location = Current();
-                            var value = ReadTypedValue();
-                            ValidatePackedElement(TypedDocumentPackedKind.Float64, value, location);
-                            buffer.Add(value.Number);
+                            buffer.Add(ReadRawPackedNumber(
+                                TypedDocumentPackedKind.Float64,
+                                index,
+                                location));
                         }
-                        finally
+                        else
                         {
-                            _path.Pop();
+                            _path.PushIndex(index);
+                            try
+                            {
+                                location = Current();
+                                var value = ReadTypedValue();
+                                ValidatePackedElement(TypedDocumentPackedKind.Float64, value, location);
+                                buffer.Add(value.Number);
+                            }
+                            finally
+                            {
+                                _path.Pop();
+                            }
                         }
-                        if (ReadArraySeparator()) break;
+                        index++;
+                        if (ReadPackedArraySeparator()) break;
                     }
                 }
 
@@ -632,21 +896,31 @@ namespace AuroraScript.Runtime.Serialization
             {
                 if (!Match(TypedDocumentTokenKind.RightBracket))
                 {
+                    EnsurePackedElementDepth(CurrentPacked(0), 0);
+                    var index = 0;
                     while (true)
                     {
-                        _path.PushIndex(buffer.Count);
-                        try
+                        if (TryReadRawBooleanElement(index, out var element))
                         {
-                            var location = Current();
-                            var value = ReadTypedValue();
-                            ValidatePackedElement(TypedDocumentPackedKind.Boolean, value, location);
-                            buffer.Add(value.Kind == ValueKind.Boolean ? value.Boolean : value.Number == 1d);
+                            buffer.Add(element);
                         }
-                        finally
+                        else
                         {
-                            _path.Pop();
+                            _path.PushIndex(index);
+                            try
+                            {
+                                var location = Current();
+                                var value = ReadTypedValue();
+                                ValidatePackedElement(TypedDocumentPackedKind.Boolean, value, location);
+                                buffer.Add(value.Kind == ValueKind.Boolean ? value.Boolean : value.Number == 1d);
+                            }
+                            finally
+                            {
+                                _path.Pop();
+                            }
                         }
-                        if (ReadArraySeparator()) break;
+                        index++;
+                        if (ReadPackedArraySeparator()) break;
                     }
                 }
 
@@ -661,17 +935,45 @@ namespace AuroraScript.Runtime.Serialization
         private ScriptDatum ReadUInt8PackedArray()
         {
             Expect(TypedDocumentTokenKind.LeftBracket, "Type 'UInt8Array' requires an array value.");
+            if (Match(TypedDocumentTokenKind.RightBracket))
+            {
+                return ScriptDatum.FromObject(new ScriptUInt8Array(Array.Empty<byte>()));
+            }
+
+            EnsurePackedElementDepth(CurrentPacked(0), 0);
+            var first = CurrentPacked(0);
+            if (!_hasLookahead &&
+                first.Kind == TypedDocumentTokenKind.Number &&
+                first.Length == 1 &&
+                // UInt8Array is the format used by the large map documents.  For
+                // a compact digit run, make the result array directly instead of
+                // renting a staging buffer and copying it a second time.
+                _scanner.TryReadEntireCompactUInt8Array((byte)first.Number, out var compactItems))
+            {
+                AdvancePacked();
+                Expect(TypedDocumentTokenKind.RightBracket, "Expected ']'.");
+                return ScriptDatum.FromObject(new ScriptUInt8Array(compactItems));
+            }
+
             var buffer = new TypedDocumentPooledBuffer<byte>(8);
             try
             {
-                if (!Match(TypedDocumentTokenKind.RightBracket))
+                var index = 0;
+                while (true)
                 {
-                    while (true)
+                    if (TryReadRawPackedNumber(index, out var location))
                     {
-                        _path.PushIndex(buffer.Count);
+                        buffer.Add((byte)ReadRawPackedNumber(
+                            TypedDocumentPackedKind.UInt8,
+                            index,
+                            location));
+                    }
+                    else
+                    {
+                        _path.PushIndex(index);
                         try
                         {
-                            var location = Current();
+                            location = Current();
                             var value = ReadTypedValue();
                             ValidatePackedElement(TypedDocumentPackedKind.UInt8, value, location);
                             buffer.Add((byte)value.Number);
@@ -680,8 +982,9 @@ namespace AuroraScript.Runtime.Serialization
                         {
                             _path.Pop();
                         }
-                        if (ReadArraySeparator()) break;
                     }
+                    index++;
+                    if (ReadPackedArraySeparator()) break;
                 }
                 return ScriptDatum.FromObject(new ScriptUInt8Array(buffer.ToArray()));
             }
@@ -699,21 +1002,34 @@ namespace AuroraScript.Runtime.Serialization
             {
                 if (!Match(TypedDocumentTokenKind.RightBracket))
                 {
+                    EnsurePackedElementDepth(CurrentPacked(0), 0);
+                    var index = 0;
                     while (true)
                     {
-                        _path.PushIndex(buffer.Count);
-                        try
+                        if (TryReadRawPackedNumber(index, out var location))
                         {
-                            var location = Current();
-                            var value = ReadTypedValue();
-                            ValidatePackedElement(TypedDocumentPackedKind.Int16, value, location);
-                            buffer.Add((short)value.Number);
+                            buffer.Add((short)ReadRawPackedNumber(
+                                TypedDocumentPackedKind.Int16,
+                                index,
+                                location));
                         }
-                        finally
+                        else
                         {
-                            _path.Pop();
+                            _path.PushIndex(index);
+                            try
+                            {
+                                location = Current();
+                                var value = ReadTypedValue();
+                                ValidatePackedElement(TypedDocumentPackedKind.Int16, value, location);
+                                buffer.Add((short)value.Number);
+                            }
+                            finally
+                            {
+                                _path.Pop();
+                            }
                         }
-                        if (ReadArraySeparator()) break;
+                        index++;
+                        if (ReadPackedArraySeparator()) break;
                     }
                 }
                 return ScriptDatum.FromObject(new ScriptInt16Array(buffer.ToArray()));
@@ -732,21 +1048,34 @@ namespace AuroraScript.Runtime.Serialization
             {
                 if (!Match(TypedDocumentTokenKind.RightBracket))
                 {
+                    EnsurePackedElementDepth(CurrentPacked(0), 0);
+                    var index = 0;
                     while (true)
                     {
-                        _path.PushIndex(buffer.Count);
-                        try
+                        if (TryReadRawPackedNumber(index, out var location))
                         {
-                            var location = Current();
-                            var value = ReadTypedValue();
-                            ValidatePackedElement(TypedDocumentPackedKind.UInt16, value, location);
-                            buffer.Add((ushort)value.Number);
+                            buffer.Add((ushort)ReadRawPackedNumber(
+                                TypedDocumentPackedKind.UInt16,
+                                index,
+                                location));
                         }
-                        finally
+                        else
                         {
-                            _path.Pop();
+                            _path.PushIndex(index);
+                            try
+                            {
+                                location = Current();
+                                var value = ReadTypedValue();
+                                ValidatePackedElement(TypedDocumentPackedKind.UInt16, value, location);
+                                buffer.Add((ushort)value.Number);
+                            }
+                            finally
+                            {
+                                _path.Pop();
+                            }
                         }
-                        if (ReadArraySeparator()) break;
+                        index++;
+                        if (ReadPackedArraySeparator()) break;
                     }
                 }
                 return ScriptDatum.FromObject(new ScriptUInt16Array(buffer.ToArray()));
@@ -765,21 +1094,34 @@ namespace AuroraScript.Runtime.Serialization
             {
                 if (!Match(TypedDocumentTokenKind.RightBracket))
                 {
+                    EnsurePackedElementDepth(CurrentPacked(0), 0);
+                    var index = 0;
                     while (true)
                     {
-                        _path.PushIndex(buffer.Count);
-                        try
+                        if (TryReadRawPackedNumber(index, out var location))
                         {
-                            var location = Current();
-                            var value = ReadTypedValue();
-                            ValidatePackedElement(TypedDocumentPackedKind.UInt32, value, location);
-                            buffer.Add((uint)value.Number);
+                            buffer.Add((uint)ReadRawPackedNumber(
+                                TypedDocumentPackedKind.UInt32,
+                                index,
+                                location));
                         }
-                        finally
+                        else
                         {
-                            _path.Pop();
+                            _path.PushIndex(index);
+                            try
+                            {
+                                location = Current();
+                                var value = ReadTypedValue();
+                                ValidatePackedElement(TypedDocumentPackedKind.UInt32, value, location);
+                                buffer.Add((uint)value.Number);
+                            }
+                            finally
+                            {
+                                _path.Pop();
+                            }
                         }
-                        if (ReadArraySeparator()) break;
+                        index++;
+                        if (ReadPackedArraySeparator()) break;
                     }
                 }
                 return ScriptDatum.FromObject(new ScriptUInt32Array(buffer.ToArray()));
@@ -798,18 +1140,20 @@ namespace AuroraScript.Runtime.Serialization
             {
                 if (!Match(TypedDocumentTokenKind.RightBracket))
                 {
+                    EnsurePackedElementDepth(CurrentPacked(0), 0);
+                    var index = 0;
                     while (true)
                     {
-                        _path.PushIndex(buffer.Count);
-                        try
+                        if (TryReadExactInt64(index, out var exact))
                         {
-                            var location = Current();
-                            if (TryReadExactInt64(out var exact))
+                            buffer.Add(exact);
+                        }
+                        else
+                        {
+                            _path.PushIndex(index);
+                            try
                             {
-                                buffer.Add(exact);
-                            }
-                            else
-                            {
+                                var location = Current();
                                 var value = ReadTypedValue();
                                 ValidatePackedElement(TypedDocumentPackedKind.Int64, value, location);
                                 if (!_scanner.TryGetInt64Exact(location, out exact))
@@ -818,12 +1162,13 @@ namespace AuroraScript.Runtime.Serialization
                                 }
                                 buffer.Add(exact);
                             }
+                            finally
+                            {
+                                _path.Pop();
+                            }
                         }
-                        finally
-                        {
-                            _path.Pop();
-                        }
-                        if (ReadArraySeparator()) break;
+                        index++;
+                        if (ReadPackedArraySeparator()) break;
                     }
                 }
                 return ScriptDatum.FromObject(new ScriptInt64Array(buffer.ToArray()));
@@ -842,18 +1187,20 @@ namespace AuroraScript.Runtime.Serialization
             {
                 if (!Match(TypedDocumentTokenKind.RightBracket))
                 {
+                    EnsurePackedElementDepth(CurrentPacked(0), 0);
+                    var index = 0;
                     while (true)
                     {
-                        _path.PushIndex(buffer.Count);
-                        try
+                        if (TryReadExactUInt64(index, out var exact))
                         {
-                            var location = Current();
-                            if (TryReadExactUInt64(out var exact))
+                            buffer.Add(exact);
+                        }
+                        else
+                        {
+                            _path.PushIndex(index);
+                            try
                             {
-                                buffer.Add(exact);
-                            }
-                            else
-                            {
+                                var location = Current();
                                 var value = ReadTypedValue();
                                 ValidatePackedElement(TypedDocumentPackedKind.UInt64, value, location);
                                 if (!_scanner.TryGetUInt64Exact(location, out exact))
@@ -862,12 +1209,13 @@ namespace AuroraScript.Runtime.Serialization
                                 }
                                 buffer.Add(exact);
                             }
+                            finally
+                            {
+                                _path.Pop();
+                            }
                         }
-                        finally
-                        {
-                            _path.Pop();
-                        }
-                        if (ReadArraySeparator()) break;
+                        index++;
+                        if (ReadPackedArraySeparator()) break;
                     }
                 }
                 return ScriptDatum.FromObject(new ScriptUInt64Array(buffer.ToArray()));
@@ -878,9 +1226,9 @@ namespace AuroraScript.Runtime.Serialization
             }
         }
 
-        private bool TryReadExactInt64(out long value)
+        private bool TryReadExactInt64(int index, out long value)
         {
-            var token = Current();
+            var token = CurrentPacked(index);
             if (token.Kind == TypedDocumentTokenKind.Number)
             {
                 if (!_scanner.TryGetInt64Exact(token, out value)) return false;
@@ -890,15 +1238,18 @@ namespace AuroraScript.Runtime.Serialization
             if (token.Kind == TypedDocumentTokenKind.Identifier && TypeEquals(token, "Number"))
             {
                 Advance();
-                token = Current();
+                token = CurrentPacked(index);
                 if (token.Kind != TypedDocumentTokenKind.Number)
                 {
-                    throw Error(token, "Type 'Number' requires a number value.");
+                    throw PackedElementError(token, index, "Type 'Number' requires a number value.");
                 }
                 if (!_scanner.TryGetInt64Exact(token, out value))
                 {
                     Advance();
-                    throw Error(token, "Int64Array elements must be exactly representable integers.");
+                    throw PackedElementError(
+                        token,
+                        index,
+                        "Int64Array elements must be exactly representable integers.");
                 }
                 Advance();
                 return true;
@@ -907,9 +1258,9 @@ namespace AuroraScript.Runtime.Serialization
             return false;
         }
 
-        private bool TryReadExactUInt64(out ulong value)
+        private bool TryReadExactUInt64(int index, out ulong value)
         {
-            var token = Current();
+            var token = CurrentPacked(index);
             if (token.Kind == TypedDocumentTokenKind.Number)
             {
                 if (!_scanner.TryGetUInt64Exact(token, out value)) return false;
@@ -919,15 +1270,18 @@ namespace AuroraScript.Runtime.Serialization
             if (token.Kind == TypedDocumentTokenKind.Identifier && TypeEquals(token, "Number"))
             {
                 Advance();
-                token = Current();
+                token = CurrentPacked(index);
                 if (token.Kind != TypedDocumentTokenKind.Number)
                 {
-                    throw Error(token, "Type 'Number' requires a number value.");
+                    throw PackedElementError(token, index, "Type 'Number' requires a number value.");
                 }
                 if (!_scanner.TryGetUInt64Exact(token, out value))
                 {
                     Advance();
-                    throw Error(token, "UInt64Array elements must be exactly representable integers.");
+                    throw PackedElementError(
+                        token,
+                        index,
+                        "UInt64Array elements must be exactly representable integers.");
                 }
                 Advance();
                 return true;

@@ -2,6 +2,7 @@ using AuroraScript.Runtime.Interop;
 using AuroraScript.Runtime.Types;
 using System;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 
 namespace AuroraScript.Runtime.Serialization
 {
@@ -427,6 +428,7 @@ namespace AuroraScript.Runtime.Serialization
                 double.IsFinite(number) && Math.Truncate(number) == number;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static bool IsPackedRange(TypedDocumentPackedKind kind, double number)
         {
             return kind switch

@@ -31,6 +31,9 @@ namespace AuroraBenchmark
         private string _arrayDocument;
         private string _packedArrayDocument;
         private string _wideObjectDocument;
+        private string _largePackedInt8Document;
+        private string _largePackedUInt8Document;
+        private AuroraTypedDocument _typedDocument;
         private ScriptDatum _objectValue;
         private ScriptDatum _packedArrayValue;
 
@@ -38,10 +41,13 @@ namespace AuroraBenchmark
         public void Setup()
         {
             _engine = new AuroraEngine(EngineOptions.Default);
+            _typedDocument = new AuroraTypedDocument(_engine);
             _objectDocument = "Object { String name \"Aurora\", Number version 4, Boolean enabled true, Array tags [String \"jit\", String \"typed-document\", Number 4] }";
             _arrayDocument = CreateArrayDocument("Array", 1024, item => item.ToString());
             _packedArrayDocument = CreateArrayDocument("Int32Array", 1024, item => item.ToString());
             _wideObjectDocument = CreateWideObjectDocument(256);
+            _largePackedInt8Document = CreateArrayDocument("Int8Array", 1_000_000, item => (item & 1).ToString());
+            _largePackedUInt8Document = CreateArrayDocument("UInt8Array", 1_000_000, item => (item & 1).ToString());
             _objectValue = TypedDocumentSerializer.Deserialize(_engine, _objectDocument);
             _packedArrayValue = TypedDocumentSerializer.Deserialize(_engine, _packedArrayDocument);
         }
@@ -100,6 +106,20 @@ namespace AuroraBenchmark
         public ScriptDatum DeserializeWideObject256()
         {
             return TypedDocumentSerializer.Deserialize(_engine, _wideObjectDocument);
+        }
+
+        [BenchmarkCategory("typed-document")]
+        [Benchmark]
+        public ScriptDatum DeserializePackedInt8Array1M()
+        {
+            return _typedDocument.Deserialize(_largePackedInt8Document);
+        }
+
+        [BenchmarkCategory("typed-document")]
+        [Benchmark]
+        public ScriptDatum DeserializePackedUInt8Array1M()
+        {
+            return _typedDocument.Deserialize(_largePackedUInt8Document);
         }
 
         private static string CreateArrayDocument(string typeName, int count, Func<int, string> format)

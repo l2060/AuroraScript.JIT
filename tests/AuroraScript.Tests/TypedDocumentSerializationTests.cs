@@ -501,6 +501,63 @@ public sealed class TypedDocumentSerializationTests
     }
 
     [Fact]
+    public void DeserializesCompactSingleDigitInt8RunsAndRetainsPackedValidation()
+    {
+        var engine = new AuroraEngine(EngineOptions.Default);
+        var bytes = Assert.IsType<ScriptInt8Array>(
+            TypedDocumentSerializer.Deserialize(
+                engine,
+                "Int8Array [0,1,2,3,4,5,6,7,8,9, 10, -1, Number 2,]").Object);
+
+        Assert.Equal(13, bytes.Length);
+        Assert.Equal((sbyte)0, bytes.GetElement(0));
+        Assert.Equal((sbyte)9, bytes.GetElement(9));
+        Assert.Equal((sbyte)10, bytes.GetElement(10));
+        Assert.Equal((sbyte)-1, bytes.GetElement(11));
+        Assert.Equal((sbyte)2, bytes.GetElement(12));
+
+        var root = Assert.IsType<ScriptObject>(
+            TypedDocumentSerializer.Deserialize(engine, "Object { Int8Array bytes [0,1,2] }").Object);
+        var nested = Assert.IsType<ScriptInt8Array>(root.GetPropertyDatum(null, "bytes").Object);
+        Assert.Equal((sbyte)2, nested.GetElement(2));
+
+        var trailing = Assert.IsType<ScriptInt8Array>(
+            TypedDocumentSerializer.Deserialize(engine, "Int8Array [0,1,2,]").Object);
+        Assert.Equal(3, trailing.Length);
+
+        Assert.Throws<TypedDocumentException>(() =>
+            TypedDocumentSerializer.Deserialize(engine, "Int8Array [0,1,128]"));
+
+        var wideError = Assert.Throws<TypedDocumentException>(() =>
+            TypedDocumentSerializer.Deserialize(engine, "Int64Array [Number 1.5]"));
+        Assert.Equal("$[0]", wideError.DataPath);
+    }
+
+    [Fact]
+    public void DeserializesCompactSingleDigitUInt8RunsWithoutChangingPackedValidation()
+    {
+        var engine = new AuroraEngine(EngineOptions.Default);
+        var bytes = Assert.IsType<ScriptUInt8Array>(
+            TypedDocumentSerializer.Deserialize(
+                engine,
+                "UInt8Array [0,1,2,3,4,5,6,7,8,9, 10, 255, Number 2,]").Object);
+
+        Assert.Equal(13, bytes.Length);
+        Assert.Equal((byte)0, bytes.GetElement(0));
+        Assert.Equal((byte)9, bytes.GetElement(9));
+        Assert.Equal((byte)10, bytes.GetElement(10));
+        Assert.Equal(byte.MaxValue, bytes.GetElement(11));
+        Assert.Equal((byte)2, bytes.GetElement(12));
+
+        var compact = Assert.IsType<ScriptUInt8Array>(
+            TypedDocumentSerializer.Deserialize(engine, "UInt8Array [0,1,2,]").Object);
+        Assert.Equal(3, compact.Length);
+
+        Assert.Throws<TypedDocumentException>(() =>
+            TypedDocumentSerializer.Deserialize(engine, "UInt8Array [0,1,256]"));
+    }
+
+    [Fact]
     public void CompactOutputHasNoFormattingLineBreaksButPreservesStringControlCharacters()
     {
         var engine = new AuroraEngine(EngineOptions.Default);
@@ -539,6 +596,10 @@ public sealed class TypedDocumentSerializationTests
         var readError = Assert.Throws<TypedDocumentException>(() =>
             TypedDocumentSerializer.Deserialize(engine, "Array [Array [1]]", depthOptions));
         Assert.Equal("$[0][0]", readError.DataPath);
+
+        var packedReadError = Assert.Throws<TypedDocumentException>(() =>
+            TypedDocumentSerializer.Deserialize(engine, "Int8Array [1]", new TypedDocumentOptions { MaxDepth = 1 }));
+        Assert.Equal("$[0]", packedReadError.DataPath);
 
         var inner = new ScriptArray();
         inner.Push(ScriptDatum.FromNumber(1));
