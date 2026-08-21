@@ -526,6 +526,19 @@ namespace AuroraScript.Runtime.Serialization
         private ScriptDatum ReadInt32PackedArray()
         {
             Expect(TypedDocumentTokenKind.LeftBracket, "Type 'Int32Array' requires an array value.");
+            if (Current().Kind != TypedDocumentTokenKind.RightBracket)
+            {
+                var first = CurrentPacked(0);
+                EnsurePackedElementDepth(first, 0);
+                if (!_hasLookahead &&
+                    first.Kind == TypedDocumentTokenKind.Number &&
+                    _scanner.TryReadEntireSimpleInt32Array(first, out var directItems))
+                {
+                    AdvancePacked();
+                    Expect(TypedDocumentTokenKind.RightBracket, "Expected ']'.");
+                    return ScriptDatum.FromObject(new ScriptInt32Array(directItems));
+                }
+            }
             var buffer = new TypedDocumentPooledBuffer<int>(8);
             try
             {
@@ -844,6 +857,19 @@ namespace AuroraScript.Runtime.Serialization
         private ScriptDatum ReadFloat64PackedArray()
         {
             Expect(TypedDocumentTokenKind.LeftBracket, "Type 'Float64Array' requires an array value.");
+            if (Current().Kind != TypedDocumentTokenKind.RightBracket)
+            {
+                var first = CurrentPacked(0);
+                EnsurePackedElementDepth(first, 0);
+                if (!_hasLookahead &&
+                    first.Kind == TypedDocumentTokenKind.Number &&
+                    _scanner.TryReadEntireSimpleFloat64Array(first, out var directItems))
+                {
+                    AdvancePacked();
+                    Expect(TypedDocumentTokenKind.RightBracket, "Expected ']'.");
+                    return ScriptDatum.FromObject(new ScriptFloat64Array(directItems));
+                }
+            }
             var buffer = new TypedDocumentPooledBuffer<double>(8);
             try
             {
@@ -955,6 +981,15 @@ namespace AuroraScript.Runtime.Serialization
                 return ScriptDatum.FromObject(new ScriptUInt8Array(compactItems));
             }
 
+            if (!_hasLookahead &&
+                first.Kind == TypedDocumentTokenKind.Number &&
+                _scanner.TryReadEntireSimpleUInt8Array(first, out var simpleItems))
+            {
+                AdvancePacked();
+                Expect(TypedDocumentTokenKind.RightBracket, "Expected ']'.");
+                return ScriptDatum.FromObject(new ScriptUInt8Array(simpleItems));
+            }
+
             var buffer = new TypedDocumentPooledBuffer<byte>(8);
             try
             {
@@ -997,6 +1032,19 @@ namespace AuroraScript.Runtime.Serialization
         private ScriptDatum ReadInt16PackedArray()
         {
             Expect(TypedDocumentTokenKind.LeftBracket, "Type 'Int16Array' requires an array value.");
+            if (Current().Kind != TypedDocumentTokenKind.RightBracket)
+            {
+                var first = CurrentPacked(0);
+                EnsurePackedElementDepth(first, 0);
+                if (!_hasLookahead &&
+                    first.Kind == TypedDocumentTokenKind.Number &&
+                    _scanner.TryReadEntireSimpleInt16Array(first, out var directItems))
+                {
+                    AdvancePacked();
+                    Expect(TypedDocumentTokenKind.RightBracket, "Expected ']'.");
+                    return ScriptDatum.FromObject(new ScriptInt16Array(directItems));
+                }
+            }
             var buffer = new TypedDocumentPooledBuffer<short>(8);
             try
             {
@@ -1043,6 +1091,19 @@ namespace AuroraScript.Runtime.Serialization
         private ScriptDatum ReadUInt16PackedArray()
         {
             Expect(TypedDocumentTokenKind.LeftBracket, "Type 'UInt16Array' requires an array value.");
+            if (Current().Kind != TypedDocumentTokenKind.RightBracket)
+            {
+                var first = CurrentPacked(0);
+                EnsurePackedElementDepth(first, 0);
+                if (!_hasLookahead &&
+                    first.Kind == TypedDocumentTokenKind.Number &&
+                    _scanner.TryReadEntireSimpleUInt16Array(first, out var directItems))
+                {
+                    AdvancePacked();
+                    Expect(TypedDocumentTokenKind.RightBracket, "Expected ']'.");
+                    return ScriptDatum.FromObject(new ScriptUInt16Array(directItems));
+                }
+            }
             var buffer = new TypedDocumentPooledBuffer<ushort>(8);
             try
             {
@@ -1089,6 +1150,19 @@ namespace AuroraScript.Runtime.Serialization
         private ScriptDatum ReadUInt32PackedArray()
         {
             Expect(TypedDocumentTokenKind.LeftBracket, "Type 'UInt32Array' requires an array value.");
+            if (Current().Kind != TypedDocumentTokenKind.RightBracket)
+            {
+                var first = CurrentPacked(0);
+                EnsurePackedElementDepth(first, 0);
+                if (!_hasLookahead &&
+                    first.Kind == TypedDocumentTokenKind.Number &&
+                    _scanner.TryReadEntireSimpleUInt32Array(first, out var directItems))
+                {
+                    AdvancePacked();
+                    Expect(TypedDocumentTokenKind.RightBracket, "Expected ']'.");
+                    return ScriptDatum.FromObject(new ScriptUInt32Array(directItems));
+                }
+            }
             var buffer = new TypedDocumentPooledBuffer<uint>(8);
             try
             {
@@ -1135,6 +1209,19 @@ namespace AuroraScript.Runtime.Serialization
         private ScriptDatum ReadInt64PackedArray()
         {
             Expect(TypedDocumentTokenKind.LeftBracket, "Type 'Int64Array' requires an array value.");
+            if (Current().Kind != TypedDocumentTokenKind.RightBracket)
+            {
+                var first = CurrentPacked(0);
+                EnsurePackedElementDepth(first, 0);
+                if (!_hasLookahead &&
+                    first.Kind == TypedDocumentTokenKind.Number &&
+                    _scanner.TryReadEntireSimpleInt64Array(first, out var directItems))
+                {
+                    AdvancePacked();
+                    Expect(TypedDocumentTokenKind.RightBracket, "Expected ']'.");
+                    return ScriptDatum.FromObject(new ScriptInt64Array(directItems));
+                }
+            }
             var buffer = new TypedDocumentPooledBuffer<long>(8);
             try
             {
@@ -1182,6 +1269,19 @@ namespace AuroraScript.Runtime.Serialization
         private ScriptDatum ReadUInt64PackedArray()
         {
             Expect(TypedDocumentTokenKind.LeftBracket, "Type 'UInt64Array' requires an array value.");
+            if (Current().Kind != TypedDocumentTokenKind.RightBracket)
+            {
+                var first = CurrentPacked(0);
+                EnsurePackedElementDepth(first, 0);
+                if (!_hasLookahead &&
+                    first.Kind == TypedDocumentTokenKind.Number &&
+                    _scanner.TryReadEntireSimpleUInt64Array(first, out var directItems))
+                {
+                    AdvancePacked();
+                    Expect(TypedDocumentTokenKind.RightBracket, "Expected ']'.");
+                    return ScriptDatum.FromObject(new ScriptUInt64Array(directItems));
+                }
+            }
             var buffer = new TypedDocumentPooledBuffer<ulong>(8);
             try
             {

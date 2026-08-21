@@ -558,6 +558,38 @@ public sealed class TypedDocumentSerializationTests
     }
 
     [Fact]
+    public void DeserializesUnsignedAndFloatPackedRunsThroughNativeStorage()
+    {
+        var engine = new AuroraEngine(EngineOptions.Default);
+        const string document = """
+            Object {
+                UInt8Array u8 [0, 255, 1],
+                UInt16Array u16 [0, 65535, 42],
+                UInt32Array u32 [0, 4294967295, 42],
+                UInt64Array u64 [0, 9007199254740993, 18446744073709551615],
+                Float64Array floats [
+                    1.25,
+                    -2.5e2,
+                    3.0,
+                ],
+                String tail "ok",
+            }
+            """;
+
+        var root = Assert.IsType<ScriptObject>(
+            TypedDocumentSerializer.Deserialize(engine, document).Object);
+        Assert.Equal((byte)255, Assert.IsType<ScriptUInt8Array>(root.GetPropertyDatum(null, "u8").Object).GetElement(1));
+        Assert.Equal(ushort.MaxValue, Assert.IsType<ScriptUInt16Array>(root.GetPropertyDatum(null, "u16").Object).GetElement(1));
+        Assert.Equal(uint.MaxValue, Assert.IsType<ScriptUInt32Array>(root.GetPropertyDatum(null, "u32").Object).GetElement(1));
+        Assert.Equal(ulong.MaxValue, Assert.IsType<ScriptUInt64Array>(root.GetPropertyDatum(null, "u64").Object).GetElement(2));
+        var floats = Assert.IsType<ScriptFloat64Array>(root.GetPropertyDatum(null, "floats").Object);
+        Assert.Equal(1.25, floats.GetElement(0));
+        Assert.Equal(-250d, floats.GetElement(1));
+        Assert.Equal(3d, floats.GetElement(2));
+        Assert.Equal("ok", root.GetPropertyDatum(null, "tail").StringText);
+    }
+
+    [Fact]
     public void CompactOutputHasNoFormattingLineBreaksButPreservesStringControlCharacters()
     {
         var engine = new AuroraEngine(EngineOptions.Default);

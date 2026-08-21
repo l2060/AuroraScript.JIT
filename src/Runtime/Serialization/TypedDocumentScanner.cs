@@ -76,6 +76,21 @@ namespace AuroraScript.Runtime.Serialization
 
     internal struct TypedDocumentScanner
     {
+        private enum SimpleIntegerKind : byte
+        {
+            Int16,
+            Int32,
+            Int64
+        }
+
+        private enum SimpleUnsignedIntegerKind : byte
+        {
+            UInt8,
+            UInt16,
+            UInt32,
+            UInt64
+        }
+
         private readonly string _source;
         private int _position;
         private int _line;
@@ -330,6 +345,906 @@ namespace AuroraScript.Runtime.Serialization
 
             _position = position;
             _column += position - initialPosition;
+            return true;
+        }
+
+        internal bool TryReadEntireSimpleInt16Array(
+            in TypedDocumentToken first,
+            out short[] values)
+        {
+            values = null;
+            if (!TryScanSimpleIntegerArray(
+                    first,
+                    SimpleIntegerKind.Int16,
+                    out var count,
+                    out var firstValue,
+                    out var endPosition,
+                    out var endLine,
+                    out var endColumn))
+            {
+                return false;
+            }
+
+            var result = new short[count];
+            result[0] = (short)firstValue;
+            if (!TryFillSimpleInt16Array(result, count)) return false;
+
+            _position = endPosition;
+            _line = endLine;
+            _column = endColumn;
+            values = result;
+            return true;
+        }
+
+        internal bool TryReadEntireSimpleInt32Array(
+            in TypedDocumentToken first,
+            out int[] values)
+        {
+            values = null;
+            if (!TryScanSimpleIntegerArray(
+                    first,
+                    SimpleIntegerKind.Int32,
+                    out var count,
+                    out var firstValue,
+                    out var endPosition,
+                    out var endLine,
+                    out var endColumn))
+            {
+                return false;
+            }
+
+            var result = new int[count];
+            result[0] = (int)firstValue;
+            if (!TryFillSimpleInt32Array(result, count)) return false;
+
+            _position = endPosition;
+            _line = endLine;
+            _column = endColumn;
+            values = result;
+            return true;
+        }
+
+        internal bool TryReadEntireSimpleInt64Array(
+            in TypedDocumentToken first,
+            out long[] values)
+        {
+            values = null;
+            if (!TryScanSimpleIntegerArray(
+                    first,
+                    SimpleIntegerKind.Int64,
+                    out var count,
+                    out var firstValue,
+                    out var endPosition,
+                    out var endLine,
+                    out var endColumn))
+            {
+                return false;
+            }
+
+            var result = new long[count];
+            result[0] = firstValue;
+            if (!TryFillSimpleInt64Array(result, count)) return false;
+
+            _position = endPosition;
+            _line = endLine;
+            _column = endColumn;
+            values = result;
+            return true;
+        }
+
+        private bool TryScanSimpleIntegerArray(
+            in TypedDocumentToken first,
+            SimpleIntegerKind kind,
+            out int count,
+            out long firstValue,
+            out int endPosition,
+            out int endLine,
+            out int endColumn)
+        {
+            count = 0;
+            firstValue = 0;
+            endPosition = 0;
+            endLine = 0;
+            endColumn = 0;
+
+            var firstPosition = first.Start;
+            var firstLine = first.Line;
+            var firstColumn = first.Column;
+            if (first.Kind != TypedDocumentTokenKind.Number ||
+                !TryReadSimpleIntegerToken(
+                    _source,
+                    ref firstPosition,
+                    ref firstLine,
+                    ref firstColumn,
+                    kind,
+                    out firstValue) ||
+                firstPosition != first.Start + first.Length)
+            {
+                return false;
+            }
+
+            count = 1;
+            var position = _position;
+            var line = _line;
+            var column = _column;
+            while (true)
+            {
+                SkipSimpleWhitespace(_source, ref position, ref line, ref column);
+                if ((uint)position >= (uint)_source.Length) return false;
+
+                if (_source[position] == ']')
+                {
+                    endPosition = position;
+                    endLine = line;
+                    endColumn = column;
+                    return true;
+                }
+                if (_source[position] != ',') return false;
+
+                position++;
+                column++;
+                SkipSimpleWhitespace(_source, ref position, ref line, ref column);
+                if ((uint)position < (uint)_source.Length && _source[position] == ']')
+                {
+                    endPosition = position;
+                    endLine = line;
+                    endColumn = column;
+                    return true;
+                }
+                if (!TryReadSimpleIntegerToken(
+                        _source,
+                        ref position,
+                        ref line,
+                        ref column,
+                        kind,
+                        out _))
+                {
+                    return false;
+                }
+                count++;
+            }
+        }
+
+        private bool TryFillSimpleInt16Array(short[] values, int count)
+        {
+            var position = _position;
+            var line = _line;
+            var column = _column;
+            for (var index = 1; index < count; index++)
+            {
+                SkipSimpleWhitespace(_source, ref position, ref line, ref column);
+                if ((uint)position >= (uint)_source.Length || _source[position] != ',') return false;
+                position++;
+                column++;
+                if (!TryReadSimpleIntegerToken(
+                        _source,
+                        ref position,
+                        ref line,
+                        ref column,
+                        SimpleIntegerKind.Int16,
+                        out var value))
+                {
+                    return false;
+                }
+                values[index] = (short)value;
+            }
+            return true;
+        }
+
+        private bool TryFillSimpleInt32Array(int[] values, int count)
+        {
+            var position = _position;
+            var line = _line;
+            var column = _column;
+            for (var index = 1; index < count; index++)
+            {
+                SkipSimpleWhitespace(_source, ref position, ref line, ref column);
+                if ((uint)position >= (uint)_source.Length || _source[position] != ',') return false;
+                position++;
+                column++;
+                if (!TryReadSimpleIntegerToken(
+                        _source,
+                        ref position,
+                        ref line,
+                        ref column,
+                        SimpleIntegerKind.Int32,
+                        out var value))
+                {
+                    return false;
+                }
+                values[index] = (int)value;
+            }
+            return true;
+        }
+
+        private bool TryFillSimpleInt64Array(long[] values, int count)
+        {
+            var position = _position;
+            var line = _line;
+            var column = _column;
+            for (var index = 1; index < count; index++)
+            {
+                SkipSimpleWhitespace(_source, ref position, ref line, ref column);
+                if ((uint)position >= (uint)_source.Length || _source[position] != ',') return false;
+                position++;
+                column++;
+                if (!TryReadSimpleIntegerToken(
+                        _source,
+                        ref position,
+                        ref line,
+                        ref column,
+                        SimpleIntegerKind.Int64,
+                        out var value))
+                {
+                    return false;
+                }
+                values[index] = value;
+            }
+            return true;
+        }
+
+        private static bool TryReadSimpleIntegerToken(
+            string source,
+            ref int position,
+            ref int line,
+            ref int column,
+            SimpleIntegerKind kind,
+            out long value)
+        {
+            SkipSimpleWhitespace(source, ref position, ref line, ref column);
+            var negative = false;
+            if ((uint)position < (uint)source.Length && source[position] == '-')
+            {
+                negative = true;
+                position++;
+                column++;
+            }
+
+            var digitsStart = position;
+            var maximumBeforeLastDigit = kind switch
+            {
+                SimpleIntegerKind.Int16 => 3276UL,
+                SimpleIntegerKind.Int32 => 214748364UL,
+                _ => 922337203685477580UL
+            };
+            var maximumLastDigit = negative ? 8U : 7U;
+            ulong magnitude = 0;
+            while ((uint)position < (uint)source.Length && IsDecimalDigit(source[position]))
+            {
+                var digit = (uint)(source[position] - '0');
+                if (magnitude > maximumBeforeLastDigit ||
+                    (magnitude == maximumBeforeLastDigit && digit > maximumLastDigit))
+                {
+                    value = 0;
+                    return false;
+                }
+                magnitude = (magnitude * 10UL) + digit;
+                position++;
+                column++;
+            }
+            if (position == digitsStart)
+            {
+                value = 0;
+                return false;
+            }
+
+            if ((uint)position < (uint)source.Length &&
+                !char.IsWhiteSpace(source[position]) &&
+                source[position] is not (',' or ']'))
+            {
+                value = 0;
+                return false;
+            }
+
+            if (!negative)
+            {
+                value = (long)magnitude;
+                return true;
+            }
+            if (kind == SimpleIntegerKind.Int64 &&
+                magnitude == 9223372036854775808UL)
+            {
+                value = long.MinValue;
+                return true;
+            }
+            value = -(long)magnitude;
+            return true;
+        }
+
+        private static void SkipSimpleWhitespace(
+            string source,
+            ref int position,
+            ref int line,
+            ref int column)
+        {
+            while ((uint)position < (uint)source.Length)
+            {
+                var current = source[position];
+                if (current == '\r')
+                {
+                    position++;
+                    if ((uint)position < (uint)source.Length && source[position] == '\n') position++;
+                    line++;
+                    column = 1;
+                    continue;
+                }
+                if (current == '\n')
+                {
+                    position++;
+                    line++;
+                    column = 1;
+                    continue;
+                }
+                if (!char.IsWhiteSpace(current)) break;
+                position++;
+                column++;
+            }
+        }
+
+        internal bool TryReadEntireSimpleUInt8Array(
+            in TypedDocumentToken first,
+            out byte[] values)
+        {
+            values = null;
+            if (!TryScanSimpleUnsignedIntegerArray(
+                    first,
+                    SimpleUnsignedIntegerKind.UInt8,
+                    out var count,
+                    out var firstValue,
+                    out var endPosition,
+                    out var endLine,
+                    out var endColumn))
+            {
+                return false;
+            }
+
+            var result = new byte[count];
+            result[0] = (byte)firstValue;
+            if (!TryFillSimpleUInt8Array(result, count)) return false;
+
+            _position = endPosition;
+            _line = endLine;
+            _column = endColumn;
+            values = result;
+            return true;
+        }
+
+        internal bool TryReadEntireSimpleUInt16Array(
+            in TypedDocumentToken first,
+            out ushort[] values)
+        {
+            values = null;
+            if (!TryScanSimpleUnsignedIntegerArray(
+                    first,
+                    SimpleUnsignedIntegerKind.UInt16,
+                    out var count,
+                    out var firstValue,
+                    out var endPosition,
+                    out var endLine,
+                    out var endColumn))
+            {
+                return false;
+            }
+
+            var result = new ushort[count];
+            result[0] = (ushort)firstValue;
+            if (!TryFillSimpleUInt16Array(result, count)) return false;
+
+            _position = endPosition;
+            _line = endLine;
+            _column = endColumn;
+            values = result;
+            return true;
+        }
+
+        internal bool TryReadEntireSimpleUInt32Array(
+            in TypedDocumentToken first,
+            out uint[] values)
+        {
+            values = null;
+            if (!TryScanSimpleUnsignedIntegerArray(
+                    first,
+                    SimpleUnsignedIntegerKind.UInt32,
+                    out var count,
+                    out var firstValue,
+                    out var endPosition,
+                    out var endLine,
+                    out var endColumn))
+            {
+                return false;
+            }
+
+            var result = new uint[count];
+            result[0] = (uint)firstValue;
+            if (!TryFillSimpleUInt32Array(result, count)) return false;
+
+            _position = endPosition;
+            _line = endLine;
+            _column = endColumn;
+            values = result;
+            return true;
+        }
+
+        internal bool TryReadEntireSimpleUInt64Array(
+            in TypedDocumentToken first,
+            out ulong[] values)
+        {
+            values = null;
+            if (!TryScanSimpleUnsignedIntegerArray(
+                    first,
+                    SimpleUnsignedIntegerKind.UInt64,
+                    out var count,
+                    out var firstValue,
+                    out var endPosition,
+                    out var endLine,
+                    out var endColumn))
+            {
+                return false;
+            }
+
+            var result = new ulong[count];
+            result[0] = firstValue;
+            if (!TryFillSimpleUInt64Array(result, count)) return false;
+
+            _position = endPosition;
+            _line = endLine;
+            _column = endColumn;
+            values = result;
+            return true;
+        }
+
+        private bool TryScanSimpleUnsignedIntegerArray(
+            in TypedDocumentToken first,
+            SimpleUnsignedIntegerKind kind,
+            out int count,
+            out ulong firstValue,
+            out int endPosition,
+            out int endLine,
+            out int endColumn)
+        {
+            count = 0;
+            firstValue = 0;
+            endPosition = 0;
+            endLine = 0;
+            endColumn = 0;
+
+            var firstPosition = first.Start;
+            var firstLine = first.Line;
+            var firstColumn = first.Column;
+            if (first.Kind != TypedDocumentTokenKind.Number ||
+                !TryReadSimpleUnsignedIntegerToken(
+                    _source,
+                    ref firstPosition,
+                    ref firstLine,
+                    ref firstColumn,
+                    kind,
+                    out firstValue) ||
+                firstPosition != first.Start + first.Length)
+            {
+                return false;
+            }
+
+            count = 1;
+            var position = _position;
+            var line = _line;
+            var column = _column;
+            while (true)
+            {
+                SkipSimpleWhitespace(_source, ref position, ref line, ref column);
+                if ((uint)position >= (uint)_source.Length) return false;
+
+                if (_source[position] == ']')
+                {
+                    endPosition = position;
+                    endLine = line;
+                    endColumn = column;
+                    return true;
+                }
+                if (_source[position] != ',') return false;
+
+                position++;
+                column++;
+                SkipSimpleWhitespace(_source, ref position, ref line, ref column);
+                if ((uint)position < (uint)_source.Length && _source[position] == ']')
+                {
+                    endPosition = position;
+                    endLine = line;
+                    endColumn = column;
+                    return true;
+                }
+                if (!TryReadSimpleUnsignedIntegerToken(
+                        _source,
+                        ref position,
+                        ref line,
+                        ref column,
+                        kind,
+                        out _))
+                {
+                    return false;
+                }
+                count++;
+            }
+        }
+
+        private bool TryFillSimpleUInt8Array(byte[] values, int count)
+        {
+            var position = _position;
+            var line = _line;
+            var column = _column;
+            for (var index = 1; index < count; index++)
+            {
+                SkipSimpleWhitespace(_source, ref position, ref line, ref column);
+                if ((uint)position >= (uint)_source.Length || _source[position] != ',') return false;
+                position++;
+                column++;
+                if (!TryReadSimpleUnsignedIntegerToken(
+                        _source,
+                        ref position,
+                        ref line,
+                        ref column,
+                        SimpleUnsignedIntegerKind.UInt8,
+                        out var value))
+                {
+                    return false;
+                }
+                values[index] = (byte)value;
+            }
+            return true;
+        }
+
+        private bool TryFillSimpleUInt16Array(ushort[] values, int count)
+        {
+            var position = _position;
+            var line = _line;
+            var column = _column;
+            for (var index = 1; index < count; index++)
+            {
+                SkipSimpleWhitespace(_source, ref position, ref line, ref column);
+                if ((uint)position >= (uint)_source.Length || _source[position] != ',') return false;
+                position++;
+                column++;
+                if (!TryReadSimpleUnsignedIntegerToken(
+                        _source,
+                        ref position,
+                        ref line,
+                        ref column,
+                        SimpleUnsignedIntegerKind.UInt16,
+                        out var value))
+                {
+                    return false;
+                }
+                values[index] = (ushort)value;
+            }
+            return true;
+        }
+
+        private bool TryFillSimpleUInt32Array(uint[] values, int count)
+        {
+            var position = _position;
+            var line = _line;
+            var column = _column;
+            for (var index = 1; index < count; index++)
+            {
+                SkipSimpleWhitespace(_source, ref position, ref line, ref column);
+                if ((uint)position >= (uint)_source.Length || _source[position] != ',') return false;
+                position++;
+                column++;
+                if (!TryReadSimpleUnsignedIntegerToken(
+                        _source,
+                        ref position,
+                        ref line,
+                        ref column,
+                        SimpleUnsignedIntegerKind.UInt32,
+                        out var value))
+                {
+                    return false;
+                }
+                values[index] = (uint)value;
+            }
+            return true;
+        }
+
+        private bool TryFillSimpleUInt64Array(ulong[] values, int count)
+        {
+            var position = _position;
+            var line = _line;
+            var column = _column;
+            for (var index = 1; index < count; index++)
+            {
+                SkipSimpleWhitespace(_source, ref position, ref line, ref column);
+                if ((uint)position >= (uint)_source.Length || _source[position] != ',') return false;
+                position++;
+                column++;
+                if (!TryReadSimpleUnsignedIntegerToken(
+                        _source,
+                        ref position,
+                        ref line,
+                        ref column,
+                        SimpleUnsignedIntegerKind.UInt64,
+                        out var value))
+                {
+                    return false;
+                }
+                values[index] = value;
+            }
+            return true;
+        }
+
+        private static bool TryReadSimpleUnsignedIntegerToken(
+            string source,
+            ref int position,
+            ref int line,
+            ref int column,
+            SimpleUnsignedIntegerKind kind,
+            out ulong value)
+        {
+            SkipSimpleWhitespace(source, ref position, ref line, ref column);
+            var maximumBeforeLastDigit = kind switch
+            {
+                SimpleUnsignedIntegerKind.UInt8 => 25UL,
+                SimpleUnsignedIntegerKind.UInt16 => 6553UL,
+                SimpleUnsignedIntegerKind.UInt32 => 429496729UL,
+                _ => 1844674407370955161UL
+            };
+            var digitsStart = position;
+            var magnitude = 0UL;
+            while ((uint)position < (uint)source.Length && IsDecimalDigit(source[position]))
+            {
+                var digit = (uint)(source[position] - '0');
+                if (magnitude > maximumBeforeLastDigit ||
+                    (magnitude == maximumBeforeLastDigit && digit > 5U))
+                {
+                    value = 0;
+                    return false;
+                }
+                magnitude = (magnitude * 10UL) + digit;
+                position++;
+                column++;
+            }
+            if (position == digitsStart)
+            {
+                value = 0;
+                return false;
+            }
+            if ((uint)position < (uint)source.Length &&
+                !char.IsWhiteSpace(source[position]) &&
+                source[position] is not (',' or ']'))
+            {
+                value = 0;
+                return false;
+            }
+            value = magnitude;
+            return true;
+        }
+
+        internal bool TryReadEntireSimpleFloat64Array(
+            in TypedDocumentToken first,
+            out double[] values)
+        {
+            values = null;
+            if (!TryScanSimpleFloatArray(
+                    first,
+                    out var count,
+                    out var firstValue,
+                    out var endPosition,
+                    out var endLine,
+                    out var endColumn))
+            {
+                return false;
+            }
+
+            var result = new double[count];
+            result[0] = firstValue;
+            if (!TryFillSimpleFloatArray(result, count)) return false;
+
+            _position = endPosition;
+            _line = endLine;
+            _column = endColumn;
+            values = result;
+            return true;
+        }
+
+        private bool TryScanSimpleFloatArray(
+            in TypedDocumentToken first,
+            out int count,
+            out double firstValue,
+            out int endPosition,
+            out int endLine,
+            out int endColumn)
+        {
+            count = 0;
+            firstValue = 0;
+            endPosition = 0;
+            endLine = 0;
+            endColumn = 0;
+
+            var firstPosition = first.Start;
+            var firstLine = first.Line;
+            var firstColumn = first.Column;
+            if (first.Kind != TypedDocumentTokenKind.Number ||
+                !TryReadSimpleFloatSyntax(
+                    _source,
+                    ref firstPosition,
+                    ref firstLine,
+                    ref firstColumn,
+                    out _,
+                    out _) ||
+                firstPosition != first.Start + first.Length ||
+                !double.IsFinite(first.Number))
+            {
+                return false;
+            }
+            firstValue = first.Number;
+
+            count = 1;
+            var position = _position;
+            var line = _line;
+            var column = _column;
+            while (true)
+            {
+                SkipSimpleWhitespace(_source, ref position, ref line, ref column);
+                if ((uint)position >= (uint)_source.Length) return false;
+                if (_source[position] == ']')
+                {
+                    endPosition = position;
+                    endLine = line;
+                    endColumn = column;
+                    return true;
+                }
+                if (_source[position] != ',') return false;
+
+                position++;
+                column++;
+                SkipSimpleWhitespace(_source, ref position, ref line, ref column);
+                if ((uint)position < (uint)_source.Length && _source[position] == ']')
+                {
+                    endPosition = position;
+                    endLine = line;
+                    endColumn = column;
+                    return true;
+                }
+                if (!TryReadSimpleFloatSyntax(
+                        _source,
+                        ref position,
+                        ref line,
+                        ref column,
+                        out _,
+                        out _))
+                {
+                    return false;
+                }
+                count++;
+            }
+        }
+
+        private bool TryFillSimpleFloatArray(double[] values, int count)
+        {
+            var position = _position;
+            var line = _line;
+            var column = _column;
+            for (var index = 1; index < count; index++)
+            {
+                SkipSimpleWhitespace(_source, ref position, ref line, ref column);
+                if ((uint)position >= (uint)_source.Length || _source[position] != ',') return false;
+                position++;
+                column++;
+                if (!TryReadSimpleFloatToken(
+                        _source,
+                        ref position,
+                        ref line,
+                        ref column,
+                        out var value))
+                {
+                    return false;
+                }
+                values[index] = value;
+            }
+            return true;
+        }
+
+        private static bool TryReadSimpleFloatSyntax(
+            string source,
+            ref int position,
+            ref int line,
+            ref int column,
+            out int start,
+            out int length)
+        {
+            SkipSimpleWhitespace(source, ref position, ref line, ref column);
+            start = position;
+            if ((uint)position < (uint)source.Length && source[position] == '-')
+            {
+                position++;
+                column++;
+            }
+
+            var integerDigits = 0;
+            while ((uint)position < (uint)source.Length && IsDecimalDigit(source[position]))
+            {
+                position++;
+                column++;
+                integerDigits++;
+            }
+            if (integerDigits == 0)
+            {
+                length = 0;
+                return false;
+            }
+
+            if ((uint)position < (uint)source.Length && source[position] == '.')
+            {
+                position++;
+                column++;
+                while ((uint)position < (uint)source.Length && IsDecimalDigit(source[position]))
+                {
+                    position++;
+                    column++;
+                }
+            }
+
+            if ((uint)position < (uint)source.Length && source[position] is 'e' or 'E')
+            {
+                position++;
+                column++;
+                if ((uint)position < (uint)source.Length && source[position] is '+' or '-')
+                {
+                    position++;
+                    column++;
+                }
+                var exponentDigits = 0;
+                while ((uint)position < (uint)source.Length && IsDecimalDigit(source[position]))
+                {
+                    position++;
+                    column++;
+                    exponentDigits++;
+                }
+                if (exponentDigits == 0)
+                {
+                    length = 0;
+                    return false;
+                }
+            }
+
+            if ((uint)position < (uint)source.Length &&
+                !char.IsWhiteSpace(source[position]) &&
+                source[position] is not (',' or ']'))
+            {
+                length = 0;
+                return false;
+            }
+
+            length = position - start;
+            return true;
+        }
+
+        private static bool TryReadSimpleFloatToken(
+            string source,
+            ref int position,
+            ref int line,
+            ref int column,
+            out double value)
+        {
+            if (!TryReadSimpleFloatSyntax(
+                    source,
+                    ref position,
+                    ref line,
+                    ref column,
+                    out var start,
+                    out var length))
+            {
+                value = 0;
+                return false;
+            }
+
+            if (!TryParseDecimal(
+                    source.AsSpan(start, length),
+                    hasSeparators: false,
+                    out value) ||
+                !double.IsFinite(value))
+            {
+                value = 0;
+                return false;
+            }
             return true;
         }
 
