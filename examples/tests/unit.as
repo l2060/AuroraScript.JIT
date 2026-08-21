@@ -24,9 +24,6 @@ export func testEmpty() {
 	// empty body
 }
 
-
-
-
 export func testTypedDocument() {
 	// empty body
 	var doc = tdoc Object {
@@ -34,11 +31,11 @@ export func testTypedDocument() {
 		readonly age 32,
 		readonly name 'Hanks',
 		Date Birthday '1991-02-01 12:32:55',
-		StringBuffer buff 'Hello Hanks'
+		StringBuffer buff 'Hello '
 	};
-	doc.buff.append('!');
+	doc.buff.append('Hanks');
 	console.log(JSON.stringify(doc));
-	console.log(TDoc.stringify(doc,false));
+	console.log(TDoc.stringify(doc, false));
 }
 
 var node = {

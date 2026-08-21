@@ -43,6 +43,33 @@ public sealed class TypedDocumentLanguageFeatureTests
         Assert.Contains("Standalone TDoc", diagnostic.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void StandaloneTDocDiagnosticsCoverBuiltinShapesRangesDatesAndScientificNotation()
+    {
+        var service = new AuroraLanguageService(
+            BuiltinApiLoader.LoadFromFile(BuiltinApiCatalogTests.GetRuntimeApiPath()));
+
+        const string valid =
+            "Object { String \"display name\" \"Aurora\", Float64Array values [-2.5e2, 1e3], User user { name \"Hanks\" }, }";
+        Assert.Empty(service.GetDiagnostics("config.tdoc", valid));
+
+        var range = Assert.Single(service.GetDiagnostics(
+            "config.tdoc",
+            "Object { UInt8Array bytes [0, 256] }"));
+        Assert.Contains("$.bytes[1]", range.Message, StringComparison.Ordinal);
+
+        var shape = Assert.Single(service.GetDiagnostics(
+            "config.tdoc",
+            "Object { String name 42 }"));
+        Assert.Contains("$.name", shape.Message, StringComparison.Ordinal);
+
+        var date = Assert.Single(service.GetDiagnostics(
+            "config.tdoc",
+            "Object { Date createdAt \"2026-08-19 21:08:07 123\" }"));
+        Assert.Contains("$.createdAt", date.Message, StringComparison.Ordinal);
+        Assert.Contains("DateTimeFormat", date.Message, StringComparison.Ordinal);
+    }
+
     private static void AssertToken(string source, SemanticTokensResult result, string text, int type)
     {
         Assert.Contains(result.Tokens, token =>

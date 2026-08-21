@@ -3,6 +3,7 @@ using AuroraScript.Runtime.Types;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
 
@@ -47,6 +48,22 @@ namespace AuroraScript.Runtime.Serialization
 
         internal string Write(ScriptDatum value)
         {
+            WriteCore(value);
+            return _builder.ToString();
+        }
+
+        internal void WriteTo(TextWriter writer, ScriptDatum value)
+        {
+            ArgumentNullException.ThrowIfNull(writer);
+            WriteCore(value);
+            foreach (var chunk in _builder.GetChunks())
+            {
+                writer.Write(chunk.Span);
+            }
+        }
+
+        private void WriteCore(ScriptDatum value)
+        {
             if (!TryWriteTypedValue(value))
             {
                 // A root value has no surrounding member to omit. Keep the document
@@ -54,7 +71,6 @@ namespace AuroraScript.Runtime.Serialization
                 // snapshot merely because it contains a runtime-only value.
                 _builder.Append("null");
             }
-            return _builder.ToString();
         }
 
         internal void Dispose()
@@ -302,14 +318,16 @@ namespace AuroraScript.Runtime.Serialization
 
         private void WriteArray(ScriptArray value)
         {
-            BeginComposite('[', value.Length);
-            for (var index = 0; index < value.Length; index++)
+            var length = value.Length;
+            var items = value._items;
+            BeginComposite('[', length);
+            for (var index = 0; index < length; index++)
             {
                 WriteIndent();
                 _path.PushIndex(index);
                 try
                 {
-                    if (!TryWriteTypedValue(value.GetElement(index))) _builder.Append("null");
+                    if (!TryWriteTypedValue(items[index])) _builder.Append("null");
                 }
                 finally
                 {
@@ -317,56 +335,229 @@ namespace AuroraScript.Runtime.Serialization
                 }
                 WriteItemEnd();
             }
-            EndComposite(']', value.Length);
+            EndComposite(']', length);
         }
 
         private void WritePackedArray(ScriptPackedArray value)
         {
-            BeginComposite('[', value.Length);
+            var length = value.Length;
+            BeginComposite('[', length);
 
-            // Int64/UInt64 elements do not always have an exact ScriptDatum.Number
-            // representation.  TDoc still has an integer lexical space, so write
-            // those backing values directly instead of routing them through
-            // GetElementDatumUnchecked (which deliberately rejects a lossy dynamic
-            // conversion).
-            if (value is ScriptInt64Array int64)
+            // Every built-in packed array is primitive-backed.  Read its backing
+            // storage directly: materializing a ScriptDatum for each item is
+            // unnecessary work, and is impossible for some Int64/UInt64 values.
+            switch (value)
             {
-                for (var index = 0; index < int64._items.Length; index++)
-                {
-                    WriteIndent();
-                    _path.PushIndex(index);
-                    try
-                    {
-                        EnterValue();
-                        try { _builder.Append(int64._items[index].ToString(CultureInfo.InvariantCulture)); }
-                        finally { _valueDepth--; }
-                    }
-                    finally { _path.Pop(); }
-                    WriteItemEnd();
-                }
-                EndComposite(']', value.Length);
-                return;
+                case ScriptInt32Array int32:
+                    WritePackedInt32Elements(int32._items);
+                    break;
+                case ScriptInt8Array int8:
+                    WritePackedInt8Elements(int8._items);
+                    break;
+                case ScriptFloat64Array float64:
+                    WritePackedFloat64Elements(float64._items);
+                    break;
+                case ScriptBooleanArray boolean:
+                    WritePackedBooleanElements(boolean._items);
+                    break;
+                case ScriptUInt8Array uint8:
+                    WritePackedUInt8Elements(uint8._items);
+                    break;
+                case ScriptInt16Array int16:
+                    WritePackedInt16Elements(int16._items);
+                    break;
+                case ScriptUInt16Array uint16:
+                    WritePackedUInt16Elements(uint16._items);
+                    break;
+                case ScriptUInt32Array uint32:
+                    WritePackedUInt32Elements(uint32._items);
+                    break;
+                case ScriptInt64Array int64:
+                    WritePackedInt64Elements(int64._items);
+                    break;
+                case ScriptUInt64Array uint64:
+                    WritePackedUInt64Elements(uint64._items);
+                    break;
+                default:
+                    WriteUnknownPackedElements(value, length);
+                    break;
             }
-            if (value is ScriptUInt64Array uint64)
-            {
-                for (var index = 0; index < uint64._items.Length; index++)
-                {
-                    WriteIndent();
-                    _path.PushIndex(index);
-                    try
-                    {
-                        EnterValue();
-                        try { _builder.Append(uint64._items[index].ToString(CultureInfo.InvariantCulture)); }
-                        finally { _valueDepth--; }
-                    }
-                    finally { _path.Pop(); }
-                    WriteItemEnd();
-                }
-                EndComposite(']', value.Length);
-                return;
-            }
+            EndComposite(']', length);
+        }
 
-            for (var index = 0; index < value.Length; index++)
+        private void WritePackedInt32Elements(int[] values)
+        {
+            for (var index = 0; index < values.Length; index++)
+            {
+                WriteIndent();
+                _path.PushIndex(index);
+                try
+                {
+                    EnterValue();
+                    try { WriteInt32(values[index]); }
+                    finally { _valueDepth--; }
+                }
+                finally { _path.Pop(); }
+                WriteItemEnd();
+            }
+        }
+
+        private void WritePackedInt8Elements(sbyte[] values)
+        {
+            for (var index = 0; index < values.Length; index++)
+            {
+                WriteIndent();
+                _path.PushIndex(index);
+                try
+                {
+                    EnterValue();
+                    try { WriteInt32(values[index]); }
+                    finally { _valueDepth--; }
+                }
+                finally { _path.Pop(); }
+                WriteItemEnd();
+            }
+        }
+
+        private void WritePackedFloat64Elements(double[] values)
+        {
+            for (var index = 0; index < values.Length; index++)
+            {
+                WriteIndent();
+                _path.PushIndex(index);
+                try
+                {
+                    EnterValue();
+                    try { WriteNumber(values[index]); }
+                    finally { _valueDepth--; }
+                }
+                finally { _path.Pop(); }
+                WriteItemEnd();
+            }
+        }
+
+        private void WritePackedBooleanElements(bool[] values)
+        {
+            for (var index = 0; index < values.Length; index++)
+            {
+                WriteIndent();
+                _path.PushIndex(index);
+                try
+                {
+                    EnterValue();
+                    try { _builder.Append(values[index] ? "true" : "false"); }
+                    finally { _valueDepth--; }
+                }
+                finally { _path.Pop(); }
+                WriteItemEnd();
+            }
+        }
+
+        private void WritePackedUInt8Elements(byte[] values)
+        {
+            for (var index = 0; index < values.Length; index++)
+            {
+                WriteIndent();
+                _path.PushIndex(index);
+                try
+                {
+                    EnterValue();
+                    try { WriteInt32(values[index]); }
+                    finally { _valueDepth--; }
+                }
+                finally { _path.Pop(); }
+                WriteItemEnd();
+            }
+        }
+
+        private void WritePackedInt16Elements(short[] values)
+        {
+            for (var index = 0; index < values.Length; index++)
+            {
+                WriteIndent();
+                _path.PushIndex(index);
+                try
+                {
+                    EnterValue();
+                    try { WriteInt32(values[index]); }
+                    finally { _valueDepth--; }
+                }
+                finally { _path.Pop(); }
+                WriteItemEnd();
+            }
+        }
+
+        private void WritePackedUInt16Elements(ushort[] values)
+        {
+            for (var index = 0; index < values.Length; index++)
+            {
+                WriteIndent();
+                _path.PushIndex(index);
+                try
+                {
+                    EnterValue();
+                    try { WriteInt32(values[index]); }
+                    finally { _valueDepth--; }
+                }
+                finally { _path.Pop(); }
+                WriteItemEnd();
+            }
+        }
+
+        private void WritePackedUInt32Elements(uint[] values)
+        {
+            for (var index = 0; index < values.Length; index++)
+            {
+                WriteIndent();
+                _path.PushIndex(index);
+                try
+                {
+                    EnterValue();
+                    try { WriteUInt32(values[index]); }
+                    finally { _valueDepth--; }
+                }
+                finally { _path.Pop(); }
+                WriteItemEnd();
+            }
+        }
+
+        private void WritePackedInt64Elements(long[] values)
+        {
+            for (var index = 0; index < values.Length; index++)
+            {
+                WriteIndent();
+                _path.PushIndex(index);
+                try
+                {
+                    EnterValue();
+                    try { WriteInt64(values[index]); }
+                    finally { _valueDepth--; }
+                }
+                finally { _path.Pop(); }
+                WriteItemEnd();
+            }
+        }
+
+        private void WritePackedUInt64Elements(ulong[] values)
+        {
+            for (var index = 0; index < values.Length; index++)
+            {
+                WriteIndent();
+                _path.PushIndex(index);
+                try
+                {
+                    EnterValue();
+                    try { WriteUInt64(values[index]); }
+                    finally { _valueDepth--; }
+                }
+                finally { _path.Pop(); }
+                WriteItemEnd();
+            }
+        }
+
+        private void WriteUnknownPackedElements(ScriptPackedArray value, int length)
+        {
+            for (var index = 0; index < length; index++)
             {
                 WriteIndent();
                 _path.PushIndex(index);
@@ -396,7 +587,6 @@ namespace AuroraScript.Runtime.Serialization
                 }
                 WriteItemEnd();
             }
-            EndComposite(']', value.Length);
         }
 
         private void WriteDate(ScriptDate value)
@@ -864,6 +1054,46 @@ namespace AuroraScript.Runtime.Serialization
                 return;
             }
             _builder.Append(value.ToString("R", CultureInfo.InvariantCulture));
+        }
+
+        private void WriteInt32(int value)
+        {
+            Span<char> buffer = stackalloc char[11];
+            if (!value.TryFormat(buffer, out var written, default, CultureInfo.InvariantCulture))
+            {
+                throw Error("Could not format packed integer element.");
+            }
+            _builder.Append(buffer[..written]);
+        }
+
+        private void WriteUInt32(uint value)
+        {
+            Span<char> buffer = stackalloc char[10];
+            if (!value.TryFormat(buffer, out var written, default, CultureInfo.InvariantCulture))
+            {
+                throw Error("Could not format packed integer element.");
+            }
+            _builder.Append(buffer[..written]);
+        }
+
+        private void WriteInt64(long value)
+        {
+            Span<char> buffer = stackalloc char[20];
+            if (!value.TryFormat(buffer, out var written, default, CultureInfo.InvariantCulture))
+            {
+                throw Error("Could not format Int64Array element.");
+            }
+            _builder.Append(buffer[..written]);
+        }
+
+        private void WriteUInt64(ulong value)
+        {
+            Span<char> buffer = stackalloc char[20];
+            if (!value.TryFormat(buffer, out var written, default, CultureInfo.InvariantCulture))
+            {
+                throw Error("Could not format UInt64Array element.");
+            }
+            _builder.Append(buffer[..written]);
         }
 
         private bool ShouldWriteTypeName(string typeName)

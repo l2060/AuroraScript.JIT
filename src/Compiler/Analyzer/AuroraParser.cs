@@ -2136,23 +2136,17 @@ namespace AuroraScript.Compiler.Analyzer
             result = 0;
             if (!TryGetTDocNumberToken(value, out var token, out var negative)) return false;
             var number = negative ? -token.NumberValue : token.NumberValue;
-            if (!double.IsFinite(number) || Math.Truncate(number) != number ||
-                number < -9223372036854775808d || number >= 9223372036854775808d)
-            {
-                return false;
-            }
-            if (Math.Abs(number) <= 9007199254740991d)
+            if (double.IsFinite(number) && Math.Truncate(number) == number &&
+                number >= -9007199254740991d && number <= 9007199254740991d)
             {
                 result = (long)number;
                 return true;
             }
 
-            if (!TryParseExactTDocInt64(token.Value.AsSpan(), negative, out result) ||
-                (double)result != number)
-            {
-                return false;
-            }
-            return true;
+            // NumberToken.NumberValue is a double and may already have rounded a
+            // valid 64-bit literal.  Only wide values need their original
+            // spelling to be parsed exactly.
+            return TryParseExactTDocInt64(token.Value.AsSpan(), negative, out result);
         }
 
         private static bool TryGetExactTDocUInt64(Expression value, out ulong result)
@@ -2162,19 +2156,16 @@ namespace AuroraScript.Compiler.Analyzer
             {
                 return false;
             }
+
             var number = token.NumberValue;
-            if (!double.IsFinite(number) || Math.Truncate(number) != number ||
-                number < 0d || number >= 18446744073709551616d)
-            {
-                return false;
-            }
-            if (number <= 9007199254740991d)
+            if (double.IsFinite(number) && Math.Truncate(number) == number &&
+                number >= 0d && number <= 9007199254740991d)
             {
                 result = (ulong)number;
                 return true;
             }
-            return TryParseExactTDocUInt64(token.Value.AsSpan(), out result) &&
-                (double)result == number;
+
+            return TryParseExactTDocUInt64(token.Value.AsSpan(), out result);
         }
 
         private static bool TryParseExactTDocInt64(

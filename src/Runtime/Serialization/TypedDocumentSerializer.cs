@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 
 namespace AuroraScript.Runtime.Serialization
 {
@@ -30,6 +31,29 @@ namespace AuroraScript.Runtime.Serialization
             try
             {
                 return writer.Write(value);
+            }
+            finally
+            {
+                writer.Dispose();
+            }
+        }
+
+        internal static void SerializeTo(
+            TextWriter output,
+            AuroraEngine engine,
+            ScriptDatum value,
+            TypedDocumentOptions options,
+            string sourceName)
+        {
+            ArgumentNullException.ThrowIfNull(output);
+            ArgumentNullException.ThrowIfNull(engine);
+            options ??= TypedDocumentOptions.Default;
+            ValidateOptions(options);
+
+            var writer = new TypedDocumentWriter(engine, options, sourceName);
+            try
+            {
+                writer.WriteTo(output, value);
             }
             finally
             {

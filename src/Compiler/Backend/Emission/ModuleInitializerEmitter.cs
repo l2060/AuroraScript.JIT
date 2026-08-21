@@ -1207,10 +1207,24 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return;
             }
 
-            // Module initializers use the same runtime binding boundary as
-            // function literals.  In particular, packed arrays are validated
-            // before any primitive narrowing and aliases are resolved against
-            // the current engine registry.
+            // A declared packed array has a known final type and length.  Do not
+            // first lower it to ScriptArray/ScriptDatum[] merely to bind it back
+            // into primitive storage.  Dynamic elements still use the shared
+            // binder validation before their direct store.
+            if (!expression.IsInterpolation && TryEmitTypedPackedDocument(typeName, expression.Value))
+            {
+                return;
+            }
+
+            if (!expression.IsInterpolation && typeName == "Date" &&
+                TypedDocumentLiteralConstants.TryGetDateTicks(expression.Value, out var ticks))
+            {
+                _il.Emit(OpCodes.Ldc_I8, ticks);
+                _il.Emit(OpCodes.Newobj, TypedRuntimeMetadata.ScriptDateTicksConstructor);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
+                return;
+            }
+
             if (!expression.IsInterpolation && typeName == "Regex")
             {
                     EmitTypedRegex(expression.Value);
@@ -1280,6 +1294,37 @@ namespace AuroraScript.Compiler.Backend.Emission
                 "Int64Array" or "UInt64Array";
         }
 
+        private static bool ContainsTDocInterpolation(Expression value)
+        {
+            if (value is TypedDocumentExpression tdoc)
+            {
+                return tdoc.IsInterpolation || ContainsTDocInterpolation(tdoc.Value);
+            }
+            if (value is ArrayLiteralExpression array)
+            {
+                for (var i = 0; i < array.Elements.Count; i++)
+                {
+                    if (ContainsTDocInterpolation(array.Elements[i])) return true;
+                }
+            }
+            else if (value is MapExpression map)
+            {
+                for (var i = 0; i < map.Entries.Count; i++)
+                {
+                    if (ContainsTDocInterpolation(map.Entries[i])) return true;
+                }
+            }
+            else if (value is MapKeyValueExpression entry)
+            {
+                return ContainsTDocInterpolation(entry.Value);
+            }
+            else if (value is SpreadExpression spread)
+            {
+                return ContainsTDocInterpolation(spread.Expression);
+            }
+            return false;
+        }
+
         private void EmitTypedGlobalConstructor(string typeName, Expression value)
         {
             _il.Emit(OpCodes.Ldarg_0);
@@ -1340,43 +1385,161 @@ namespace AuroraScript.Compiler.Backend.Emission
             _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
         }
 
-        private void EmitTypedPackedDocument(
-            Expression value,
-            Type elementType,
-            ConstructorInfo constructor,
-            FieldInfo itemsField,
-            OpCode storeOpcode)
+        private bool TryEmitTypedPackedDocument(string typeName, Expression value)
         {
-            if (value is not ArrayLiteralExpression array)
+            if (value is not ArrayLiteralExpression array || HasSpread(array.Elements))
             {
-                throw new NotSupportedException("TDoc packed array requires an array value.");
+                return false;
             }
 
+            switch (typeName)
+            {
+                case "Int32Array":
+                    EmitTypedPackedDocument(array, typeName, typeof(ScriptInt32Array), TypedRuntimeMetadata.ScriptInt32ArrayConstructor, TypedRuntimeMetadata.ScriptInt32ArrayItems);
+                    return true;
+                case "Int8Array":
+                    EmitTypedPackedDocument(array, typeName, typeof(ScriptInt8Array), TypedRuntimeMetadata.ScriptInt8ArrayConstructor, TypedRuntimeMetadata.ScriptInt8ArrayItems);
+                    return true;
+                case "Float64Array":
+                    EmitTypedPackedDocument(array, typeName, typeof(ScriptFloat64Array), TypedRuntimeMetadata.ScriptFloat64ArrayConstructor, TypedRuntimeMetadata.ScriptFloat64ArrayItems);
+                    return true;
+                case "BooleanArray":
+                    EmitTypedPackedDocument(array, typeName, typeof(ScriptBooleanArray), TypedRuntimeMetadata.ScriptBooleanArrayConstructor, TypedRuntimeMetadata.ScriptBooleanArrayItems);
+                    return true;
+                case "UInt8Array":
+                    EmitTypedPackedDocument(array, typeName, typeof(ScriptUInt8Array), TypedRuntimeMetadata.ScriptUInt8ArrayConstructor, TypedRuntimeMetadata.ScriptUInt8ArrayItems);
+                    return true;
+                case "Int16Array":
+                    EmitTypedPackedDocument(array, typeName, typeof(ScriptInt16Array), TypedRuntimeMetadata.ScriptInt16ArrayConstructor, TypedRuntimeMetadata.ScriptInt16ArrayItems);
+                    return true;
+                case "UInt16Array":
+                    EmitTypedPackedDocument(array, typeName, typeof(ScriptUInt16Array), TypedRuntimeMetadata.ScriptUInt16ArrayConstructor, TypedRuntimeMetadata.ScriptUInt16ArrayItems);
+                    return true;
+                case "UInt32Array":
+                    EmitTypedPackedDocument(array, typeName, typeof(ScriptUInt32Array), TypedRuntimeMetadata.ScriptUInt32ArrayConstructor, TypedRuntimeMetadata.ScriptUInt32ArrayItems);
+                    return true;
+                case "Int64Array":
+                    EmitTypedPackedDocument(array, typeName, typeof(ScriptInt64Array), TypedRuntimeMetadata.ScriptInt64ArrayConstructor, TypedRuntimeMetadata.ScriptInt64ArrayItems);
+                    return true;
+                case "UInt64Array":
+                    EmitTypedPackedDocument(array, typeName, typeof(ScriptUInt64Array), TypedRuntimeMetadata.ScriptUInt64ArrayConstructor, TypedRuntimeMetadata.ScriptUInt64ArrayItems);
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private void EmitTypedPackedDocument(
+            ArrayLiteralExpression array,
+            string typeName,
+            Type targetType,
+            ConstructorInfo constructor,
+            FieldInfo itemsField)
+        {
+            var target = DeclareLocal(targetType);
+            var basePath = _typedDocumentPath ?? "$";
             _il.Emit(OpCodes.Ldc_I4, array.Elements.Count);
             _il.Emit(OpCodes.Newobj, constructor);
+            _il.Emit(OpCodes.Stloc, target);
+
             for (var i = 0; i < array.Elements.Count; i++)
             {
-                _il.Emit(OpCodes.Dup);
-                _il.Emit(OpCodes.Ldfld, itemsField);
-                _il.Emit(OpCodes.Ldc_I4, i);
-                EmitExpression(array.Elements[i]);
-                if (elementType == typeof(double))
+                var element = array.Elements[i];
+                if (!ContainsTDocInterpolation(element))
                 {
-                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ToArithmeticNumber);
+                    _il.Emit(OpCodes.Ldloc, target);
+                    _il.Emit(OpCodes.Ldfld, itemsField);
+                    _il.Emit(OpCodes.Ldc_I4, i);
+                    EmitTypedPackedStaticElement(typeName, element);
+                    continue;
                 }
-                else if (elementType == typeof(bool))
+
+                _il.Emit(OpCodes.Ldloc, target);
+                _il.Emit(OpCodes.Ldc_I4, i);
+                EmitExpressionAtTDocIndex(element, i);
+                _session.Builder.LoadStringConstant(_il, basePath);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.SetTypedDocumentPackedElement);
+            }
+
+            _il.Emit(OpCodes.Ldloc, target);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
+        }
+
+        private void EmitTypedPackedStaticElement(string typeName, Expression value)
+        {
+            if (typeName == "BooleanArray" &&
+                TypedDocumentLiteralConstants.TryGetBoolean(value, out var boolean))
+            {
+                _il.Emit(boolean ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
+                _il.Emit(OpCodes.Stelem_I1);
+                return;
+            }
+
+            if (TypedDocumentLiteralConstants.TryGetNumber(value, out var number))
+            {
+                switch (typeName)
                 {
-                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ToBooleanDatum);
+                    case "Float64Array":
+                        _il.Emit(OpCodes.Ldc_R8, number);
+                        _il.Emit(OpCodes.Stelem_R8);
+                        return;
+                    case "Int32Array":
+                        _il.Emit(OpCodes.Ldc_I4, (int)number);
+                        _il.Emit(OpCodes.Stelem_I4);
+                        return;
+                    case "Int8Array":
+                    case "UInt8Array":
+                        _il.Emit(OpCodes.Ldc_I4, (int)number);
+                        _il.Emit(OpCodes.Stelem_I1);
+                        return;
+                    case "Int16Array":
+                    case "UInt16Array":
+                        _il.Emit(OpCodes.Ldc_I4, (int)number);
+                        _il.Emit(OpCodes.Stelem_I2);
+                        return;
+                    case "UInt32Array":
+                        _il.Emit(OpCodes.Ldc_I4, unchecked((int)(uint)number));
+                        _il.Emit(OpCodes.Stelem_I4);
+                        return;
+                }
+            }
+
+            if (typeName == "Int64Array")
+            {
+                if (TypedDocumentLiteralConstants.TryGetInt64(value, out var int64))
+                {
+                    _il.Emit(OpCodes.Ldc_I8, int64);
                 }
                 else
                 {
+                    EmitExpression(value);
                     _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ToArithmeticNumber);
-                    _il.Emit(OpCodes.Conv_I4);
-                    if (elementType == typeof(sbyte)) _il.Emit(OpCodes.Conv_I1);
+                    _il.Emit(OpCodes.Conv_I8);
                 }
-                _il.Emit(storeOpcode);
+                _il.Emit(OpCodes.Stelem_I8);
+                return;
             }
-            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
+            if (typeName == "UInt64Array")
+            {
+                if (TypedDocumentLiteralConstants.TryGetUInt64(value, out var uint64))
+                {
+                    _il.Emit(OpCodes.Ldc_I8, unchecked((long)uint64));
+                }
+                else
+                {
+                    EmitExpression(value);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ToArithmeticNumber);
+                    _il.Emit(OpCodes.Conv_U8);
+                }
+                _il.Emit(OpCodes.Stelem_I8);
+                return;
+            }
+
+            EmitExpression(value);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ToArithmeticNumber);
+            if (typeName == "Int8Array") _il.Emit(OpCodes.Conv_I1);
+            else _il.Emit(OpCodes.Conv_I4);
+            _il.Emit(typeName == "Int8Array" ? OpCodes.Stelem_I1 : OpCodes.Stelem_I4);
         }
 
         private void EmitLambda(LambdaExpression expression)

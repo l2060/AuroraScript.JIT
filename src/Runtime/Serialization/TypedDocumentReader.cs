@@ -658,37 +658,137 @@ namespace AuroraScript.Runtime.Serialization
             }
         }
 
-        private ScriptDatum ReadUInt8PackedArray() =>
-            ReadIntegerPackedArray(
-                TypedDocumentPackedKind.UInt8,
-                (double)byte.MinValue,
-                (double)byte.MaxValue,
-                static value => (byte)value,
-                static values => new ScriptUInt8Array(values));
+        private ScriptDatum ReadUInt8PackedArray()
+        {
+            Expect(TypedDocumentTokenKind.LeftBracket, "Type 'UInt8Array' requires an array value.");
+            var buffer = new TypedDocumentPooledBuffer<byte>(8);
+            try
+            {
+                if (!Match(TypedDocumentTokenKind.RightBracket))
+                {
+                    while (true)
+                    {
+                        _path.PushIndex(buffer.Count);
+                        try
+                        {
+                            var location = Current();
+                            var value = ReadTypedValue();
+                            ValidatePackedElement(TypedDocumentPackedKind.UInt8, value, location);
+                            buffer.Add((byte)value.Number);
+                        }
+                        finally
+                        {
+                            _path.Pop();
+                        }
+                        if (ReadArraySeparator()) break;
+                    }
+                }
+                return ScriptDatum.FromObject(new ScriptUInt8Array(buffer.ToArray()));
+            }
+            finally
+            {
+                buffer.Dispose();
+            }
+        }
 
-        private ScriptDatum ReadInt16PackedArray() =>
-            ReadIntegerPackedArray(
-                TypedDocumentPackedKind.Int16,
-                (double)short.MinValue,
-                (double)short.MaxValue,
-                static value => (short)value,
-                static values => new ScriptInt16Array(values));
+        private ScriptDatum ReadInt16PackedArray()
+        {
+            Expect(TypedDocumentTokenKind.LeftBracket, "Type 'Int16Array' requires an array value.");
+            var buffer = new TypedDocumentPooledBuffer<short>(8);
+            try
+            {
+                if (!Match(TypedDocumentTokenKind.RightBracket))
+                {
+                    while (true)
+                    {
+                        _path.PushIndex(buffer.Count);
+                        try
+                        {
+                            var location = Current();
+                            var value = ReadTypedValue();
+                            ValidatePackedElement(TypedDocumentPackedKind.Int16, value, location);
+                            buffer.Add((short)value.Number);
+                        }
+                        finally
+                        {
+                            _path.Pop();
+                        }
+                        if (ReadArraySeparator()) break;
+                    }
+                }
+                return ScriptDatum.FromObject(new ScriptInt16Array(buffer.ToArray()));
+            }
+            finally
+            {
+                buffer.Dispose();
+            }
+        }
 
-        private ScriptDatum ReadUInt16PackedArray() =>
-            ReadIntegerPackedArray(
-                TypedDocumentPackedKind.UInt16,
-                (double)ushort.MinValue,
-                (double)ushort.MaxValue,
-                static value => (ushort)value,
-                static values => new ScriptUInt16Array(values));
+        private ScriptDatum ReadUInt16PackedArray()
+        {
+            Expect(TypedDocumentTokenKind.LeftBracket, "Type 'UInt16Array' requires an array value.");
+            var buffer = new TypedDocumentPooledBuffer<ushort>(8);
+            try
+            {
+                if (!Match(TypedDocumentTokenKind.RightBracket))
+                {
+                    while (true)
+                    {
+                        _path.PushIndex(buffer.Count);
+                        try
+                        {
+                            var location = Current();
+                            var value = ReadTypedValue();
+                            ValidatePackedElement(TypedDocumentPackedKind.UInt16, value, location);
+                            buffer.Add((ushort)value.Number);
+                        }
+                        finally
+                        {
+                            _path.Pop();
+                        }
+                        if (ReadArraySeparator()) break;
+                    }
+                }
+                return ScriptDatum.FromObject(new ScriptUInt16Array(buffer.ToArray()));
+            }
+            finally
+            {
+                buffer.Dispose();
+            }
+        }
 
-        private ScriptDatum ReadUInt32PackedArray() =>
-            ReadIntegerPackedArray(
-                TypedDocumentPackedKind.UInt32,
-                (double)uint.MinValue,
-                (double)uint.MaxValue,
-                static value => (uint)value,
-                static values => new ScriptUInt32Array(values));
+        private ScriptDatum ReadUInt32PackedArray()
+        {
+            Expect(TypedDocumentTokenKind.LeftBracket, "Type 'UInt32Array' requires an array value.");
+            var buffer = new TypedDocumentPooledBuffer<uint>(8);
+            try
+            {
+                if (!Match(TypedDocumentTokenKind.RightBracket))
+                {
+                    while (true)
+                    {
+                        _path.PushIndex(buffer.Count);
+                        try
+                        {
+                            var location = Current();
+                            var value = ReadTypedValue();
+                            ValidatePackedElement(TypedDocumentPackedKind.UInt32, value, location);
+                            buffer.Add((uint)value.Number);
+                        }
+                        finally
+                        {
+                            _path.Pop();
+                        }
+                        if (ReadArraySeparator()) break;
+                    }
+                }
+                return ScriptDatum.FromObject(new ScriptUInt32Array(buffer.ToArray()));
+            }
+            finally
+            {
+                buffer.Dispose();
+            }
+        }
 
         private ScriptDatum ReadInt64PackedArray()
         {
@@ -834,55 +934,6 @@ namespace AuroraScript.Runtime.Serialization
             }
             value = 0;
             return false;
-        }
-
-        private ScriptDatum ReadIntegerPackedArray<T>(
-            TypedDocumentPackedKind kind,
-            double minimum,
-            double maximum,
-            Func<double, T> convert,
-            Func<T[], ScriptPackedArray> create)
-            where T : unmanaged
-        {
-            Expect(
-                TypedDocumentTokenKind.LeftBracket,
-                $"Type '{PackedTypeName(kind)}' requires an array value.");
-            var buffer = new TypedDocumentPooledBuffer<T>(8);
-            try
-            {
-                if (!Match(TypedDocumentTokenKind.RightBracket))
-                {
-                    while (true)
-                    {
-                        _path.PushIndex(buffer.Count);
-                        try
-                        {
-                            var location = Current();
-                            var value = ReadTypedValue();
-                            ValidatePackedElement(kind, value, location);
-                            try
-                            {
-                                buffer.Add(convert(value.Number));
-                            }
-                            catch (Exception exception) when (exception is OverflowException or InvalidCastException)
-                            {
-                                throw Error(location, $"{PackedTypeName(kind)} element is outside the supported range.", exception);
-                            }
-                        }
-                        finally
-                        {
-                            _path.Pop();
-                        }
-                        if (ReadArraySeparator()) break;
-                    }
-                }
-
-                return ScriptDatum.FromObject(create(buffer.ToArray()));
-            }
-            finally
-            {
-                buffer.Dispose();
-            }
         }
 
         private ScriptDatum ReadRegisteredObject(

@@ -1769,10 +1769,21 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return StackValueKind.Datum;
             }
 
-            // A nested interpolation makes the value dynamic.  Build the ordinary
-            // datum shape and let the binder validate every member/element at the
-            // same runtime boundary as a root interpolation.  This also prevents
-            // CIL Conv_* instructions from narrowing an unchecked value first.
+            // A packed literal still has a known target and known length when only
+            // one of its elements is dynamic.  Validate that element through the
+            // shared binder, but write it straight into the final packed storage
+            // instead of first building a ScriptArray of ScriptDatum values.
+            if (ContainsTDocInterpolation(expression.Value) &&
+                FlowValueTypeFacts.TryGetPackedArrayType(typeName, out var packedArrayType) &&
+                expression.Value is ArrayLiteralExpression packedArrayValue &&
+                !HasSpread(packedArrayValue.Elements))
+            {
+                return EmitBoundTypedPackedArray(packedArrayValue, packedArrayType);
+            }
+
+            // Other nested interpolations build their natural runtime shape and
+            // pass through the shared binder.  This keeps the outer explicit type
+            // contract intact and prevents unchecked CIL narrowing.
             if (ContainsTDocInterpolation(expression.Value) &&
                 typeName is not ("Regex" or "HashMap"))
             {
@@ -1835,6 +1846,13 @@ namespace AuroraScript.Compiler.Backend.Emission
                     EmitTypedGlobalConstructor(typeName, expression.Value);
                     return StackValueKind.Datum;
                 case "Date":
+                    if (TypedDocumentLiteralConstants.TryGetDateTicks(expression.Value, out var ticks))
+                    {
+                        _il.Emit(OpCodes.Ldc_I8, ticks);
+                        _il.Emit(OpCodes.Newobj, TypedRuntimeMetadata.ScriptDateTicksConstructor);
+                        _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
+                        return StackValueKind.Datum;
+                    }
                     EmitBoundTypedLiteral(typeName, expression.Value);
                     return StackValueKind.Datum;
                 case "Regex":
@@ -2035,63 +2053,123 @@ namespace AuroraScript.Compiler.Backend.Emission
                     _il.Emit(OpCodes.Ldfld, GetPackedItemsField(arrayType));
                 }
                 EmitInt32(i);
+                EmitTypedPackedArrayElementStore(arrayType, array.Elements[i]);
+            }
+            return GetPackedLocalStackKind(arrayType);
+        }
+
+        private StackValueKind EmitBoundTypedPackedArray(
+            ArrayLiteralExpression array,
+            FlowValueType arrayType)
+        {
+            // Even in a native-direct method, an array containing interpolation is
+            // a dynamic boundary.  Keep the wrapper here so it can be converted to
+            // a ScriptDatum without rebuilding a temporary ScriptArray.
+            var target = DeclareLocal(GetPackedClrType(arrayType));
+            var basePath = _typedDocumentPath ?? "$";
+            EmitInt32(array.Elements.Count);
+            _il.Emit(OpCodes.Newobj, GetPackedConstructor(arrayType));
+            _il.Emit(OpCodes.Stloc, target);
+
+            for (var i = 0; i < array.Elements.Count; i++)
+            {
                 var value = array.Elements[i];
-                if (arrayType == FlowValueType.BooleanArray)
+                if (!ContainsTDocInterpolation(value))
                 {
-                    EmitCondition(value);
-                    _il.Emit(OpCodes.Stelem_I1);
+                    _il.Emit(OpCodes.Ldloc, target);
+                    _il.Emit(OpCodes.Ldfld, GetPackedItemsField(arrayType));
+                    EmitInt32(i);
+                    EmitTypedPackedArrayElementStore(arrayType, value);
+                    continue;
                 }
-                else if (arrayType == FlowValueType.Float64Array)
+
+                _il.Emit(OpCodes.Ldloc, target);
+                EmitInt32(i);
+                EmitDatumAtTDocIndex(value, i);
+                _session.Builder.LoadStringConstant(_il, basePath);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.SetTypedDocumentPackedElement);
+            }
+
+            _il.Emit(OpCodes.Ldloc, target);
+            return GetPackedStackKind(arrayType);
+        }
+
+        private void EmitTypedPackedArrayElementStore(FlowValueType arrayType, Expression value)
+        {
+            if (arrayType == FlowValueType.BooleanArray)
+            {
+                EmitCondition(value);
+                _il.Emit(OpCodes.Stelem_I1);
+                return;
+            }
+            if (arrayType == FlowValueType.Float64Array)
+            {
+                EmitNumber(value);
+                _il.Emit(OpCodes.Stelem_R8);
+                return;
+            }
+            if (arrayType == FlowValueType.UInt8Array)
+            {
+                EmitInt32Value(value);
+                _il.Emit(OpCodes.Conv_U1);
+                _il.Emit(OpCodes.Stelem_I1);
+                return;
+            }
+            if (arrayType == FlowValueType.Int16Array)
+            {
+                EmitInt32Value(value);
+                _il.Emit(OpCodes.Conv_I2);
+                _il.Emit(OpCodes.Stelem_I2);
+                return;
+            }
+            if (arrayType == FlowValueType.UInt16Array)
+            {
+                EmitInt32Value(value);
+                _il.Emit(OpCodes.Conv_U2);
+                _il.Emit(OpCodes.Stelem_I2);
+                return;
+            }
+            if (arrayType == FlowValueType.UInt32Array)
+            {
+                EmitNumber(value);
+                _il.Emit(OpCodes.Conv_U4);
+                _il.Emit(OpCodes.Stelem_I4);
+                return;
+            }
+            if (arrayType == FlowValueType.Int64Array)
+            {
+                if (TypedDocumentLiteralConstants.TryGetInt64(value, out var int64))
                 {
-                    EmitNumber(value);
-                    _il.Emit(OpCodes.Stelem_R8);
-                }
-                else if (arrayType == FlowValueType.UInt8Array)
-                {
-                    EmitInt32Value(value);
-                    _il.Emit(OpCodes.Conv_U1);
-                    _il.Emit(OpCodes.Stelem_I1);
-                }
-                else if (arrayType == FlowValueType.Int16Array)
-                {
-                    EmitInt32Value(value);
-                    _il.Emit(OpCodes.Conv_I2);
-                    _il.Emit(OpCodes.Stelem_I2);
-                }
-                else if (arrayType == FlowValueType.UInt16Array)
-                {
-                    EmitInt32Value(value);
-                    _il.Emit(OpCodes.Conv_U2);
-                    _il.Emit(OpCodes.Stelem_I2);
-                }
-                else if (arrayType == FlowValueType.UInt32Array)
-                {
-                    EmitNumber(value);
-                    _il.Emit(OpCodes.Conv_U4);
-                    _il.Emit(OpCodes.Stelem_I4);
-                }
-                else if (arrayType == FlowValueType.Int64Array)
-                {
-                    EmitNumber(value);
-                    _il.Emit(OpCodes.Conv_I8);
-                    _il.Emit(OpCodes.Stelem_I8);
-                }
-                else if (arrayType == FlowValueType.UInt64Array)
-                {
-                    EmitNumber(value);
-                    _il.Emit(OpCodes.Conv_U8);
-                    _il.Emit(OpCodes.Stelem_I8);
+                    _il.Emit(OpCodes.Ldc_I8, int64);
                 }
                 else
                 {
-                    EmitInt32Value(value);
-                    if (arrayType == FlowValueType.Int8Array) _il.Emit(OpCodes.Conv_I1);
-                    _il.Emit(arrayType == FlowValueType.Int8Array
-                        ? OpCodes.Stelem_I1
-                        : OpCodes.Stelem_I4);
+                    EmitNumber(value);
+                    _il.Emit(OpCodes.Conv_I8);
                 }
+                _il.Emit(OpCodes.Stelem_I8);
+                return;
             }
-            return GetPackedLocalStackKind(arrayType);
+            if (arrayType == FlowValueType.UInt64Array)
+            {
+                if (TypedDocumentLiteralConstants.TryGetUInt64(value, out var uint64))
+                {
+                    _il.Emit(OpCodes.Ldc_I8, unchecked((long)uint64));
+                }
+                else
+                {
+                    EmitNumber(value);
+                    _il.Emit(OpCodes.Conv_U8);
+                }
+                _il.Emit(OpCodes.Stelem_I8);
+                return;
+            }
+
+            EmitInt32Value(value);
+            if (arrayType == FlowValueType.Int8Array) _il.Emit(OpCodes.Conv_I1);
+            _il.Emit(arrayType == FlowValueType.Int8Array
+                ? OpCodes.Stelem_I1
+                : OpCodes.Stelem_I4);
         }
 
         private void EmitFastMapEntryAtTDocPath(MapKeyValueExpression entry)

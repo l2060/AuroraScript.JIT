@@ -35,6 +35,81 @@ namespace AuroraScript.Runtime.Serialization
                 string.IsNullOrEmpty(path) ? "$" : path);
         }
 
+        /// <summary>
+        /// Validates one value against the concrete packed-array target and writes it
+        /// directly to that target.  Native TDoc array literals use this instead of
+        /// first materializing a <see cref="ScriptArray"/> of <see cref="ScriptDatum"/>
+        /// values only to copy it into primitive storage.
+        /// </summary>
+        public static void SetPackedElement(
+            ScriptPackedArray target,
+            int index,
+            ScriptDatum value,
+            string path)
+        {
+            ArgumentNullException.ThrowIfNull(target);
+            path = string.IsNullOrEmpty(path) ? "$" : path;
+
+            // The compiler allocates the exact target length and emits only valid
+            // indexes.  Let the CLR array store retain its inexpensive bounds check;
+            // do not add another check to every valid literal element.
+            switch (target)
+            {
+                case ScriptInt32Array int32:
+                    int32._items[index] = ReadInt32(value, "Int32Array", path, index);
+                    return;
+                case ScriptInt8Array int8:
+                    int8._items[index] = (sbyte)ReadInt64(
+                        value,
+                        sbyte.MinValue,
+                        sbyte.MaxValue,
+                        "Int8Array",
+                        path,
+                        index);
+                    return;
+                case ScriptFloat64Array float64:
+                    if (value.Kind != ValueKind.Number || !double.IsFinite(value.Number))
+                    {
+                        throw Error("Float64Array elements must be finite numbers.", ElementPath(path, index));
+                    }
+                    float64._items[index] = value.Number;
+                    return;
+                case ScriptBooleanArray boolean:
+                    if (!TryGetBooleanElement(value, out var booleanValue))
+                    {
+                        throw Error("BooleanArray elements must be true, false, 0, or 1.", ElementPath(path, index));
+                    }
+                    boolean._items[index] = booleanValue;
+                    return;
+                case ScriptUInt8Array uint8:
+                    uint8._items[index] = (byte)ReadUInt64(value, byte.MaxValue, "UInt8Array", path, index);
+                    return;
+                case ScriptInt16Array int16:
+                    int16._items[index] = (short)ReadInt64(
+                        value,
+                        short.MinValue,
+                        short.MaxValue,
+                        "Int16Array",
+                        path,
+                        index);
+                    return;
+                case ScriptUInt16Array uint16:
+                    uint16._items[index] = (ushort)ReadUInt64(value, ushort.MaxValue, "UInt16Array", path, index);
+                    return;
+                case ScriptUInt32Array uint32:
+                    uint32._items[index] = (uint)ReadUInt64(value, uint.MaxValue, "UInt32Array", path, index);
+                    return;
+                case ScriptInt64Array int64:
+                    int64._items[index] = ReadInt64(value, long.MinValue, long.MaxValue, "Int64Array", path, index);
+                    return;
+                case ScriptUInt64Array uint64:
+                    uint64._items[index] = ReadUInt64(value, ulong.MaxValue, "UInt64Array", path, index);
+                    return;
+                default:
+                    throw new ArgumentException("Unknown packed-array target.", nameof(target));
+            }
+        }
+
         /// <summary>Applies one explicit TDoc type to a runtime datum.</summary>
         public static ScriptDatum Bind(
             AuroraEngine engine,
@@ -241,45 +316,46 @@ namespace AuroraScript.Runtime.Serialization
             }
 
             var length = source.Length;
+            var sourceItems = source._items;
             switch (typeName)
             {
                 case "Int32Array":
                     var int32 = new int[length];
-                    for (var i = 0; i < length; i++) int32[i] = ReadInt32(source.GetElement(i), typeName, path, i);
+                    for (var i = 0; i < length; i++) int32[i] = ReadInt32(sourceItems[i], typeName, path, i);
                     return ScriptDatum.FromObject(new ScriptInt32Array(int32));
                 case "Int8Array":
                     var int8 = new sbyte[length];
-                    for (var i = 0; i < length; i++) int8[i] = (sbyte)ReadInt64(source.GetElement(i), sbyte.MinValue, sbyte.MaxValue, typeName, path, i);
+                    for (var i = 0; i < length; i++) int8[i] = (sbyte)ReadInt64(sourceItems[i], sbyte.MinValue, sbyte.MaxValue, typeName, path, i);
                     return ScriptDatum.FromObject(new ScriptInt8Array(int8));
                 case "UInt8Array":
                     var uint8 = new byte[length];
-                    for (var i = 0; i < length; i++) uint8[i] = (byte)ReadUInt64(source.GetElement(i), byte.MaxValue, typeName, path, i);
+                    for (var i = 0; i < length; i++) uint8[i] = (byte)ReadUInt64(sourceItems[i], byte.MaxValue, typeName, path, i);
                     return ScriptDatum.FromObject(new ScriptUInt8Array(uint8));
                 case "Int16Array":
                     var int16 = new short[length];
-                    for (var i = 0; i < length; i++) int16[i] = (short)ReadInt64(source.GetElement(i), short.MinValue, short.MaxValue, typeName, path, i);
+                    for (var i = 0; i < length; i++) int16[i] = (short)ReadInt64(sourceItems[i], short.MinValue, short.MaxValue, typeName, path, i);
                     return ScriptDatum.FromObject(new ScriptInt16Array(int16));
                 case "UInt16Array":
                     var uint16 = new ushort[length];
-                    for (var i = 0; i < length; i++) uint16[i] = (ushort)ReadUInt64(source.GetElement(i), ushort.MaxValue, typeName, path, i);
+                    for (var i = 0; i < length; i++) uint16[i] = (ushort)ReadUInt64(sourceItems[i], ushort.MaxValue, typeName, path, i);
                     return ScriptDatum.FromObject(new ScriptUInt16Array(uint16));
                 case "UInt32Array":
                     var uint32 = new uint[length];
-                    for (var i = 0; i < length; i++) uint32[i] = (uint)ReadUInt64(source.GetElement(i), uint.MaxValue, typeName, path, i);
+                    for (var i = 0; i < length; i++) uint32[i] = (uint)ReadUInt64(sourceItems[i], uint.MaxValue, typeName, path, i);
                     return ScriptDatum.FromObject(new ScriptUInt32Array(uint32));
                 case "Int64Array":
                     var int64 = new long[length];
-                    for (var i = 0; i < length; i++) int64[i] = ReadInt64(source.GetElement(i), long.MinValue, long.MaxValue, typeName, path, i);
+                    for (var i = 0; i < length; i++) int64[i] = ReadInt64(sourceItems[i], long.MinValue, long.MaxValue, typeName, path, i);
                     return ScriptDatum.FromObject(new ScriptInt64Array(int64));
                 case "UInt64Array":
                     var uint64 = new ulong[length];
-                    for (var i = 0; i < length; i++) uint64[i] = ReadUInt64(source.GetElement(i), ulong.MaxValue, typeName, path, i);
+                    for (var i = 0; i < length; i++) uint64[i] = ReadUInt64(sourceItems[i], ulong.MaxValue, typeName, path, i);
                     return ScriptDatum.FromObject(new ScriptUInt64Array(uint64));
                 case "Float64Array":
                     var float64 = new double[length];
                     for (var i = 0; i < length; i++)
                     {
-                        var element = source.GetElement(i);
+                        var element = sourceItems[i];
                         if (element.Kind != ValueKind.Number || !double.IsFinite(element.Number))
                         {
                             throw Error($"{typeName} elements must be finite numbers.", ElementPath(path, i));
@@ -291,7 +367,7 @@ namespace AuroraScript.Runtime.Serialization
                     var boolean = new bool[length];
                     for (var i = 0; i < length; i++)
                     {
-                        var element = source.GetElement(i);
+                        var element = sourceItems[i];
                         if (TryGetBooleanElement(element, out var booleanValue))
                         {
                             boolean[i] = booleanValue;

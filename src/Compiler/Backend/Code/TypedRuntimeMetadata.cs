@@ -134,6 +134,7 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo DeleteElement = Method(typeof(ObjectOps), nameof(ObjectOps.DeleteElement), typeof(ScriptContext), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo BindTypedDocument = Method(typeof(TypedDocumentBinder), nameof(TypedDocumentBinder.BindInterpolation), typeof(ScriptContext), typeof(string), typeof(ScriptDatum));
         public static readonly MethodInfo BindTypedDocumentAtPath = Method(typeof(TypedDocumentBinder), nameof(TypedDocumentBinder.BindInterpolationAtPath), typeof(ScriptContext), typeof(string), typeof(ScriptDatum), typeof(string));
+        public static readonly MethodInfo SetTypedDocumentPackedElement = Method(typeof(TypedDocumentBinder), nameof(TypedDocumentBinder.SetPackedElement), typeof(ScriptPackedArray), typeof(int), typeof(ScriptDatum), typeof(string));
         public static readonly MethodInfo CreateTypedDocumentClrObject = Method(typeof(TypedDocumentBinder), nameof(TypedDocumentBinder.CreateClrObject), typeof(ScriptContext), typeof(string), typeof(string));
         public static readonly MethodInfo SetTypedDocumentClrMember = Method(typeof(TypedDocumentBinder), nameof(TypedDocumentBinder.SetClrObjectMember), typeof(ClrInstanceObject), typeof(string), typeof(string), typeof(bool), typeof(ScriptDatum), typeof(string));
 
@@ -174,6 +175,7 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly ConstructorInfo ScriptUInt32ArrayConstructor = Constructor(typeof(ScriptUInt32Array), typeof(int));
         public static readonly ConstructorInfo ScriptInt64ArrayConstructor = Constructor(typeof(ScriptInt64Array), typeof(int));
         public static readonly ConstructorInfo ScriptUInt64ArrayConstructor = Constructor(typeof(ScriptUInt64Array), typeof(int));
+        public static readonly ConstructorInfo ScriptDateTicksConstructor = Constructor(typeof(ScriptDate), typeof(long));
         public static readonly ConstructorInfo ScriptHashMapConstructor = Constructor(typeof(ScriptHashMap), typeof(int));
         public static readonly MethodInfo ScriptHashMapPut = InstanceMethod(typeof(ScriptHashMap), nameof(ScriptHashMap.Put), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly FieldInfo ScriptInt32ArrayItems = Field(typeof(ScriptInt32Array), "_items");

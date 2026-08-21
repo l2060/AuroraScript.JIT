@@ -789,44 +789,37 @@ namespace AuroraScript.Compiler.Analyzer
 
         private bool ScanNumber(ReadOnlySpan<char> span, out RuleTestResult result)
         {
-            int dot = -1;
-            char lastChar = span[0];
-            int i = 1;
-            for (; i < span.Length; i++)
-            {
-                char c = span[i];
-                if (IsDigit(c))
-                {
-                }
-                else if (c == '_')
-                {
-                    if (lastChar == '.' || lastChar == '_')
-                    {
-                        result = default;
-                        return false;
-                    }
-                }
-                else if (c == '.')
-                {
-                    if (lastChar == '.' || lastChar == '_')
-                    {
-                        result = default;
-                        return false;
-                    }
-                    if (dot > -1) break;
-                    dot = i;
-                }
-                else
-                {
-                    break;
-                }
-                lastChar = c;
-            }
-
-            if (lastChar == '_')
+            var i = 0;
+            if (!ScanDecimalDigits(span, ref i, requireDigit: true))
             {
                 result = default;
                 return false;
+            }
+
+            if (i < span.Length && span[i] == '.')
+            {
+                if (i + 1 < span.Length && (span[i + 1] == '.' || span[i + 1] == '_'))
+                {
+                    result = default;
+                    return false;
+                }
+                i++;
+                if (!ScanDecimalDigits(span, ref i, requireDigit: false))
+                {
+                    result = default;
+                    return false;
+                }
+            }
+
+            if (i < span.Length && (span[i] == 'e' || span[i] == 'E'))
+            {
+                i++;
+                if (i < span.Length && (span[i] == '+' || span[i] == '-')) i++;
+                if (!ScanDecimalDigits(span, ref i, requireDigit: true))
+                {
+                    result = default;
+                    return false;
+                }
             }
 
             result = new RuleTestResult
@@ -837,6 +830,32 @@ namespace AuroraScript.Compiler.Analyzer
                 Type = TokenTyped.Number
             };
             return true;
+        }
+
+        private static bool ScanDecimalDigits(
+            ReadOnlySpan<char> span,
+            ref int index,
+            bool requireDigit)
+        {
+            var sawDigit = false;
+            var previousWasSeparator = false;
+            while (index < span.Length)
+            {
+                var current = span[index];
+                if (IsDigit(current))
+                {
+                    sawDigit = true;
+                    previousWasSeparator = false;
+                    index++;
+                    continue;
+                }
+                if (current != '_') break;
+
+                previousWasSeparator = true;
+                index++;
+                if (!sawDigit || index >= span.Length || !IsDigit(span[index])) return false;
+            }
+            return (!requireDigit || sawDigit) && !previousWasSeparator;
         }
 
         private bool ScanPunctuator(ReadOnlySpan<char> span, out RuleTestResult result)

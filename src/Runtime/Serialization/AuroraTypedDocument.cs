@@ -48,10 +48,8 @@ namespace AuroraScript.Runtime.Serialization
             Encoding encoding = null)
         {
             ArgumentNullException.ThrowIfNull(path);
-            File.WriteAllText(
-                path,
-                TypedDocumentSerializer.Serialize(Engine, value, options ?? Options, path),
-                encoding ?? Utf8WithoutBom);
+            using var writer = new StreamWriter(path, append: false, encoding ?? Utf8WithoutBom);
+            TypedDocumentSerializer.SerializeTo(writer, Engine, value, options ?? Options, path);
         }
 
         /// <summary>Reads a TDoc file and deserializes it to a script datum.</summary>
@@ -76,7 +74,7 @@ namespace AuroraScript.Runtime.Serialization
         {
             ArgumentNullException.ThrowIfNull(stream);
             using var writer = new StreamWriter(stream, encoding ?? Utf8WithoutBom, 1024, leaveOpen);
-            writer.Write(Serialize(value, options));
+            TypedDocumentSerializer.SerializeTo(writer, Engine, value, options ?? Options, sourceName: null);
         }
 
         /// <summary>Reads TDoc text from a stream and deserializes it to a script datum.</summary>

@@ -45,7 +45,8 @@ internal sealed class TestWorkspace : IDisposable
         string? assemblyOut = null,
         TextWriter? output = null,
         bool enableModuleConstInlining = false,
-        bool stackTrace = true)
+        bool stackTrace = true,
+        string? dateTimeFormat = null)
     {
         var options = EngineOptions.Default
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(Root))
@@ -58,6 +59,11 @@ internal sealed class TestWorkspace : IDisposable
             .WithCompiler(compiler => compiler.MaxDegreeOfParallelism = maxDegreeOfParallelism)
             .WithRuntime(runtime => runtime.ConsoleStdOut = output ?? TextWriter.Null)
             .WithRuntime(runtime => runtime.ConsoleErrorOut = output ?? TextWriter.Null);
+
+        if (dateTimeFormat != null)
+        {
+            options = options.WithRuntime(runtime => runtime.DateTimeFormat = dateTimeFormat);
+        }
 
         if (!string.IsNullOrEmpty(assemblyOut))
         {
@@ -73,10 +79,17 @@ internal sealed class TestWorkspace : IDisposable
         bool enableHotReload = false,
         bool enableConfused = false,
         int maxDegreeOfParallelism = 4,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? dateTimeFormat = null)
     {
         var assemblyOut = mode == CompilationMode.Persistence ? Path.Combine(Root, "test-output.dll") : null;
-        var engine = CreateEngine(mode, enableHotReload, enableConfused, maxDegreeOfParallelism, assemblyOut);
+        var engine = CreateEngine(
+            mode,
+            enableHotReload,
+            enableConfused,
+            maxDegreeOfParallelism,
+            assemblyOut,
+            dateTimeFormat: dateTimeFormat);
         WriteSource("main.as", source);
         await engine.BuildAsync(["main.as"], cancellationToken);
         var domain = configureGlobal == null ? engine.CreateDomain() : engine.CreateDomain(configureGlobal);

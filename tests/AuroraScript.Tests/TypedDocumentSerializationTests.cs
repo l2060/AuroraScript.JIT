@@ -4,6 +4,7 @@ using AuroraScript.Runtime.Serialization;
 using AuroraScript.Runtime.Types;
 using AuroraScript.Tests.Infrastructure;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Xunit;
 
@@ -170,6 +171,79 @@ public sealed class TypedDocumentSerializationTests
         Assert.True(File.Exists(path));
         var fromFile = Assert.IsType<ScriptObject>(tdoc.ReadFile(path).Object);
         Assert.Equal("Aurora", fromFile.GetPropertyDatum(null, "name").StringText);
+    }
+
+    [Fact]
+    public void WidePackedArraysRoundTripThroughTextAndStreamWithoutNumberConversion()
+    {
+        var engine = new AuroraEngine(EngineOptions.Default);
+        var tdoc = new AuroraTypedDocument(engine);
+        var signed = new ScriptInt64Array(3);
+        signed.SetElement(0, long.MinValue);
+        signed.SetElement(1, 9007199254740993L);
+        signed.SetElement(2, long.MaxValue);
+        var unsigned = new ScriptUInt64Array(3);
+        unsigned.SetElement(0, 0UL);
+        unsigned.SetElement(1, 9007199254740993UL);
+        unsigned.SetElement(2, ulong.MaxValue);
+
+        var root = new ScriptObject();
+        root.Define("signed", ScriptDatum.FromObject(signed));
+        root.Define("unsigned", ScriptDatum.FromObject(unsigned));
+        var value = ScriptDatum.FromObject(root);
+        var options = new TypedDocumentOptions { Indented = false };
+
+        var text = tdoc.Serialize(value, options);
+        Assert.Contains("9007199254740993", text, StringComparison.Ordinal);
+        Assert.Contains("18446744073709551615", text, StringComparison.Ordinal);
+        var fromText = Assert.IsType<ScriptObject>(tdoc.Deserialize(text).Object);
+        Assert.Equal(long.MaxValue, Assert.IsType<ScriptInt64Array>(fromText.GetPropertyDatum(null, "signed").Object).GetElement(2));
+        Assert.Equal(ulong.MaxValue, Assert.IsType<ScriptUInt64Array>(fromText.GetPropertyDatum(null, "unsigned").Object).GetElement(2));
+
+        using var stream = new MemoryStream();
+        tdoc.WriteStream(stream, value, options);
+        stream.Position = 0;
+        var fromStream = Assert.IsType<ScriptObject>(tdoc.ReadStream(stream, options).Object);
+        Assert.Equal(9007199254740993L, Assert.IsType<ScriptInt64Array>(fromStream.GetPropertyDatum(null, "signed").Object).GetElement(1));
+        Assert.Equal(9007199254740993UL, Assert.IsType<ScriptUInt64Array>(fromStream.GetPropertyDatum(null, "unsigned").Object).GetElement(1));
+    }
+
+    [Fact]
+    public void EveryPackedArrayRoundTripsThroughNativeStorage()
+    {
+        var engine = new AuroraEngine(EngineOptions.Default);
+        const string document = """
+            Object {
+                Int32Array int32 [-2147483648, 2147483647],
+                Int8Array int8 [-128, 127],
+                Float64Array float64 [1.25, -2.5e2],
+                BooleanArray boolean [0, true],
+                UInt8Array uint8 [0, 255],
+                Int16Array int16 [-32768, 32767],
+                UInt16Array uint16 [0, 65535],
+                UInt32Array uint32 [0, 4294967295],
+                Int64Array int64 [-9223372036854775808, 9007199254740993, 9223372036854775807],
+                UInt64Array uint64 [0, 9007199254740993, 18446744073709551615],
+            }
+            """;
+
+        var root = Assert.IsType<ScriptObject>(TypedDocumentSerializer.Deserialize(engine, document).Object);
+        var text = TypedDocumentSerializer.Serialize(
+            engine,
+            ScriptDatum.FromObject(root),
+            new TypedDocumentOptions { Indented = false });
+        var restored = Assert.IsType<ScriptObject>(TypedDocumentSerializer.Deserialize(engine, text).Object);
+
+        Assert.Equal(int.MinValue, Assert.IsType<ScriptInt32Array>(restored.GetPropertyDatum(null, "int32").Object).GetElement(0));
+        Assert.Equal(sbyte.MaxValue, Assert.IsType<ScriptInt8Array>(restored.GetPropertyDatum(null, "int8").Object).GetElement(1));
+        Assert.Equal(-250d, Assert.IsType<ScriptFloat64Array>(restored.GetPropertyDatum(null, "float64").Object).GetElement(1));
+        Assert.True(Assert.IsType<ScriptBooleanArray>(restored.GetPropertyDatum(null, "boolean").Object).GetElement(1));
+        Assert.Equal(byte.MaxValue, Assert.IsType<ScriptUInt8Array>(restored.GetPropertyDatum(null, "uint8").Object).GetElement(1));
+        Assert.Equal(short.MinValue, Assert.IsType<ScriptInt16Array>(restored.GetPropertyDatum(null, "int16").Object).GetElement(0));
+        Assert.Equal(ushort.MaxValue, Assert.IsType<ScriptUInt16Array>(restored.GetPropertyDatum(null, "uint16").Object).GetElement(1));
+        Assert.Equal(uint.MaxValue, Assert.IsType<ScriptUInt32Array>(restored.GetPropertyDatum(null, "uint32").Object).GetElement(1));
+        Assert.Equal(9007199254740993L, Assert.IsType<ScriptInt64Array>(restored.GetPropertyDatum(null, "int64").Object).GetElement(1));
+        Assert.Equal(ulong.MaxValue, Assert.IsType<ScriptUInt64Array>(restored.GetPropertyDatum(null, "uint64").Object).GetElement(2));
     }
 
     [Fact]
@@ -483,6 +557,38 @@ public sealed class TypedDocumentSerializationTests
         Assert.Equal("null", TypedDocumentSerializer.Serialize(staticOnly, profile));
         Assert.Throws<TypedDocumentException>(() =>
             TypedDocumentSerializer.Deserialize(staticOnly, "User {}"));
+    }
+
+    public static IEnumerable<object[]> PackedArrayBoundaryCases()
+    {
+        yield return new object[] { "Int32Array", "-2147483648, 2147483647", new[] { "-2147483649", "2147483648", "1.5", "NaN", "Infinity" } };
+        yield return new object[] { "Int8Array", "-128, 127", new[] { "-129", "128", "1.5", "NaN", "Infinity" } };
+        yield return new object[] { "Float64Array", "-2.5e2, 1.5", new[] { "NaN", "Infinity" } };
+        yield return new object[] { "BooleanArray", "0, 1, true, false", new[] { "-1", "2", "0.5", "NaN", "Infinity" } };
+        yield return new object[] { "UInt8Array", "0, 255", new[] { "-1", "256", "1.5", "NaN", "Infinity" } };
+        yield return new object[] { "Int16Array", "-32768, 32767", new[] { "-32769", "32768", "1.5", "NaN", "Infinity" } };
+        yield return new object[] { "UInt16Array", "0, 65535", new[] { "-1", "65536", "1.5", "NaN", "Infinity" } };
+        yield return new object[] { "UInt32Array", "0, 4294967295", new[] { "-1", "4294967296", "1.5", "NaN", "Infinity" } };
+        yield return new object[] { "Int64Array", "-9223372036854775808, 9007199254740993, 9223372036854775807", new[] { "-9223372036854775809", "9223372036854775808", "1.5", "NaN", "Infinity" } };
+        yield return new object[] { "UInt64Array", "0, 9007199254740993, 18446744073709551615", new[] { "-1", "18446744073709551616", "1.5", "NaN", "Infinity" } };
+    }
+
+    [Theory]
+    [MemberData(nameof(PackedArrayBoundaryCases))]
+    public void EveryPackedArrayReaderValidatesBoundsAndElementShape(
+        string typeName,
+        string validValues,
+        string[] invalidValues)
+    {
+        var engine = new AuroraEngine(EngineOptions.Default);
+        Assert.IsAssignableFrom<ScriptPackedArray>(
+            TypedDocumentSerializer.Deserialize(engine, $"{typeName} [{validValues}]").Object);
+
+        foreach (var invalid in invalidValues)
+        {
+            Assert.Throws<TypedDocumentException>(() =>
+                TypedDocumentSerializer.Deserialize(engine, $"{typeName} [{invalid}]"));
+        }
     }
 
     private static ScriptInt8Array CreateBytes()

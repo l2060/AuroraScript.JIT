@@ -13,7 +13,9 @@ public sealed class TempTaskProbeTests
     [Theory]
     [InlineData(CompilationMode.Dynamic)]
     [InlineData(CompilationMode.OnlyRun)]
+#if NET9_0_OR_GREATER
     [InlineData(CompilationMode.Persistence)]
+#endif
     public async Task NewArraysAndOperations(CompilationMode mode)
     {
         using var workspace = new TestWorkspace();
