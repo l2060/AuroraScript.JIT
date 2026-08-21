@@ -393,7 +393,142 @@ public sealed class PackedArrayTests
         Assert.ThrowsAny<System.Exception>(() => TestWorkspace.Execute(domain, "deleteElement"));
     }
 
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+    [InlineData(CompilationMode.OnlyRun)]
 #if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
+    public async Task TypedInterpolationAndLocalObjectFieldsPreservePackedSemantics(
+        CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func interpolation(value) {
+                var values = tdoc Int32Array $(value);
+                values[0] = values[0] + 2;
+                return values[0];
+            }
+            export func localField() {
+                var state = { values: new Int32Array(2) };
+                state.values[0] = 40;
+                state.values[0] += 2;
+                return state.values[0];
+            }
+            """,
+            mode);
+
+        var values = new ScriptInt32Array(1);
+        values.SetElement(0, 40);
+        ScriptAssert.Equal(
+            42,
+            TestWorkspace.Execute(
+                domain,
+                "interpolation",
+                arguments: ScriptDatum.FromObject(values)));
+        ScriptAssert.Equal(42, TestWorkspace.Execute(domain, "localField"));
+        Assert.ThrowsAny<Exception>(() =>
+            TestWorkspace.Execute(
+                domain,
+                "interpolation",
+                arguments: ScriptDatum.FromString("not an array")));
+    }
+
+#if NET9_0_OR_GREATER
+    [Fact]
+    public async Task PersistenceUsesPackedInstructionsForTDocFieldsAndDirectArguments()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+
+            func take(value) { return value != null; }
+
+            export func interpolation(value) {
+                var values = tdoc Int32Array $(value);
+                values[0] = values[0] + 1;
+                return values[0];
+            }
+
+            @directCall
+            func localFieldWork() {
+                var state = { values: new Int32Array(2) };
+                state.values[0] = 41;
+                return state.values[0];
+            }
+
+            export func escapedFieldWork() {
+                var state = { values: new Int32Array(2) };
+                take(state);
+                state.values[0] = 41;
+                return state.values[0];
+            }
+
+            @directCall
+            func consume(values) {
+                values[0] = values[0] + 1;
+                return values[0];
+            }
+
+            @directCall
+            func forwardField() {
+                var state = { values: new Int32Array(1) };
+                state.values[0] = 41;
+                return consume(state.values);
+            }
+
+            export func run() {
+                return [localFieldWork(), escapedFieldWork(), forwardField()];
+            }
+            """,
+            CompilationMode.Persistence);
+
+        var assemblyPath = Path.Combine(workspace.Root, "test-output.dll");
+        using var stream = File.OpenRead(assemblyPath);
+        using var peReader = new PEReader(stream);
+        var reader = peReader.GetMetadataReader();
+
+        List<OpCode> GetMethodOpCodes(string methodName)
+        {
+            var handle = Assert.Single(reader.MethodDefinitions.Where(candidate =>
+                string.Equals(
+                    reader.GetString(reader.GetMethodDefinition(candidate).Name),
+                    methodName,
+                    StringComparison.Ordinal)));
+            var method = reader.GetMethodDefinition(handle);
+            return ReadOpCodes(
+                peReader.GetMethodBody(method.RelativeVirtualAddress).GetILBytes().AsSpan());
+        }
+
+        var interpolation = GetMethodOpCodes("interpolation$typed");
+        Assert.Contains(OpCodes.Ldelem_I4, interpolation);
+        Assert.Contains(OpCodes.Stelem_I4, interpolation);
+
+        var localField = GetMethodOpCodes("localFieldWork$typed0");
+        Assert.Contains(OpCodes.Ldelem_I4, localField);
+        Assert.Contains(OpCodes.Stelem_I4, localField);
+
+        var escapedField = GetMethodOpCodes("escapedFieldWork$typed");
+        Assert.DoesNotContain(OpCodes.Ldelem_I4, escapedField);
+        Assert.DoesNotContain(OpCodes.Stelem_I4, escapedField);
+
+        var consumeHandle = Assert.Single(reader.MethodDefinitions.Where(candidate =>
+            string.Equals(
+                reader.GetString(reader.GetMethodDefinition(candidate).Name),
+                "consume$native",
+                StringComparison.Ordinal)));
+        var consume = reader.GetMethodDefinition(consumeHandle);
+        // DEFAULT, one parameter, return int32, then int[].
+        Assert.Equal([0x00, 0x01, 0x08, 0x1d, 0x08], reader.GetBlobBytes(consume.Signature));
+        var consumeOpcodes = ReadOpCodes(
+            peReader.GetMethodBody(consume.RelativeVirtualAddress).GetILBytes().AsSpan());
+        Assert.Contains(OpCodes.Ldelem_I4, consumeOpcodes);
+        Assert.Contains(OpCodes.Stelem_I4, consumeOpcodes);
+    }
+
     [Fact]
     public async Task PersistenceUsesRawFloat64ArrayAbiAndR8ElementInstructions()
     {

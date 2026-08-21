@@ -367,6 +367,8 @@ namespace AuroraScript.Compiler.Backend.Code
             private readonly IReadOnlyDictionary<FunctionId, FlowValueType> _directReturnTypes;
             private readonly FlowValueType[][] _directParameterTypes;
             private readonly HashSet<int> _safeInt32Mutations;
+            private readonly Dictionary<int, Dictionary<string, FlowValueType>> _localFields;
+            private readonly HashSet<int> _invalidLocalFields;
             private readonly bool _optimisticDirect;
             private bool _changed;
             private FlowValueType _passReturnType;
@@ -391,6 +393,8 @@ namespace AuroraScript.Compiler.Backend.Code
                 _directParameterTypes = directParameterTypes;
                 _optimisticDirect = parameterTypes != null;
                 _safeInt32Mutations = new HashSet<int>();
+                _localFields = new Dictionary<int, Dictionary<string, FlowValueType>>();
+                _invalidLocalFields = new HashSet<int>();
 
                 var parameterIndex = 0;
                 for (var i = 0; i < function.LocalSlots.Length; i++)
@@ -467,9 +471,14 @@ namespace AuroraScript.Compiler.Backend.Code
                         }
                         if (_declarations.TryGetValue(variable, out var slot))
                         {
-                            MergeLocal(slot, variable.Initializer == null
+                            var initializerType = variable.Initializer == null
                                 ? FlowValueType.Null
-                                : AnalyzeExpression(variable.Initializer));
+                                : AnalyzeExpression(variable.Initializer);
+                            MergeLocal(slot, initializerType);
+                            if (variable.Initializer is MapExpression map)
+                            {
+                                MergeLocalFields(slot, map);
+                            }
                         }
                         else
                         {
@@ -483,6 +492,10 @@ namespace AuroraScript.Compiler.Backend.Code
                         return;
                     case ReturnStatement @return:
                         _sawReturn = true;
+                        if (!_function.IsDirectCallCandidate)
+                        {
+                            InvalidateLocalFieldsUsedAsValue(@return.Expression);
+                        }
                         _passReturnType = FlowValueTypeFacts.Merge(
                             _passReturnType,
                             @return.Expression == null
@@ -540,6 +553,7 @@ namespace AuroraScript.Compiler.Backend.Code
                         return;
                     case DeleteStatement delete:
                         AnalyzeExpression(delete.Expression);
+                        InvalidateLocalFieldsForMutation(delete.Expression);
                         return;
                 }
             }
@@ -602,7 +616,15 @@ namespace AuroraScript.Compiler.Backend.Code
                         break;
                     case FunctionCallExpression call:
                         AnalyzeExpression(call.Target);
-                        for (var i = 0; i < call.Arguments.Count; i++) AnalyzeExpression(call.Arguments[i]);
+                        var isDirectCall = IsDirectFunctionCall(call);
+                        for (var i = 0; i < call.Arguments.Count; i++)
+                        {
+                            AnalyzeExpression(call.Arguments[i]);
+                            if (!isDirectCall)
+                            {
+                                InvalidateLocalFieldsUsedAsValue(call.Arguments[i]);
+                            }
+                        }
                         if (IsArrayFactoryCall(call))
                         {
                             type = FlowValueType.Array;
@@ -629,15 +651,23 @@ namespace AuroraScript.Compiler.Backend.Code
                                 propertyObjectType == FlowValueType.Array) &&
                             IsStaticProperty(property.Property, "length")
                                 ? FlowValueType.Int32
-                                : FlowValueType.Dynamic;
+                                : TryGetLocalFieldType(property, out var fieldType)
+                                    ? fieldType
+                                    : FlowValueType.Dynamic;
+                        if (!TryGetStaticPropertyName(property.Property, out _))
+                        {
+                            InvalidateLocalFieldsUsedAsValue(property.Object);
+                        }
                         break;
                     case SetPropertyExpression property:
                         AnalyzeExpression(property.Object);
                         type = AnalyzeExpression(property.Value);
+                        UpdateLocalField(property.Object, property.Property, type);
                         break;
                     case GetElementExpression element:
                         var elementObjectType = AnalyzeExpression(element.Object);
                         var indexType = AnalyzeExpression(element.Index);
+                        InvalidateLocalFieldsUsedAsValue(element.Object);
                         type = FlowValueTypeFacts.IsPackedArray(elementObjectType) &&
                             FlowValueTypeFacts.IsNumeric(indexType)
                                 ? FlowValueTypeFacts.GetPackedElementType(elementObjectType)
@@ -646,6 +676,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     case SetElementExpression element:
                         AnalyzeExpression(element.Object);
                         AnalyzeExpression(element.Index);
+                        InvalidateLocalFieldsUsedAsValue(element.Object);
                         type = AnalyzeExpression(element.Value);
                         break;
                     case ArrayLiteralExpression array:
@@ -702,7 +733,24 @@ namespace AuroraScript.Compiler.Backend.Code
             {
                 if (expression.IsInterpolation || ContainsTDocInterpolation(expression.Value))
                 {
-                    return FlowValueType.Dynamic;
+                    // An explicit array type is also a runtime-checked cast. Keep
+                    // that exact type in flow so one boundary check unlocks native
+                    // element access for the rest of the local hot path.
+                    return expression.TypeName switch
+                    {
+                        "Array" => FlowValueType.Array,
+                        "Int32Array" => FlowValueType.Int32Array,
+                        "Int8Array" => FlowValueType.Int8Array,
+                        "Float64Array" => FlowValueType.Float64Array,
+                        "BooleanArray" => FlowValueType.BooleanArray,
+                        "UInt8Array" => FlowValueType.UInt8Array,
+                        "Int16Array" => FlowValueType.Int16Array,
+                        "UInt16Array" => FlowValueType.UInt16Array,
+                        "UInt32Array" => FlowValueType.UInt32Array,
+                        "Int64Array" => FlowValueType.Int64Array,
+                        "UInt64Array" => FlowValueType.UInt64Array,
+                        _ => FlowValueType.Dynamic
+                    };
                 }
                 return expression.TypeName switch
                 {
@@ -854,12 +902,176 @@ namespace AuroraScript.Compiler.Backend.Code
                     StringComparer.Ordinal.Equals(name.Identifier?.Value, expected);
             }
 
+            private bool IsDirectFunctionCall(FunctionCallExpression call)
+            {
+                return call?.Target is NameExpression name &&
+                    _names.TryGetValue(name, out var binding) &&
+                    binding.DirectFunction.IsValid;
+            }
+
+            private void MergeLocalFields(LocalSlotId slot, MapExpression map)
+            {
+                if (!slot.IsValid ||
+                    _invalidLocalFields.Contains(slot.Value) ||
+                    IsCaptured(slot))
+                {
+                    return;
+                }
+
+                var fields = new Dictionary<string, FlowValueType>(StringComparer.Ordinal);
+                for (var i = 0; i < map.Entries.Count; i++)
+                {
+                    if (map.Entries[i] is not MapKeyValueExpression entry ||
+                        string.IsNullOrEmpty(entry.Key?.Value))
+                    {
+                        InvalidateLocalFields(slot);
+                        return;
+                    }
+                    if (_expressionTypes.TryGetValue(entry.Value, out var fieldType) &&
+                        (fieldType == FlowValueType.Array ||
+                            FlowValueTypeFacts.IsPackedArray(fieldType)))
+                    {
+                        fields[entry.Key.Value] = fieldType;
+                    }
+                    else
+                    {
+                        // A later duplicate field replaces the earlier value.
+                        fields.Remove(entry.Key.Value);
+                    }
+                }
+
+                if (!_localFields.TryGetValue(slot.Value, out var existing))
+                {
+                    _localFields[slot.Value] = fields;
+                    _changed = true;
+                    return;
+                }
+
+                List<string> mismatches = null;
+                foreach (var pair in existing)
+                {
+                    if (!fields.TryGetValue(pair.Key, out var fieldType) ||
+                        fieldType != pair.Value)
+                    {
+                        (mismatches ??= new List<string>()).Add(pair.Key);
+                    }
+                }
+                if (mismatches == null)
+                {
+                    return;
+                }
+                for (var i = 0; i < mismatches.Count; i++)
+                {
+                    existing.Remove(mismatches[i]);
+                }
+                _changed = true;
+            }
+
+            private bool TryGetLocalFieldType(
+                GetPropertyExpression property,
+                out FlowValueType type)
+            {
+                type = FlowValueType.Dynamic;
+                return property.Object is NameExpression name &&
+                    _names.TryGetValue(name, out var binding) &&
+                    binding.IsLocal &&
+                    TryGetStaticPropertyName(property.Property, out var fieldName) &&
+                    _localFields.TryGetValue(binding.Local.Value, out var fields) &&
+                    fields.TryGetValue(fieldName, out type);
+            }
+
+            private void UpdateLocalField(
+                Expression objectExpression,
+                Expression propertyExpression,
+                FlowValueType valueType)
+            {
+                if (!TryGetLocalSlot(objectExpression, out var slot) ||
+                    !_localFields.TryGetValue(slot.Value, out var fields))
+                {
+                    return;
+                }
+                if (!TryGetStaticPropertyName(propertyExpression, out var fieldName))
+                {
+                    InvalidateLocalFields(slot);
+                    return;
+                }
+                if (fields.TryGetValue(fieldName, out var fieldType) &&
+                    fieldType != valueType)
+                {
+                    InvalidateLocalFields(slot);
+                }
+            }
+
+            private void InvalidateLocalFieldsForMutation(Expression expression)
+            {
+                switch (expression)
+                {
+                    case GetPropertyExpression property:
+                        InvalidateLocalFieldsUsedAsValue(property.Object);
+                        break;
+                    case GetElementExpression element:
+                        InvalidateLocalFieldsUsedAsValue(element.Object);
+                        break;
+                    default:
+                        InvalidateLocalFieldsUsedAsValue(expression);
+                        break;
+                }
+            }
+
+            private void InvalidateLocalFieldsUsedAsValue(Expression expression)
+            {
+                if (TryGetLocalSlot(expression, out var slot))
+                {
+                    InvalidateLocalFields(slot);
+                }
+            }
+
+            private bool TryGetLocalSlot(Expression expression, out LocalSlotId slot)
+            {
+                slot = LocalSlotId.Invalid;
+                if (expression is not NameExpression name ||
+                    !_names.TryGetValue(name, out var binding) ||
+                    !binding.IsLocal)
+                {
+                    return false;
+                }
+                slot = binding.Local;
+                return true;
+            }
+
+            private void InvalidateLocalFields(LocalSlotId slot)
+            {
+                if (!slot.IsValid || !_invalidLocalFields.Add(slot.Value))
+                {
+                    return;
+                }
+                if (_localFields.Remove(slot.Value))
+                {
+                    _changed = true;
+                }
+            }
+
+            private static bool TryGetStaticPropertyName(
+                Expression property,
+                out string name)
+            {
+                if (property is NameExpression nameExpression &&
+                    !string.IsNullOrEmpty(nameExpression.Identifier?.Value))
+                {
+                    name = nameExpression.Identifier.Value;
+                    return true;
+                }
+                name = null;
+                return false;
+            }
+
             private void WriteTarget(Expression target, FlowValueType type)
             {
                 if (target is NameExpression name &&
                     _names.TryGetValue(name, out var binding) &&
                     binding.IsLocal)
                 {
+                    InvalidateLocalFields(binding.Local);
                     _writtenLocals[binding.Local.Value] = true;
                     MergeLocal(binding.Local, type);
                 }
