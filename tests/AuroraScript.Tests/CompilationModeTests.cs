@@ -495,6 +495,9 @@ public sealed class CompilationModeTests
 
             // DEFAULT, parameter count 2, return R8, parameter R8, parameter R8.
             Assert.Equal([0x00, 0x02, 0x0d, 0x0d, 0x0d], reader.GetBlobBytes(method.Signature));
+            Assert.True(
+                (method.ImplAttributes & MethodImplAttributes.AggressiveInlining) != 0,
+                "Native direct-call methods should carry the general-purpose JIT inlining hint.");
             var body = peReader.GetMethodBody(method.RelativeVirtualAddress);
             var locals = reader.GetStandaloneSignature(body.LocalSignature);
             // LOCAL_SIG, local count 2, local R8, local R8.

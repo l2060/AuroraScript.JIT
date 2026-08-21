@@ -3638,7 +3638,12 @@ public sealed class CompilerBackendPlanTests
             return (method, method.GetILGenerator());
         }
 
-        public override (MethodInfo Method, ILGenerator IL) DefineMethod(string moduleName, string methodName, Type returnType, Type[] parameterTypes)
+        public override (MethodInfo Method, ILGenerator IL) DefineMethod(
+            string moduleName,
+            string methodName,
+            Type returnType,
+            Type[] parameterTypes,
+            bool aggressiveInlining = false)
         {
             var method = new DynamicMethod(methodName, returnType, parameterTypes, typeof(RecordingBuilder).Module, true);
             return (method, method.GetILGenerator());

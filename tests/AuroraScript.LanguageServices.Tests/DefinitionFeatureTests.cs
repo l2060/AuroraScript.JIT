@@ -826,25 +826,16 @@ public sealed class DefinitionFeatureTests : IDisposable
     }
 
     [Fact]
-    public void ResolvesBuiltinStringDefinitionsInMd5Example()
+    public void ResolvesBuiltinPackedArrayDefinitionInMd5Example()
     {
         var sourcePath = FindRepositoryFile("examples", "tests", "md5.as");
         var source = File.ReadAllText(sourcePath);
         var service = CreateService();
 
-        var firstStringDefinition = service.GetDefinition(sourcePath, source, PositionOf(source, "String.fromCharCode"));
-        var firstMemberDefinition = service.GetDefinition(sourcePath, source, PositionOf(source, "fromCharCode"));
-        var lastStringDefinition = service.GetDefinition(sourcePath, source, PositionOfLast(source, "String.fromCharCode"));
-        var lastMemberDefinition = service.GetDefinition(sourcePath, source, PositionOfLast(source, "fromCharCode"));
+        var definition = service.GetDefinition(sourcePath, source, PositionOf(source, "Int32Array"));
 
-        Assert.NotNull(firstStringDefinition);
-        Assert.Equal("aurora-builtin:/String.as", firstStringDefinition!.Path);
-        Assert.NotNull(firstMemberDefinition);
-        Assert.Equal("aurora-builtin:/String.as", firstMemberDefinition!.Path);
-        Assert.NotNull(lastStringDefinition);
-        Assert.Equal("aurora-builtin:/String.as", lastStringDefinition!.Path);
-        Assert.NotNull(lastMemberDefinition);
-        Assert.Equal("aurora-builtin:/String.as", lastMemberDefinition!.Path);
+        Assert.NotNull(definition);
+        Assert.Equal("aurora-builtin:/Int32Array.as", definition!.Path);
     }
 
     [Fact]

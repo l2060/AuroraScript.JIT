@@ -1,4 +1,4 @@
-﻿using AuroraScript.Compiler.Ast;
+using AuroraScript.Compiler.Ast;
 using AuroraScript.Runtime;
 using AuroraScript.Compiler.Backend.Code;
 using System;
@@ -48,7 +48,12 @@ namespace AuroraScript.Compiler.Backend.Builders
         public abstract (MethodInfo Method, ILGenerator IL) DefineModuleInitMethod(ModuleDeclaration module);
         public abstract (MethodInfo Method, ILGenerator IL) DefineDomainInitMethod();
 
-        public abstract (MethodInfo Method, ILGenerator IL) DefineMethod(string moduleName, string methodName, Type returnType, Type[] parameterTypes);
+        public abstract (MethodInfo Method, ILGenerator IL) DefineMethod(
+            string moduleName,
+            string methodName,
+            Type returnType,
+            Type[] parameterTypes,
+            bool aggressiveInlining = false);
 
         public virtual void SetDebuggerMetadata(MethodInfo method, string metadata)
         {

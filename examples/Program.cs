@@ -31,7 +31,7 @@ namespace Examples
             compiler.SourceResolver = ScriptSources.Composite(memorySource, fileSystemSource);
             compiler.MaxDegreeOfParallelism = 0;
             compiler.ExtName = "as";
-            compiler.Mode = CompilationMode.Persistence;
+            compiler.Mode = CompilationMode.Dynamic;
         })
         .WithOutput(output =>
         {
@@ -68,6 +68,8 @@ namespace Examples
             g.Define("ENABLE_HOT_RELOAD", ScriptDatum.FromBoolean(engineOptions.Runtime.EnableHotReload), writeable: false, enumerable: true);
             g.Define("GIVE", ScriptDatum.FromBonding(Functions.GIVE), false, true);
             g.Define("CREATE_TIMER", ScriptDatum.FromBonding(Functions.CREATE_TIMER));
+            g.Define("WIRTE_STRING", ScriptDatum.FromBonding(Functions.WIRTE_STRING));
+
             g.Define("INPUT_NUMBER", ScriptDatum.FromBonding(Functions.CLIENT_INPUT_NUMBER), false, true);
             g.Define("md5_native", ScriptDatum.FromBonding(Functions.MD5_NATIVE), false, true);
 
@@ -172,19 +174,19 @@ namespace Examples
             domain.ReplacePatch(
                 PatchPath("test.as"),
                 "@module(test); import l123 from 'l123'; func reset() { return 'reset'; }");
-            try
-            {
-                domain.Execute("test", "hello");
-                Console.WriteLine("Error: hello() should not exist after Replace!");
-            }
-            catch (Exception)
-            {
-                Console.WriteLine("hello() is gone (Expected)");
-            }
-            finally
-            {
+            //try
+            //{
+            //    domain.Execute("test", "hello");
+            //    Console.WriteLine("Error: hello() should not exist after Replace!");
+            //}
+            //catch (Exception)
+            //{
+            //    Console.WriteLine("hello() is gone (Expected)");
+            //}
+            //finally
+            //{
 
-            }
+            //}
             var rr = domain.Execute("test", "reset");
             Console.WriteLine($"reset() -> {rr}");
 
@@ -204,6 +206,22 @@ namespace Examples
         private static void Test()
         {
             var domain = engine.CreateDomain(GlobalConfiguration, userState);
+
+            //var td = new AuroraTypedDocument(engine);
+            //var doc = File.ReadAllText("map.tdoc");
+            //for (int i = 0; i < 10; i++)
+            //{
+            //    td.Deserialize(doc);
+            //}
+
+            //Benchmark("AuroraTypedDocument.Deserialize", () =>
+            //{
+            //    var p = td.Deserialize(doc);
+            //});
+
+
+
+
 
 
             TestHotPatch(domain);
@@ -282,8 +300,6 @@ namespace Examples
             BenchmarkScript(domain, "ASTAR", "runExample");
 
             BenchmarkScript(domain, "UNIT_LIB", "externalDeclare");
-
-            BenchmarkScript(domain, "ASTAR1000", "run");
 
             BenchmarkScript(domain, "PERF_BENCH", "run");
 
@@ -386,6 +402,44 @@ return clamp(x, 0, 100) + PI;
             Console.WriteLine($" | {elapsedMs,10:F3} ms | {allocatedKb,10:F2} KB");
         }
 
+
+        private static void Benchmark(String name, Action callback)
+        {
+            var beforeAlloc = GC.GetAllocatedBytesForCurrentThread();
+            Exception _ex = null;
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            try
+            {
+                callback();
+            }
+            catch (AuroraRuntimeException ex)
+            {
+                _ex = ex;
+                Console.WriteLine(ex);
+            }
+            catch (Exception ex)
+            {
+                _ex = ex;
+
+            }
+            finally
+            {
+                var useTime = stopwatch.ElapsedMilliseconds;
+                var afterAlloc = GC.GetAllocatedBytesForCurrentThread();
+                var allocatedBytes = afterAlloc - beforeAlloc;
+                var originalColor = Console.ForegroundColor;
+                Console.Write($"{name,-24} | ");
+                Console.ForegroundColor = _ex == null ? ConsoleColor.Green : ConsoleColor.Red;
+                Console.Write($"{_ex == null,-12}");
+                Console.ForegroundColor = originalColor;
+                Console.WriteLine($" | {useTime,10:F3} ms | {allocatedBytes,10:F2} KB");
+            }
+
+
+
+
+
+        }
     }
 
 

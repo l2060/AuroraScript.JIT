@@ -39,7 +39,12 @@ namespace AuroraScript.Compiler.Backend.Builders
 
 
 
-        public sealed override (MethodInfo Method, ILGenerator IL) DefineMethod(string moduleName, string methodName, Type returnType, Type[] parameterTypes)
+        public sealed override (MethodInfo Method, ILGenerator IL) DefineMethod(
+            string moduleName,
+            string methodName,
+            Type returnType,
+            Type[] parameterTypes,
+            bool aggressiveInlining = false)
         {
             var typeName = moduleName;
             if (!TryResolveType(typeName, out var typeBuilder))
@@ -47,6 +52,13 @@ namespace AuroraScript.Compiler.Backend.Builders
                 throw new Exception($"Module {moduleName} not defined");
             }
             var method = typeBuilder.DefineMethod(ConfuseTypeName(methodName, ConfuseTarget.Method), MethodAttributes.Public | MethodAttributes.Static, returnType, parameterTypes);
+            if (aggressiveInlining)
+            {
+                method.SetImplementationFlags(
+                    MethodImplAttributes.IL |
+                    MethodImplAttributes.Managed |
+                    MethodImplAttributes.AggressiveInlining);
+            }
             return (method, method.GetILGenerator());
         }
 

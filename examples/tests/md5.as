@@ -1,4 +1,4 @@
-﻿@module(MD5_LIB);
+@module(MD5_LIB);
 
 /**
 *
@@ -21,86 +21,45 @@ function RotateLeft(lValue, iShiftBits) {
 
 @directCall()
 function AddUnsigned(lX, lY) {
-	// debugger;
-	var lX4;
-	var lY4;
-	var lX8;
-	var lY8;
-	var lResult;
-	lX8 = (lX & 0x80000000);
-	lY8 = (lY & 0x80000000);
-	lX4 = (lX & 0x40000000);
-	lY4 = (lY & 0x40000000);
-	lResult = (lX & 0x3FFFFFFF) + (lY & 0x3FFFFFFF);
-	if (lX4 & lY4) {
-		return(lResult ^ 0x80000000 ^ lX8 ^ lY8);
-	}
-	if (lX4 | lY4) {
-		if (lResult & 0x40000000) {
-			return(lResult ^ 0xC0000000 ^ lX8 ^ lY8);
-		} else {
-			return(lResult ^ 0x40000000 ^ lX8 ^ lY8);
-		}
-	} else {
-		return(lResult ^ lX8 ^ lY8);
-	}
+	// Convert the exact sum back to a signed 32-bit word. This is addition
+	// modulo 2^32 without the branch-heavy sign-bit reconstruction.
+	return (lX + lY) | 0;
 }
 
+@directCall()
 function F(x, y, z) { return(x & y) | ((~x) & z); }
+@directCall()
 function G(x, y, z) { return(x & z) | (y & (~z)); }
+@directCall()
 function H(x, y, z) { return(x ^ y ^ z); }
+@directCall()
 function I(x, y, z) { return(y ^ (x | (~z))); }
 
+@directCall()
 function FF(a, b, c, d, x, s, ac) {
 	a = AddUnsigned(a, AddUnsigned(AddUnsigned(F(b, c, d), x), ac));
 	return AddUnsigned(RotateLeft(a, s), b);
 };
 
+@directCall()
 function GG(a, b, c, d, x, s, ac) {
 	a = AddUnsigned(a, AddUnsigned(AddUnsigned(G(b, c, d), x), ac));
 	return AddUnsigned(RotateLeft(a, s), b);
 };
 
+@directCall()
 function HH(a, b, c, d, x, s, ac) {
 	a = AddUnsigned(a, AddUnsigned(AddUnsigned(H(b, c, d), x), ac));
 	return AddUnsigned(RotateLeft(a, s), b);
 };
 
+@directCall()
 function II(a, b, c, d, x, s, ac) {
 	a = AddUnsigned(a, AddUnsigned(AddUnsigned(I(b, c, d), x), ac));
 	return AddUnsigned(RotateLeft(a, s), b);
 };
 
-function ConvertToWordArray(str) {
-	var lWordCount;
-	var lMessageLength = str.length;
-	var lNumberOfWords_temp1 = lMessageLength + 8;
-	var lNumberOfWords_temp2 = (lNumberOfWords_temp1 - (lNumberOfWords_temp1 % 64)) / 64;
-	var lNumberOfWords = (lNumberOfWords_temp2 + 1) * 16;
-	var lWordArray = Array(lNumberOfWords - 1);
-	var lBytePosition = 0;
-	var lByteCount = 0;
-	while (lByteCount < lMessageLength) {
-		lWordCount = (lByteCount - (lByteCount % 4)) / 4;
-		lBytePosition = (lByteCount % 4) * 8;
-
-		var aa = lWordArray[lWordCount];
-		var bb = str.charCodeAt(lByteCount);
-		var cc = lBytePosition;
-
-		lWordArray[lWordCount] = (aa | (bb << cc));
-		lByteCount++;
-	}
-	lWordCount = (lByteCount - (lByteCount % 4)) / 4;
-	lBytePosition = (lByteCount % 4) * 8;
-	lWordArray[lWordCount] = lWordArray[lWordCount] | (0x80 << lBytePosition);
-	lWordArray[lNumberOfWords - 2] = lMessageLength << 3;
-	lWordArray[lNumberOfWords - 1] = lMessageLength >> 29;
-	return lWordArray;
-};
-
-
-
+@directCall()
 function WordToHex(lValue) {
 	var WordToHexValue = '';
 	var WordToHexValue_temp = '';
@@ -114,72 +73,7 @@ function WordToHex(lValue) {
 	return WordToHexValue;
 };
 
-
-
-
-
-function Utf8Encode(string) {
-	string = string.replace(/\r\n/g, "\n");
-	var utfText = '';
-	var stringLen = string.length;
-	for (var n = 0; n < stringLen; n++) {
-		var c = string.charCodeAt(n);
-
-		if (c < 128) {
-			utfText += (String.fromCharCode(c));
-		}
-		else if ((c > 127) && (c < 2048)) {
-			utfText += (String.fromCharCode((c >> 6) | 192));
-			utfText += (String.fromCharCode((c & 63) | 128));
-		}
-		else {
-			utfText += (String.fromCharCode((c >> 12) | 224));
-			utfText += (String.fromCharCode(((c >> 6) & 63) | 128));
-			utfText += (String.fromCharCode((c & 63) | 128));
-		}
-	}
-	return utfText;
-};
-
-
-function WordToHex_str(lValue) {
-	var WordToHexValue = "";
-	var WordToHexValue_temp = "";
-	var lByte;
-	var lCount;
-	for (lCount = 0; lCount <= 3; lCount++) {
-		lByte = (lValue >> (lCount * 8)) & 255;
-		WordToHexValue_temp = "0" + lByte.toString(16);
-		WordToHexValue = WordToHexValue + WordToHexValue_temp.substring(WordToHexValue_temp.length - 2, 2);
-	}
-	return WordToHexValue;
-};
-
-function Utf8Encode_str(string) {
-	string = string.replace(/\r\n/g, "\n");
-	var utfText = "";
-	var stringLen = string.length;
-	for (var n = 0; n < stringLen; n++) {
-		var c = string.charCodeAt(n);
-
-		if (c < 128) {
-			utfText += String.fromCharCode(c);
-		}
-		else if ((c > 127) && (c < 2048)) {
-			utfText += String.fromCharCode((c >> 6) | 192);
-			utfText += String.fromCharCode((c & 63) | 128);
-		}
-		else {
-			utfText += String.fromCharCode((c >> 12) | 224);
-			utfText += String.fromCharCode(((c >> 6) & 63) | 128);
-			utfText += String.fromCharCode((c & 63) | 128);
-		}
-	}
-
-	return utfText;
-};
-
-export function MD5(string) {
+export function MD5(input) {
 
 	var a = 0x67452301;
 	var b = 0xEFCDAB89;
@@ -189,8 +83,84 @@ export function MD5(string) {
 	var S21 = 5; var S22 = 9; var S23 = 14; var S24 = 20;
 	var S31 = 4; var S32 = 11; var S33 = 16; var S34 = 23;
 	var S41 = 6; var S42 = 10; var S43 = 15; var S44 = 21;
-	string = Utf8Encode(string);
-	var x = ConvertToWordArray(string);
+
+	// Count UTF-8 bytes without allocating an intermediate encoded string.
+	// CRLF is normalized to LF to preserve the previous implementation.
+	var sourceLength = input.length;
+	var byteLength = 0;
+	for (var n = 0; n < sourceLength; n++) {
+		var code = input.charCodeAt(n);
+		if (code == 13 && n + 1 < sourceLength && input.charCodeAt(n + 1) == 10) {
+			n++;
+			code = 10;
+		}
+		if (code < 128) {
+			byteLength++;
+		} else if (code < 2048) {
+			byteLength += 2;
+		} else {
+			byteLength += 3;
+		}
+	}
+
+	var paddedLength = byteLength + 8;
+	var blockCount = (paddedLength - (paddedLength % 64)) / 64 + 1;
+	var wordCount = blockCount * 16;
+	var x = new Int32Array(wordCount);
+	var wordIndex = 0;
+	var byteShift = 0;
+
+	// Encode directly into the packed 32-bit message buffer.
+	for (var p = 0; p < sourceLength; p++) {
+		var value = input.charCodeAt(p);
+		if (value == 13 && p + 1 < sourceLength && input.charCodeAt(p + 1) == 10) {
+			p++;
+			value = 10;
+		}
+
+		var first;
+		var second = -1;
+		var third = -1;
+		if (value < 128) {
+			first = value;
+		} else if (value < 2048) {
+			first = (value >> 6) | 192;
+			second = (value & 63) | 128;
+		} else {
+			first = (value >> 12) | 224;
+			second = ((value >> 6) & 63) | 128;
+			third = (value & 63) | 128;
+		}
+
+		x[wordIndex] = x[wordIndex] | (first << byteShift);
+		byteShift += 8;
+		if (byteShift == 32) {
+			byteShift = 0;
+			wordIndex++;
+		}
+
+		if (second >= 0) {
+			x[wordIndex] = x[wordIndex] | (second << byteShift);
+			byteShift += 8;
+			if (byteShift == 32) {
+				byteShift = 0;
+				wordIndex++;
+			}
+		}
+		if (third >= 0) {
+			x[wordIndex] = x[wordIndex] | (third << byteShift);
+			byteShift += 8;
+			if (byteShift == 32) {
+				byteShift = 0;
+				wordIndex++;
+			}
+		}
+	}
+
+	x[wordIndex] = x[wordIndex] | (0x80 << byteShift);
+	x[wordCount - 2] = byteLength << 3;
+	x[wordCount - 1] = byteLength >> 29;
+
 	var xLen = x.length;
 	for (var k = 0; k < xLen; k += 16) {
 		var AA = a;

@@ -68,7 +68,12 @@ namespace AuroraScript.Compiler.Backend.Builders
             return (dynamicMethod, dynamicMethod.GetILGenerator());
         }
 
-        public override (MethodInfo Method, ILGenerator IL) DefineMethod(string moduleName, string methodName, Type returnType, Type[] parameterTypes)
+        public override (MethodInfo Method, ILGenerator IL) DefineMethod(
+            string moduleName,
+            string methodName,
+            Type returnType,
+            Type[] parameterTypes,
+            bool aggressiveInlining = false)
         {
             var dynamicMethod = new DynamicMethod(methodName,
                //$"Module_{moduleName}_{}",

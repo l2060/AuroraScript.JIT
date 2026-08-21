@@ -255,7 +255,8 @@ namespace AuroraScript.Compiler.Backend.Emission
                         FlowValueType.Number => typeof(double),
                         _ => typeof(ScriptDatum)
                     },
-                    nativeParameters);
+                    nativeParameters,
+                    aggressiveInlining: true);
                 _directMethods[function.Id.Value] = new PreparedDirectMethod(
                     method,
                     il,

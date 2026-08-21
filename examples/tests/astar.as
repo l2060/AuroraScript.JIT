@@ -1,7 +1,7 @@
 @module(ASTAR);
 
 export const ASTAR_SQRT2 = 1.4142135623730951;
-export const ASTAR_MAX_SEARCH_ID = 9000000000000000;
+export const ASTAR_MAX_SEARCH_ID = 2147483646;
 
 @directCall
 func astarHeuristic(x, y, goalX, goalY, allowDiagonal, minCost) {
@@ -72,8 +72,8 @@ func astarHeapPush(heapNodes, heapScores, heapTies, heapLength, node, score, tie
 
 @directCall
 func astarClearSearchState(astar) {
-	var opened = astar.opened;
-	var closed = astar.closed;
+	var opened = tdoc Int32Array $(astar.opened);
+	var closed = tdoc Int32Array $(astar.closed);
 	var size = astar.size;
 
 	for (var i = 0; i < size; i++) {
@@ -88,44 +88,44 @@ export func createAStar(width, height, walkable, costs) {
 	}
 
 	var size = width * height;
-	var walk = Array.withCapacity(size);
-	var moveCosts = Array.withCapacity(size);
-	var gScore = Array.withCapacity(size);
-	var parents = Array.withCapacity(size);
-	var opened = Array.withCapacity(size);
-	var closed = Array.withCapacity(size);
+	var walk = new Int8Array(size);
+	var moveCosts = new Float64Array(size);
+	var gScore = new Float64Array(size);
+	var parents = new Int32Array(size);
+	var opened = new Int32Array(size);
+	var closed = new Int32Array(size);
 	var heapNodes = Array.withCapacity(size);
 	var heapScores = Array.withCapacity(size);
 	var heapTies = Array.withCapacity(size);
-	var minCost = Number.POSITIVE_INFINITY;
+	var uniformCost = costs == null;
+	var minCost = 1;
+	if (uniformCost) {
+		moveCosts.fill(1);
+	} else {
+		minCost = Number.POSITIVE_INFINITY;
+	}
 
 	for (var i = 0; i < size; i++) {
 		if (walkable == null) {
-			walk.push(1);
+			walk[i] = 1;
 		} else {
 			if (walkable[i]) {
-				walk.push(1);
+				walk[i] = 1;
 			} else {
-				walk.push(0);
+				walk[i] = 0;
 			}
 		}
 
-		var cellCost = 1;
-		if (costs == null || costs[i] <= 0) {
-			moveCosts.push(cellCost);
-		} else {
-			cellCost = costs[i];
-			moveCosts.push(cellCost);
+		if (!uniformCost) {
+			var cellCost = costs[i];
+			if (cellCost <= 0) {
+				cellCost = 1;
+			}
+			moveCosts[i] = cellCost;
+			if (cellCost < minCost) {
+				minCost = cellCost;
+			}
 		}
-
-		if (cellCost < minCost) {
-			minCost = cellCost;
-		}
-
-		gScore.push(0);
-		parents.push(-1);
-		opened.push(0);
-		closed.push(0);
 	}
 
 	return {
@@ -133,6 +133,7 @@ export func createAStar(width, height, walkable, costs) {
 		height: height,
 		size: size,
 		minCost: minCost,
+		uniformCost: uniformCost,
 		searchId: 0,
 		expanded: 0,
 		walkable: walk,
@@ -190,6 +191,7 @@ export func setCost(astar, x, y, cost) {
 	}
 
 	astar.costs[index] = cost;
+	astar.uniformCost = false;
 	if (cost < astar.minCost) {
 		astar.minCost = cost;
 	}
@@ -227,7 +229,7 @@ export func findPathInto(astar, startX, startY, goalX, goalY, outPath, allowDiag
 
 	var start = startY * width + startX;
 	var goal = goalY * width + goalX;
-	var walkable = astar.walkable;
+	var walkable = tdoc Int8Array $(astar.walkable);
 
 	if (!walkable[start] || !walkable[goal]) {
 		astar.expanded = 0;
@@ -247,15 +249,17 @@ export func findPathInto(astar, startX, startY, goalX, goalY, outPath, allowDiag
 	}
 	astar.searchId = searchId;
 
-	var costs = astar.costs;
-	var gScore = astar.gScore;
-	var parents = astar.parents;
-	var opened = astar.opened;
-	var closed = astar.closed;
-	var heapNodes = astar.heapNodes;
-	var heapScores = astar.heapScores;
-	var heapTies = astar.heapTies;
+	var costs = tdoc Float64Array $(astar.costs);
+	var gScore = tdoc Float64Array $(astar.gScore);
+	var parents = tdoc Int32Array $(astar.parents);
+	var opened = tdoc Int32Array $(astar.opened);
+	var closed = tdoc Int32Array $(astar.closed);
+	var heapNodes = tdoc Array $(astar.heapNodes);
+	var heapScores = tdoc Array $(astar.heapScores);
+	var heapTies = tdoc Array $(astar.heapTies);
 	var minCost = astar.minCost;
+	var uniformCost = astar.uniformCost;
+	var uniformDiagonalCost = minCost * ASTAR_SQRT2;
 	var lastX = width - 1;
 	var lastY = height - 1;
 	var heapLength = 0;
@@ -389,7 +393,10 @@ export func findPathInto(astar, startX, startY, goalX, goalY, outPath, allowDiag
 		if (currentX > 0) {
 			var leftNeighbor = current - 1;
 			if (walkable[leftNeighbor] && closed[leftNeighbor] != searchId) {
-				var leftG = baseG + costs[leftNeighbor];
+				var leftG = baseG + minCost;
+				if (!uniformCost) {
+					leftG = baseG + costs[leftNeighbor];
+				}
 				if (opened[leftNeighbor] != searchId || leftG < gScore[leftNeighbor]) {
 					var leftH = astarHeuristic(currentX - 1, currentY, goalX, goalY, allowDiagonal, minCost);
 					opened[leftNeighbor] = searchId;
@@ -403,7 +410,10 @@ export func findPathInto(astar, startX, startY, goalX, goalY, outPath, allowDiag
 		if (currentX < lastX) {
 			var rightNeighbor = current + 1;
 			if (walkable[rightNeighbor] && closed[rightNeighbor] != searchId) {
-				var rightG = baseG + costs[rightNeighbor];
+				var rightG = baseG + minCost;
+				if (!uniformCost) {
+					rightG = baseG + costs[rightNeighbor];
+				}
 				if (opened[rightNeighbor] != searchId || rightG < gScore[rightNeighbor]) {
 					var rightH = astarHeuristic(currentX + 1, currentY, goalX, goalY, allowDiagonal, minCost);
 					opened[rightNeighbor] = searchId;
@@ -417,7 +427,10 @@ export func findPathInto(astar, startX, startY, goalX, goalY, outPath, allowDiag
 		if (currentY > 0) {
 			var upNeighbor = current - width;
 			if (walkable[upNeighbor] && closed[upNeighbor] != searchId) {
-				var upG = baseG + costs[upNeighbor];
+				var upG = baseG + minCost;
+				if (!uniformCost) {
+					upG = baseG + costs[upNeighbor];
+				}
 				if (opened[upNeighbor] != searchId || upG < gScore[upNeighbor]) {
 					var upH = astarHeuristic(currentX, currentY - 1, goalX, goalY, allowDiagonal, minCost);
 					opened[upNeighbor] = searchId;
@@ -431,7 +444,10 @@ export func findPathInto(astar, startX, startY, goalX, goalY, outPath, allowDiag
 		if (currentY < lastY) {
 			var downNeighbor = current + width;
 			if (walkable[downNeighbor] && closed[downNeighbor] != searchId) {
-				var downG = baseG + costs[downNeighbor];
+				var downG = baseG + minCost;
+				if (!uniformCost) {
+					downG = baseG + costs[downNeighbor];
+				}
 				if (opened[downNeighbor] != searchId || downG < gScore[downNeighbor]) {
 					var downH = astarHeuristic(currentX, currentY + 1, goalX, goalY, allowDiagonal, minCost);
 					opened[downNeighbor] = searchId;
@@ -456,7 +472,10 @@ export func findPathInto(astar, startX, startY, goalX, goalY, outPath, allowDiag
 					}
 
 					if (canUpLeft && walkable[upLeft] && closed[upLeft] != searchId) {
-						var upLeftG = baseG + costs[upLeft] * ASTAR_SQRT2;
+						var upLeftG = baseG + uniformDiagonalCost;
+						if (!uniformCost) {
+							upLeftG = baseG + costs[upLeft] * ASTAR_SQRT2;
+						}
 						if (opened[upLeft] != searchId || upLeftG < gScore[upLeft]) {
 							var upLeftH = astarHeuristic(currentX - 1, currentY - 1, goalX, goalY, allowDiagonal, minCost);
 							opened[upLeft] = searchId;
@@ -477,7 +496,10 @@ export func findPathInto(astar, startX, startY, goalX, goalY, outPath, allowDiag
 					}
 
 					if (canUpRight && walkable[upRight] && closed[upRight] != searchId) {
-						var upRightG = baseG + costs[upRight] * ASTAR_SQRT2;
+						var upRightG = baseG + uniformDiagonalCost;
+						if (!uniformCost) {
+							upRightG = baseG + costs[upRight] * ASTAR_SQRT2;
+						}
 						if (opened[upRight] != searchId || upRightG < gScore[upRight]) {
 							var upRightH = astarHeuristic(currentX + 1, currentY - 1, goalX, goalY, allowDiagonal, minCost);
 							opened[upRight] = searchId;
@@ -502,7 +524,10 @@ export func findPathInto(astar, startX, startY, goalX, goalY, outPath, allowDiag
 					}
 
 					if (canDownLeft && walkable[downLeft] && closed[downLeft] != searchId) {
-						var downLeftG = baseG + costs[downLeft] * ASTAR_SQRT2;
+						var downLeftG = baseG + uniformDiagonalCost;
+						if (!uniformCost) {
+							downLeftG = baseG + costs[downLeft] * ASTAR_SQRT2;
+						}
 						if (opened[downLeft] != searchId || downLeftG < gScore[downLeft]) {
 							var downLeftH = astarHeuristic(currentX - 1, currentY + 1, goalX, goalY, allowDiagonal, minCost);
 							opened[downLeft] = searchId;
@@ -523,7 +548,10 @@ export func findPathInto(astar, startX, startY, goalX, goalY, outPath, allowDiag
 					}
 
 					if (canDownRight && walkable[downRight] && closed[downRight] != searchId) {
-						var downRightG = baseG + costs[downRight] * ASTAR_SQRT2;
+						var downRightG = baseG + uniformDiagonalCost;
+						if (!uniformCost) {
+							downRightG = baseG + costs[downRight] * ASTAR_SQRT2;
+						}
 						if (opened[downRight] != searchId || downRightG < gScore[downRight]) {
 							var downRightH = astarHeuristic(currentX + 1, currentY + 1, goalX, goalY, allowDiagonal, minCost);
 							opened[downRight] = searchId;
@@ -599,14 +627,14 @@ func astarRand01(rng) {
 
 export func makeMap(w, h, rate, rngSeed) {
 	var n = w * h;
-	var _map = Array.withCapacity(n);
+	var _map = new Int8Array(n);
 	var rng = { seed: rngSeed };
 
 	for (var i = 0; i < n; i++) {
 		if (astarRand01(rng) < rate) {
-			_map.push(ASTAR_BLOCKED);
+			_map[i] = ASTAR_BLOCKED;
 		} else {
-			_map.push(ASTAR_WALKABLE);
+			_map[i] = ASTAR_WALKABLE;
 		}
 	}
 
@@ -634,84 +662,7 @@ export func makeMap(w, h, rate, rngSeed) {
 	return _map;
 }
 
-export func validate(path) {
-	if (path.length == 0) {
-		return false;
-	}
 
-	for (var i = 0; i < path.length; i++) {
-		var point = path[i];
-		var id = point.y * width + point.x;
-
-		if (point.x < 0 || point.x >= width || point.y < 0 || point.y >= height) {
-			return false;
-		}
-
-		if (map[id] == ASTAR_BLOCKED) {
-			return false;
-		}
-
-		if (i > 0) {
-			var prev = path[i - 1];
-			var dx = point.x - prev.x;
-			var dy = point.y - prev.y;
-
-			if (dx < 0) {
-				dx = -dx;
-			}
-
-			if (dy < 0) {
-				dy = -dy;
-			}
-
-			if (dx > 1 || dy > 1) {
-				return false;
-			}
-		}
-	}
-
-	return true;
-}
-
-export func validateIndexes(path, count) {
-	if (count <= 0) {
-		return false;
-	}
-
-	for (var i = 0; i < count; i++) {
-		var id = path[i];
-
-		if (id < 0 || id >= width * height) {
-			return false;
-		}
-
-		if (map[id] == ASTAR_BLOCKED) {
-			return false;
-		}
-
-		if (i > 0) {
-			var prev = path[i - 1];
-			var dx = (id % width) - (prev % width);
-			var y = (id - (id % width)) / width;
-			var prevY = (prev - (prev % width)) / width;
-			var dy = y - prevY;
-
-			if (dx < 0) {
-				dx = -dx;
-			}
-
-			if (dy < 0) {
-				dy = -dy;
-			}
-
-			if (dx > 1 || dy > 1) {
-				return false;
-			}
-		}
-	}
-
-	return true;
-}
 
 func init() {
 	console.log("generate map", width, height, "cells", width * height);
@@ -721,6 +672,9 @@ func init() {
 	console.timeEnd("make 1000x1000 map");
 
 	console.log("map generated, length =", map.length);
+
+	// WIRTE_STRING('map.tdoc',TDoc.stringify(map,false));
+
 
 	console.time("create astar");
 	astar = createAStar(width, height, map, null);
@@ -736,11 +690,9 @@ export func runExample() {
 	var pathLength = findPathInto(astar, startX, startY, goalX, goalY, pathBuffer, true, true);
 	console.timeEnd("astar");
 
-	var ok = validateIndexes(pathBuffer, pathLength);
-
 	console.log("expanded =", astar.expanded);
 	console.log("path length =", pathLength);
-	console.log("valid =", ok);
+
 
 	var first = null;
 	var last = null;

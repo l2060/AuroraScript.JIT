@@ -24,6 +24,10 @@ export func testEmpty() {
 	// empty body
 }
 
+
+
+
+
 export func testTypedDocument() {
 	// empty body
 	var doc = tdoc Object {
@@ -36,6 +40,10 @@ export func testTypedDocument() {
 	doc.buff.append('Hanks');
 	console.log(JSON.stringify(doc));
 	console.log(TDoc.stringify(doc, false));
+
+	
+
+
 }
 
 var node = {
