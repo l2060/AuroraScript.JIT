@@ -356,14 +356,14 @@ namespace AuroraScript
                 var module = modules[i];
                 if (string.IsNullOrEmpty(module.ModuleName) ||
                     !BuiltInRegistry.TryGetByName(module.ModuleName, out var builtIn) ||
-                    ScriptPath.PathTextEqualsNormalized(module.FullPath, builtIn.Reference.FullPath))
+                    ScriptPath.PathTextEqualsNormalized(module.Source.FullPath, builtIn.Reference.FullPath))
                 {
                     continue;
                 }
 
                 throw new AuroraCompilationException(
                     AuroraCompilationStage.Linking,
-                    module.FullPath,
+                    module.Source.FullPath,
                     1,
                     1,
                     $"Module '{module.ModuleName}' conflicts with the enabled built-in module '{builtIn.ModulePath}'.");

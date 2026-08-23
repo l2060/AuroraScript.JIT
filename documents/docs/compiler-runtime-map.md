@@ -6,8 +6,12 @@ Use this map when changing language behavior.
 
 - Lexer: `src/Compiler/Analyzer/AuroraLexer.cs`
 - Parser: `src/Compiler/Analyzer/AuroraParser.cs`
+- Resolved source identity: `src/Core/ScriptSourceReference.cs`
+- Module graph resolution/linking: `src/Compiler/ScriptCompiler.cs`
 - Operator table: `src/Compiler/Operator.cs`
 - AST nodes: `src/Compiler/Ast`
+
+`@module(NAME);` is optional explicit-name metadata used by host lookup APIs and script `global.getModule`. Module graph identity is normalized `ScriptSourceReference.FullPath`; anonymous modules have no filename-derived name, and only explicit names participate in name-conflict checks.
 
 ## Backend
 
@@ -24,6 +28,8 @@ Use this map when changing language behavior.
 
 - Engine entry point: `src/AuroraEngine.cs`
 - Domain: `src/Runtime/ScriptDomain.cs`
+- Path-keyed module registry and explicit-name lookup: `src/Runtime/ScriptGlobal.cs`
+- Runtime module metadata: `src/Runtime/ScriptModule.cs`
 - Compact value representation: `src/Runtime/ScriptDatum.cs`
 - Primitive dynamic boundaries: `src/Runtime/ValueOps.cs`
 - Object and collection boundaries: `src/Runtime/ObjectOps.cs`, `src/Runtime/IterationOps.cs`
@@ -31,6 +37,7 @@ Use this map when changing language behavior.
 - Scope and exception boundaries: `src/Runtime/ScopeOps.cs`, `src/Runtime/ExceptionOps.cs`
 - Prototypes: `src/Runtime/Types/Prototypes.cs`
 - Console/JSON/TDoc/Math/HotPatch: `src/Runtime/Extensions`
+- Hot-patch graph and path matching: `src/Compiler/IncrementalCompiler.cs`, `src/Compiler/Backend/Emission/HotPatchEmitter.cs`
 
 ## Tests To Update
 

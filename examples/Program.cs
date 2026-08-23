@@ -33,7 +33,7 @@ namespace Examples
             compiler.SourceResolver = ScriptSources.Composite(memorySource, fileSystemSource);
             compiler.MaxDegreeOfParallelism = 0;
             compiler.ExtName = "as";
-            compiler.Mode = CompilationMode.Persistence;
+            compiler.Mode = CompilationMode.Dynamic;
         })
         .WithOutput(output =>
         {
@@ -170,7 +170,7 @@ namespace Examples
 
             // 4. Replace Patch
             Console.WriteLine("\n[4] Replace Patch");
-            domain.GetModule("l123").SetPropertyValue("FValue", NumberValue.Of(128.456));
+            domain.GetModule("test").SetPropertyValue("FValue", NumberValue.Of(128.456));
             domain.ReplacePatch(
                 PatchPath("test.as"),
                 "@module(test); import l123 from 'l123'; func reset() { return 'reset'; }");

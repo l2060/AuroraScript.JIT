@@ -8,7 +8,7 @@ For default code generation style, also read `docs/script-authoring-best-practic
 ## Authoring Defaults For AI
 
 - Generate a full module unless the user explicitly asks for a `CompileBlock` body.
-- For modules, start with `@module(NAME);`, then top-level `include`/`import`, then declarations, then exported entry functions.
+- Use `@module(NAME);` only for modules that need explicit-name lookup through host APIs or script `global.getModule`. Other modules are anonymous and are imported by path.
 - For `CompileBlock`, do not use `@module`, `@global()`, `include`, `import`, `export`, or `declare`.
 - Prefer `const` for values that are never reassigned and `var` for values that change.
 - Return plain data that hosts can serialize: number, string, boolean, null, arrays, and objects.
@@ -21,6 +21,9 @@ For default code generation style, also read `docs/script-authoring-best-practic
 
 - Script files normally use `.as`.
 - A module may start with `@module(NAME);`. It must be the first effective statement when present.
+- Omitting `@module` creates an anonymous module. Never derive a default module name from its filename, relative path, or absolute path.
+- `@module(NAME)` supplies the explicit name used by host APIs such as `ScriptDomain.Execute`, `GetMethod`, and `GetModule`, and by script `global.getModule`. It is not the identity used by `import` or `include`.
+- Only explicit module names must be unique. Anonymous files with the same filename in different directories can coexist because resolved source identity is based on normalized `ScriptSourceReference.FullPath`.
 - A global declaration file starts with `@global();`. Before it only comments and blank lines are allowed.
 - `@global()` files contain only `declare` statements, cannot also use `@module`, cannot be imported/included, and are not compiled as modules.
 - `include "path";` and `import Alias from "path";` must appear at the top of a module before ordinary declarations.
@@ -28,6 +31,8 @@ For default code generation style, also read `docs/script-authoring-best-practic
 - `CompileBlock` accepts statement bodies only. It rejects file/module-only syntax such as `@module`, `@global()`, `import`, `include`, `export`, and `declare`.
 - Import/include paths are raw script text until the module graph asks the configured resolver to resolve them.
 - Relative imports are resolved from the importing file's full path, not from a global compiler directory.
+- After resolution, compilation, dependency ordering, module initialization, and runtime import binding use the resolved absolute or virtual `FullPath`. `ModulePath` remains resolver-relative source information, not a module name or registry identity.
+- The runtime `global.modules` registry has one module-object entry per resolved `FullPath`; it does not duplicate entries under explicit names or resolver-relative paths. Use `global.getModule(name)` only for dynamic lookup of an already loaded, explicitly named module; ordinary dependencies should still use `import`.
 - Entry files are resolved from the resolver root. Do not assume the old `compiler.Directory` or `BaseDirectory` input model.
 - Use `/` in generated script paths and tool overlay paths, even on Windows.
 - Use `Path.baseModule(...segments)` or `Path.currentDirectory()` when generated script code needs paths relative to the current module.
@@ -36,6 +41,7 @@ For default code generation style, also read `docs/script-authoring-best-practic
 - Different protocols or non-overlapping roots are isolated script namespaces, such as `mem://overlay/` versus `d:/project/scripts/`.
 - Host-side `DynamicPatch` / `ReplacePatch` / `IncrementalPatch` string overloads require an absolute file path or virtual full path under the current resolver root.
 - Script-side `HotPatch.replace` and `HotPatch.incremental` should pass only `script` when patching the current module. If a module path is supplied, relative paths resolve from the current module full path.
+- Hot patch targets are matched by resolved full path, never by `@module` name. A different path cannot target a loaded module by reusing its name, and an explicit patch name cannot rename a module already loaded at that path. An anonymous patch at the same path preserves the loaded module's explicit name. A new path creates a new named or anonymous module, subject to explicit-name conflict checks.
 - Native modules are opt-in host capabilities. `EngineOptions.Default.BuiltIns` is empty; the host must add `BuiltInModules.FileSystem` and/or `BuiltInModules.HttpClient` before constructing the engine.
 - Import enabled native modules by bare path (`import fs from "fs";`, `import http from "http";`). Bare native paths take priority over the project resolver, while `./fs`, `../fs`, and other relative imports remain project sources.
 

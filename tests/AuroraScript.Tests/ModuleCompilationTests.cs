@@ -1,5 +1,6 @@
 using AuroraScript.Core;
 using AuroraScript.Runtime;
+using AuroraScript.Runtime.Types;
 using AuroraScript.Source;
 using AuroraScript.Tests.Infrastructure;
 using System;
@@ -68,7 +69,7 @@ public sealed class ModuleCompilationTests
         ScriptAssert.Equal(42, domain.Execute("UNIT", "run"));
         ScriptAssert.Equal(42, domain.Execute("DEBUG_TEST", "main"));
         var debugModule = Assert.IsType<ScriptModule>(domain.GetModule("DEBUG_TEST"));
-        Assert.EndsWith("../temp/debug_test.as", debugModule.ModulePath, StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith("../temp/debug_test.as", debugModule.Source.ModulePath, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -297,6 +298,82 @@ public sealed class ModuleCompilationTests
 
         Assert.Contains("first.as", error.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("second.as", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ImportsAnonymousModulesWithMatchingFileNamesByPath()
+    {
+        using var workspace = new TestWorkspace();
+        var firstPath = workspace.WriteSource("first/shared.as", "export const value = 20;");
+        var secondPath = workspace.WriteSource("second/shared.as", "export const value = 22;");
+        var main = workspace.WriteSource(
+            "main.as",
+            "@module(MAIN); import first from './first/shared'; import second from './second/shared'; export func run() { return first.value + second.value; }");
+        var engine = workspace.CreateEngine();
+
+        await engine.BuildAsync(main);
+        var domain = engine.CreateDomain();
+
+        ScriptAssert.Equal(42, domain.Execute("MAIN", "run"));
+        Assert.Same(ScriptObject.Null, domain.GetModule("first/shared"));
+        Assert.Same(ScriptObject.Null, domain.GetModule("second/shared"));
+        var moduleKeys = domain.Global.Modules.EnumerationKeys();
+        Assert.Contains(moduleKeys, key => ScriptPath.Comparer.Equals(key, ScriptPath.NormalizeFullPath(firstPath)));
+        Assert.Contains(moduleKeys, key => ScriptPath.Comparer.Equals(key, ScriptPath.NormalizeFullPath(secondPath)));
+        Assert.DoesNotContain("MAIN", moduleKeys);
+    }
+
+    [Fact]
+    public async Task GlobalGetModuleFindsExplicitNameWithoutAddingNameRegistryKey()
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource("timer.as", "@module(TIMER_LIB); export const value = 42;");
+        workspace.WriteSource("anonymous.as", "export const value = 1;");
+        var main = workspace.WriteSource(
+            "main.as",
+            """
+            @module(MAIN);
+            import timerByPath from './timer';
+            import anonymousByPath from './anonymous';
+            export func run() {
+                return [
+                    global.getModule("TIMER_LIB").value,
+                    global.getModule("MAIN") != null,
+                    global.getModule("anonymous") == null,
+                    global.getModule("MISSING") == null,
+                    global.modules["TIMER_LIB"] == null
+                ];
+            }
+            """);
+        var engine = workspace.CreateEngine();
+
+        await engine.BuildAsync(main);
+        var domain = engine.CreateDomain();
+
+        ScriptAssert.Equal(
+            new object?[] { 42, true, true, true, true },
+            domain.Execute("MAIN", "run"));
+        var moduleKeys = domain.Global.Modules.EnumerationKeys();
+        Assert.DoesNotContain("MAIN", moduleKeys);
+        Assert.DoesNotContain("TIMER_LIB", moduleKeys);
+    }
+
+    [Fact]
+    public async Task ExplicitNameMayMatchAnAnonymousModuleFileName()
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource("shared.as", "export const value = 20;");
+        workspace.WriteSource("named.as", "@module(shared); export const value = 22;");
+        var main = workspace.WriteSource(
+            "main.as",
+            "@module(MAIN); import anonymous from './shared'; import named from './named'; export func run() { return anonymous.value + named.value; }");
+        var engine = workspace.CreateEngine();
+
+        await engine.BuildAsync(main);
+        var domain = engine.CreateDomain();
+
+        ScriptAssert.Equal(42, domain.Execute("MAIN", "run"));
+        Assert.IsType<ScriptModule>(domain.GetModule("shared"));
     }
 
     [Fact]

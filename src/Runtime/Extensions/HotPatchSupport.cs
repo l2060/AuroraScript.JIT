@@ -78,7 +78,7 @@ namespace AuroraScript.Runtime.Extensions
 
         private static string GetCurrentModuleFullPath(ScriptContext ctx)
         {
-            var fullPath = ctx?.Module?.FullPath;
+            var fullPath = ctx?.Module?.Source.FullPath;
             if (string.IsNullOrWhiteSpace(fullPath))
             {
                 throw new AuroraRuntimeException("HotPatch requires a current module full path.");

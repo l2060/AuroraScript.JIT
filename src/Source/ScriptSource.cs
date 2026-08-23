@@ -17,7 +17,7 @@
         string BaseDirectory { get; }
 
         /// <summary>
-        /// Gets the source path relative to the resolver root when available.
+        /// Gets the source path relative to the resolver root when available. This is not a module name or module identity.
         /// </summary>
         string SourcePath { get; }
 

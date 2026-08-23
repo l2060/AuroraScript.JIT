@@ -216,7 +216,7 @@ internal sealed class AuroraMcpServer
                     new JsonObject { ["type"] = "object", ["properties"] = new JsonObject() }),
                 Tool(
                     "aurora_check_script",
-                    "Compile-check AuroraScript source as a full module or a CompileBlock body.",
+                    "Compile-check AuroraScript source as a full named or anonymous module, or as a CompileBlock body.",
                     new JsonObject
                     {
                         ["type"] = "object",
@@ -240,7 +240,7 @@ internal sealed class AuroraMcpServer
                     }),
                 Tool(
                     "aurora_run_script",
-                    "Compile and run AuroraScript source, returning result, stdout, stderr, diagnostics, and runtime errors.",
+                    "Compile and run AuroraScript source. Module mode executes an explicit @module name; imported dependencies may remain anonymous.",
                     new JsonObject
                     {
                         ["type"] = "object",
@@ -249,7 +249,7 @@ internal sealed class AuroraMcpServer
                             ["source"] = new JsonObject { ["type"] = "string" },
                             ["mode"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("module", "block") },
                             ["sourceName"] = new JsonObject { ["type"] = "string" },
-                            ["moduleName"] = new JsonObject { ["type"] = "string", ["description"] = "Module name for module mode. Defaults to TEST." },
+                            ["moduleName"] = new JsonObject { ["type"] = "string", ["description"] = "Explicit @module name to execute in module mode. The compiled graph must contain the same name. Defaults to TEST." },
                             ["methodName"] = new JsonObject { ["type"] = "string", ["description"] = "Exported function to invoke for module mode. Defaults to run." },
                             ["parameters"] = new JsonObject
                             {
@@ -272,7 +272,7 @@ internal sealed class AuroraMcpServer
                     }),
                 Tool(
                     "aurora_check_file",
-                    "Compile-check a file-system AuroraScript entry file and its import/include graph.",
+                    "Compile-check a file-system AuroraScript entry file and its named or anonymous import/include graph.",
                     new JsonObject
                     {
                         ["type"] = "object",
@@ -291,7 +291,7 @@ internal sealed class AuroraMcpServer
                     }),
                 Tool(
                     "aurora_run_file",
-                    "Compile and run a file-system AuroraScript entry file and its import/include graph.",
+                    "Compile a file-system AuroraScript graph and execute a module with an explicit @module name.",
                     new JsonObject
                     {
                         ["type"] = "object",
@@ -299,7 +299,7 @@ internal sealed class AuroraMcpServer
                         {
                             ["rootDirectory"] = new JsonObject { ["type"] = "string", ["description"] = "File-system resolver root." },
                             ["entryPath"] = new JsonObject { ["type"] = "string", ["description"] = "Entry .as path relative to rootDirectory, or an absolute path under rootDirectory." },
-                            ["moduleName"] = new JsonObject { ["type"] = "string", ["description"] = "Exported module to execute." },
+                            ["moduleName"] = new JsonObject { ["type"] = "string", ["description"] = "Explicit @module name to execute from the compiled graph. Anonymous modules cannot be selected by host name." },
                             ["methodName"] = new JsonObject { ["type"] = "string", ["description"] = "Exported function to invoke. Defaults to run." },
                             ["arguments"] = new JsonObject { ["type"] = "array", ["description"] = "JSON values converted to AuroraScript arguments." },
                             ["extName"] = new JsonObject { ["type"] = "string", ["description"] = "Script extension. Defaults to .as." },

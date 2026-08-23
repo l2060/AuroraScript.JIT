@@ -22,8 +22,6 @@ namespace AuroraScript.Compiler.Analyzer
         public String FileName { get; private set; }
         public String InputData { get; private set; }
 
-        public String Directory { get; private set; }
-
         internal enum LexTokenKind : byte
         {
             Identifier,
@@ -171,6 +169,8 @@ namespace AuroraScript.Compiler.Analyzer
 
         public String BaseDirectory { get; private set; }
 
+        public ScriptSourceReference SourceReference { get; private set; }
+
         private struct RuleTestResult
         {
             public Boolean Success;
@@ -200,7 +200,7 @@ namespace AuroraScript.Compiler.Analyzer
         public AuroraLexer(String baseDirectory, ScriptSource source)
         {
             this.BaseDirectory = ScriptPath.NormalizeBaseDirectory(baseDirectory);
-            this.Directory = ScriptPath.GetDirectoryName(source.FullPath);
+            this.SourceReference = new ScriptSourceReference(source.BaseDirectory, source.FullPath, source.SourcePath);
             this.FullPath = source.FullPath;
             this.FileName = ScriptPath.GetFileName(source.FullPath);
             this.InputData = source.ReadSource();

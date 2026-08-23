@@ -24,7 +24,7 @@ namespace AuroraScript.Core
         /// </summary>
         /// <param name="baseDirectory">The resolver root used for source read routing and module-relative paths.</param>
         /// <param name="fullPath">The absolute file path or virtual source identifier.</param>
-        /// <param name="modulePath">The module-relative path used by the compiler and runtime.</param>
+        /// <param name="modulePath">The resolver-relative source path used for display and source-relative behavior.</param>
         public ScriptSourceReference(string baseDirectory, string fullPath, string modulePath)
         {
             BaseDirectory = ScriptPath.NormalizeBaseDirectory(baseDirectory);
@@ -45,7 +45,7 @@ namespace AuroraScript.Core
         public string FullPath { get; }
 
         /// <summary>
-        /// Gets the module-relative path used by the compiler and runtime.
+        /// Gets the resolver-relative source path. This is not a module name or module identity.
         /// </summary>
         public string ModulePath { get; }
     }

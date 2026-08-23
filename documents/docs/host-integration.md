@@ -125,6 +125,16 @@ Common build entry points:
 - `await engine.BuildAsync()`: enumerates all resolver-visible sources through `GetAllSourcesAsync`.
 - `await engine.BuildAsync(new MemorySource(root, path, source))`: builds already materialized source objects.
 
+### Module Identity And Explicit Names
+
+`@module(NAME);` is optional. It assigns the explicit name used by `ScriptDomain.Execute`, `GetMethod`, `GetModule`, and script `global.getModule`; it does not control import resolution or runtime module identity. A source without `@module` remains anonymous, and AuroraScript does not derive a default name from its filename or resolver-relative path.
+
+Every compiled module is registered by normalized `ScriptSourceReference.FullPath`. Only explicit names participate in name-conflict checks, so anonymous dependencies with the same filename in different directories are valid. Add `@module` to a host entry point that must be called by name or to a module that scripts must find dynamically by name, but normally leave path-imported helper modules anonymous.
+
+`ScriptModule.Name` is therefore nullable at runtime. Source information is available through `ScriptModule.Source`; use `Source.FullPath` for source identity and `Source.ModulePath` only when a resolver-relative path is useful for display or source-relative behavior.
+
+The internal/runtime `global.modules` object stores each module once under `Source.FullPath`; it does not add duplicate keys for the explicit name or `ModulePath`. Host name lookup and script `global.getModule(name)` scan this path-keyed registry for an explicit name rather than maintaining another module-object index. `global.getModule` returns `null` for anonymous, missing, or not-yet-loaded modules and does not import source code.
+
 After a successful build, create a domain and execute exported functions:
 
 ```csharp
@@ -133,6 +143,8 @@ await engine.BuildAsync("main.as");
 using var domain = engine.CreateDomain();
 var result = domain.Execute("MAIN", "run");
 ```
+
+The entry source in this example must declare `@module(MAIN);`. An anonymous module can still initialize and be imported by other scripts, but host name-based APIs do not expose it.
 
 ## CompileBlock
 
@@ -200,6 +212,7 @@ Resolver contracts:
 - `ResolveAsync(null, entryPath, ...)` resolves an explicit build entry from the resolver `Root`.
 - `ResolveAsync(importer, requestedPath, ...)` resolves from the directory of `importer.FullPath`, not from a global compiler directory.
 - `ScriptSourceReference.BaseDirectory` identifies the resolver root that should later read the source. `CompositeScriptSourceResolver.GetSourceAsync` routes by exact normalized `BaseDirectory`.
+- `ScriptSourceReference.FullPath` is the compiled and runtime module identity after resolution. `ModulePath` is resolver-relative source information and is not a module name or a second registry key.
 - Resolver implementations should normalize roots and source keys when they are constructed or added, use `/` separators internally, and avoid repeated normalization inside hot comparisons.
 - `GetAllSourcesAsync` defines what `BuildAsync()` compiles without an explicit entry. Composite enumeration de-duplicates by normalized `ScriptSource.FullPath`, so earlier resolvers hide later sources with the same identity.
 
@@ -415,7 +428,6 @@ var resolver = new VirtualSourceResolver("vfs://tenant-a/app/")
         export func run() { return lib.add(40, 2); }
         """)
     .Add("lib/math.as", """
-        @module(MATH);
         export func add(left, right) { return left + right; }
         """);
 
@@ -518,6 +530,10 @@ await domain.ReplacePatchAsync(
 ```
 
 Host-side string overloads require an absolute file path or virtual full path. The path must fall under the current source resolver. In a composite resolver, the longest matching root is used. This is intentional: patching a non-existent script with a relative path would otherwise assign the patch to an arbitrary resolver namespace. Script-side `HotPatch.replace` / `HotPatch.incremental` may omit the path to patch the current module, or use a relative path resolved from the current module full path.
+
+A patch targets the loaded module at the exact resolved full path; `@module` name is never used to select the target. Reusing a loaded name at a different path produces a name conflict. At an existing path, a patch cannot declare a different explicit name. It may omit `@module`, in which case the existing module object and any explicit name already attached to it are preserved.
+
+If no module is loaded at the resolved path, the patch creates a new module there. It is anonymous when the patch omits `@module`; an explicit name is allowed only when no module at another path already uses it.
 
 ```csharp
 await domain.ReplacePatchAsync(

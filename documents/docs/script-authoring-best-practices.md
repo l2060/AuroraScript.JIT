@@ -7,7 +7,7 @@ This document tells AI agents how to write AuroraScript code by default. Use it 
 ## Default Workflow For AI
 
 1. Decide whether the user needs a full module or a `CompileBlock` body.
-2. For a full script file, start with `@module(NAME);` and put every `include` or `import` before declarations.
+2. Add `@module(NAME);` only when host APIs or script `global.getModule` need a stable lookup name, and put every `include` or `import` before declarations.
 3. Write the smallest runnable module with one clear exported entry function.
 4. Prefer runtime APIs listed in `schema/runtime-api.json`; do not invent JavaScript APIs.
 5. Run `aurora_check_script` before returning generated code.
@@ -38,9 +38,9 @@ Use `CompileBlock` only for a small function body that the host invokes directly
 
 Do not transform a module into a block just to make a short answer. If the user asks for a `.as` file, generate a module.
 
-## Full Module Template
+## Host Entry Module Template
 
-Use this shape for normal script files:
+Use this shape when the host must call the module by name:
 
 ```as
 @module(MAIN);
@@ -70,8 +70,22 @@ Rules:
 - Put `include` and `import` immediately after `@module`.
 - Put exported API near the bottom after private helpers.
 - Export only values the host or other modules need.
-- Use stable uppercase module names such as `MAIN`, `UTIL`, or domain names from the user.
+- Use a stable explicit name such as `MAIN` or a domain name from the user only for modules addressed by host APIs or script `global.getModule`.
 - Keep module initialization cheap. Put work inside exported functions unless a module-level constant is enough.
+
+Imported dependencies normally remain anonymous:
+
+```as
+// util.as
+export func normalize(value) {
+    if (value == null) {
+        return "";
+    }
+    return value.toString().trim();
+}
+```
+
+The importing file selects this module by resolver path, for example `import util from "./util";`. It does not need to know or assign a module name.
 
 ## CompileBlock Template
 
@@ -121,7 +135,7 @@ Rules:
 - Entry paths resolve from the resolver root. Dependency paths resolve from the directory of the importing file's full path.
 - Use `/` in paths that you generate, including on Windows.
 - For runtime resource paths relative to the current module, use `Path.baseModule(...segments)` or `Path.join(Path.currentDirectory(), ...segments)` instead of hard-coded resolver roots.
-- Prefer one module per file. Give each imported file its own `@module(NAME);`.
+- Prefer one module per file. Imported helper files can remain anonymous; add `@module(NAME);` only when the host must retrieve or execute that module by name or a script must query it dynamically through `global.getModule`.
 - In examples for MCP validation, include dependency text in the `sources` object using paths relative to the tool root/source root.
 - Memory overlays only override later sources when the resolved target falls under the memory root; otherwise different roots or protocols remain isolated.
 - If a file under `d:/a/b/c/d` imports `../test`, the resolved target is `d:/a/b/c/test.as`. A memory overlay rooted at `d:/a/b/c` can provide that source when it is ordered before the file-system resolver.
@@ -403,6 +417,9 @@ If a module may be patched:
 - Avoid hiding behavior in `include` files unless the patch process intentionally includes them.
 - In scripts, prefer `HotPatch.replace(script)` or `HotPatch.incremental(script)` when patching the current module.
 - If a script supplies a patch module path, relative paths are resolved from the current module full path. Host-side patch APIs still require an absolute file path or virtual full path.
+- Patch identity is the resolved full path, not `@module` name. Use the exact path of the loaded module; reusing its name from another path does not target it.
+- Do not change an existing explicit module name in a patch. A same-path patch may omit `@module`, in which case the loaded module keeps its explicit name.
+- A patch at a new path creates a new module. Give it `@module` only if host APIs or script `global.getModule` must address it by name and that explicit name is not already in use.
 
 ## Validation Examples
 
@@ -416,10 +433,12 @@ When writing a module, validate with dependencies:
   "sourceName": "main.as",
   "source": "@module(MAIN); import util from './util'; export func run() { return util.value(); }",
   "sources": {
-    "util.as": "@module(UTIL); export func value() { return 42; }"
+    "util.as": "export func value() { return 42; }"
   }
 }
 ```
+
+`aurora_check_script` can validate anonymous modules. `aurora_run_script` in module mode executes by explicit name, so the compiled graph must contain the same `@module` name passed as `moduleName` (or `TEST` when the option is omitted); normally the entry source declares it.
 
 When writing a block:
 

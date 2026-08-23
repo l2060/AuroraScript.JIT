@@ -25,6 +25,7 @@ namespace AuroraScript.Compiler.Backend.Builders
         private readonly PersistedAssemblyBuilder _assemblyBuilder;
         private readonly ModuleBuilder _moduleBuilder;
         private readonly Dictionary<String, ISymbolDocumentWriter> _sourceDocumentMap = new();
+        private int _moduleTypeCount;
 
         public PersistedBuilder(EngineOptions options) : base(options)
         {
@@ -37,12 +38,12 @@ namespace AuroraScript.Compiler.Backend.Builders
 
         public override (MethodInfo Method, ILGenerator IL) DefineModuleInitMethod(ModuleDeclaration module)
         {
-            var typeBuilder = _moduleBuilder.DefineType(ConfuseTypeName(module.ModuleName, ConfuseTarget.Class), TypeAttributes.Public | TypeAttributes.Class | TypeAttributes.Sealed);
+            var typeBuilder = _moduleBuilder.DefineType(ConfuseTypeName("AuroraModule_" + _moduleTypeCount++, ConfuseTarget.Class), TypeAttributes.Public | TypeAttributes.Class | TypeAttributes.Sealed);
             var methodBuilder = typeBuilder.DefineMethod(ConfuseTypeName("Initialize", ConfuseTarget.Method), MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig, typeof(void), [typeof(ScriptContext), typeof(Span<ScriptDatum>)]);
             ISymbolDocumentWriter symbolDoc = null;
-            symbolDoc = _moduleBuilder.DefineDocument(module.FullPath, AuroraScriptLanguageId, MicrosoftVendorId, TextDocumentType);
-            _sourceDocumentMap.Add(module.FullPath, symbolDoc);
-            RegisterType(module.ModuleName, typeBuilder);
+            symbolDoc = _moduleBuilder.DefineDocument(module.Source.FullPath, AuroraScriptLanguageId, MicrosoftVendorId, TextDocumentType);
+            _sourceDocumentMap.Add(module.Source.FullPath, symbolDoc);
+            RegisterType(module.Source.FullPath, typeBuilder);
             return (methodBuilder, methodBuilder.GetILGenerator());
         }
 
@@ -55,16 +56,15 @@ namespace AuroraScript.Compiler.Backend.Builders
         }
 
         public override (MethodInfo Method, ILGenerator IL) DefineMethod(
-            string moduleName,
+            string moduleKey,
             string methodName,
             Type returnType,
             Type[] parameterTypes,
             bool aggressiveInlining = false)
         {
-            var typeName = moduleName;
-            if (!TryResolveType(typeName, out var typeBuilder))
+            if (!TryResolveType(moduleKey, out var typeBuilder))
             {
-                throw new Exception($"Module {moduleName} not defined");
+                throw new Exception($"Module source '{moduleKey}' is not defined");
             }
             var method = typeBuilder.DefineMethod(ConfuseTypeName(methodName, ConfuseTarget.Method), MethodAttributes.Public | MethodAttributes.Static, returnType, parameterTypes);
             if (aggressiveInlining)
@@ -247,7 +247,7 @@ namespace AuroraScript.Compiler.Backend.Builders
         }
 
         public override (MethodInfo Method, ILGenerator IL) DefineMethod(
-            string moduleName,
+            string moduleKey,
             string methodName,
             Type returnType,
             Type[] parameterTypes,

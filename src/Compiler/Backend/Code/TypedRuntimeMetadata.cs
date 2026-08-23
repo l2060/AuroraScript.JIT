@@ -3,6 +3,7 @@ using AuroraScript.Runtime.Interop;
 using AuroraScript.Runtime.Types;
 using AuroraScript.Runtime.Pool;
 using AuroraScript.Runtime.Serialization;
+using AuroraScript.Core;
 using System;
 using System.Reflection;
 using System.Text;
@@ -156,10 +157,11 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo ScriptObjectInternalDefineDatum = InstanceMethod(typeof(ScriptObject), nameof(ScriptObject.InternalDefine), typeof(string), typeof(ScriptDatum), typeof(bool), typeof(bool), typeof(bool));
         public static readonly MethodInfo ScriptObjectCopyProperties = InstanceMethod(typeof(ScriptObject), nameof(ScriptObject.CopyPropertysFrom), typeof(ScriptObject), typeof(bool));
         public static readonly MethodInfo ScriptObjectCopyEnumerableProperties = InstanceMethod(typeof(ScriptObject), nameof(ScriptObject.CopyEnumerablePropertysFrom), typeof(ScriptObject), typeof(bool));
-        public static readonly MethodInfo ScriptGlobalGetModule = InstanceMethod(typeof(ScriptGlobal), nameof(ScriptGlobal.GetModule), typeof(string));
-        public static readonly MethodInfo ScriptGlobalEnsureModule = InstanceMethod(typeof(ScriptGlobal), nameof(ScriptGlobal.EnsureModule), typeof(string), typeof(string), typeof(string));
-        public static readonly MethodInfo ScriptGlobalRegisterModule = InstanceMethod(typeof(ScriptGlobal), nameof(ScriptGlobal.RegisterModule), typeof(string), typeof(int), typeof(ScriptModule));
-        public static readonly ConstructorInfo ScriptModuleConstructor = Constructor(typeof(ScriptModule), typeof(string), typeof(string), typeof(string));
+        public static readonly MethodInfo ScriptGlobalGetModuleByPath = InstanceMethod(typeof(ScriptGlobal), nameof(ScriptGlobal.GetModuleByPath), typeof(string));
+        public static readonly MethodInfo ScriptGlobalEnsureModule = InstanceMethod(typeof(ScriptGlobal), nameof(ScriptGlobal.EnsureModule), typeof(string), typeof(ScriptSourceReference));
+        public static readonly MethodInfo ScriptGlobalRegisterModule = InstanceMethod(typeof(ScriptGlobal), nameof(ScriptGlobal.RegisterModule), typeof(int), typeof(ScriptModule));
+        public static readonly ConstructorInfo ScriptSourceReferenceConstructor = Constructor(typeof(ScriptSourceReference), typeof(string), typeof(string), typeof(string));
+        public static readonly ConstructorInfo ScriptModuleConstructor = Constructor(typeof(ScriptModule), typeof(string), typeof(ScriptSourceReference));
         public static readonly MethodInfo ScriptObjectClearProperties = InstanceMethod(typeof(ScriptObject), nameof(ScriptObject.ClearProperties));
 
         public static readonly MethodInfo ValidatePackedArrayLength = Method(typeof(ScriptPackedArray), nameof(ScriptPackedArray.ValidateLength), typeof(double));

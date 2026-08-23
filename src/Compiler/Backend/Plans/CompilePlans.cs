@@ -1,6 +1,7 @@
 using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Compiler.Backend.Binding;
+using AuroraScript.Core;
 using AuroraScript.Runtime;
 using System;
 using System.Collections.Generic;
@@ -180,17 +181,15 @@ namespace AuroraScript.Compiler.Backend.Plans
                 Math.Max(4, declaration.Imports.Count + declaration.Statements.Count + declaration.Functions.Count),
                 StringComparer.Ordinal);
             Name = declaration.ModuleName;
-            Path = declaration.ModulePath;
-            FullPath = declaration.FullPath;
-            PathHash = declaration.ModulePath?.GetHashCode() ?? 0;
+            Source = declaration.Source;
+            PathHash = Source.FullPath.GetHashCode();
             ModuleScope = ScopeId.Invalid;
         }
 
         public ModuleId Id { get; }
         public ModuleDeclaration Declaration { get; }
         public string Name { get; }
-        public string Path { get; }
-        public string FullPath { get; }
+        public ScriptSourceReference Source { get; }
         public int PathHash { get; }
         public ScopeId ModuleScope { get; set; }
         public MethodInfo Initializer { get; set; }

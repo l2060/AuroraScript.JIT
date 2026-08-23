@@ -51,6 +51,20 @@ enabled = true
 
 > See [Wiki: MCP Tooling](https://github.com/l2060/AuroraScript.JIT/wiki/Tooling-MCP) for resource URIs, every tool's `Parameters:` / `Returns`, request examples, workspace-overlay rules, and troubleshooting.
 
+## 模块名称与工具执行
+
+`aurora_check_script` 和 `aurora_check_file` 可以校验匿名模块；没有 `@module(NAME);` 时不会从文件名推导默认名称。`import` / `include` 始终通过 Source Resolver 路径解析，因此依赖文件通常可以保持匿名。
+
+`aurora_run_script` 和 `aurora_run_file` 的模块模式通过宿主模块名执行，所以编译后的模块图中必须存在与 `moduleName` 相同的显式 `@module` 名称；通常由入口模块声明。`aurora_run_script` 省略 `moduleName` 时使用 `TEST`，此时模块图中应包含 `@module(TEST);`。
+
+脚本需要按显式名称动态获取已加载模块时可使用 `global.getModule("NAME")`；未命名或不存在的模块返回 `null`。`global.modules` 仍只以解析后的 `FullPath` 为键，不会增加模块名别名。该 API 已包含在 MCP 的 `aurora://schema/runtime-api` 资源和运行时 API 查询工具中。
+
+> `aurora_check_script` and `aurora_check_file` can validate anonymous modules; no default name is derived from a filename when `@module(NAME);` is absent. Imports and includes are resolved by Source Resolver path, so dependency files can normally remain anonymous.
+>
+> Module mode in `aurora_run_script` and `aurora_run_file` executes through the host module-name API. The compiled graph must contain the same explicit `@module` name as `moduleName`, normally on the entry module. When `aurora_run_script` omits `moduleName`, it defaults to `TEST`, so the graph should contain `@module(TEST);`.
+>
+> Scripts can use `global.getModule("NAME")` to look up an already loaded module by its explicit name; anonymous or missing modules return `null`. `global.modules` remains keyed only by resolved `FullPath`, with no module-name aliases. The API is available through the MCP `aurora://schema/runtime-api` resource and runtime API query tools.
+
 ## 开发
 
 ```bash

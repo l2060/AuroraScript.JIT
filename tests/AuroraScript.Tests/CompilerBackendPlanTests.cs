@@ -3511,7 +3511,7 @@ public sealed class CompilerBackendPlanTests
     {
         var fullPath = ScriptPath.GetFullPath(root, "backend-plan-test.as");
         var modulePath = ScriptPath.GetModulePath(root, fullPath);
-        return new ScriptModule(moduleName, modulePath, fullPath);
+        return new ScriptModule(moduleName, new ScriptSourceReference(root, fullPath, modulePath));
     }
 
     private static AuroraScript.Compiler.Ast.Statements.BlockStatement ParseBlock(string source, string root)
@@ -3615,7 +3615,7 @@ public sealed class CompilerBackendPlanTests
 
         public override (MethodInfo Method, ILGenerator IL) DefineDynamicMethod(ModuleDeclaration module)
         {
-            var method = new DynamicMethod(module.ModuleName, typeof(ScriptDatum), s_standardParameters, typeof(RecordingBuilder).Module, true);
+            var method = new DynamicMethod(module.ModuleName ?? module.Source.ModulePath ?? "AuroraModule", typeof(ScriptDatum), s_standardParameters, typeof(RecordingBuilder).Module, true);
             return (method, method.GetILGenerator());
         }
 
@@ -3639,7 +3639,7 @@ public sealed class CompilerBackendPlanTests
         }
 
         public override (MethodInfo Method, ILGenerator IL) DefineMethod(
-            string moduleName,
+            string moduleKey,
             string methodName,
             Type returnType,
             Type[] parameterTypes,

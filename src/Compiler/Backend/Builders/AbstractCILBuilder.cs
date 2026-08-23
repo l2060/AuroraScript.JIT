@@ -49,7 +49,7 @@ namespace AuroraScript.Compiler.Backend.Builders
         public abstract (MethodInfo Method, ILGenerator IL) DefineDomainInitMethod();
 
         public abstract (MethodInfo Method, ILGenerator IL) DefineMethod(
-            string moduleName,
+            string moduleKey,
             string methodName,
             Type returnType,
             Type[] parameterTypes,
@@ -142,6 +142,17 @@ namespace AuroraScript.Compiler.Backend.Builders
         {
             il.Emit(OpCodes.Ldstr, value);
             return LoadState.Constant;
+        }
+
+        public LoadState LoadNullableStringConstant(ILGenerator il, String value)
+        {
+            if (value == null)
+            {
+                il.Emit(OpCodes.Ldnull);
+                return LoadState.Constant;
+            }
+
+            return LoadStringConstant(il, value);
         }
 
         public virtual LoadState LoadNull(ILGenerator il)

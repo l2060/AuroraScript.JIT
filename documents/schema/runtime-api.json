@@ -2439,12 +2439,14 @@
             "en": [
               "Replaces a module using the supplied script source.",
               "Passing only script patches the current module.",
-              "Relative modulePath values resolve from the current module FullPath directory."
+              "Relative modulePath values resolve from the current module Source.FullPath directory.",
+              "The resolved full path selects the target; @module name does not. A patch cannot rename a loaded module, while omitting @module preserves its existing explicit name. A new path creates a new named or anonymous module."
             ],
             "zh-CN": [
               "使用提供的脚本源码替换模块。",
               "只传 script 时会修补当前模块。",
-              "相对 modulePath 会从当前模块 FullPath 所在目录解析。"
+              "相对 modulePath 会从当前模块 Source.FullPath 所在目录解析。",
+              "解析后的完整路径用于选择目标，@module 名称不参与定位。补丁不能重命名已加载模块；省略 @module 时会保留已有显式名称。新路径会创建新的命名或匿名模块。"
             ]
           }
         },
@@ -2459,12 +2461,14 @@
             "en": [
               "Applies an incremental module hot patch.",
               "Passing only script patches the current module.",
-              "Relative modulePath values resolve from the current module FullPath directory."
+              "Relative modulePath values resolve from the current module Source.FullPath directory.",
+              "The resolved full path selects the target; @module name does not. A patch cannot rename a loaded module, while omitting @module preserves its existing explicit name. A new path creates a new named or anonymous module."
             ],
             "zh-CN": [
               "应用增量模块热更新。",
               "只传 script 时会修补当前模块。",
-              "相对 modulePath 会从当前模块 FullPath 所在目录解析。"
+              "相对 modulePath 会从当前模块 Source.FullPath 所在目录解析。",
+              "解析后的完整路径用于选择目标，@module 名称不参与定位。补丁不能重命名已加载模块；省略 @module 时会保留已有显式名称。新路径会创建新的命名或匿名模块。"
             ]
           }
         }
@@ -2489,15 +2493,37 @@
         ]
       },
       "members": {
+        "getModule": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "moduleName",
+              "type": "string"
+            }
+          ],
+          "returns": "object|null",
+          "notes": {
+            "en": [
+              "Returns a module loaded in the current script domain by its explicit @module name, or null when no explicitly named module matches.",
+              "This is a name lookup only: it does not import a source, does not derive names for anonymous modules, and does not add name keys to global.modules.",
+              "Enabled built-in modules can be returned by their explicit names; disabled built-ins remain unavailable."
+            ],
+            "zh-CN": [
+              "按显式 @module 名称返回当前脚本域中已加载的模块；没有匹配的显式命名模块时返回 null。",
+              "该入口只执行名称查询：不会导入源码、不会为匿名模块推导名称，也不会向 global.modules 添加名称键。",
+              "已启用的内置模块可按显式名称返回；未启用的内置模块仍不可用。"
+            ]
+          }
+        },
         "modules": {
           "kind": "property",
           "returns": "object",
           "notes": {
             "en": [
-              "Loaded module registry exposed by the runtime global object."
+              "Loaded module registry exposed by the runtime global object. Current entries are keyed by normalized absolute or virtual source FullPath, not by @module name or resolver-relative ModulePath."
             ],
             "zh-CN": [
-              "运行时全局对象暴露的已加载模块注册表。"
+              "运行时全局对象暴露的已加载模块注册表。当前条目以规范化的绝对或虚拟源码 FullPath 为键，而不是 @module 名称或解析器相对 ModulePath。"
             ]
           }
         }

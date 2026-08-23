@@ -67,7 +67,7 @@ namespace AuroraScript.Runtime
         /// <summary>
         /// Executes a specified method in a module using the default user state and no arguments.
         /// </summary>
-        /// <param name="moduleName">The name of the script module.</param>
+        /// <param name="moduleName">The explicit name declared by the module's <c>@module</c> metadata.</param>
         /// <param name="methodName">The name of the method to execute.</param>
         /// <returns>The result of the execution as a <see cref="ScriptDatum"/>.</returns>
         /// <exception cref="AuroraException">Thrown if the module or method is not found.</exception>
@@ -79,7 +79,7 @@ namespace AuroraScript.Runtime
         /// <summary>
         /// Executes a specified method in a module with arguments and default user state.
         /// </summary>
-        /// <param name="moduleName">The name of the script module.</param>
+        /// <param name="moduleName">The explicit name declared by the module's <c>@module</c> metadata.</param>
         /// <param name="methodName">The name of the method to execute.</param>
         /// <param name="arguments">The arguments to pass to the method.</param>
         /// <returns>The result of the execution as a <see cref="ScriptDatum"/>.</returns>
@@ -92,7 +92,7 @@ namespace AuroraScript.Runtime
         /// <summary>
         /// Executes a specified method in a module with raw <see cref="ScriptDatum"/> arguments and default user state.
         /// </summary>
-        /// <param name="moduleName">The name of the script module.</param>
+        /// <param name="moduleName">The explicit name declared by the module's <c>@module</c> metadata.</param>
         /// <param name="methodName">The name of the method to execute.</param>
         /// <param name="arguments">The raw datum arguments.</param>
         /// <returns>The result of the execution as a <see cref="ScriptDatum"/>.</returns>
@@ -105,7 +105,7 @@ namespace AuroraScript.Runtime
         /// <summary>
         /// Executes a specified method in a module with custom user state and script object arguments.
         /// </summary>
-        /// <param name="moduleName">The name of the script module.</param>
+        /// <param name="moduleName">The explicit name declared by the module's <c>@module</c> metadata.</param>
         /// <param name="methodName">The name of the method to execute.</param>
         /// <param name="userState">The custom user state for this execution context.</param>
         /// <param name="arguments">The script object arguments.</param>
@@ -120,7 +120,7 @@ namespace AuroraScript.Runtime
         /// The primary internal method for executing script methods. 
         /// Looks up the specified module and method, creates a context, and invokes the closure.
         /// </summary>
-        /// <param name="moduleName">The name of the script module. Modules are internally prefixed with '@'.</param>
+        /// <param name="moduleName">The explicit name declared by the module's <c>@module</c> metadata. Anonymous modules are not available through this API.</param>
         /// <param name="methodName">The name of the method to invoke within the module.</param>
         /// <param name="userState">The user state passed to the script execution context.</param>
         /// <param name="arguments">The raw datum arguments passed to the script method.</param>
@@ -158,7 +158,7 @@ namespace AuroraScript.Runtime
         /// <summary>
         /// Retrieves a script closure by its module and method name.
         /// </summary>
-        /// <param name="moduleName">The name of the module.</param>
+        /// <param name="moduleName">The explicit name declared by the module's <c>@module</c> metadata.</param>
         /// <param name="methodName">The name of the method.</param>
         /// <returns>The <see cref="ClosureFunction"/> if found and valid; otherwise, null.</returns>
         public ClosureFunction GetMethod(string moduleName, string methodName)
@@ -178,6 +178,11 @@ namespace AuroraScript.Runtime
         /// <summary>
         /// Dynamically applies a hot patch to the script domain in memory.
         /// </summary>
+        /// <remarks>
+        /// The normalized <see cref="ScriptSource.FullPath"/> selects the target module.
+        /// Module names do not select patch targets, and an explicit patch name cannot rename
+        /// a module already loaded at that path.
+        /// </remarks>
         /// <param name="source">The script source containing the patch code.</param>
         /// <param name="patchType">The type of hot patch to apply (e.g., Replace, Append).</param>
         public void DynamicPatch(ScriptSource source, HotPatchType patchType)
@@ -193,7 +198,8 @@ namespace AuroraScript.Runtime
         /// <remarks>
         /// <paramref name="modulePath"/> must be an absolute file path or virtual full
         /// path under the current source resolver. Composite resolvers use the longest
-        /// matching resolver root.
+        /// matching resolver root. The resolved full path selects the target module;
+        /// an explicit patch name cannot rename a module already loaded at that path.
         /// </remarks>
         /// <param name="modulePath">The source path used for the patch module and relative import resolution.</param>
         /// <param name="script">The patch script source text.</param>
@@ -209,7 +215,8 @@ namespace AuroraScript.Runtime
         /// <remarks>
         /// <paramref name="modulePath"/> must be an absolute file path or virtual full
         /// path under the current source resolver. Composite resolvers use the longest
-        /// matching resolver root.
+        /// matching resolver root. The resolved full path selects the target module;
+        /// an explicit patch name cannot rename a module already loaded at that path.
         /// </remarks>
         /// <param name="modulePath">The source path used for the patch module and relative import resolution.</param>
         /// <param name="script">The patch script source text.</param>
@@ -225,7 +232,8 @@ namespace AuroraScript.Runtime
         /// <remarks>
         /// <paramref name="modulePath"/> must be an absolute file path or virtual full
         /// path under the current source resolver. Composite resolvers use the longest
-        /// matching resolver root.
+        /// matching resolver root. The resolved full path selects the target module;
+        /// an explicit patch name cannot rename a module already loaded at that path.
         /// </remarks>
         /// <param name="modulePath">The source path used for the patch module and relative import resolution.</param>
         /// <param name="script">The patch script source text.</param>
@@ -238,6 +246,11 @@ namespace AuroraScript.Runtime
         /// <summary>
         /// Dynamically applies a hot patch to the script domain in memory.
         /// </summary>
+        /// <remarks>
+        /// The normalized <see cref="ScriptSource.FullPath"/> selects the target module.
+        /// Module names do not select patch targets, and an explicit patch name cannot rename
+        /// a module already loaded at that path.
+        /// </remarks>
         /// <param name="source">The script source containing the patch code.</param>
         /// <param name="patchType">The type of hot patch to apply (e.g., Replace, Append).</param>
         /// <param name="cancellationToken">Token used to cancel source resolution.</param>
@@ -272,7 +285,8 @@ namespace AuroraScript.Runtime
         /// <remarks>
         /// <paramref name="modulePath"/> must be an absolute file path or virtual full
         /// path under the current source resolver. Composite resolvers use the longest
-        /// matching resolver root.
+        /// matching resolver root. The resolved full path selects the target module;
+        /// an explicit patch name cannot rename a module already loaded at that path.
         /// </remarks>
         /// <param name="modulePath">The source path used for the patch module and relative import resolution.</param>
         /// <param name="script">The patch script source text.</param>
@@ -294,7 +308,8 @@ namespace AuroraScript.Runtime
         /// <remarks>
         /// <paramref name="modulePath"/> must be an absolute file path or virtual full
         /// path under the current source resolver. Composite resolvers use the longest
-        /// matching resolver root.
+        /// matching resolver root. The resolved full path selects the target module;
+        /// an explicit patch name cannot rename a module already loaded at that path.
         /// </remarks>
         /// <param name="modulePath">The source path used for the patch module and relative import resolution.</param>
         /// <param name="script">The patch script source text.</param>
@@ -319,7 +334,8 @@ namespace AuroraScript.Runtime
         /// <remarks>
         /// <paramref name="modulePath"/> must be an absolute file path or virtual full
         /// path under the current source resolver. Composite resolvers use the longest
-        /// matching resolver root.
+        /// matching resolver root. The resolved full path selects the target module;
+        /// an explicit patch name cannot rename a module already loaded at that path.
         /// </remarks>
         /// <param name="modulePath">The source path used for the patch module and relative import resolution.</param>
         /// <param name="script">The patch script source text.</param>
@@ -408,10 +424,10 @@ namespace AuroraScript.Runtime
         }
 
         /// <summary>
-        /// Retrieves a module object by its name.
+        /// Retrieves a module object by its explicit <c>@module</c> name.
         /// </summary>
-        /// <param name="moduleName">The name of the module to retrieve.</param>
-        /// <returns>The module represented as a <see cref="ScriptObject"/>, or <see cref="ScriptObject.Null"/> if not found.</returns>
+        /// <param name="moduleName">The explicit name of the module to retrieve.</param>
+        /// <returns>The module represented as a <see cref="ScriptObject"/>, or <see cref="ScriptObject.Null"/> if not found. Anonymous modules are not returned by name.</returns>
         public ScriptObject GetModule(string moduleName)
         {
             if (Global.TryGetModule(moduleName, out var module))

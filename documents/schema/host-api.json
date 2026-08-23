@@ -59,7 +59,9 @@
             "Before module analysis, the compiler scans resolver-visible project .as files and loads standalone @global() declaration files when they exist.",
             "@global() declarations are optional compile-time contracts for host globals and do not depend on import/include.",
             "Enabled built-in bare paths resolve before project sources; relative imports continue to use the project resolver.",
-            "A project module name that collides with an enabled built-in module fails during linking."
+            "Resolved ScriptSourceReference.FullPath is the identity used for module graphs and runtime registration.",
+            "Sources without @module are anonymous; no default name is derived from a filename or path.",
+            "Only explicit @module names participate in name-conflict checks. An explicit project name that collides with another project module or an enabled built-in module fails during linking."
           ]
         },
         "CompileBlock": {
@@ -165,7 +167,8 @@
         },
         "Name": {
           "kind": "property",
-          "signature": "string Name"
+          "signature": "string Name",
+          "summary": "Explicit lookup name used by host module APIs and script global.getModule."
         },
         "ModulePath": {
           "kind": "property",
@@ -617,12 +620,12 @@
         "SourcePath": {
           "kind": "property",
           "signature": "string SourcePath",
-          "summary": "Module-relative path used by the compiler and runtime."
+          "summary": "Resolver-relative source path; it is not a module name or module identity."
         },
         "FullPath": {
           "kind": "property",
           "signature": "string FullPath",
-          "summary": "Absolute file path or virtual source identifier."
+          "summary": "Normalized absolute file path or virtual source identifier used as module identity."
         },
         "Code": {
           "kind": "property",
@@ -668,7 +671,7 @@
     "ScriptSourceReference": {
       "kind": "struct",
       "namespace": "AuroraScript.Core",
-      "summary": "Stable identity returned by a resolver after an import/include path is resolved.",
+      "summary": "Resolved source reference whose normalized FullPath is the compiler and runtime module identity.",
       "members": {
         "Constructor": {
           "kind": "constructor",
@@ -690,7 +693,7 @@
         "ModulePath": {
           "kind": "property",
           "signature": "string ModulePath",
-          "summary": "Module-relative path used by compiler/runtime names."
+          "summary": "Resolver-relative source path used for display and source-relative behavior; it is not a module name or registry identity."
         }
       }
     },
@@ -851,19 +854,25 @@
         },
         "Execute": {
           "kind": "method",
-          "summary": "Executes an exported module method.",
+          "summary": "Executes an exported method in a module with an explicit @module name.",
           "overloads": [
             "ScriptDatum Execute(string moduleName, string methodName)",
             "ScriptDatum Execute(string moduleName, string methodName, params ScriptObject[] arguments)",
             "ScriptDatum Execute(string moduleName, string methodName, params ScriptDatum[] arguments)",
             "ScriptDatum Execute(string moduleName, string methodName, ScriptObject userState, params ScriptObject[] arguments)",
             "ScriptDatum Execute(string moduleName, string methodName, ScriptObject userState, params ScriptDatum[] arguments)"
+          ],
+          "notes": [
+            "moduleName is matched only against explicit @module metadata. Anonymous modules cannot be executed by host name."
           ]
         },
         "GetMethod": {
           "kind": "method",
           "signature": "ClosureFunction GetMethod(string moduleName, string methodName)",
-          "summary": "Gets a compiled closure for advanced host-side invocation."
+          "summary": "Gets a compiled closure from a module with an explicit @module name.",
+          "notes": [
+            "Anonymous modules are not available through name-based host lookup."
+          ]
         },
         "DynamicPatch": {
           "kind": "method",
@@ -873,7 +882,10 @@
             "void DynamicPatch(string modulePath, string script, HotPatchType patchType)"
           ],
           "notes": [
-            "The string overload requires an absolute file path or virtual full path under the current SourceResolver root. Composite resolvers choose the longest matching root."
+            "The string overload requires an absolute file path or virtual full path under the current SourceResolver root. Composite resolvers choose the longest matching root.",
+            "The resolved full path selects the patch target; @module name is never used as the target identity.",
+            "A patch cannot rename a module already loaded at that path. Omitting @module preserves an existing explicit name.",
+            "If no module exists at the resolved full path, the patch creates a new named or anonymous module; an explicit name must be unused."
           ]
         },
         "DynamicPatchAsync": {
@@ -884,7 +896,10 @@
             "Task DynamicPatchAsync(string modulePath, string script, HotPatchType patchType, CancellationToken cancellationToken = default)"
           ],
           "notes": [
-            "The string overload requires an absolute file path or virtual full path under the current SourceResolver root. Composite resolvers choose the longest matching root."
+            "The string overload requires an absolute file path or virtual full path under the current SourceResolver root. Composite resolvers choose the longest matching root.",
+            "The resolved full path selects the patch target; @module name is never used as the target identity.",
+            "A patch cannot rename a module already loaded at that path. Omitting @module preserves an existing explicit name.",
+            "If no module exists at the resolved full path, the patch creates a new named or anonymous module; an explicit name must be unused."
           ]
         },
         "ReplacePatch": {
@@ -892,7 +907,8 @@
           "signature": "void ReplacePatch(string modulePath, string script, bool ignoreDepends = false)",
           "summary": "Replaces the target module with in-memory patch source.",
           "notes": [
-            "modulePath must be an absolute file path or virtual full path under the current SourceResolver root."
+            "modulePath must be an absolute file path or virtual full path under the current SourceResolver root.",
+            "The resolved full path selects the target; an explicit name must match the module already loaded at that path."
           ]
         },
         "IncrementalPatch": {
@@ -900,26 +916,30 @@
           "signature": "void IncrementalPatch(string modulePath, string script, bool ignoreDepends = false)",
           "summary": "Adds or updates members in the target module.",
           "notes": [
-            "modulePath must be an absolute file path or virtual full path under the current SourceResolver root."
+            "modulePath must be an absolute file path or virtual full path under the current SourceResolver root.",
+            "The resolved full path selects the target; an explicit name must match the module already loaded at that path."
           ]
         },
         "ReplacePatchAsync": {
           "kind": "method",
           "signature": "Task ReplacePatchAsync(string modulePath, string script, bool ignoreDepends = false, CancellationToken cancellationToken = default)",
           "notes": [
-            "modulePath must be an absolute file path or virtual full path under the current SourceResolver root."
+            "modulePath must be an absolute file path or virtual full path under the current SourceResolver root.",
+            "The resolved full path selects the target; an explicit name must match the module already loaded at that path."
           ]
         },
         "IncrementalPatchAsync": {
           "kind": "method",
           "signature": "Task IncrementalPatchAsync(string modulePath, string script, bool ignoreDepends = false, CancellationToken cancellationToken = default)",
           "notes": [
-            "modulePath must be an absolute file path or virtual full path under the current SourceResolver root."
+            "modulePath must be an absolute file path or virtual full path under the current SourceResolver root.",
+            "The resolved full path selects the target; an explicit name must match the module already loaded at that path."
           ]
         },
         "GetModule": {
           "kind": "method",
-          "signature": "ScriptObject GetModule(string moduleName)"
+          "signature": "ScriptObject GetModule(string moduleName)",
+          "summary": "Returns the module with the matching explicit @module name, or ScriptObject.Null; anonymous modules are not returned by name."
         },
         "Dispose": {
           "kind": "method",
@@ -1044,6 +1064,9 @@
       "kind": "class",
       "namespace": "AuroraScript.Runtime",
       "summary": "Global object for one script domain.",
+      "notes": [
+        "Scripts receive the intrinsic global.getModule(moduleName) method for explicit-name lookup. It is documented in runtime-api.json and does not add a public CLR ScriptGlobal method or module-name registry key."
+      ],
       "members": {
         "Engine": {
           "kind": "field",
@@ -1071,20 +1094,19 @@
       "kind": "class",
       "namespace": "AuroraScript.Runtime",
       "summary": "Runtime module object returned from domain/module APIs and closure metadata.",
+      "notes": [
+        "Runtime registration uses Source.FullPath as module identity. Name is only an optional explicit lookup label used by host APIs and script global.getModule."
+      ],
       "members": {
         "Name": {
           "kind": "field",
-          "signature": "string Name"
+          "signature": "string Name",
+          "summary": "Explicit @module name, or null for an anonymous module."
         },
-        "ModulePath": {
+        "Source": {
           "kind": "field",
-          "signature": "string ModulePath",
-          "summary": "Resolver-relative module path."
-        },
-        "FullPath": {
-          "kind": "field",
-          "signature": "string FullPath",
-          "summary": "Normalized absolute file path or virtual full path of the module source."
+          "signature": "ScriptSourceReference Source",
+          "summary": "Resolved source reference that identifies the module."
         }
       }
     },
@@ -2242,7 +2264,7 @@
     },
     {
       "id": "runtime.hot-patch",
-      "summary": "Enable runtime hot reload and use ReplacePatch/IncrementalPatch or DynamicPatchAsync to update loaded modules.",
+      "summary": "Enable runtime hot reload and update a loaded module by its exact resolved full path; module names do not select patch targets.",
       "apis": ["RuntimeOptions.EnableHotReload", "ScriptDomain.ReplacePatchAsync", "ScriptDomain.IncrementalPatchAsync", "HotPatchType"]
     },
     {

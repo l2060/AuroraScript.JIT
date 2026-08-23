@@ -145,7 +145,7 @@ internal sealed class AuroraWorkspaceIndex
                     module.AddSymbol(new AuroraSymbolInfo(
                         variable.Name.Value,
                         variable.IsConst ? AuroraSymbolKind.Constant : AuroraSymbolKind.Variable,
-                        declaration.ModulePath ?? module.Path,
+                        declaration.Source.ModulePath,
                         module.Path,
                         TextRange.FromSourceSpan(variable.Name.Range),
                         variable.Access == MemberAccess.Export,
@@ -155,7 +155,7 @@ internal sealed class AuroraWorkspaceIndex
                     module.AddSymbol(new AuroraSymbolInfo(
                         enumDeclaration.Identifier.Value,
                         AuroraSymbolKind.Enum,
-                        declaration.ModulePath ?? module.Path,
+                        declaration.Source.ModulePath,
                         module.Path,
                         TextRange.FromSourceSpan(enumDeclaration.Identifier.Range),
                         enumDeclaration.Access == MemberAccess.Export));
@@ -174,7 +174,7 @@ internal sealed class AuroraWorkspaceIndex
             module.AddSymbol(new AuroraSymbolInfo(
                 function.Name.Value,
                 AuroraSymbolKind.Function,
-                declaration.ModulePath ?? module.Path,
+                declaration.Source.ModulePath,
                 module.Path,
                 TextRange.FromSourceSpan(function.Name.Range),
                 function.Access == MemberAccess.Export,
@@ -187,12 +187,12 @@ internal sealed class AuroraWorkspaceIndex
         for (var i = 0; i < imports.Count; i++)
         {
             var import = imports[i];
-            if (string.IsNullOrWhiteSpace(import.FullPath))
+            if (string.IsNullOrWhiteSpace(import.Reference.FullPath))
             {
                 continue;
             }
 
-            var targetPath = NormalizePath(import.FullPath);
+            var targetPath = NormalizePath(import.Reference.FullPath);
             var alias = import.Name?.Value ?? string.Empty;
             module.AddImport(new AuroraImportInfo(
                 alias,

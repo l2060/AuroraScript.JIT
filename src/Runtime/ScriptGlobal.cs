@@ -1,16 +1,15 @@
 ﻿using AuroraScript.Runtime.Interop;
+using AuroraScript.Core;
 using AuroraScript.Runtime.Types;
 using System.Collections.Generic;
 
 namespace AuroraScript.Runtime
 {
     /// <summary>
-    /// Represents metadata for a script module, including its name and path.
+    /// Identifies the source associated with emitted location metadata.
     /// </summary>
-    /// <param name="ModuleName">The name of the module.</param>
-    /// <param name="ModulePath">The resolver-relative path of the module.</param>
-    /// <param name="FullPath">The normalized absolute file path or virtual full path of the module source.</param>
-    internal record ModuleMeta(string ModuleName, string ModulePath, string FullPath);
+    /// <param name="Source">The source that identifies the module.</param>
+    internal record ModuleMeta(ScriptSourceReference Source);
 
     /// <summary>
     /// Represents the global execution object in AuroraScript.
@@ -29,9 +28,9 @@ namespace AuroraScript.Runtime
         internal readonly ScriptObject Modules = new ScriptObject();
 
         /// <summary>
-        /// A hash map connecting module path hashes to their metadata for quick lookup.
+        /// A hash map connecting emitted source path hashes to their metadata for stack traces.
         /// </summary>
-        internal Dictionary<int, ModuleMeta> modulePathHash = new Dictionary<int, ModuleMeta>();
+        internal readonly Dictionary<int, ModuleMeta> sourcePathHash = new Dictionary<int, ModuleMeta>();
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ScriptGlobal"/> class.
@@ -43,7 +42,29 @@ namespace AuroraScript.Runtime
             Engine = engine;
             // Define the 'modules' property on the global object, making it non-writable and non-enumerable.
             base.Define("modules", Modules, false, false);
+            base.Define("getModule", ScriptDatum.FromBonding(GET_MODULE), false, false);
             engine.BuiltInRegistry.RegisterModules(this);
+        }
+
+        /// <summary>
+        /// Gets a loaded module by its explicit <c>@module</c> name for script callers.
+        /// </summary>
+        /// <remarks>
+        /// Module storage remains keyed only by resolved source full path. This method performs
+        /// explicit-name lookup without adding another registry entry.
+        /// </remarks>
+        internal static void GET_MODULE(
+            ScriptContext context,
+            ScriptObject thisObject,
+            System.Span<ScriptDatum> arguments,
+            ref ScriptDatum result)
+        {
+            if (thisObject is ScriptGlobal global &&
+                arguments.TryGetString(0, out var name) &&
+                global.TryGetModule(name, out var module))
+            {
+                ScriptDatum.WriteAsObject(ref result, module);
+            }
         }
 
         /// <summary>
@@ -120,74 +141,126 @@ namespace AuroraScript.Runtime
         /// <summary>
         /// Ensures a module exists in the global scope. If it doesn't, a new one is created.
         /// </summary>
-        /// <param name="name">The name of the module.</param>
-        /// <param name="modulePath">The resolver-relative path of the module.</param>
-        /// <param name="fullPath">The normalized absolute file path or virtual full path of the module source.</param>
+        /// <param name="name">The explicit module name, or null for an anonymous module.</param>
+        /// <param name="source">The resolved source that identifies the module.</param>
         /// <returns>The existing or newly created <see cref="ScriptModule"/>.</returns>
-        internal ScriptModule EnsureModule(string name, string modulePath, string fullPath)
+        internal ScriptModule EnsureModule(string name, ScriptSourceReference source)
         {
-            var ext = Modules.GetPropertyValue(name);
-            if (ext is ScriptModule mod)
+            if (TryGetModuleByPath(source.FullPath, out var module))
             {
-                return mod;
+                if (!string.IsNullOrEmpty(name) &&
+                    !string.Equals(module.Name, name, System.StringComparison.Ordinal))
+                {
+                    throw new AuroraRuntimeException(
+                        $"Module source '{source.FullPath}' is already loaded with a different explicit name.");
+                }
+
+                sourcePathHash[source.FullPath.GetHashCode()] = new ModuleMeta(module.Source);
+                return module;
             }
-            var newMod = new ScriptModule(name, modulePath, fullPath);
-            Modules.Define(name, newMod, true, true);
-            modulePathHash[modulePath.GetHashCode()] = new ModuleMeta(name, modulePath, fullPath);
-            return newMod;
+
+            EnsureModuleNameAvailable(name, source.FullPath);
+            module = new ScriptModule(name, source);
+            Modules.Define(source.FullPath, module, true, true);
+            sourcePathHash[source.FullPath.GetHashCode()] = new ModuleMeta(source);
+            return module;
         }
 
         /// <summary>
         /// Registers a module into the global module registry.
         /// </summary>
-        /// <param name="name">The name of the module.</param>
-        /// <param name="hash">The hash code of the module path.</param>
+        /// <param name="hash">The source path hash embedded in emitted locations.</param>
         /// <param name="module">The module instance to register.</param>
-        /// <exception cref="AuroraRuntimeException">Thrown if a property with the same name exists but is not a module.</exception>
-        internal void RegisterModule(string name, int hash, ScriptModule module)
+        /// <exception cref="AuroraRuntimeException">Thrown when the source or explicit name conflicts with a loaded module.</exception>
+        internal void RegisterModule(int hash, ScriptModule module)
         {
-            var ext = Modules.GetPropertyValue(name);
-            if (ext != Null)
+            if (TryGetModuleByPath(module.Source.FullPath, out var existing))
             {
-                // If it's already a module, we just keep it (for hot-fixing purposes)
-                if (ext is ScriptModule) return;
-                throw new AuroraRuntimeException(null, null);
+                if (!string.IsNullOrEmpty(module.Name) &&
+                    !string.Equals(existing.Name, module.Name, System.StringComparison.Ordinal))
+                {
+                    throw new AuroraRuntimeException(
+                        $"Module source '{module.Source.FullPath}' is already loaded with a different explicit name.");
+                }
+
+                sourcePathHash[hash] = new ModuleMeta(existing.Source);
+                return;
             }
-            Modules.Define(name, module, true, true);
-            modulePathHash[hash] = new ModuleMeta(module.Name, module.ModulePath, module.FullPath);
+
+            EnsureModuleNameAvailable(module.Name, module.Source.FullPath);
+            Modules.Define(module.Source.FullPath, module, true, true);
+            sourcePathHash[hash] = new ModuleMeta(module.Source);
         }
 
         /// <summary>
         /// Tries to retrieve a module by its name.
         /// </summary>
-        /// <param name="name">The name of the module.</param>
+        /// <param name="name">The explicit name of the module.</param>
         /// <param name="module">The retrieved module if successful.</param>
         /// <returns>True if the module was found; otherwise, false.</returns>
         internal bool TryGetModule(string name, out ScriptModule module)
         {
-            var ext = Modules.GetPropertyValue(name);
-            if (ext is ScriptModule mod)
+            if (!string.IsNullOrEmpty(name))
             {
-                module = mod;
-                return true;
+                var keys = Modules.EnumerationKeys();
+                for (var i = 0; i < keys.Count; i++)
+                {
+                    if (Modules.GetPropertyValue(keys[i]) is ScriptModule candidate &&
+                        string.Equals(candidate.Name, name, System.StringComparison.Ordinal))
+                    {
+                        module = candidate;
+                        return true;
+                    }
+                }
             }
+
             module = null;
             return false;
         }
 
         /// <summary>
-        /// Retrieves a module by its name.
+        /// Retrieves a module by its absolute source path.
         /// </summary>
-        /// <param name="name">The name of the module.</param>
+        /// <param name="fullPath">The absolute source path of the module.</param>
         /// <returns>The <see cref="ScriptModule"/> if found; otherwise, null.</returns>
-        internal ScriptModule GetModule(string name)
+        internal ScriptModule GetModuleByPath(string fullPath)
         {
-            var ext = Modules.GetPropertyValue(name);
-            if (ext is ScriptModule mod)
+            return TryGetModuleByPath(fullPath, out var module) ? module : null;
+        }
+
+        internal bool TryGetModuleByPath(string fullPath, out ScriptModule module)
+        {
+            var ext = Modules.GetPropertyValue(fullPath);
+            if (ext is ScriptModule exact)
             {
-                return mod;
+                module = exact;
+                return true;
             }
-            return null;
+
+            var keys = Modules.EnumerationKeys();
+            for (var i = 0; i < keys.Count; i++)
+            {
+                if (ScriptPath.Comparer.Equals(keys[i], fullPath) &&
+                    Modules.GetPropertyValue(keys[i]) is ScriptModule candidate)
+                {
+                    module = candidate;
+                    return true;
+                }
+            }
+
+            module = null;
+            return false;
+        }
+
+        private void EnsureModuleNameAvailable(string name, string fullPath)
+        {
+            if (string.IsNullOrEmpty(name) || !TryGetModule(name, out var existing))
+            {
+                return;
+            }
+
+            throw new AuroraRuntimeException(
+                $"Module name '{name}' is already used by source '{existing.Source.FullPath}', not '{fullPath}'.");
         }
 
         /// <summary>

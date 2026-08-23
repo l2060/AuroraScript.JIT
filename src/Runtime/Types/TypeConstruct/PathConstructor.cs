@@ -56,7 +56,7 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
 
         internal static void BASE_MODULE(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
-            var fullPath = ctx?.Module?.FullPath;
+            var fullPath = ctx?.Module?.Source.FullPath;
             if (string.IsNullOrEmpty(fullPath))
             {
                 ScriptDatum.MarkAsNull(ref result);
@@ -113,7 +113,7 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
 
         internal static void CURRENT_FILE(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
-            var fullPath = ctx?.Module?.FullPath;
+            var fullPath = ctx?.Module?.Source.FullPath;
             if (string.IsNullOrEmpty(fullPath))
             {
                 ScriptDatum.MarkAsNull(ref result);
@@ -125,7 +125,7 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
 
         internal static void CURRENT_DIRECTORY(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
-            var fullPath = ctx?.Module?.FullPath;
+            var fullPath = ctx?.Module?.Source.FullPath;
             if (string.IsNullOrEmpty(fullPath))
             {
                 ScriptDatum.MarkAsNull(ref result);

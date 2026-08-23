@@ -10,7 +10,7 @@ AuroraScript is a dynamic script language with a compiler-inferred native path. 
 
 ### 1. Create a module
 
-Put `@module(NAME);` at the beginning of a module when the host needs a stable name. Comments and blank lines may precede it, but no other effective statement may come first.
+Put `@module(NAME);` at the beginning of a module when host APIs or script `global.getModule` need a stable lookup name. Comments and blank lines may precede it, but no other effective statement may come first.
 
 ```as
 // math.as
@@ -25,7 +25,11 @@ export func add(left, right) {
 }
 ```
 
-The host builds the source through its configured `SourceResolver`, then calls an exported function by module name and export name. Omitting `@module` lets the compiler derive a name from the source path, but explicit names are preferable for stable host calls and hot patching.
+The host builds the source through its configured `SourceResolver`, then calls an exported function by module name and export name. A source without `@module` is anonymous: it can still be imported by path, but it is not available to host `GetModule`, `GetMethod`, or `Execute` calls or to script `global.getModule` by name. The compiler never derives a default name from the source filename or path.
+
+The explicit name is a lookup label, not module identity. Each resolved source is identified by its normalized absolute file path or virtual `ScriptSourceReference.FullPath`; imports, dependency ordering, generated module access, and runtime registration use that path. Consequently, anonymous files with the same filename in different directories can be compiled together. Name-conflict checks apply only to explicit `@module` names.
+
+Scripts normally use `import` for dependencies. When a module must be selected dynamically by its explicit name, `global.getModule("NAME")` returns the already loaded module object or `null`. This lookup does not import a source and does not add a name key to the path-keyed `global.modules` registry.
 
 ### 2. Import or include dependencies
 
@@ -195,6 +199,9 @@ Rules:
 
 - `@module(NAME);` is metadata, not a function annotation.
 - `@module` must be first when present.
+- Omitting `@module` leaves the module anonymous; no filename- or path-derived name is created.
+- An explicit name is used by host name-based module APIs and script `global.getModule`, and must be unique across explicitly named project and enabled built-in modules.
+- Imports resolve source paths and do not depend on the imported module's explicit name.
 - `include` and `import` must be at the top of the module.
 - A host-enabled native module is imported by its bare module path. Native modules do not become globals, and relative paths continue to resolve as project sources.
 - `export` may only appear at module scope.

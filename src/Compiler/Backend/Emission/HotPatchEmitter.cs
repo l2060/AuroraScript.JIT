@@ -56,9 +56,8 @@ namespace AuroraScript.Compiler.Backend.Emission
         private void EnsureModule(ILGenerator il, ModulePlan module, LocalBuilder globalLocal)
         {
             il.Emit(OpCodes.Ldloc, globalLocal);
-            _builder.LoadStringConstant(il, module.Name);
-            _builder.LoadStringConstant(il, module.Path);
-            _builder.LoadStringConstant(il, module.FullPath);
+            _builder.LoadNullableStringConstant(il, module.Name);
+            EmitSourceReference(il, module);
             il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptGlobalEnsureModule);
             if ((_patchType & HotPatchType.Replace) != 0)
             {
@@ -78,8 +77,8 @@ namespace AuroraScript.Compiler.Backend.Emission
             var moduleLocal = il.DeclareLocal(typeof(ScriptModule));
             var frameLocal = il.DeclareLocal(typeof(int));
             il.Emit(OpCodes.Ldloc, globalLocal);
-            _builder.LoadStringConstant(il, module.Name);
-            il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptGlobalGetModule);
+            _builder.LoadStringConstant(il, module.Source.FullPath);
+            il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptGlobalGetModuleByPath);
             il.Emit(OpCodes.Stloc, moduleLocal);
             il.Emit(OpCodes.Ldarg_0);
             il.Emit(OpCodes.Ldloc, moduleLocal);
@@ -95,6 +94,14 @@ namespace AuroraScript.Compiler.Backend.Emission
             il.Emit(OpCodes.Ldloc, frameLocal);
             il.Emit(OpCodes.Call, TypedRuntimeMetadata.LeaveFrame);
             il.EndExceptionBlock();
+        }
+
+        private void EmitSourceReference(ILGenerator il, ModulePlan module)
+        {
+            _builder.LoadStringConstant(il, module.Source.BaseDirectory);
+            _builder.LoadStringConstant(il, module.Source.FullPath);
+            _builder.LoadStringConstant(il, module.Source.ModulePath);
+            il.Emit(OpCodes.Newobj, TypedRuntimeMetadata.ScriptSourceReferenceConstructor);
         }
     }
 }

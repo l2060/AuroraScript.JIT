@@ -36,7 +36,10 @@
           "required": ["kind", "body"],
           "properties": {
             "kind": { "const": "ModuleDeclaration" },
-            "moduleName": { "type": ["string", "null"] },
+            "moduleName": {
+              "type": ["string", "null"],
+              "description": "Explicit @module name, or null when the source is anonymous. No default is derived from its path."
+            },
             "imports": { "type": "array", "items": { "$ref": "#/$defs/ImportDeclaration" } },
             "body": { "type": "array", "items": { "$ref": "#/$defs/Statement" } }
           }

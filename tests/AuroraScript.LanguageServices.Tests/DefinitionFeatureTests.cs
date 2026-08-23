@@ -846,21 +846,25 @@ public sealed class DefinitionFeatureTests : IDisposable
             """
             @module(MAIN);
             export func run() {
-                return global.modules;
+                return [global.modules, global.getModule("MAIN")];
             }
             """;
         var service = CreateService();
 
         var globalDefinition = service.GetDefinition(mainPath, main, PositionOf(main, "global"));
         var modulesDefinition = service.GetDefinition(mainPath, main, PositionOf(main, "modules"));
+        var getModuleDefinition = service.GetDefinition(mainPath, main, PositionOf(main, "getModule"));
 
         Assert.NotNull(globalDefinition);
         Assert.Equal("aurora-builtin:/global.as", globalDefinition!.Path);
         Assert.NotNull(modulesDefinition);
         Assert.Equal("aurora-builtin:/global.as", modulesDefinition!.Path);
+        Assert.NotNull(getModuleDefinition);
+        Assert.Equal("aurora-builtin:/global.as", getModuleDefinition!.Path);
         var document = service.GetBuiltinDocument(modulesDefinition.Path);
         Assert.NotNull(document);
         Assert.Contains("global.modules: Object;", document!.Text, StringComparison.Ordinal);
+        Assert.Contains("global.getModule(moduleName: String): Object | void;", document.Text, StringComparison.Ordinal);
     }
 
     [Fact]

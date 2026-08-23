@@ -1,4 +1,5 @@
 using AuroraScript.Compiler.Ast.Statements;
+using AuroraScript.Core;
 using System;
 using System.Collections.Generic;
 
@@ -6,7 +7,7 @@ namespace AuroraScript.Compiler.Ast
 {
     internal class ModuleDeclaration : BlockStatement
     {
-        public readonly String Directory;
+        public readonly ScriptSourceReference Source;
 
 
         /// <summary>
@@ -19,9 +20,9 @@ namespace AuroraScript.Compiler.Ast
         public IReadOnlyList<ImportDeclaration> Imports => _imports ?? (IReadOnlyList<ImportDeclaration>)Array.Empty<ImportDeclaration>();
 
 
-        internal ModuleDeclaration(String directory)
+        internal ModuleDeclaration(ScriptSourceReference source)
         {
-            Directory = directory;
+            Source = source;
         }
 
 
@@ -30,16 +31,6 @@ namespace AuroraScript.Compiler.Ast
         /// </summary>
         public String ModuleName { get; set; }
 
-
-        /// <summary>
-        /// Gets or sets the file system path to the module associated with this instance.
-        /// </summary>
-        public String ModulePath { get; set; }
-
-        /// <summary>
-        /// Gets or sets the fully qualified path of the file or directory.
-        /// </summary>
-        public String FullPath { get; set; }
 
         /// <summary>
         /// Gets or sets whether this file is a compile-time global declaration file.

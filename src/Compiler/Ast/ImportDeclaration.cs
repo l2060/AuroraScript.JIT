@@ -22,21 +22,6 @@ namespace AuroraScript.Compiler.Ast
         public Token File { get; set; }
 
         /// <summary>
-        /// 模块名
-        /// </summary>
-        public String ModuleName { get; set; }
-
-        /// <summary>
-        /// 模块相对于根目录的路径
-        /// </summary>
-        public String ModulePath { get; set; }
-
-        /// <summary>
-        /// 模块路径
-        /// </summary>
-        public String FullPath { get; set; }
-
-        /// <summary>
         /// Resolved source reference for the imported module.
         /// </summary>
         public ScriptSourceReference Reference { get; set; }

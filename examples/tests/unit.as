@@ -110,7 +110,7 @@ export func testIssue1() {
 	console.log(`my name is = {${ 'debugger' }}`);
 	console.log(`my age is = {${ i }} year`);
 
-	var t = global.modules['TIMER_LIB'];
+	var t = global.getModule('TIMER_LIB');
 	$state.Test(123.45, 'abc');
 	var args = $args;
 
@@ -217,7 +217,7 @@ func testPeculiarity() {
 	console.log($state);
 
 	// Dynamically obtain the existing module
-	var timerLib = global.modules["TIMER_LIB"];
+	var timerLib = global.getModule("TIMER_LIB");
 
 	console.log(timerLib.resetCount);
 

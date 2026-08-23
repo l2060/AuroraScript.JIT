@@ -18,7 +18,7 @@ namespace AuroraScript.Compiler.Backend.Builders
         public override (MethodInfo Method, ILGenerator IL) DefineDynamicMethod(ModuleDeclaration module)
         {
             var dynamicMethod = new DynamicMethod(
-                module.ModuleName,
+                module.ModuleName ?? module.Source.ModulePath ?? "AuroraModule",
                 typeof(ScriptDatum),
                 s_standardParameters,
                 typeof(DynamicBuilder).Module,
@@ -44,7 +44,6 @@ namespace AuroraScript.Compiler.Backend.Builders
         public override (MethodInfo Method, ILGenerator IL) DefineModuleInitMethod(ModuleDeclaration module)
         {
             var dynamicMethod = new DynamicMethod("Initialize",
-                //$"Module_{module.ModuleName}_Initialize",
                 typeof(void),
                 s_standardParameters,
                 typeof(DynamicBuilder).Module,
@@ -69,14 +68,13 @@ namespace AuroraScript.Compiler.Backend.Builders
         }
 
         public override (MethodInfo Method, ILGenerator IL) DefineMethod(
-            string moduleName,
+            string moduleKey,
             string methodName,
             Type returnType,
             Type[] parameterTypes,
             bool aggressiveInlining = false)
         {
             var dynamicMethod = new DynamicMethod(methodName,
-               //$"Module_{moduleName}_{}",
                returnType,
                parameterTypes,
                typeof(DynamicBuilder).Module,

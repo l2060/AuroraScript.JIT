@@ -23,7 +23,7 @@ namespace AuroraScript.Runtime.Package
         /// <summary>
         /// Creates a built-in module whose import path is the same as its module name.
         /// </summary>
-        /// <param name="name">The runtime module name and bare import path.</param>
+        /// <param name="name">The explicit module lookup name and bare import path.</param>
         /// <param name="configure">Configures each newly-created runtime module instance.</param>
         public BuiltInModuleDefinition(string name, Action<ScriptModule> configure)
             : this(name, name, configure)
@@ -33,7 +33,7 @@ namespace AuroraScript.Runtime.Package
         /// <summary>
         /// Creates a built-in module with an explicit bare import path.
         /// </summary>
-        /// <param name="name">The runtime module name.</param>
+        /// <param name="name">The explicit module lookup name.</param>
         /// <param name="modulePath">The bare path used by script imports.</param>
         /// <param name="configure">Configures each newly-created runtime module instance.</param>
         public BuiltInModuleDefinition(
@@ -55,7 +55,7 @@ namespace AuroraScript.Runtime.Package
         }
 
         /// <summary>
-        /// Gets the runtime module name.
+        /// Gets the explicit name used by host module APIs and script <c>global.getModule</c>.
         /// </summary>
         public string Name { get; }
 
@@ -70,7 +70,7 @@ namespace AuroraScript.Runtime.Package
 
         internal ScriptModule CreateModule()
         {
-            var module = new ScriptModule(Name, Reference.ModulePath, Reference.FullPath);
+            var module = new ScriptModule(Name, Reference);
             _configure(module);
             return module;
         }

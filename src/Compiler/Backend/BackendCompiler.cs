@@ -6,6 +6,7 @@ using AuroraScript.Compiler.Backend.Binding;
 using AuroraScript.Compiler.Backend.Builders;
 using AuroraScript.Compiler.Backend.Plans;
 using AuroraScript.Compiler.GlobalDeclarations;
+using AuroraScript.Core;
 using AuroraScript.Tokens;
 using System;
 using System.Collections.Generic;
@@ -366,11 +367,9 @@ namespace AuroraScript.Compiler.Backend
 
         private static ModuleDeclaration CreateCompileBlockModule(BlockStatement body, IReadOnlyList<string> parameters, string sourceName)
         {
-            var module = new ModuleDeclaration(string.Empty)
+            var module = new ModuleDeclaration(new ScriptSourceReference("mem://compile-block/", sourceName))
             {
-                ModuleName = "__compile_block__",
-                ModulePath = sourceName,
-                FullPath = sourceName
+                ModuleName = "__compile_block__"
             };
             var function = new FunctionDeclaration(
                 MemberAccess.Export,

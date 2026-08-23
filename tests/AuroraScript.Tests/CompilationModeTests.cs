@@ -22,6 +22,24 @@ public sealed class CompilationModeTests
 #if NET9_0_OR_GREATER
     [InlineData(CompilationMode.Persistence)]
 #endif
+    public async Task AnonymousDependenciesCompileInEveryMode(CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource("first/shared.as", "export const value = 20;");
+        workspace.WriteSource("second/shared.as", "export const value = 22;");
+        var (_, domain) = await workspace.CompileModuleAsync(
+            "@module(TEST); import first from './first/shared'; import second from './second/shared'; export func run() { return first.value + second.value; }",
+            mode);
+
+        ScriptAssert.Equal(42, TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+    [InlineData(CompilationMode.OnlyRun)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
     public async Task ReleaseCompilationModesProduceSameResult(CompilationMode mode)
     {
         using var workspace = new TestWorkspace();

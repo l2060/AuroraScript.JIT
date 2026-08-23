@@ -111,8 +111,6 @@ public sealed class AuroraParseService
                 continue;
             }
 
-            import.FullPath = resolved.Value.FullPath;
-            import.ModulePath = resolved.Value.ModulePath;
             import.Reference = resolved.Value;
 
             try

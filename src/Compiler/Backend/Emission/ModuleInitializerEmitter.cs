@@ -145,7 +145,7 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitImportAlias(ImportDeclaration import)
         {
-            if (import.Name == null || import.ModuleName == null)
+            if (import.Name == null)
             {
                 return;
             }
@@ -155,8 +155,8 @@ namespace AuroraScript.Compiler.Backend.Emission
             _session.Builder.LoadStringConstant(_il, import.Name.Value);
             _il.Emit(OpCodes.Ldarg_0);
             _il.Emit(OpCodes.Ldfld, TypedRuntimeMetadata.ContextGlobal);
-            _session.Builder.LoadStringConstant(_il, import.ModuleName);
-            _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptGlobalGetModule);
+            _session.Builder.LoadStringConstant(_il, import.Reference.FullPath);
+            _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptGlobalGetModuleByPath);
             _il.Emit(OpCodes.Ldc_I4_0);
             _il.Emit(OpCodes.Ldc_I4_1);
             _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptObjectDefineObject);
@@ -164,17 +164,12 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitInclude(ImportDeclaration import)
         {
-            if (import.ModuleName == null)
-            {
-                return;
-            }
-
             _il.Emit(OpCodes.Ldarg_0);
             _il.Emit(OpCodes.Ldfld, TypedRuntimeMetadata.ContextModule);
             _il.Emit(OpCodes.Ldarg_0);
             _il.Emit(OpCodes.Ldfld, TypedRuntimeMetadata.ContextGlobal);
-            _session.Builder.LoadStringConstant(_il, import.ModuleName);
-            _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptGlobalGetModule);
+            _session.Builder.LoadStringConstant(_il, import.Reference.FullPath);
+            _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptGlobalGetModuleByPath);
             _il.Emit(OpCodes.Ldc_I4_0);
             _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptObjectCopyEnumerableProperties);
         }

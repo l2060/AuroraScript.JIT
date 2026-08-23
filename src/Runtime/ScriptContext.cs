@@ -412,9 +412,9 @@ namespace AuroraScript.Runtime
                 if (c.Location > 0)
                 {
                     UnionNumber m = new UnionNumber(c.Location);
-                    if (Global.modulePathHash.TryGetValue(m.Int32ValueH, out var moduleMeta))
+                    if (Global.sourcePathHash.TryGetValue(m.Int32ValueH, out var moduleMeta))
                     {
-                        stackTraces.Add(new AuroraStackTrace(moduleMeta.ModulePath, c.Target?.FuncName ?? c.DirectName, m.Int32ValueL));
+                        stackTraces.Add(new AuroraStackTrace(moduleMeta.Source.ModulePath, c.Target?.FuncName ?? c.DirectName, m.Int32ValueL));
                     }
                 }
                 c = c.Next;
@@ -454,9 +454,9 @@ namespace AuroraScript.Runtime
             if (location > 0)
             {
                 UnionNumber encoded = new UnionNumber(location);
-                if (Global.modulePathHash.TryGetValue(encoded.Int32ValueH, out var moduleMeta))
+                if (Global.sourcePathHash.TryGetValue(encoded.Int32ValueH, out var moduleMeta))
                 {
-                    trace = new AuroraStackTrace(moduleMeta.ModulePath, name, encoded.Int32ValueL);
+                    trace = new AuroraStackTrace(moduleMeta.Source.ModulePath, name, encoded.Int32ValueL);
                     return true;
                 }
             }

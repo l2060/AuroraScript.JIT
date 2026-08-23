@@ -65,6 +65,8 @@ var result = domain.Execute("MAIN", "main", ScriptDatum.FromNumber(20));
 Console.WriteLine(result); // 42
 ```
 
+这里的 `@module(MAIN);` 为入口提供显式查询名称，使宿主可以通过 `Execute("MAIN", ...)`、`GetMethod` 或 `GetModule` 访问它，脚本也可以通过 `global.getModule("MAIN")` 动态查询它。仅被其他脚本 `import` / `include` 的文件可以省略 `@module`；省略后模块保持匿名，编译器不会根据文件名推导默认模块名。
+
 ## 文档
 
 详细介绍、教程、逐对象 API Reference、性能基准、MCP、语言服务器和 Visual Studio 扩展已迁移到 Wiki：

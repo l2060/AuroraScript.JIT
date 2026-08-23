@@ -121,7 +121,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     ? name + "$typed"
                     : name + "$typed" + GetFastArity(convention);
                 var (method, il) = _session.Builder.DefineMethod(
-                    _module.Name,
+                    _module.Source.FullPath,
                     methodName,
                     typeof(ScriptDatum),
                     GetParameterTypes(convention));
@@ -246,7 +246,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     ? "lambda_" + function.Id.Value
                     : function.Name;
                 var (method, il) = _session.Builder.DefineMethod(
-                    _module.Name,
+                    _module.Source.FullPath,
                     name + "$native",
                     code.ReturnType switch
                     {
@@ -304,7 +304,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     : function.Name;
                 var parameterTypes = GetParameterTypes(prepared.Convention);
                 var (adapter, il) = _session.Builder.DefineMethod(
-                    _module.Name,
+                    _module.Source.FullPath,
                     name + "$direct" + GetFastArity(prepared.Convention),
                     typeof(ScriptDatum),
                     parameterTypes);

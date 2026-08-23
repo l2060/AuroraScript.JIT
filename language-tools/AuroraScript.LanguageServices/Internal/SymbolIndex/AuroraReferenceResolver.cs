@@ -103,7 +103,7 @@ internal static class AuroraReferenceResolver
             target = AuroraResolvedSymbol.FromImportAlias(importAlias, new AuroraSymbolInfo(
                 importAlias.Alias,
                 AuroraSymbolKind.ImportAlias,
-                module.Module.ModulePath ?? module.Path,
+                module.Module.Source.ModulePath,
                 module.Path,
                 importAlias.AliasRange,
                 exported: false));
@@ -154,7 +154,7 @@ internal static class AuroraReferenceResolver
             symbol = new AuroraSymbolInfo(
                 candidate.Alias,
                 AuroraSymbolKind.ImportAlias,
-                module.Module.ModulePath ?? module.Path,
+                module.Module.Source.ModulePath,
                 module.Path,
                 candidate.AliasRange,
                 exported: false);

@@ -307,8 +307,6 @@ namespace AuroraScript.Compiler
                     throw new AuroraCompilationException(AuroraCompilationStage.Binding, import.File.Range, message);
                 }
 
-                import.FullPath = resolved.Value.FullPath;
-                import.ModulePath = resolved.Value.ModulePath;
                 import.Reference = resolved.Value;
 
                 var resolvedSource = await _options.Compiler.SourceResolver
@@ -340,18 +338,17 @@ namespace AuroraScript.Compiler
                 for (var importIndex = 0; importIndex < module.Imports.Count; importIndex++)
                 {
                     var import = module.Imports[importIndex];
-                    var dependencyPath = NormalizePath(import.FullPath);
+                    var dependencyPath = NormalizePath(import.Reference.FullPath);
                     if (!_modulesByPath.TryGetValue(dependencyPath, out var dependency))
                     {
                         throw new AuroraCompilationException(
                             AuroraCompilationStage.Linking,
-                            import.FullPath,
+                            import.Reference.FullPath,
                             1,
                             1,
-                            $"Imported module was not compiled: {import.FullPath}");
+                            $"Imported module was not compiled: {import.Reference.FullPath}");
                     }
                     import.Module = dependency;
-                    import.ModuleName = dependency.ModuleName;
                 }
             }
         }
@@ -362,6 +359,11 @@ namespace AuroraScript.Compiler
             for (var i = 0; i < modules.Length; i++)
             {
                 var module = modules[i];
+                if (string.IsNullOrEmpty(module.ModuleName))
+                {
+                    continue;
+                }
+
                 if (!modulesByName.TryGetValue(module.ModuleName, out var matchingModules))
                 {
                     matchingModules = new List<ModuleDeclaration>(1);
@@ -382,7 +384,7 @@ namespace AuroraScript.Compiler
                 message.Append("\nModule '").Append(pair.Key).Append("' conflict in files:");
                 for (var i = 0; i < pair.Value.Count; i++)
                 {
-                    message.Append("\n  - ").Append(pair.Value[i].ModulePath);
+                    message.Append("\n  - ").Append(pair.Value[i].Source.FullPath);
                 }
             }
 
@@ -403,10 +405,10 @@ namespace AuroraScript.Compiler
                 return modules;
             }
 
-            var indexByName = new Dictionary<string, int>(moduleCount, StringComparer.Ordinal);
+            var indexByPath = new Dictionary<string, int>(moduleCount, PathComparer);
             for (var i = 0; i < moduleCount; i++)
             {
-                indexByName.Add(modules[i].ModuleName, i);
+                indexByPath.Add(modules[i].Source.FullPath, i);
             }
 
             var inDegree = new int[moduleCount];
@@ -422,7 +424,7 @@ namespace AuroraScript.Compiler
                 var uniqueDependencies = new HashSet<int>();
                 for (var importIndex = 0; importIndex < imports.Count; importIndex++)
                 {
-                    if (!indexByName.TryGetValue(imports[importIndex].ModuleName, out var dependencyIndex) ||
+                    if (!indexByPath.TryGetValue(imports[importIndex].Reference.FullPath, out var dependencyIndex) ||
                         !uniqueDependencies.Add(dependencyIndex))
                     {
                         continue;
@@ -437,7 +439,7 @@ namespace AuroraScript.Compiler
             {
                 if (inDegree[i] == 0)
                 {
-                    ready.Enqueue(i, modules[i].ModulePath);
+                    ready.Enqueue(i, modules[i].Source.FullPath);
                 }
             }
 
@@ -452,7 +454,7 @@ namespace AuroraScript.Compiler
                     var dependent = currentDependents[i];
                     if (--inDegree[dependent] == 0)
                     {
-                        ready.Enqueue(dependent, modules[dependent].ModulePath);
+                        ready.Enqueue(dependent, modules[dependent].Source.FullPath);
                     }
                 }
             }
@@ -464,7 +466,7 @@ namespace AuroraScript.Compiler
                 {
                     if (inDegree[i] > 0)
                     {
-                        cycle.Append("\n  - ").Append(modules[i].ModulePath);
+                        cycle.Append("\n  - ").Append(modules[i].Source.ModulePath);
                     }
                 }
                 throw new AuroraCompilationException(
@@ -552,7 +554,7 @@ namespace AuroraScript.Compiler
 
         private static int CompareModulesByPath(ModuleDeclaration left, ModuleDeclaration right)
         {
-            return PathComparer.Compare(left.FullPath, right.FullPath);
+            return PathComparer.Compare(left.Source.FullPath, right.Source.FullPath);
         }
 
         private static bool IsSourceReadFailure(Exception exception)

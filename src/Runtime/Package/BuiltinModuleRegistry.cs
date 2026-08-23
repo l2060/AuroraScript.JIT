@@ -115,8 +115,7 @@ namespace AuroraScript.Runtime.Package
                 var definition = _definitions[i];
                 var module = definition.CreateModule();
                 global.RegisterModule(
-                    definition.Name,
-                    definition.Reference.ModulePath.GetHashCode(),
+                    definition.Reference.FullPath.GetHashCode(),
                     module);
             }
         }

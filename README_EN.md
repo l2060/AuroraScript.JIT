@@ -65,6 +65,8 @@ var result = domain.Execute("MAIN", "main", ScriptDatum.FromNumber(20));
 Console.WriteLine(result); // 42
 ```
 
+`@module(MAIN);` gives the entry an explicit lookup name. The host can address it through `Execute("MAIN", ...)`, `GetMethod`, or `GetModule`, and scripts can query it dynamically through `global.getModule("MAIN")`. Files used only through script `import` / `include` may omit `@module`; those modules remain anonymous, and no default name is derived from the filename.
+
 ## Documentation
 
 The detailed overview, tutorials, per-object API Reference, benchmark data, MCP, language server, and Visual Studio extension documentation live in the Wiki:

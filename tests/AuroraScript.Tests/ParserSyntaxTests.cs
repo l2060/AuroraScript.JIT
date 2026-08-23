@@ -11,6 +11,16 @@ namespace AuroraScript.Tests;
 
 public sealed class ParserSyntaxTests
 {
+    [Fact]
+    public void ModuleWithoutExplicitMetadataIsAnonymous()
+    {
+        var module = Parse("export const value = 1;");
+
+        Assert.Null(module.ModuleName);
+        Assert.False(module.MetaInfos.ContainsKey("module"));
+        Assert.EndsWith("parser-test.as", module.Source.FullPath, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Theory]
     [InlineData("var value = 1; const fixedValue = 2;")]
     [InlineData("func add(a, b = 2) { return a + b; } function empty() { return; }")]
@@ -232,7 +242,7 @@ public sealed class ParserSyntaxTests
 
         var import = Assert.Single(module.Imports);
         Assert.Equal("does-not-exist", import.File.Value);
-        Assert.Null(import.FullPath);
+        Assert.Null(import.Reference.FullPath);
     }
 
     [Theory]

@@ -47,6 +47,12 @@ public sealed class BuiltinApiCatalogTests
         Assert.True(global.TryGetMember("modules", out var modules));
         Assert.Equal(BuiltinApiKind.Property, modules.Kind);
         Assert.Equal("object", modules.ReturnType);
+        Assert.True(global.TryGetMember("getModule", out var getModule));
+        Assert.Equal(BuiltinApiKind.Method, getModule.Kind);
+        Assert.Equal("object|null", getModule.ReturnType);
+        var parameter = Assert.Single(getModule.Parameters);
+        Assert.Equal("moduleName", parameter.Name);
+        Assert.Equal("string", parameter.Type);
     }
 
     [Fact]
@@ -172,6 +178,7 @@ public sealed class BuiltinApiCatalogTests
         var runtimeRoot = GetRuntimeRoot();
         var registrations = new Dictionary<string, string>(StringComparer.Ordinal)
         {
+            ["global"] = Path.Combine(runtimeRoot, "ScriptGlobal.cs"),
             ["console"] = Path.Combine(runtimeRoot, "Extensions", "ConsoleSupport.cs"),
             ["JSON"] = Path.Combine(runtimeRoot, "Extensions", "JsonSupport.cs"),
             ["Math"] = Path.Combine(runtimeRoot, "Extensions", "MathSupport.cs"),

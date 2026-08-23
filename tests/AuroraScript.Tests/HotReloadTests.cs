@@ -1,4 +1,5 @@
 using AuroraScript.Core;
+using AuroraScript.Runtime;
 using AuroraScript.Tests.Infrastructure;
 using System;
 using System.Threading.Tasks;
@@ -34,12 +35,60 @@ public sealed class HotReloadTests
 
         domain.DynamicPatch(
             workspace.MemorySource(
-                "patch.as",
+                "main.as",
                 "@module(TEST); export func version() { return 2; } export func added() { return 40; }"),
             HotPatchType.Incremental);
 
         ScriptAssert.Equal(2, TestWorkspace.Execute(domain, "version"));
         ScriptAssert.Equal(40, TestWorkspace.Execute(domain, "added"));
+    }
+
+    [Fact]
+    public async Task AnonymousPatchKeepsExistingExplicitModuleName()
+    {
+        using var workspace = new TestWorkspace();
+        var (engine, domain) = await workspace.CompileModuleAsync(
+            "@module(TEST); export func version() { return 1; }",
+            enableHotReload: true);
+
+        domain.DynamicPatch(
+            workspace.MemorySource("main.as", "export func version() { return 2; }"),
+            HotPatchType.Incremental);
+
+        ScriptAssert.Equal(2, TestWorkspace.Execute(domain, "version"));
+        Assert.Equal("TEST", Assert.IsType<ScriptModule>(domain.GetModule("TEST")).Name);
+    }
+
+    [Fact]
+    public async Task PatchCannotRenameModuleAtExistingSourcePath()
+    {
+        using var workspace = new TestWorkspace();
+        var (engine, domain) = await workspace.CompileModuleAsync(
+            "@module(TEST); export func version() { return 1; }",
+            enableHotReload: true);
+
+        var error = Assert.Throws<AuroraCompilationException>(() => domain.DynamicPatch(
+            workspace.MemorySource("main.as", "@module(OTHER); export func version() { return 2; }"),
+            HotPatchType.Incremental));
+
+        Assert.Contains("different explicit name", error.Message, StringComparison.OrdinalIgnoreCase);
+        ScriptAssert.Equal(1, TestWorkspace.Execute(domain, "version"));
+    }
+
+    [Fact]
+    public async Task PatchCannotTargetModuleByReusingItsNameAtAnotherPath()
+    {
+        using var workspace = new TestWorkspace();
+        var (engine, domain) = await workspace.CompileModuleAsync(
+            "@module(TEST); export func version() { return 1; }",
+            enableHotReload: true);
+
+        var error = Assert.Throws<AuroraCompilationException>(() => domain.DynamicPatch(
+            workspace.MemorySource("patch.as", "@module(TEST); export func version() { return 2; }"),
+            HotPatchType.Incremental));
+
+        Assert.Contains("conflicts in files", error.Message, StringComparison.OrdinalIgnoreCase);
+        ScriptAssert.Equal(1, TestWorkspace.Execute(domain, "version"));
     }
 
     [Fact]
@@ -51,7 +100,7 @@ public sealed class HotReloadTests
             enableHotReload: true);
 
         domain.IncrementalPatch(
-            System.IO.Path.Combine(workspace.Root, "patch.as"),
+            System.IO.Path.Combine(workspace.Root, "main.as"),
             "@module(TEST); export func version() { return 2; }");
 
         ScriptAssert.Equal(2, TestWorkspace.Execute(domain, "version"));
@@ -85,7 +134,7 @@ public sealed class HotReloadTests
 
         domain.DynamicPatch(
             workspace.MemorySource(
-                "patch.as",
+                "main.as",
                 "@module(TEST); export func value() { return HOST_ADD(20, 22); }"),
             HotPatchType.Incremental);
 
@@ -136,7 +185,7 @@ public sealed class HotReloadTests
             enableHotReload: true);
 
         domain.DynamicPatch(
-            workspace.MemorySource("replace.as", "@module(TEST); export func keep() { return 3; }"),
+            workspace.MemorySource("main.as", "@module(TEST); export func keep() { return 3; }"),
             HotPatchType.Replace);
 
         Assert.Null(domain.GetMethod("TEST", "old"));
@@ -215,7 +264,7 @@ public sealed class HotReloadTests
             enableHotReload: true);
 
         domain.ReplacePatch(
-            System.IO.Path.Combine(workspace.Root, "replace.as"),
+            System.IO.Path.Combine(workspace.Root, "main.as"),
             "@module(TEST); export func keep() { return 3; }");
 
         Assert.Null(domain.GetMethod("TEST", "old"));
@@ -234,7 +283,7 @@ public sealed class HotReloadTests
         var second = engine.CreateDomain();
 
         first.DynamicPatch(
-            workspace.MemorySource("patch.as", "@module(TEST); export func version() { return 2; }"),
+            workspace.MemorySource("main.as", "@module(TEST); export func version() { return 2; }"),
             HotPatchType.Incremental);
 
         ScriptAssert.Equal(2, TestWorkspace.Execute(first, "version"));

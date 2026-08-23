@@ -349,6 +349,7 @@ public sealed class BuiltinLanguageFeatureTests
         var completions = service.GetCompletions("test.as", source, new TextPosition(2, 11));
 
         Assert.Contains(completions.Items, item => item.Label == "modules" && item.Kind == CompletionItemKind.Property && item.ReadOnly);
+        Assert.Contains(completions.Items, item => item.Label == "getModule" && item.Kind == CompletionItemKind.Method && item.ReadOnly);
     }
 
     [Fact]

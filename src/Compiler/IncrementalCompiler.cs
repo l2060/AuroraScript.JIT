@@ -23,37 +23,37 @@ namespace AuroraScript.Compiler
         public readonly EngineOptions Options = _options;
         public readonly DynamicBuilder Builder = _builder;
 
-
-
-
-        // 增加增量编译器,在已有的用户态脚本空间内执行代码来对当前domain脚本实例进行热修复补丁
-        // forceImport = false 时自动跳过已导入的依赖模块
-        // forceImport = true  时强制编译替换依赖模块
-        // 修补已存在的module时需要保持源module的引用。
-        // 根据domain 分析哪些模块已经加载，哪些未加载， 哪些需要强制加载
+        // A patch preserves the loaded module object at the same absolute source path.
         public async Task<DynamicCallMethod> BuildPatchAsync(
             ScriptSource source,
             HotPatchType patchType,
             CancellationToken cancellationToken = default)
         {
-            var sourcePath = source.SourcePath;
-            var moduleMap = Domain.Global.modulePathHash.Values.ToDictionary(k => k.ModulePath, v => v.ModuleName);
+            var sourcePath = ScriptPath.NormalizeFullPath(source.FullPath);
             var moduleSyntaxTrees = await BuildSyntaxTreeAsync(source, cancellationToken).ConfigureAwait(false);
             var globalDeclarations = await BuildGlobalDeclarationIndexAsync(cancellationToken).ConfigureAwait(false);
+            LinkModules(moduleSyntaxTrees);
+
+            var mainModule = moduleSyntaxTrees.First(
+                module => ScriptPath.Comparer.Equals(module.Source.FullPath, sourcePath));
             if ((patchType & HotPatchType.IgnoreDepends) != 0)
             {
-                moduleSyntaxTrees.RemoveAll(e => e.ModulePath != sourcePath && moduleMap.ContainsKey(e.ModulePath));
+                moduleSyntaxTrees.RemoveAll(module =>
+                    !ReferenceEquals(module, mainModule) &&
+                    Domain.Global.TryGetModuleByPath(module.Source.FullPath, out _));
             }
-            var mainModule = moduleSyntaxTrees.First(e => e.ModulePath == sourcePath);
+
+            ValidateExplicitModuleNames(moduleSyntaxTrees);
+
             moduleSyntaxTrees.Remove(mainModule);
             var dependencies = moduleSyntaxTrees.ToArray();
 
             var keys = Array.Empty<string>();
-            if (Domain.Global.TryGetModule(mainModule.ModuleName, out var existingModule))
+            if (Domain.Global.TryGetModuleByPath(mainModule.Source.FullPath, out var existingModule))
             {
                 keys = existingModule.EnumerationKeys().ToArray();
             }
-            LinkModules(mainModule, dependencies, moduleMap);
+
             var backend = new BackendCompiler(Builder, Options, globalDeclarations);
             var session = backend.CreateHotPatchPlans(mainModule, dependencies, keys, out var mainModulePlan);
             var emitter = new HotPatchEmitter(
@@ -61,26 +61,81 @@ namespace AuroraScript.Compiler
                 patchType);
             return emitter.Emit(mainModulePlan);
         }
-
-
-
-        private void LinkModules(ModuleDeclaration mainModule, ModuleDeclaration[] dependencies, Dictionary<string, string> moduleMap)
+        private static void LinkModules(IReadOnlyList<ModuleDeclaration> modules)
         {
-            foreach (var dependency in dependencies)
+            var modulesByPath = new Dictionary<string, ModuleDeclaration>(modules.Count, ScriptPath.Comparer);
+            for (var i = 0; i < modules.Count; i++)
             {
-                moduleMap[dependency.ModulePath] = dependency.ModuleName;
+                modulesByPath.Add(modules[i].Source.FullPath, modules[i]);
             }
-            foreach (var import in mainModule.Imports)
+
+            for (var moduleIndex = 0; moduleIndex < modules.Count; moduleIndex++)
             {
-                import.ModuleName = moduleMap[import.ModulePath];
-            }
-            foreach (var module in dependencies)
-            {
-                foreach (var import in module.Imports)
+                var module = modules[moduleIndex];
+                for (var importIndex = 0; importIndex < module.Imports.Count; importIndex++)
                 {
-                    import.ModuleName = moduleMap[import.ModulePath];
+                    var import = module.Imports[importIndex];
+                    if (!modulesByPath.TryGetValue(import.Reference.FullPath, out var dependency))
+                    {
+                        throw new AuroraCompilationException(
+                            AuroraCompilationStage.Linking,
+                            import.Reference.FullPath,
+                            1,
+                            1,
+                            $"Imported module was not compiled: {import.Reference.FullPath}");
+                    }
+
+                    import.Module = dependency;
                 }
             }
+        }
+
+        private void ValidateExplicitModuleNames(IReadOnlyList<ModuleDeclaration> modules)
+        {
+            var sourceByName = new Dictionary<string, string>(StringComparer.Ordinal);
+            for (var i = 0; i < modules.Count; i++)
+            {
+                var module = modules[i];
+                var name = module.ModuleName;
+                if (string.IsNullOrEmpty(name))
+                {
+                    continue;
+                }
+
+                if (sourceByName.TryGetValue(name, out var firstPath) &&
+                    !ScriptPath.Comparer.Equals(firstPath, module.Source.FullPath))
+                {
+                    throw ModuleNameConflict(name, firstPath, module.Source.FullPath);
+                }
+                sourceByName[name] = module.Source.FullPath;
+
+                if (Domain.Global.TryGetModule(name, out var namedModule) &&
+                    !ScriptPath.Comparer.Equals(namedModule.Source.FullPath, module.Source.FullPath))
+                {
+                    throw ModuleNameConflict(name, namedModule.Source.FullPath, module.Source.FullPath);
+                }
+
+                if (Domain.Global.TryGetModuleByPath(module.Source.FullPath, out var pathModule) &&
+                    !string.Equals(pathModule.Name, name, StringComparison.Ordinal))
+                {
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Linking,
+                        module.Source.FullPath,
+                        1,
+                        1,
+                        $"Module source '{module.Source.FullPath}' is already loaded with a different explicit name.");
+                }
+            }
+        }
+
+        private static AuroraCompilationException ModuleNameConflict(string name, string firstPath, string secondPath)
+        {
+            return new AuroraCompilationException(
+                AuroraCompilationStage.Linking,
+                secondPath,
+                1,
+                1,
+                $"Module name '{name}' conflicts in files:\n  - {firstPath}\n  - {secondPath}");
         }
 
         public async Task<List<ModuleDeclaration>> BuildSyntaxTreeAsync(
@@ -88,7 +143,8 @@ namespace AuroraScript.Compiler
             CancellationToken cancellationToken = default)
         {
             Queue<ScriptSource> padding = new Queue<ScriptSource>();
-            HashSet<String> visited = new HashSet<string>();
+            HashSet<String> visited = new HashSet<string>(ScriptPath.Comparer);
+            visited.Add(source.FullPath);
             padding.Enqueue(source);
             List<ModuleDeclaration> modules = new List<ModuleDeclaration>();
             var globalDeclarations = new GlobalDeclarationWorkspaceIndexBuilder();
@@ -124,13 +180,12 @@ namespace AuroraScript.Compiler
                 await ResolveImportsAsync(source, syntaxTree, cancellationToken).ConfigureAwait(false);
                 foreach (var dep in syntaxTree.Imports)
                 {
-                    if (!visited.Contains(dep.FullPath))
+                    if (visited.Add(dep.Reference.FullPath))
                     {
                         var dependencySource = await Options.Compiler.SourceResolver
                             .GetSourceAsync(dep.Reference, cancellationToken)
                             .ConfigureAwait(false);
                         padding.Enqueue(dependencySource);
-                        visited.Add(dep.FullPath);
                     }
                 }
                 modules.Add(syntaxTree);
@@ -190,8 +245,6 @@ namespace AuroraScript.Compiler
                     throw new AuroraCompilationException(AuroraCompilationStage.Binding, import.File.Range, message);
                 }
 
-                import.FullPath = resolved.Value.FullPath;
-                import.ModulePath = resolved.Value.ModulePath;
                 import.Reference = resolved.Value;
 
                 var resolvedSource = await Options.Compiler.SourceResolver

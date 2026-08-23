@@ -7,7 +7,13 @@
       "id": "module.metadata",
       "syntax": "@module(NAME);",
       "scope": "module",
-      "notes": ["Must be the first effective statement when present."]
+      "notes": [
+        "Must be the first effective statement when present.",
+        "Omitting it creates an anonymous module; no default name is derived from the filename or path.",
+        "The explicit name is used by name-based lookup APIs: host Execute/GetMethod/GetModule and script global.getModule.",
+        "Import/include resolution and runtime module identity use the resolved ScriptSourceReference.FullPath.",
+        "Only explicit names participate in module-name conflict checks."
+      ]
     },
     {
       "id": "module.import",

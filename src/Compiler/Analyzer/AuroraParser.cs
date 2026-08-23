@@ -1,7 +1,6 @@
 using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Ast.Statements;
-using AuroraScript.Core;
 using AuroraScript.Runtime.Serialization;
 using AuroraScript.Source;
 using AuroraScript.Tokens;
@@ -115,17 +114,7 @@ namespace AuroraScript.Compiler.Analyzer
         {
             _options = options;
             this.Lexer = lexer;
-            this.Root = new ModuleDeclaration(this.Lexer.Directory);
-            this.Root.FullPath = lexer.FullPath;
-            this.Root.ModulePath = ScriptPath.GetModulePath(lexer.BaseDirectory, lexer.FullPath);
-            // Set default module name
-            var moduleDefaultName = this.Root.ModulePath;
-            if (moduleDefaultName.EndsWith(_options.Compiler.ExtName))
-            {
-                moduleDefaultName = moduleDefaultName.Substring(0, moduleDefaultName.Length - 3);
-            }
-            this.Root.MetaInfos.Add("module", moduleDefaultName);
-            this.Root.ModuleName = moduleDefaultName;
+            this.Root = new ModuleDeclaration(this.Lexer.SourceReference);
         }
 
         public ModuleDeclaration Parse()
