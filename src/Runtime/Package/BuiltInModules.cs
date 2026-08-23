@@ -230,13 +230,11 @@ namespace AuroraScript.Runtime.Package
         /// <summary>
         /// Gets file-system access through the <c>fs</c> module.
         /// </summary>
-        public static BuiltInModuleDefinition FileSystem { get; } =
-            new BuiltInModuleDefinition("fs", FileSystemModule.Configure);
+        public readonly static BuiltInModuleDefinition FileSystem = new BuiltInModuleDefinition("fs", "fs", FileSystemModule.Configure);
 
         /// <summary>
         /// Gets synchronous and callback-based HTTP access through the <c>http</c> module.
         /// </summary>
-        public static BuiltInModuleDefinition HttpClient { get; } =
-            new BuiltInModuleDefinition("http", HttpClientModule.Configure);
+        public readonly static BuiltInModuleDefinition HttpClient = new BuiltInModuleDefinition("http", "http", HttpClientModule.Configure);
     }
 }

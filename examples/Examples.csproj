@@ -63,6 +63,9 @@
     <None Update="tests\builtin.as">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Update="tests\http.as">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="tests\perf-bench.as">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

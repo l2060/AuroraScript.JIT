@@ -33,7 +33,7 @@ namespace Examples
             compiler.SourceResolver = ScriptSources.Composite(memorySource, fileSystemSource);
             compiler.MaxDegreeOfParallelism = 0;
             compiler.ExtName = "as";
-            compiler.Mode = CompilationMode.Dynamic;
+            compiler.Mode = CompilationMode.Persistence;
         })
         .WithOutput(output =>
         {
@@ -70,8 +70,6 @@ namespace Examples
             g.Define("ENABLE_HOT_RELOAD", ScriptDatum.FromBoolean(engineOptions.Runtime.EnableHotReload), writeable: false, enumerable: true);
             g.Define("GIVE", ScriptDatum.FromBonding(Functions.GIVE), false, true);
             g.Define("CREATE_TIMER", ScriptDatum.FromBonding(Functions.CREATE_TIMER));
-            g.Define("WIRTE_STRING", ScriptDatum.FromBonding(Functions.WIRTE_STRING));
-
             g.Define("INPUT_NUMBER", ScriptDatum.FromBonding(Functions.CLIENT_INPUT_NUMBER), false, true);
             g.Define("md5_native", ScriptDatum.FromBonding(Functions.MD5_NATIVE), false, true);
 

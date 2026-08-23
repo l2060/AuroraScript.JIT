@@ -3,7 +3,6 @@ using AuroraScript.Runtime;
 using AuroraScript.Runtime.Interop;
 using AuroraScript.Runtime.Types;
 using System;
-using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
@@ -12,13 +11,6 @@ namespace Examples
 {
     internal class Functions
     {
-        public static void WIRTE_STRING(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            if (args.TryGetStrictString(0, out var filepath) && args.TryGetStrictString(1, out var content))
-            {
-                File.WriteAllText(filepath, content, Encoding.UTF8);
-            }
-        }
         public static void CREATE_TIMER(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             //Console.WriteLine(context.UserState);

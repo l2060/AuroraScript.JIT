@@ -673,8 +673,7 @@ func init() {
 
 	console.log("map generated, length =", map.length);
 
-	// WIRTE_STRING('map.tdoc',TDoc.stringify(map,false));
-
+	// fs.writeText('map.tdoc',TDoc.stringify(map,false));
 
 	console.time("create astar");
 	astar = createAStar(width, height, map, null);
