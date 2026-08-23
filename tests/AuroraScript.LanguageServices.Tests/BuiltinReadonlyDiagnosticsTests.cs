@@ -3,7 +3,6 @@ using AuroraScript.LanguageServices.Diagnostics;
 using AuroraScript.LanguageServices.Parsing;
 using AuroraScript.LanguageServices.Semantics;
 using System;
-using System.Linq;
 using Xunit;
 
 namespace AuroraScript.LanguageServices.Tests;
@@ -52,6 +51,42 @@ public sealed class BuiltinReadonlyDiagnosticsTests
             export func run() {
                 const Math = { PI: 1 };
                 Math.PI = 2;
+            }
+            """);
+
+        Assert.DoesNotContain(analysis.Diagnostics, diagnostic => diagnostic.Code == "AURORA-BUILTIN-READONLY");
+    }
+
+    [Fact]
+    public void ReportsReadonlyBuiltinModuleMemberAssignment()
+    {
+        var catalog = BuiltinApiLoader.LoadFromFile(BuiltinApiCatalogTests.GetRuntimeApiPath());
+        var service = new AuroraLanguageService(catalog);
+        const string source =
+            """
+            @module(TEST);
+            import files from 'fs';
+            export func run() {
+                files.readText = null;
+            }
+            """;
+
+        var diagnostics = service.GetDiagnostics("test.as", source);
+
+        var diagnostic = Assert.Single(diagnostics, item => item.Code == "AURORA-BUILTIN-READONLY");
+        Assert.Contains("fs.readText", diagnostic.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(diagnostics, item => item.Code == "AURORA-IMPORT-NOT-FOUND");
+    }
+
+    [Fact]
+    public void ImportedProjectAliasSuppressesSameNamedBuiltinGlobalDiagnostic()
+    {
+        var analysis = Analyze(
+            """
+            @module(TEST);
+            import Math from './math';
+            export func run() {
+                Math.PI = 1;
             }
             """);
 

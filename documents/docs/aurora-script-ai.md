@@ -36,6 +36,8 @@ For default code generation style, also read `docs/script-authoring-best-practic
 - Different protocols or non-overlapping roots are isolated script namespaces, such as `mem://overlay/` versus `d:/project/scripts/`.
 - Host-side `DynamicPatch` / `ReplacePatch` / `IncrementalPatch` string overloads require an absolute file path or virtual full path under the current resolver root.
 - Script-side `HotPatch.replace` and `HotPatch.incremental` should pass only `script` when patching the current module. If a module path is supplied, relative paths resolve from the current module full path.
+- Native modules are opt-in host capabilities. `EngineOptions.Default.BuiltIns` is empty; the host must add `BuiltInModules.FileSystem` and/or `BuiltInModules.HttpClient` before constructing the engine.
+- Import enabled native modules by bare path (`import fs from "fs";`, `import http from "http";`). Bare native paths take priority over the project resolver, while `./fs`, `../fs`, and other relative imports remain project sources.
 
 ## Statements
 
@@ -237,6 +239,37 @@ Path rules:
 - `Path.extName(path)` and `path.extName()` return the extension including the leading dot, or an empty string when absent.
 - `new Path(...)` and `Path.of(...)` return mutable `Path` objects; `append`, `reset`, and `changeExt` mutate and return the same `Path`.
 - `Path` objects support `==` by normalized path text value.
+
+## Opt-In Native Modules
+
+These modules are not runtime globals. Generated code may use them only when the host contract explicitly enables the corresponding `BuiltInModules` definition.
+
+File-system module:
+
+```as
+import fs from "fs";
+```
+
+- Every path argument accepts `string|Path`.
+- Reads: `readText(path): string`, `readBytes(path): UInt8Array`.
+- Writes: `writeText(path, text)`, `writeBytes(path, bytes)`, `appendText(path, text)`, `appendBytes(path, bytes)` return `boolean`.
+- Inspection: `exist(path)`, `isFile(path)`, `isDir(path)` return `boolean`; `size(path)` returns file bytes and rejects directories.
+- Directories: `mkDir(path): boolean`; `dir(path): string[]` returns ordinal-sorted top-level names.
+- Changes: `copy(source, destination, overwrite?)`, `move(source, destination, overwrite?)`, and `delete(path, recursive?)` return `boolean`. Overwrite and recursive behavior must be enabled explicitly.
+- File-system failures become `AuroraRuntimeException`; recursive directory copy does not follow directory links.
+
+HTTP client module:
+
+```as
+import http from "http";
+```
+
+- Synchronous: `request(method, url, options?)`, `get/delete/head(url, options?)`, and `post/put/patch(url, body?, options?)` return a buffered response.
+- Callback versions use the `Async` suffix and require the callback as the final argument: `requestAsync`, `getAsync`, `postAsync`, `putAsync`, `patchAsync`, `deleteAsync`, and `headAsync`.
+- Async scheduling returns `true`. Success calls `callback(null, response)`; transport, timeout, and response-reading failures call `callback(error, null)`.
+- Options: `headers` is an object of string or string-array values; `body` is `string|UInt8Array`; `contentType` is a non-empty string; `timeout` is a positive integer in milliseconds.
+- Response fields: `status`, `statusText`, `ok`, final `url`, lowercase-key `headers`, decoded `body` and `text`, and raw `bytes: UInt8Array`.
+- HTTP 404/500 remain normal responses with `ok = false`. Redirects and common decompression are automatic; cookies are not retained.
 
 ## Performance Rules
 

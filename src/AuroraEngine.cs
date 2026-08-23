@@ -1,5 +1,6 @@
 using AuroraScript.Compiler;
 using AuroraScript.Compiler.Analyzer;
+using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Backend;
 using AuroraScript.Compiler.Backend.Builders;
 using AuroraScript.Compiler.Backend.Emission;
@@ -8,6 +9,7 @@ using AuroraScript.Core;
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Extensions;
 using AuroraScript.Runtime.Interop;
+using AuroraScript.Runtime.Package;
 using AuroraScript.Runtime.Types;
 using AuroraScript.Runtime.Types.TypeConstruct;
 using AuroraScript.Source;
@@ -49,6 +51,11 @@ namespace AuroraScript
         internal readonly EngineOptions Options;
 
         /// <summary>
+        /// Engine-scoped index of the native modules selected through <see cref="EngineOptions.BuiltIns"/>.
+        /// </summary>
+        internal readonly BuiltinModuleRegistry BuiltInRegistry;
+
+        /// <summary>
         /// Initializes static members of the <see cref="AuroraEngine"/> class by preloading prototypes.
         /// </summary>
         static AuroraEngine()
@@ -63,7 +70,17 @@ namespace AuroraScript
         /// <exception cref="AuroraException">Thrown if the <paramref name="options"/> parameter is null.</exception>
         public AuroraEngine(EngineOptions options)
         {
-            Options = options ?? throw new AuroraException("the parameter \"options\" cannot be empty");
+            if (options == null)
+            {
+                throw new AuroraException("the parameter \"options\" cannot be empty");
+            }
+
+            BuiltInRegistry = new BuiltinModuleRegistry(options.BuiltIns);
+            var sourceResolver = options.Compiler.SourceResolver ?? FileScriptSourceResolver.Instance;
+            Options = BuiltInRegistry.Count == 0
+                ? options
+                : options.WithCompiler(compiler => compiler.SourceResolver =
+                    new BuiltinScriptSourceResolver(sourceResolver, BuiltInRegistry));
             StringValue.ConfigurePooling(Options.Runtime.StringPooling);
             Global = new ScriptGlobal(this);
 
@@ -232,6 +249,7 @@ namespace AuroraScript
                 };
                 var compiler = new ScriptCompiler(Options);
                 var modules = await compiler.BuildModuleGraphAsync(sources, cancellationToken).ConfigureAwait(false);
+                ValidateBuiltInModuleConflicts(modules);
 
                 EmitProgram(builder, modules, compiler.GlobalDeclarations, cancellationToken);
 
@@ -328,6 +346,27 @@ namespace AuroraScript
             catch (Exception ex) when (IsCompilationPipelineException(ex))
             {
                 throw CreateCompilationException(ex, AuroraCompilationStage.Parsing);
+            }
+        }
+
+        private void ValidateBuiltInModuleConflicts(IReadOnlyList<ModuleDeclaration> modules)
+        {
+            for (var i = 0; i < modules.Count; i++)
+            {
+                var module = modules[i];
+                if (string.IsNullOrEmpty(module.ModuleName) ||
+                    !BuiltInRegistry.TryGetByName(module.ModuleName, out var builtIn) ||
+                    ScriptPath.PathTextEqualsNormalized(module.FullPath, builtIn.Reference.FullPath))
+                {
+                    continue;
+                }
+
+                throw new AuroraCompilationException(
+                    AuroraCompilationStage.Linking,
+                    module.FullPath,
+                    1,
+                    1,
+                    $"Module '{module.ModuleName}' conflicts with the enabled built-in module '{builtIn.ModulePath}'.");
             }
         }
 

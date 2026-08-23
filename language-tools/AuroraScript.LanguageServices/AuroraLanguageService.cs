@@ -177,7 +177,7 @@ public sealed class AuroraLanguageService
                 : null;
         }
 
-        if (BuiltinQuery.TryGetHover(_builtins, context, DocumentationLocale, out var hover))
+        if (BuiltinQuery.TryGetHover(_builtins, parseResult.Module, context, DocumentationLocale, out var hover))
         {
             return hover;
         }
@@ -232,7 +232,7 @@ public sealed class AuroraLanguageService
                 : null;
         }
 
-        if (BuiltinQuery.TryGetHover(_builtins, context, DocumentationLocale, out var hover))
+        if (BuiltinQuery.TryGetHover(_builtins, parseResult.Module, context, DocumentationLocale, out var hover))
         {
             return hover;
         }
@@ -253,7 +253,12 @@ public sealed class AuroraLanguageService
         var completionSourceText = GetCompletionSourceText(sourceText, position);
         if (LightweightCompletionQuery.TryGetMemberOwner(sourceText, position, out var ownerName))
         {
-            var memberCompletions = BuiltinQuery.GetMemberCompletions(_builtins, ownerName, DocumentationLocale);
+            var completionParseResult = ParseText(sourceName, completionSourceText, baseDirectory);
+            var memberCompletions = BuiltinQuery.GetMemberCompletions(
+                _builtins,
+                completionParseResult.Module,
+                ownerName,
+                DocumentationLocale);
             var scriptMemberCompletions = GetScriptMemberCompletions(sourceName, completionSourceText, ownerName, baseDirectory);
             var mergedMemberCompletions = MergeCompletions(memberCompletions, scriptMemberCompletions);
             if (mergedMemberCompletions.Items.Count != 0)
@@ -270,11 +275,15 @@ public sealed class AuroraLanguageService
 
         if (parseResult.Module == null)
         {
-            return BuiltinQuery.GetCompletions(_builtins, null, DocumentationLocale);
+            return BuiltinQuery.GetCompletions(_builtins, null, null, DocumentationLocale);
         }
 
         var context = AstQuery.Find(parseResult.Module, position);
-        var builtinCompletions = BuiltinQuery.GetCompletions(_builtins, context, DocumentationLocale);
+        var builtinCompletions = BuiltinQuery.GetCompletions(
+            _builtins,
+            parseResult.Module,
+            context,
+            DocumentationLocale);
         var scriptCompletions = GetScriptCompletions(sourceName, completionSourceText, position, baseDirectory);
         return MergeCompletions(scriptCompletions, builtinCompletions);
     }
@@ -283,13 +292,22 @@ public sealed class AuroraLanguageService
     {
         if (!TryGetWorkspaceText(path, out var normalizedPath, out var text))
         {
-            return BuiltinQuery.GetCompletions(_builtins, null, DocumentationLocale);
+            return BuiltinQuery.GetCompletions(_builtins, null, null, DocumentationLocale);
         }
 
         var completionText = GetCompletionSourceText(text, position);
         if (LightweightCompletionQuery.TryGetMemberOwner(text, position, out var ownerName))
         {
-            var memberCompletions = BuiltinQuery.GetMemberCompletions(_builtins, ownerName, DocumentationLocale);
+            var completionParseResult = _parseService.ParseText(
+                normalizedPath,
+                completionText,
+                _workspace.BaseDirectory,
+                _workspace.CreateSnapshot());
+            var memberCompletions = BuiltinQuery.GetMemberCompletions(
+                _builtins,
+                completionParseResult.Module,
+                ownerName,
+                DocumentationLocale);
             var index = GetWorkspaceCompletionIndex(normalizedPath, completionText);
             var scriptMemberCompletions = AuroraCompletionResolver.GetMemberCompletions(index, normalizedPath, ownerName);
             var mergedMemberCompletions = MergeCompletions(memberCompletions, scriptMemberCompletions);
@@ -307,11 +325,15 @@ public sealed class AuroraLanguageService
 
         if (parseResult.Module == null)
         {
-            return BuiltinQuery.GetCompletions(_builtins, null, DocumentationLocale);
+            return BuiltinQuery.GetCompletions(_builtins, null, null, DocumentationLocale);
         }
 
         var context = AstQuery.Find(parseResult.Module, position);
-        var builtinCompletions = BuiltinQuery.GetCompletions(_builtins, context, DocumentationLocale);
+        var builtinCompletions = BuiltinQuery.GetCompletions(
+            _builtins,
+            parseResult.Module,
+            context,
+            DocumentationLocale);
         var workspaceIndex = GetWorkspaceCompletionIndex(normalizedPath, completionText);
         var scriptCompletions = AuroraCompletionResolver.GetCompletions(workspaceIndex, normalizedPath, position);
         return MergeCompletions(scriptCompletions, builtinCompletions);
@@ -331,7 +353,12 @@ public sealed class AuroraLanguageService
             return null;
         }
 
-        return BuiltinQuery.GetSignatureHelp(_builtins, context, position, DocumentationLocale);
+        return BuiltinQuery.GetSignatureHelp(
+            _builtins,
+            parseResult.Module,
+            context,
+            position,
+            DocumentationLocale);
     }
 
     public SignatureHelpResult? GetSignatureHelp(string path, TextPosition position)
@@ -988,6 +1015,32 @@ public sealed class AuroraLanguageService
             return LightweightBuiltinDefinitionQuery.TryResolve(_builtinDocuments, sourceText, position, out var fallbackLocation)
                 ? fallbackLocation
                 : null;
+        }
+
+        if (context.PropertyAccess != null &&
+            context.PropertyAccess.Object is NameExpression moduleOwner &&
+            BuiltinModuleQuery.TryResolve(
+                _builtins,
+                parseResult.Module,
+                moduleOwner.Identifier.Value,
+                out var builtinModule))
+        {
+            if (context.IsOnPropertyOwner &&
+                moduleOwner.Identifier.Range.Contains(position) &&
+                _builtinDocuments.TryGetModuleLocation(builtinModule.ModulePath, out var moduleLocation))
+            {
+                return moduleLocation;
+            }
+
+            if (context.IsOnPropertyName &&
+                context.PropertyAccess.Property is NameExpression moduleMember &&
+                _builtinDocuments.TryGetModuleMemberLocation(
+                    builtinModule.ModulePath,
+                    moduleMember.Identifier.Value,
+                    out var moduleMemberLocation))
+            {
+                return moduleMemberLocation;
+            }
         }
 
         var localIndex = AuroraLocalSymbolIndex.Build(new AuroraModuleIndex(sourceName, sourceText, parseResult.Module));

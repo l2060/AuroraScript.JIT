@@ -10,6 +10,7 @@
     "AuroraScript.Source",
     "AuroraScript.Runtime",
     "AuroraScript.Runtime.Interop",
+    "AuroraScript.Runtime.Package",
     "AuroraScript.Runtime.Serialization",
     "AuroraScript.Runtime.Types"
   ],
@@ -22,7 +23,7 @@
         "Constructor": {
           "kind": "constructor",
           "signature": "AuroraEngine(EngineOptions options)",
-          "summary": "Creates an engine with immutable compiler, runtime, optimization, and output options."
+          "summary": "Creates an engine with immutable compiler, runtime, optimization, output, and native-module options."
         },
         "Global": {
           "kind": "field",
@@ -56,7 +57,9 @@
             "BuildAsync(string) resolves the entry path through Compiler.SourceResolver.",
             "BuildAsync() enumerates all sources from Compiler.SourceResolver.GetAllSourcesAsync.",
             "Before module analysis, the compiler scans resolver-visible project .as files and loads standalone @global() declaration files when they exist.",
-            "@global() declarations are optional compile-time contracts for host globals and do not depend on import/include."
+            "@global() declarations are optional compile-time contracts for host globals and do not depend on import/include.",
+            "Enabled built-in bare paths resolve before project sources; relative imports continue to use the project resolver.",
+            "A project module name that collides with an enabled built-in module fails during linking."
           ]
         },
         "CompileBlock": {
@@ -94,7 +97,7 @@
     "EngineOptions": {
       "kind": "record",
       "namespace": "AuroraScript",
-      "summary": "Immutable root configuration for compiler, runtime, optimization, and output behavior.",
+      "summary": "Immutable root configuration for compiler, runtime, optimization, output, and opt-in native modules.",
       "members": {
         "Default": {
           "kind": "field",
@@ -116,6 +119,11 @@
           "kind": "property",
           "signature": "OutputOptions Output"
         },
+        "BuiltIns": {
+          "kind": "property",
+          "signature": "IReadOnlyList<BuiltInModuleDefinition> BuiltIns",
+          "summary": "Native modules explicitly enabled for this engine. Empty by default."
+        },
         "WithCompiler": {
           "kind": "method",
           "signature": "EngineOptions WithCompiler(Action<CompilerOptionsBuilder> configure)"
@@ -131,6 +139,73 @@
         "WithOutput": {
           "kind": "method",
           "signature": "EngineOptions WithOutput(Action<OutputOptionsBuilder> configure)"
+        },
+        "WithBuiltIns": {
+          "kind": "method",
+          "signature": "EngineOptions WithBuiltIns(Action<BuiltInModulesBuilder> configure)",
+          "summary": "Returns a new immutable options snapshot with native module selections applied."
+        }
+      }
+    },
+    "BuiltInModuleDefinition": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Package",
+      "summary": "Immutable definition and per-global factory for an opt-in native module.",
+      "notes": [
+        "Module names must be non-keyword AuroraScript identifiers.",
+        "Module paths are normalized bare relative paths and cannot contain . or .. segments."
+      ],
+      "members": {
+        "Constructors": {
+          "kind": "constructor",
+          "overloads": [
+            "BuiltInModuleDefinition(string name, Action<ScriptModule> configure)",
+            "BuiltInModuleDefinition(string name, string modulePath, Action<ScriptModule> configure)"
+          ]
+        },
+        "Name": {
+          "kind": "property",
+          "signature": "string Name"
+        },
+        "ModulePath": {
+          "kind": "property",
+          "signature": "string ModulePath"
+        }
+      }
+    },
+    "BuiltInModulesBuilder": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Package",
+      "summary": "Mutable builder used by EngineOptions.WithBuiltIns.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "signature": "BuiltInModulesBuilder(IReadOnlyList<BuiltInModuleDefinition> definitions)"
+        },
+        "Add": {
+          "kind": "method",
+          "signature": "BuiltInModulesBuilder Add(BuiltInModuleDefinition definition)"
+        },
+        "Clear": {
+          "kind": "method",
+          "signature": "BuiltInModulesBuilder Clear()"
+        }
+      }
+    },
+    "BuiltInModules": {
+      "kind": "factory",
+      "namespace": "AuroraScript.Runtime.Package",
+      "summary": "Catalog of native modules shipped with AuroraScript.",
+      "members": {
+        "FileSystem": {
+          "kind": "property",
+          "signature": "static BuiltInModuleDefinition FileSystem",
+          "summary": "Enables the fs module and its file-system APIs."
+        },
+        "HttpClient": {
+          "kind": "property",
+          "signature": "static BuiltInModuleDefinition HttpClient",
+          "summary": "Enables the http module and its synchronous and callback-based HTTP APIs."
         }
       }
     },
@@ -2134,6 +2209,11 @@
       "id": "run.isolated-domain",
       "summary": "Build once and create separate ScriptDomain instances for isolated executions over the same compiled code.",
       "apis": ["AuroraEngine.CreateDomain", "ScriptDomain.Execute", "ScriptObject", "ScriptDatum"]
+    },
+    {
+      "id": "runtime.opt-in-builtins",
+      "summary": "Use EngineOptions.WithBuiltIns to grant only the shipped or custom native modules required by the application before constructing AuroraEngine.",
+      "apis": ["EngineOptions.BuiltIns", "EngineOptions.WithBuiltIns", "BuiltInModules", "BuiltInModuleDefinition"]
     },
     {
       "id": "interop.domain-global",

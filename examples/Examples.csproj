@@ -60,6 +60,9 @@
     <None Update="temp\debug_test.as">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Update="tests\builtin.as">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="tests\perf-bench.as">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

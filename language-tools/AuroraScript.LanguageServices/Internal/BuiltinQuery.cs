@@ -1,3 +1,4 @@
+using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.LanguageServices.Builtins;
 using AuroraScript.LanguageServices.Features.Completion;
@@ -11,21 +12,40 @@ namespace AuroraScript.LanguageServices.Internal;
 
 internal static class BuiltinQuery
 {
-    public static bool TryGetHover(BuiltinApiCatalog builtins, AstQueryContext context, string? locale, out HoverResult hover)
+    public static bool TryGetHover(
+        BuiltinApiCatalog builtins,
+        ModuleDeclaration? declaration,
+        AstQueryContext context,
+        string? locale,
+        out HoverResult hover)
     {
         hover = null!;
         if (context.PropertyAccess != null &&
             context.IsOnPropertyOwner &&
-            context.PropertyAccess.Object is NameExpression ownerName &&
-            builtins.TryGetGlobal(ownerName.Identifier.Value, out var owner))
+            context.PropertyAccess.Object is NameExpression ownerName)
         {
-            hover = new HoverResult(BuiltinFormat.FormatGlobal(owner, locale), TextRange.FromSourceSpan(ownerName.Identifier.Range));
-            return true;
+            var name = ownerName.Identifier.Value;
+            if (BuiltinModuleQuery.TryResolve(builtins, declaration, name, out var module))
+            {
+                hover = new HoverResult(
+                    BuiltinFormat.FormatModule(module, name, locale),
+                    TextRange.FromSourceSpan(ownerName.Identifier.Range));
+                return true;
+            }
+
+            if (!BuiltinModuleQuery.IsImportedName(declaration, name) &&
+                builtins.TryGetGlobal(name, out var owner))
+            {
+                hover = new HoverResult(
+                    BuiltinFormat.FormatGlobal(owner, locale),
+                    TextRange.FromSourceSpan(ownerName.Identifier.Range));
+                return true;
+            }
         }
 
         if (context.PropertyAccess != null &&
             context.IsOnPropertyName &&
-            TryResolveMember(builtins, context.PropertyAccess, out var member))
+            TryResolveMember(builtins, declaration, context.PropertyAccess, out var member))
         {
             var range = context.PropertyAccess.Property is NameExpression name
                 ? name.Identifier.Range
@@ -35,6 +55,7 @@ internal static class BuiltinQuery
         }
 
         if (context.Name != null &&
+            !BuiltinModuleQuery.IsImportedName(declaration, context.Name.Identifier.Value) &&
             builtins.TryGetGlobal(context.Name.Identifier.Value, out var global))
         {
             hover = new HoverResult(BuiltinFormat.FormatGlobal(global, locale), TextRange.FromSourceSpan(context.Name.Range));
@@ -44,20 +65,37 @@ internal static class BuiltinQuery
         return false;
     }
 
-    public static CompletionResult GetCompletions(BuiltinApiCatalog builtins, AstQueryContext? context, string? locale = null)
+    public static CompletionResult GetCompletions(
+        BuiltinApiCatalog builtins,
+        ModuleDeclaration? declaration,
+        AstQueryContext? context,
+        string? locale = null)
     {
         if (context?.PropertyAccess != null &&
-            TryResolveOwnerName(context.PropertyAccess.Object, out var ownerName) &&
-            builtins.TryGetGlobal(ownerName, out var owner))
+            TryResolveOwnerName(context.PropertyAccess.Object, out var ownerName))
         {
-            return CompleteMembers(owner.Members, locale);
+            return GetMemberCompletions(builtins, declaration, ownerName, locale);
         }
 
         return CompleteGlobals(builtins.Globals, locale);
     }
 
-    public static CompletionResult GetMemberCompletions(BuiltinApiCatalog builtins, string ownerName, string? locale = null)
+    public static CompletionResult GetMemberCompletions(
+        BuiltinApiCatalog builtins,
+        ModuleDeclaration? declaration,
+        string ownerName,
+        string? locale = null)
     {
+        if (BuiltinModuleQuery.TryResolve(builtins, declaration, ownerName, out var module))
+        {
+            return CompleteMembers(module.Members, locale);
+        }
+
+        if (BuiltinModuleQuery.IsImportedName(declaration, ownerName))
+        {
+            return new CompletionResult(Array.Empty<CompletionItem>());
+        }
+
         if (builtins.TryGetGlobal(ownerName, out var owner))
         {
             return CompleteMembers(owner.Members, locale);
@@ -66,7 +104,12 @@ internal static class BuiltinQuery
         return new CompletionResult(Array.Empty<CompletionItem>());
     }
 
-    public static SignatureHelpResult? GetSignatureHelp(BuiltinApiCatalog builtins, AstQueryContext context, TextPosition position, string? locale = null)
+    public static SignatureHelpResult? GetSignatureHelp(
+        BuiltinApiCatalog builtins,
+        ModuleDeclaration? declaration,
+        AstQueryContext context,
+        TextPosition position,
+        string? locale = null)
     {
         var call = context.Call;
         if (call == null)
@@ -82,14 +125,15 @@ internal static class BuiltinQuery
         BuiltinApiMember member;
         if (call.Target is GetPropertyExpression propertyAccess)
         {
-            if (!TryResolveMember(builtins, propertyAccess, out member))
+            if (!TryResolveMember(builtins, declaration, propertyAccess, out member))
             {
                 return null;
             }
         }
         else if (call.Target is NameExpression name)
         {
-            if (!builtins.TryGetGlobal(name.Identifier.Value, out var global))
+            if (BuiltinModuleQuery.IsImportedName(declaration, name.Identifier.Value) ||
+                !builtins.TryGetGlobal(name.Identifier.Value, out var global))
             {
                 return null;
             }
@@ -186,11 +230,25 @@ internal static class BuiltinQuery
         return new CompletionResult(items);
     }
 
-    private static bool TryResolveMember(BuiltinApiCatalog builtins, GetPropertyExpression propertyAccess, out BuiltinApiMember member)
+    private static bool TryResolveMember(
+        BuiltinApiCatalog builtins,
+        ModuleDeclaration? declaration,
+        GetPropertyExpression propertyAccess,
+        out BuiltinApiMember member)
     {
         member = null!;
-        return TryResolveOwnerName(propertyAccess.Object, out var ownerName) &&
-            propertyAccess.Property is NameExpression property &&
+        if (!TryResolveOwnerName(propertyAccess.Object, out var ownerName) ||
+            propertyAccess.Property is not NameExpression property)
+        {
+            return false;
+        }
+
+        if (BuiltinModuleQuery.TryResolve(builtins, declaration, ownerName, out var module))
+        {
+            return module.TryGetMember(property.Identifier.Value, out member);
+        }
+
+        return !BuiltinModuleQuery.IsImportedName(declaration, ownerName) &&
             builtins.TryGetGlobalMember(ownerName, property.Identifier.Value, out member);
     }
 

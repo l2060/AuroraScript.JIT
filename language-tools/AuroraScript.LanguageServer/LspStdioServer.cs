@@ -5,6 +5,7 @@ using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -12,11 +13,6 @@ namespace AuroraScript.LanguageServer;
 
 internal sealed class LspStdioServer
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNamingPolicy = null
-    };
-
     private readonly AuroraLanguageServer _server;
     private readonly Stream _input;
     private readonly Stream _output;
@@ -163,10 +159,15 @@ internal sealed class LspStdioServer
 
     private async Task WriteJsonAsync(JsonObject json, CancellationToken cancellationToken)
     {
-        var payload = JsonSerializer.SerializeToUtf8Bytes(json, JsonOptions);
+        var payload = JsonSerializer.SerializeToUtf8Bytes(json, LspJsonSerializerContext.Default.JsonObject);
         var header = Encoding.ASCII.GetBytes("Content-Length: " + payload.Length + "\r\n\r\n");
         await _output.WriteAsync(header, cancellationToken).ConfigureAwait(false);
         await _output.WriteAsync(payload, cancellationToken).ConfigureAwait(false);
         await _output.FlushAsync(cancellationToken).ConfigureAwait(false);
     }
+}
+
+[JsonSerializable(typeof(JsonObject))]
+internal partial class LspJsonSerializerContext : JsonSerializerContext
+{
 }

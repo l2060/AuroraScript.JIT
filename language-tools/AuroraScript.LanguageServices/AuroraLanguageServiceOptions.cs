@@ -111,7 +111,10 @@ public sealed class AuroraLanguageServiceOptions
         return EngineOptions.Default.WithCompiler(compiler =>
         {
             compiler.ExtName = Extension;
-            compiler.SourceResolver = _sourceResolver ?? ScriptSources.FileSystem(baseDirectory ?? BaseDirectory);
+            var sourceResolver = _sourceResolver ?? ScriptSources.FileSystem(baseDirectory ?? BaseDirectory);
+            compiler.SourceResolver = Builtins.Modules.Count == 0
+                ? sourceResolver
+                : new BuiltinApiSourceResolver(Builtins, sourceResolver);
         });
     }
 

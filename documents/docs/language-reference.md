@@ -1,6 +1,174 @@
 # AuroraScript Language Reference
 
+> This document is the machine-readable companion to the English wiki Language Guide; use it for parser and runtime details, while the wiki page provides the author tutorial.
+
 This document summarizes language features supported by the current parser, binder, compiler, and runtime.
+
+## Author Tutorial
+
+AuroraScript is a dynamic script language with a compiler-inferred native path. A source declaration does not carry a C#-style type annotation; the compiler keeps a value in a native representation only when its flow is stable and doing so preserves script semantics. The sections below show the normal authoring workflow before the formal grammar details.
+
+### 1. Create a module
+
+Put `@module(NAME);` at the beginning of a module when the host needs a stable name. Comments and blank lines may precede it, but no other effective statement may come first.
+
+```as
+// math.as
+@module(MATH);
+
+func square(value) {
+    return value * value;
+}
+
+export func add(left, right) {
+    return left + right;
+}
+```
+
+The host builds the source through its configured `SourceResolver`, then calls an exported function by module name and export name. Omitting `@module` lets the compiler derive a name from the source path, but explicit names are preferable for stable host calls and hot patching.
+
+### 2. Import or include dependencies
+
+```as
+// main.as
+@module(MAIN);
+import math from "./math";
+
+const OFFSET = 2;
+
+export func run(value) {
+    return math.add(math.square(value), OFFSET);
+}
+```
+
+`import Alias from "path";` binds one local name to the dependency's exported module object. `include "path";` instead merges another source file into the current module and exposes its private declarations directly. Both declarations must be at the top of the module, before ordinary declarations, and paths are resolved by the host resolver. The language does not provide named-import braces, default exports, or wildcard imports.
+
+The host may opt in to native modules through `EngineOptions.BuiltIns`. Shipped modules use bare imports such as `import fs from "fs";` and `import http from "http";`; they are not global objects and are unavailable when the host has not enabled them. A relative path such as `./fs` remains a project-source import even when the `fs` native module is enabled.
+
+### 3. Declare variables and constants
+
+```as
+var total = 0;
+var pending;       // null when no initializer is supplied
+const limit = 100;
+
+total += 1;
+if (total < limit) pending = total;
+```
+
+`var` is reassignable; `const` prevents assignment, compound assignment, and increment/decrement after declaration. `const` fixes the binding, not the referenced object:
+
+```as
+const settings = { retries: 2 };
+settings.retries = 3; // allowed
+// settings = {};     // compilation error
+```
+
+Simple declarations bind one name. Destructuring requires an initializer:
+
+```as
+var { name, age } = person;
+var [first, second, ...rest] = values;
+```
+
+Duplicate declarations in one scope are rejected. A child block may shadow an outer `var`, but may not redeclare a visible outer `const`. `let` and JavaScript-style comma declarations are not supported.
+
+### 4. Define functions and methods
+
+`func` and `function` are equivalent. There are no return-type annotations; a function returns the value supplied to `return`.
+
+```as
+func clamp(value, minimum, maximum) {
+    if (value < minimum) return minimum;
+    if (value > maximum) return maximum;
+    return value;
+}
+
+func sum(first, ...rest) {
+    var total = first;
+    for (var item in rest) total += item;
+    return total;
+}
+```
+
+Default parameters are written `name = expression`; a rest parameter starts with `...`, must be last, and cannot have a default. Functions are values. An object “method” is a function-valued property, not a separate declaration form:
+
+```as
+var operations = {
+    add: (left, right) => left + right,
+    format: value => `#${value}`
+};
+return operations.format(operations.add(20, 22));
+```
+
+Lambdas can have an expression body or a block body and can capture outer bindings. The compiler-provided `$args` value contains the current function's arguments.
+
+### 5. Choose a value type
+
+The source-level primitive and collection forms are:
+
+| Type | Script spelling and construction | Notes |
+| --- | --- | --- |
+| `number` | `42`, `3.14`, `6e2`, `0xFFF`, `100_00` | One double-precision numeric type. Decimal separators must be between digits; hexadecimal separators are not supported. |
+| `string` | `'text'`, `"text"`, `` `value=${expr}` ``, `|> line` | Immutable UTF-16 text; templates interpolate expressions and block strings preserve physical newlines. |
+| `boolean` | `true`, `false` | Boolean value. |
+| `null` | `null` | Missing value. |
+| general `array` | `[1, "two", null]`, `new Array(n)` | Growable and heterogeneous; `new Array(n)` creates `n` null slots. |
+| plain `object` | `{ name: "Aurora", ...other }` | Mutable property map. |
+| `function` | `func f() {}`, `x => x` | Callable value/closure. |
+| `regex` | `/pattern/flags`, `new Regex(pattern, flags)` | Literal flags are `g`, `i`, `m`, `u`, and `y`. |
+| `enum` | `enum Mode { Read, Write = 4 }` | Object whose members are 32-bit integer numbers. |
+
+There is no separate `Unit`/`void` value type in the script language, and the current runtime provides `Float64Array` but not `Float32Array`.
+
+Common object-like built-ins are `Date`, `Error`, `HashMap`, `Path`, `Proxy`, `Regex`, and `StringBuffer`. Construct them with `new` and use the members documented in `schema/runtime-api.json` and the Script API pages. `TDoc` additionally provides the compiler-recognized `tdoc` expression for typed document values.
+
+### 6. Use packed arrays for homogeneous data
+
+The runtime exposes ten fixed-length packed arrays:
+
+```as
+var signedBytes = new Int8Array(size);
+var bytes = new UInt8Array(size);
+var shorts = new Int16Array(size);
+var unsignedShorts = new UInt16Array(size);
+var ints = new Int32Array(size);
+var unsignedInts = new UInt32Array(size);
+var longs = new Int64Array(size);
+var unsignedLongs = new UInt64Array(size);
+var fractions = new Float64Array(size);
+var flags = new BooleanArray(size);
+```
+
+Each constructor accepts an optional non-negative length and zero-initializes contiguous primitive storage. `length` is read-only; `push`, `pop`, and element deletion are not supported. Use a general `Array` when the collection must grow or contain mixed values. Script numbers are doubles, so values read from `Int64Array` and `UInt64Array` must be exactly representable as a script number; use TDoc typed values when exact 64-bit persistence is required.
+
+### 7. Understand the strong-typing path
+
+The compiler performs flow analysis rather than requiring explicit annotations. Stable numbers, booleans, integer loop variables, and known packed-array references can be emitted as native CIL locals and direct array accesses. When a value is put in a dynamic object, read through an unknown property, passed to an unknown host callback, assigned an unrelated kind, or otherwise escapes the proven flow, the compiler boxes it into the normal `ScriptDatum` representation.
+
+This path exists for three practical reasons:
+
+1. Native locals avoid temporary `ScriptDatum` construction and boxing in numeric loops.
+2. Packed arrays use contiguous primitive storage instead of one dynamic slot per element.
+3. Stable same-module calls and operations can avoid generic property lookup and dynamic dispatch.
+
+It is therefore an optimization and a semantic boundary, not a second statically typed source language. Dynamic scripts remain valid, and unsupported flow safely falls back to the dynamic path. To help inference, keep hot locals single-kind, cache `length`, keep packed arrays in locals, and avoid unknown callbacks in the inner loop. `@directCall`, `@directCall(true)`, and `@directCall(false)` are optional function-call hints; they are not type declarations.
+
+### 8. Handle host globals and compile blocks
+
+Host globals can be described for tooling in a separate declaration file:
+
+```as
+@global();
+
+declare const APP_NAME;
+declare var ONLINE_TOTAL;
+declare func HOST_LOG(message);
+```
+
+An `@global()` file may contain only `declare` statements and cannot also contain `@module`, imports, includes, or exports. Declarations do not create runtime values; the host must define them on the script domain. `CompileBlock` accepts only a function body with host-supplied parameters and rejects all module-only syntax.
+
+> **Authoring rule of thumb:** use a full module for imports, exports, shared helpers, and host-called entry points; use a `CompileBlock` for a small one-off body; use packed arrays and stable locals for numeric hot paths; use ordinary arrays/objects for flexible application data.
 
 ## Lexical Elements
 
@@ -28,6 +196,7 @@ Rules:
 - `@module(NAME);` is metadata, not a function annotation.
 - `@module` must be first when present.
 - `include` and `import` must be at the top of the module.
+- A host-enabled native module is imported by its bare module path. Native modules do not become globals, and relative paths continue to resolve as project sources.
 - `export` may only appear at module scope.
 - `declare` is not valid in modules. Use a separate `@global()` declaration file for host globals.
 - Duplicate module-scope names are rejected.

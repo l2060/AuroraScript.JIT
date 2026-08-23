@@ -1,6 +1,7 @@
 using AuroraScript;
 using AuroraScript.Core;
 using AuroraScript.Runtime;
+using AuroraScript.Runtime.Package;
 using AuroraScript.Runtime.Serialization;
 using AuroraScript.Runtime.Types;
 using AuroraScript.Source;
@@ -26,6 +27,7 @@ namespace Examples
 
 
         private static readonly EngineOptions engineOptions = EngineOptions.Default
+        .WithBuiltIns(builtIns => builtIns.Add(BuiltInModules.FileSystem).Add(BuiltInModules.HttpClient))
         .WithCompiler(compiler =>
         {
             compiler.SourceResolver = ScriptSources.Composite(memorySource, fileSystemSource);
@@ -274,6 +276,10 @@ namespace Examples
             BenchmarkScript(domain, "UNIT_LIB", "testRegex");
             BenchmarkScript(domain, "UNIT_LIB", "testJson");
             BenchmarkScript(domain, "UNIT_LIB", "testClrType", new StringValue("PI"), new NumberValue(Math.PI));
+
+            BenchmarkScript(domain, "BUILTIN", "testFileSystem");
+            BenchmarkScript(domain, "BUILTIN", "testHttpGet");
+
 
 
 

@@ -3,10 +3,15 @@
   "$id": "https://aurorascript.dev/schema/runtime-api.schema.json",
   "title": "AuroraScript Runtime API Schema",
   "type": "object",
-  "required": ["language", "versionTarget", "globals", "prototypes"],
+  "required": ["language", "versionTarget", "modules", "globals", "prototypes"],
   "properties": {
+    "$schema": { "type": "string" },
     "language": { "const": "AuroraScript" },
     "versionTarget": { "type": "string" },
+    "modules": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/module" }
+    },
     "globals": {
       "type": "object",
       "additionalProperties": { "$ref": "#/$defs/typeOrObject" }
@@ -21,6 +26,20 @@
   },
   "additionalProperties": false,
   "$defs": {
+    "module": {
+      "type": "object",
+      "required": ["kind", "modulePath", "members"],
+      "properties": {
+        "kind": { "const": "module" },
+        "modulePath": { "type": "string", "minLength": 1 },
+        "members": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/member" }
+        },
+        "notes": { "$ref": "#/$defs/localizedNotes" }
+      },
+      "additionalProperties": false
+    },
     "typeOrObject": {
       "type": "object",
       "required": ["kind"],

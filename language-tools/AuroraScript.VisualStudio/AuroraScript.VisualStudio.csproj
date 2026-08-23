@@ -108,7 +108,7 @@
       <AuroraLanguageServerExecutable>$(AuroraLanguageServerPublishDir)AuroraScript.LanguageServer.exe</AuroraLanguageServerExecutable>
     </PropertyGroup>
     <RemoveDir Directories="$(AuroraLanguageServerPublishDir)" Condition="Exists('$(AuroraLanguageServerPublishDir)')" />
-    <MSBuild Projects="$(MSBuildProjectDirectory)\..\..\language-tools\AuroraScript.LanguageServer\AuroraScript.LanguageServer.csproj" Targets="Publish" Properties="Configuration=$(Configuration);RuntimeIdentifier=win-x64;SelfContained=true;PublishSingleFile=true;PublishTrimmed=true;TrimMode=partial;EnableCompressionInSingleFile=true;DebugType=none;DebugSymbols=false;CopyOutputSymbolsToPublishDirectory=false;CopyDocumentationFileToPublishDirectory=false;PublishDir=$(AuroraLanguageServerPublishDir)" />
+    <MSBuild Projects="$(MSBuildProjectDirectory)\..\..\language-tools\AuroraScript.LanguageServer\AuroraScript.LanguageServer.csproj" Targets="Rebuild;Publish" Properties="Configuration=$(Configuration);RuntimeIdentifier=win-x64;SelfContained=true;PublishSingleFile=true;PublishTrimmed=true;TrimMode=partial;EnableCompressionInSingleFile=true;DebugType=none;DebugSymbols=false;CopyOutputSymbolsToPublishDirectory=false;CopyDocumentationFileToPublishDirectory=false;PublishDir=$(AuroraLanguageServerPublishDir)" />
     <ItemGroup>
       <AuroraLanguageServerSidecarFiles Include="$(AuroraLanguageServerPublishDir)**\*.*" Exclude="$(AuroraLanguageServerExecutable)" />
     </ItemGroup>

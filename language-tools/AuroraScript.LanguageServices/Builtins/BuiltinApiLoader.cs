@@ -33,6 +33,16 @@ public static class BuiltinApiLoader
             }
         }
 
+        var modules = new Dictionary<string, BuiltinApiModule>(StringComparer.Ordinal);
+        if (root.TryGetProperty("modules", out var modulesElement))
+        {
+            foreach (var moduleProperty in modulesElement.EnumerateObject())
+            {
+                var module = ReadModule(moduleProperty.Name, moduleProperty.Value);
+                modules.Add(module.ModulePath, module);
+            }
+        }
+
         var prototypes = new Dictionary<string, IReadOnlyDictionary<string, BuiltinApiMember>>(StringComparer.Ordinal);
         if (root.TryGetProperty("prototypes", out var prototypesElement))
         {
@@ -42,7 +52,20 @@ public static class BuiltinApiLoader
             }
         }
 
-        return new BuiltinApiCatalog(version, globals, prototypes);
+        return new BuiltinApiCatalog(version, globals, prototypes, modules);
+    }
+
+    private static BuiltinApiModule ReadModule(string name, JsonElement element)
+    {
+        var modulePath = element.TryGetProperty("modulePath", out var modulePathElement)
+            ? modulePathElement.GetString() ?? name
+            : name;
+        var documentation = ReadDocumentation(element);
+        var members = element.TryGetProperty("members", out var membersElement)
+            ? ReadMembers(name, membersElement)
+            : new Dictionary<string, BuiltinApiMember>(StringComparer.Ordinal);
+
+        return new BuiltinApiModule(name, modulePath, documentation, members);
     }
 
     private static BuiltinApiSymbol ReadGlobal(string name, JsonElement element)

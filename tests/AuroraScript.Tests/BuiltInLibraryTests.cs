@@ -1,6 +1,5 @@
 using AuroraScript.Tests.Infrastructure;
 using System.IO;
-using System.Text;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -8,6 +7,7 @@ namespace AuroraScript.Tests;
 
 public sealed class BuiltInLibraryTests
 {
+
     [Fact]
     public async Task MathFunctionsAndConstantsReturnExpectedValues()
     {

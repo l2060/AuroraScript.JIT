@@ -29,12 +29,11 @@ export func testEmpty() {
 
 
 export func testTypedDocument() {
-	// empty body
 	var doc = tdoc Object {
 		Int8Array points [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
 		readonly age 32,
 		readonly name 'Hanks',
-		Date Birthday '1991-02-01 12:32:55',
+		Date Birthday '2026-08-22 12:34:56',
 		StringBuffer buff 'Hello '
 	};
 	doc.buff.append('Hanks');

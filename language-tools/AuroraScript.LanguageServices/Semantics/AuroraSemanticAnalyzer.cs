@@ -68,6 +68,8 @@ public sealed class AuroraSemanticAnalyzer
         private readonly BuiltinApiCatalog _builtins;
         private readonly List<LanguageDiagnostic> _diagnostics;
         private readonly Stack<HashSet<string>> _scopes = new();
+        private readonly HashSet<string> _importAliases = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, BuiltinApiModule> _builtinModuleAliases = new(StringComparer.Ordinal);
 
         public BuiltinReadonlyAssignmentWalker(BuiltinApiCatalog builtins, List<LanguageDiagnostic> diagnostics)
         {
@@ -221,6 +223,7 @@ public sealed class AuroraSemanticAnalyzer
 
         private void VisitModule(ModuleDeclaration module)
         {
+            IndexImports(module);
             PushScope();
             try
             {
@@ -247,6 +250,29 @@ public sealed class AuroraSemanticAnalyzer
             finally
             {
                 PopScope();
+            }
+        }
+
+        private void IndexImports(ModuleDeclaration module)
+        {
+            _importAliases.Clear();
+            _builtinModuleAliases.Clear();
+            for (var i = 0; i < module.Imports.Count; i++)
+            {
+                var import = module.Imports[i];
+                var alias = import.Name?.Value;
+                if (import.Include || string.IsNullOrEmpty(alias))
+                {
+                    continue;
+                }
+
+                _importAliases.Add(alias);
+                var modulePath = import.File?.Value;
+                if (!string.IsNullOrEmpty(modulePath) &&
+                    _builtins.TryGetModule(modulePath, out var builtinModule))
+                {
+                    _builtinModuleAliases[alias] = builtinModule;
+                }
             }
         }
 
@@ -356,7 +382,18 @@ public sealed class AuroraSemanticAnalyzer
             }
 
             var ownerName = owner.Identifier.Value;
-            return !IsDeclared(ownerName) &&
+            if (IsDeclared(ownerName))
+            {
+                return false;
+            }
+
+            if (_builtinModuleAliases.TryGetValue(ownerName, out var builtinModule))
+            {
+                return builtinModule.TryGetMember(property.Identifier.Value, out member) &&
+                    member.ReadOnly;
+            }
+
+            return !_importAliases.Contains(ownerName) &&
                 _builtins.TryGetGlobalMember(ownerName, property.Identifier.Value, out member) &&
                 member.ReadOnly;
         }

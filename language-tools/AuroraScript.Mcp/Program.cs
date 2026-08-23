@@ -337,14 +337,14 @@ internal sealed class AuroraMcpServer
                         ["type"] = "object",
                         ["properties"] = new JsonObject
                         {
-                            ["query"] = new JsonObject { ["type"] = "string", ["description"] = "Name or text to search, such as String.trim, HashMap, or appendLine." },
+                            ["query"] = new JsonObject { ["type"] = "string", ["description"] = "Name or text to search, such as String.trim, fs.readText, http.get, or appendLine." },
                             ["limit"] = new JsonObject { ["type"] = "integer", ["description"] = "Maximum results. Defaults to 20." }
                         },
                         ["required"] = new JsonArray("query")
                     }),
                 Tool(
                     "aurora_get_runtime_api",
-                    "Get a structured runtime API entry by path, such as Math, Array.push, String.trim, or HashMap.get.",
+                    "Get a structured runtime API entry by path, such as Math, Array.push, fs.readText, or http.getAsync.",
                     new JsonObject
                     {
                         ["type"] = "object",
@@ -1036,6 +1036,34 @@ internal sealed class AuroraMcpServer
 
     private static IEnumerable<RuntimeApiEntry> EnumerateRuntimeApiEntries(JsonObject api)
     {
+        if (api["modules"] is JsonObject modules)
+        {
+            foreach (var module in modules)
+            {
+                if (module.Value is not JsonObject node)
+                {
+                    continue;
+                }
+
+                yield return RuntimeApiEntry.FromJson(module.Key, "module", node);
+                if (node["members"] is not JsonObject members)
+                {
+                    continue;
+                }
+
+                foreach (var member in members)
+                {
+                    if (member.Value is JsonObject memberNode)
+                    {
+                        yield return RuntimeApiEntry.FromJson(
+                            $"{module.Key}.{member.Key}",
+                            "module-member",
+                            memberNode);
+                    }
+                }
+            }
+        }
+
         if (api["globals"] is JsonObject globals)
         {
             foreach (var global in globals)

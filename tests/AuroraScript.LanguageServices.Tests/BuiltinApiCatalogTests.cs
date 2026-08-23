@@ -50,6 +50,60 @@ public sealed class BuiltinApiCatalogTests
     }
 
     [Fact]
+    public void LoadsOptInBuiltinModules()
+    {
+        var catalog = LoadCatalog();
+
+        Assert.False(catalog.TryGetGlobal("fs", out _));
+        Assert.True(catalog.TryGetModule("fs", out var fileSystem));
+        Assert.Equal("fs", fileSystem.Name);
+        Assert.True(fileSystem.TryGetMember("readText", out var readText));
+        Assert.Equal("string", readText.ReturnType);
+        Assert.Equal("string|Path", Assert.Single(readText.Parameters).Type);
+        Assert.True(fileSystem.TryGetMember("size", out var size));
+        Assert.Equal("number", size.ReturnType);
+
+        Assert.True(catalog.TryGetModule("http", out var http));
+        Assert.True(http.TryGetMember("request", out var request));
+        Assert.Equal("HttpResponse", request.ReturnType);
+        Assert.True(http.TryGetMember("getAsync", out var getAsync));
+        Assert.Equal("callback", getAsync.Parameters[^1].Name);
+        Assert.Equal("function", getAsync.Parameters[^1].Type);
+        Assert.Equal("boolean", getAsync.ReturnType);
+    }
+
+    [Fact]
+    public void RuntimeApiCatalogCoversShippedBuiltinModuleMembers()
+    {
+        var catalog = LoadCatalog();
+        var expected = new Dictionary<string, string[]>(StringComparer.Ordinal)
+        {
+            ["fs"] =
+            [
+                "readText", "readBytes", "writeText", "writeBytes", "appendText", "appendBytes",
+                "exist", "isFile", "isDir", "size", "mkDir", "dir", "copy", "move", "delete"
+            ],
+            ["http"] =
+            [
+                "request", "requestAsync", "get", "getAsync", "post", "postAsync", "put", "putAsync",
+                "patch", "patchAsync", "delete", "deleteAsync", "head", "headAsync"
+            ]
+        };
+
+        foreach (var pair in expected)
+        {
+            Assert.True(catalog.TryGetModule(pair.Key, out var module));
+            Assert.Equal(pair.Value.Length, module.Members.Count);
+            foreach (var memberName in pair.Value)
+            {
+                Assert.True(
+                    module.TryGetMember(memberName, out _),
+                    $"runtime-api.json is missing module member '{pair.Key}.{memberName}'.");
+            }
+        }
+    }
+
+    [Fact]
     public void LoadsConstructorSignatures()
     {
         var catalog = LoadCatalog();

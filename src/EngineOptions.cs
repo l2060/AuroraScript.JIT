@@ -1,6 +1,8 @@
 ﻿using AuroraScript.Runtime.Serialization;
+using AuroraScript.Runtime.Package;
 using AuroraScript.Source;
 using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace AuroraScript
@@ -74,6 +76,7 @@ namespace AuroraScript
         private CompilerOptions _compiler = CompilerOptions.Default;
         private OptimizationOptions _optimization = OptimizationOptions.Default;
         private OutputOptions _output = OutputOptions.Default;
+        private IReadOnlyList<BuiltInModuleDefinition> _builtIns = Array.Empty<BuiltInModuleDefinition>();
 
         /// <summary>
         /// Provides a default set of options for the engine.
@@ -116,6 +119,16 @@ namespace AuroraScript
             init => _output = value ?? throw new ArgumentNullException(nameof(value));
         }
 
+        /// <summary>
+        /// Gets the native modules explicitly enabled for this engine.
+        /// The default collection is empty.
+        /// </summary>
+        public IReadOnlyList<BuiltInModuleDefinition> BuiltIns
+        {
+            get => _builtIns;
+            init => _builtIns = BuiltInModulesBuilder.CreateSnapshot(value);
+        }
+
 
         /// <summary>
         /// Configures runtime behavior and returns a new immutable options instance.
@@ -149,6 +162,19 @@ namespace AuroraScript
             if (configure == null) throw new ArgumentNullException(nameof(configure));
 
             return this with { Output = ConfigureOutput(Output, configure) };
+        }
+
+        /// <summary>
+        /// Configures the native modules available to the engine and returns a new
+        /// immutable options instance.
+        /// </summary>
+        public EngineOptions WithBuiltIns(Action<BuiltInModulesBuilder> configure)
+        {
+            if (configure == null) throw new ArgumentNullException(nameof(configure));
+
+            var builder = new BuiltInModulesBuilder(BuiltIns);
+            configure(builder);
+            return this with { BuiltIns = builder.ToDefinitions() };
         }
 
 

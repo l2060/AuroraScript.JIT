@@ -313,6 +313,7 @@ public sealed class BuiltinLanguageFeatureTests
         Assert.Contains(completions.Items, item => item.Label == "Path" && item.Kind == CompletionItemKind.Constructor);
         Assert.Contains(completions.Items, item => item.Label == "console" && item.Kind == CompletionItemKind.Object);
         Assert.Contains(completions.Items, item => item.Label == "global" && item.Kind == CompletionItemKind.Object);
+        Assert.DoesNotContain(completions.Items, item => item.Label is "fs" or "http");
     }
 
     [Fact]
@@ -348,6 +349,92 @@ public sealed class BuiltinLanguageFeatureTests
         var completions = service.GetCompletions("test.as", source, new TextPosition(2, 11));
 
         Assert.Contains(completions.Items, item => item.Label == "modules" && item.Kind == CompletionItemKind.Property && item.ReadOnly);
+    }
+
+    [Fact]
+    public void CompletionReturnsBuiltinModuleMembersForImportAlias()
+    {
+        const string source =
+            """
+            @module(TEST);
+            import files from 'fs';
+            export func run() {
+                files.
+            }
+            """;
+        var service = CreateService();
+
+        var completions = service.GetCompletions(sourceName: "test.as", source, new TextPosition(3, 10));
+
+        Assert.Contains(completions.Items, item => item.Label == "readText" && item.Kind == CompletionItemKind.Method);
+        Assert.Contains(completions.Items, item => item.Label == "appendBytes" && item.Kind == CompletionItemKind.Method);
+        Assert.Contains(completions.Items, item => item.Label == "size" && item.Kind == CompletionItemKind.Method);
+    }
+
+    [Fact]
+    public void HoverAndSignatureHelpResolveBuiltinModuleImportAlias()
+    {
+        const string source =
+            """
+            @module(TEST);
+            import web from 'http';
+            export func run() {
+                return web.getAsync('https://example.test', (error, response) => {});
+            }
+            """;
+        var service = CreateService();
+
+        var hover = service.GetHover("test.as", source, PositionOf(source, "getAsync"));
+        var signature = service.GetSignatureHelp("test.as", source, PositionOf(source, "response"));
+
+        Assert.NotNull(hover);
+        Assert.Contains("http.getAsync", hover!.Contents, StringComparison.Ordinal);
+        Assert.Contains("callback(null, response)", hover.Contents, StringComparison.Ordinal);
+        Assert.NotNull(signature);
+        Assert.Equal(
+            "http.getAsync(url: string, options: HttpRequestOptions?, callback: function): boolean",
+            Assert.Single(signature!.Signatures).Label);
+    }
+
+    [Fact]
+    public void BuiltinModuleImportsDoNotProduceMissingImportDiagnostics()
+    {
+        const string source =
+            """
+            @module(TEST);
+            import files from 'fs';
+            import web from 'http';
+            export func run() {
+                return files.exist('.') && web != null;
+            }
+            """;
+        var service = CreateService();
+
+        var diagnostics = service.GetDiagnostics("test.as", source);
+
+        Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Code == "AURORA-IMPORT-NOT-FOUND");
+    }
+
+    [Fact]
+    public void DefinitionReturnsBuiltinModuleDeclarationDocument()
+    {
+        const string source =
+            """
+            @module(TEST);
+            import files from 'fs';
+            export func run(path) {
+                return files.readText(path);
+            }
+            """;
+        var service = CreateService();
+
+        var definition = service.GetDefinition("test.as", source, PositionOf(source, "readText"));
+
+        Assert.NotNull(definition);
+        Assert.Equal("aurora-builtin:/fs.as", definition!.Path);
+        var document = service.GetBuiltinDocument(definition.Path);
+        Assert.NotNull(document);
+        Assert.Contains("fs.readText(path: String | Path): String;", document!.Text, StringComparison.Ordinal);
     }
 
     [Fact]

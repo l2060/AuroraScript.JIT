@@ -37,6 +37,21 @@ internal static class BuiltinFormat
         return builder.ToString();
     }
 
+    public static string FormatModule(
+        BuiltinApiModule module,
+        string? alias = null,
+        string? locale = null)
+    {
+        var builder = new StringBuilder();
+        builder
+            .Append("```").Append(MarkdownLanguageId).Append('\n')
+            .Append("import ").Append(string.IsNullOrWhiteSpace(alias) ? module.Name : alias)
+            .Append(" from \"").Append(module.ModulePath).Append("\";\n")
+            .Append("```");
+        AppendNotes(builder, module.Documentation.GetNotes(locale));
+        return builder.ToString();
+    }
+
     public static string FormatMember(BuiltinApiMember member, string? locale = null)
     {
         var builder = new StringBuilder();

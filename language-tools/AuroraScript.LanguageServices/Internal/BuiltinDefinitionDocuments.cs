@@ -19,6 +19,7 @@ internal sealed class BuiltinDefinitionDocuments
     };
 
     private readonly Dictionary<string, DocumentInfo> _documentsByOwner = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, DocumentInfo> _documentsByModulePath = new(StringComparer.Ordinal);
     private readonly Dictionary<string, DocumentInfo> _documentsByTypeName = new(StringComparer.Ordinal);
     private readonly Dictionary<string, DocumentInfo> _documentsByUri = new(StringComparer.Ordinal);
     private readonly HashSet<string> _knownTypes = new(StringComparer.Ordinal);
@@ -52,6 +53,13 @@ internal sealed class BuiltinDefinitionDocuments
             _documentsByUri[document.Uri] = document;
         }
 
+        foreach (var pair in catalog.Modules)
+        {
+            var document = BuildModuleDocument(pair.Value);
+            _documentsByModulePath[pair.Key] = document;
+            _documentsByUri[document.Uri] = document;
+        }
+
         for (var i = 0; i < SyntheticTypeNames.Length; i++)
         {
             var typeName = SyntheticTypeNames[i];
@@ -82,6 +90,34 @@ internal sealed class BuiltinDefinitionDocuments
     {
         location = null!;
         if (!_documentsByOwner.TryGetValue(ownerName, out var document) ||
+            !document.MemberRanges.TryGetValue(memberName, out var range))
+        {
+            return false;
+        }
+
+        location = new DefinitionLocation(document.Uri, range);
+        return true;
+    }
+
+    public bool TryGetModuleLocation(string modulePath, out DefinitionLocation location)
+    {
+        location = null!;
+        if (!_documentsByModulePath.TryGetValue(modulePath, out var document))
+        {
+            return false;
+        }
+
+        location = new DefinitionLocation(document.Uri, document.GlobalRange);
+        return true;
+    }
+
+    public bool TryGetModuleMemberLocation(
+        string modulePath,
+        string memberName,
+        out DefinitionLocation location)
+    {
+        location = null!;
+        if (!_documentsByModulePath.TryGetValue(modulePath, out var document) ||
             !document.MemberRanges.TryGetValue(memberName, out var range))
         {
             return false;
@@ -181,6 +217,47 @@ internal sealed class BuiltinDefinitionDocuments
         }
 
         return new DocumentInfo(uri, builder.ToString(), globalRange, memberRanges, builtinReferences);
+    }
+
+    private DocumentInfo BuildModuleDocument(BuiltinApiModule module)
+    {
+        var uri = Uri(module.Name);
+        var builder = new DocumentTextBuilder();
+        var memberRanges = new Dictionary<string, TextRange>(StringComparer.Ordinal);
+        var builtinReferences = new List<BuiltinReference>();
+
+        builder.AppendLine("// AuroraScript built-in module declaration document.");
+        builder.AppendLine("// Generated from the runtime API catalog for editor navigation.");
+        builder.AppendLine();
+
+        AppendDocumentation(builder, uri, module.Documentation.GetNotes(_locale), null, null, builtinReferences);
+        builder.Append("import ");
+        var moduleRange = builder.AppendToken(uri, module.Name);
+        builder.Append(" from \"").Append(module.ModulePath).AppendLine("\";");
+
+        if (module.Members.Count != 0)
+        {
+            builder.AppendLine();
+        }
+
+        foreach (var memberPair in module.Members)
+        {
+            AppendMember(
+                builder,
+                uri,
+                module.Name,
+                memberPair.Value,
+                includePrototype: false,
+                memberRanges,
+                builtinReferences);
+        }
+
+        return new DocumentInfo(
+            uri,
+            builder.ToString(),
+            moduleRange,
+            memberRanges,
+            builtinReferences);
     }
 
     private static DocumentInfo BuildSyntheticTypeDocument(string typeName)

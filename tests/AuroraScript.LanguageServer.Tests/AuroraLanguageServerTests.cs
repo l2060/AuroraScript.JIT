@@ -23,6 +23,10 @@ public sealed class AuroraLanguageServerTests
         Assert.True(catalog.TryGetGlobal("Math", out var math));
         Assert.True(math.TryGetMember("abs", out var abs));
         Assert.Equal("number", abs.ReturnType);
+        Assert.True(catalog.TryGetModule("fs", out var fileSystem));
+        Assert.True(fileSystem.TryGetMember("readText", out _));
+        Assert.True(catalog.TryGetModule("http", out var http));
+        Assert.True(http.TryGetMember("getAsync", out _));
     }
 
     [Fact]
@@ -77,6 +81,24 @@ public sealed class AuroraLanguageServerTests
         var diagnostic = diagnosticNode!.AsObject();
         Assert.Equal("AURORA-BUILTIN-READONLY", diagnostic["code"]!.GetValue<string>());
         Assert.Contains("Math.PI", diagnostic["message"]!.GetValue<string>(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DidOpenRecognizesBuiltinFileSystemImport()
+    {
+        var server = CreateServer();
+        const string source =
+            """
+            @module(TEST);
+            import fs from 'fs';
+            export func run(path) {
+                return fs.readText(path);
+            }
+            """;
+
+        var result = await DidOpen(server, source);
+
+        Assert.Empty(PublishedDiagnostics(result, TestUri));
     }
 
     [Fact]

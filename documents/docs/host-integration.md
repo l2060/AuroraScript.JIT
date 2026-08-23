@@ -26,6 +26,92 @@ var options = EngineOptions.Default
 var engine = new AuroraEngine(options);
 ```
 
+### Opt-In Built-In Modules
+
+Native modules are capabilities selected by the host. `EngineOptions.Default.BuiltIns` is empty, so modules such as file-system or HTTP access are unavailable unless the host explicitly enables them:
+
+```csharp
+using AuroraScript.Runtime.Package;
+
+var options = EngineOptions.Default
+    .WithBuiltIns(builtIns => builtIns.Add(BuiltInModules.FileSystem))
+    .WithCompiler(compiler =>
+        compiler.SourceResolver = ScriptSources.FileSystem("scripts"));
+```
+
+Scripts can then import the selected module by its bare path:
+
+```as
+import fs from "fs";
+```
+
+Bare `"fs"` resolves to the enabled native module before the project resolver. Relative paths such as `"./fs"` and `"../fs"` continue to use the project resolver. Built-in modules are dependency-only sources and are not returned by `BuildAsync()` source enumeration.
+
+Each engine and script domain receives its own module instance. Selecting a module for one engine does not make it available to another engine. Built-in selections must be finalized before constructing `AuroraEngine` so compiler resolution and runtime registration stay consistent.
+
+Every path parameter exposed by `fs` accepts either a path string or a script `Path` object. Write, append, copy, move, and directory-creation operations return `true` when they complete. The module provides these baseline APIs:
+
+| Script API | Result and behavior |
+| --- | --- |
+| `readText(path)` | Reads a UTF-8 text file and returns a string. |
+| `readBytes(path)` | Reads a file and returns a `UInt8Array`. |
+| `writeText(path, text)` / `appendText(path, text)` | Replaces or appends text. Parent directories are not created automatically. |
+| `writeBytes(path, bytes)` / `appendBytes(path, bytes)` | Replaces or appends a `UInt8Array`. |
+| `exist(path)` | Returns whether a file or directory exists. |
+| `isFile(path)` / `isDir(path)` | Tests the existing path kind. |
+| `size(path)` | Returns a file's length in bytes as a number. Directories are rejected. |
+| `mkDir(path)` | Creates the directory and any missing parent directories. |
+| `dir(path)` | Returns the top-level file and directory names in ordinal sorted order. |
+| `copy(source, destination, overwrite = false)` | Copies a file or recursively copies a directory. With overwrite enabled an existing directory is merged; directory links are rejected instead of followed. |
+| `move(source, destination, overwrite = false)` | Moves a file or directory. With `overwrite = true`, an existing destination directory is replaced. |
+| `delete(path, recursive = false)` | Deletes a file or directory and returns `false` when it does not exist. A non-empty directory requires an explicit `recursive = true`. |
+
+File-system failures are reported as `AuroraRuntimeException` values whose messages identify the `fs` method and affected path. `overwrite` and `recursive` default to `false` and must be booleans when supplied.
+
+#### HTTP Client Module
+
+Enable HTTP access independently and import its bare module path:
+
+```csharp
+var options = EngineOptions.Default.WithBuiltIns(builtIns =>
+    builtIns.Add(BuiltInModules.HttpClient));
+```
+
+```as
+import http from "http";
+```
+
+The synchronous methods block the current script execution until the response body has been read:
+
+- `request(method, url, options?)`
+- `get(url, options?)`, `delete(url, options?)`, `head(url, options?)`
+- `post(url, body?, options?)`, `put(url, body?, options?)`, `patch(url, body?, options?)`
+
+Each method also has a callback form named with an `Async` suffix. The callback is always the final argument; omitted body or options arguments may be left out:
+
+```as
+http.getAsync(url, { timeout: 5000 }, (error, response) => {
+    if (error != null) {
+        console.error(error.message);
+        return;
+    }
+    console.log(response.status, response.text);
+});
+```
+
+Async methods return `true` after scheduling the request. Their callbacks run from a detached script context, so the original call may return before the callback executes. The callback convention is `callback(null, response)` for a completed HTTP exchange and `callback(error, null)` for transport, timeout, or response-reading failures. HTTP error status codes such as 404 and 500 are normal responses with `ok = false`.
+
+The optional request object supports:
+
+| Option | Type and behavior |
+| --- | --- |
+| `headers` | Object whose values are strings or string arrays. |
+| `body` | String or `UInt8Array`; useful with generic `request`. A positional verb body takes precedence. |
+| `contentType` | Non-empty string. Defaults to UTF-8 text or `application/octet-stream` according to the body type. |
+| `timeout` | Positive integer timeout in milliseconds. |
+
+Responses are frozen objects with `status`, `statusText`, `ok`, final `url`, `headers`, `body`, `text`, and `bytes`. Header keys are normalized to lowercase. `body` and `text` contain the decoded response text, while `bytes` is the buffered response content as a `UInt8Array`. Responses are fully buffered, redirects and common content decompression are handled by the underlying .NET client, and cookies are not retained between requests.
+
 Common compilation modes:
 
 - `CompilationMode.Dynamic`: fastest in-memory emission. Best for services that do not need persisted DLL/PDB output.

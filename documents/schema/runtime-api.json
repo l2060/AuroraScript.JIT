@@ -2,6 +2,431 @@
   "$schema": "runtime-api.schema.json",
   "language": "AuroraScript",
   "versionTarget": "4.0.0",
+  "modules": {
+    "fs": {
+      "kind": "module",
+      "modulePath": "fs",
+      "members": {
+        "readText": {
+          "kind": "method",
+          "parameters": [
+            { "name": "path", "type": "string|Path" }
+          ],
+          "returns": "string",
+          "notes": {
+            "en": ["Reads a text file using the platform UTF-8 text-file behavior."],
+            "zh-CN": ["使用平台 UTF-8 文本文件行为读取文件。"]
+          }
+        },
+        "readBytes": {
+          "kind": "method",
+          "parameters": [
+            { "name": "path", "type": "string|Path" }
+          ],
+          "returns": "UInt8Array",
+          "notes": {
+            "en": ["Reads all file bytes into a new UInt8Array."],
+            "zh-CN": ["读取文件的全部字节并返回新的 UInt8Array。"]
+          }
+        },
+        "writeText": {
+          "kind": "method",
+          "parameters": [
+            { "name": "path", "type": "string|Path" },
+            { "name": "text", "type": "string" }
+          ],
+          "returns": "boolean",
+          "notes": {
+            "en": ["Creates or replaces a text file. Parent directories are not created automatically."],
+            "zh-CN": ["创建或替换文本文件；不会自动创建父目录。"]
+          }
+        },
+        "writeBytes": {
+          "kind": "method",
+          "parameters": [
+            { "name": "path", "type": "string|Path" },
+            { "name": "bytes", "type": "UInt8Array" }
+          ],
+          "returns": "boolean",
+          "notes": {
+            "en": ["Creates or replaces a binary file. Parent directories are not created automatically."],
+            "zh-CN": ["创建或替换二进制文件；不会自动创建父目录。"]
+          }
+        },
+        "appendText": {
+          "kind": "method",
+          "parameters": [
+            { "name": "path", "type": "string|Path" },
+            { "name": "text", "type": "string" }
+          ],
+          "returns": "boolean",
+          "notes": {
+            "en": ["Appends text, creating the file when it does not exist."],
+            "zh-CN": ["追加文本；文件不存在时创建文件。"]
+          }
+        },
+        "appendBytes": {
+          "kind": "method",
+          "parameters": [
+            { "name": "path", "type": "string|Path" },
+            { "name": "bytes", "type": "UInt8Array" }
+          ],
+          "returns": "boolean",
+          "notes": {
+            "en": ["Appends bytes, creating the file when it does not exist."],
+            "zh-CN": ["追加字节；文件不存在时创建文件。"]
+          }
+        },
+        "exist": {
+          "kind": "method",
+          "parameters": [
+            { "name": "path", "type": "string|Path" }
+          ],
+          "returns": "boolean",
+          "notes": {
+            "en": ["Returns whether a file or directory exists."],
+            "zh-CN": ["返回文件或目录是否存在。"]
+          }
+        },
+        "isFile": {
+          "kind": "method",
+          "parameters": [
+            { "name": "path", "type": "string|Path" }
+          ],
+          "returns": "boolean",
+          "notes": {
+            "en": ["Returns whether the path is an existing file."],
+            "zh-CN": ["返回路径是否为已存在的文件。"]
+          }
+        },
+        "isDir": {
+          "kind": "method",
+          "parameters": [
+            { "name": "path", "type": "string|Path" }
+          ],
+          "returns": "boolean",
+          "notes": {
+            "en": ["Returns whether the path is an existing directory."],
+            "zh-CN": ["返回路径是否为已存在的目录。"]
+          }
+        },
+        "size": {
+          "kind": "method",
+          "parameters": [
+            { "name": "path", "type": "string|Path" }
+          ],
+          "returns": "number",
+          "notes": {
+            "en": ["Returns an existing file's byte length as a script number. Directories are rejected."],
+            "zh-CN": ["以脚本 number 返回已存在文件的字节长度；目录会被拒绝。"]
+          }
+        },
+        "mkDir": {
+          "kind": "method",
+          "parameters": [
+            { "name": "path", "type": "string|Path" }
+          ],
+          "returns": "boolean",
+          "notes": {
+            "en": ["Creates a directory and any missing parent directories."],
+            "zh-CN": ["创建目录以及缺失的父目录。"]
+          }
+        },
+        "dir": {
+          "kind": "method",
+          "parameters": [
+            { "name": "path", "type": "string|Path" }
+          ],
+          "returns": "string[]",
+          "notes": {
+            "en": ["Returns top-level file and directory names sorted with ordinal comparison."],
+            "zh-CN": ["返回顶层文件与目录名称，并按 Ordinal 规则排序。"]
+          }
+        },
+        "copy": {
+          "kind": "method",
+          "parameters": [
+            { "name": "source", "type": "string|Path" },
+            { "name": "destination", "type": "string|Path" },
+            { "name": "overwrite", "type": "boolean", "optional": true }
+          ],
+          "returns": "boolean",
+          "notes": {
+            "en": ["Copies a file or recursively copies a directory. Overwrite defaults to false; an existing directory is merged when overwrite is true, and directory links are not followed."],
+            "zh-CN": ["复制文件或递归复制目录。overwrite 默认为 false；为 true 时合并已有目录，且不会跟随目录链接。"]
+          }
+        },
+        "move": {
+          "kind": "method",
+          "parameters": [
+            { "name": "source", "type": "string|Path" },
+            { "name": "destination", "type": "string|Path" },
+            { "name": "overwrite", "type": "boolean", "optional": true }
+          ],
+          "returns": "boolean",
+          "notes": {
+            "en": ["Moves a file or directory. Overwrite defaults to false; an existing destination directory is replaced only when explicitly enabled."],
+            "zh-CN": ["移动文件或目录。overwrite 默认为 false；仅在显式启用时替换已有目标目录。"]
+          }
+        },
+        "delete": {
+          "kind": "method",
+          "parameters": [
+            { "name": "path", "type": "string|Path" },
+            { "name": "recursive", "type": "boolean", "optional": true }
+          ],
+          "returns": "boolean",
+          "notes": {
+            "en": ["Deletes a file or directory and returns false when it does not exist. Recursive defaults to false."],
+            "zh-CN": ["删除文件或目录；路径不存在时返回 false。recursive 默认为 false。"]
+          }
+        }
+      },
+      "notes": {
+        "en": [
+          "Opt-in native file-system module imported with `import fs from \"fs\";`.",
+          "Every path parameter accepts string or Path. File-system failures are reported as AuroraRuntimeException values."
+        ],
+        "zh-CN": [
+          "通过 `import fs from \"fs\";` 导入的可选原生文件系统模块。",
+          "所有路径参数均支持 string 或 Path；文件系统失败统一报告为 AuroraRuntimeException。"
+        ]
+      }
+    },
+    "http": {
+      "kind": "module",
+      "modulePath": "http",
+      "members": {
+        "request": {
+          "kind": "method",
+          "parameters": [
+            { "name": "method", "type": "string" },
+            { "name": "url", "type": "string" },
+            { "name": "options", "type": "HttpRequestOptions", "optional": true }
+          ],
+          "returns": "HttpResponse",
+          "notes": {
+            "en": ["Sends a synchronous request with an absolute HTTP or HTTPS URL."],
+            "zh-CN": ["使用绝对 HTTP 或 HTTPS URL 同步发送请求。"]
+          }
+        },
+        "requestAsync": {
+          "kind": "method",
+          "parameters": [
+            { "name": "method", "type": "string" },
+            { "name": "url", "type": "string" },
+            { "name": "options", "type": "HttpRequestOptions", "optional": true },
+            { "name": "callback", "type": "function" }
+          ],
+          "returns": "boolean",
+          "notes": {
+            "en": ["Schedules a request and calls callback(null, response) or callback(error, null). The callback must be the final argument."],
+            "zh-CN": ["调度请求并调用 callback(null, response) 或 callback(error, null)；callback 必须是最后一个参数。"]
+          }
+        },
+        "get": {
+          "kind": "method",
+          "parameters": [
+            { "name": "url", "type": "string" },
+            { "name": "options", "type": "HttpRequestOptions", "optional": true }
+          ],
+          "returns": "HttpResponse",
+          "notes": {
+            "en": ["Sends a synchronous GET request."],
+            "zh-CN": ["同步发送 GET 请求。"]
+          }
+        },
+        "getAsync": {
+          "kind": "method",
+          "parameters": [
+            { "name": "url", "type": "string" },
+            { "name": "options", "type": "HttpRequestOptions", "optional": true },
+            { "name": "callback", "type": "function" }
+          ],
+          "returns": "boolean",
+          "notes": {
+            "en": ["Schedules a GET request and calls callback(null, response) or callback(error, null). The callback is the final argument."],
+            "zh-CN": ["调度 GET 请求并调用 callback(null, response) 或 callback(error, null)；callback 是最后一个参数。"]
+          }
+        },
+        "post": {
+          "kind": "method",
+          "parameters": [
+            { "name": "url", "type": "string" },
+            { "name": "body", "type": "string|UInt8Array", "optional": true },
+            { "name": "options", "type": "HttpRequestOptions", "optional": true }
+          ],
+          "overloads": [
+            "post(url: string, options?: HttpRequestOptions)",
+            "post(url: string, body?: string|UInt8Array, options?: HttpRequestOptions)"
+          ],
+          "returns": "HttpResponse",
+          "notes": {
+            "en": ["Sends a synchronous POST request. A two-argument object is treated as options; a positional body takes precedence over options.body."],
+            "zh-CN": ["同步发送 POST 请求。双参数调用中的对象视为 options；位置 body 优先于 options.body。"]
+          }
+        },
+        "postAsync": {
+          "kind": "method",
+          "parameters": [
+            { "name": "url", "type": "string" },
+            { "name": "body", "type": "string|UInt8Array", "optional": true },
+            { "name": "options", "type": "HttpRequestOptions", "optional": true },
+            { "name": "callback", "type": "function" }
+          ],
+          "overloads": [
+            "postAsync(url: string, callback: function)",
+            "postAsync(url: string, options: HttpRequestOptions, callback: function)",
+            "postAsync(url: string, body: string|UInt8Array, callback: function)",
+            "postAsync(url: string, body: string|UInt8Array, options: HttpRequestOptions, callback: function)"
+          ],
+          "returns": "boolean",
+          "notes": {
+            "en": ["Schedules a POST request and calls callback(null, response) or callback(error, null). The callback is the final argument."],
+            "zh-CN": ["调度 POST 请求并调用 callback(null, response) 或 callback(error, null)；callback 是最后一个参数。"]
+          }
+        },
+        "put": {
+          "kind": "method",
+          "parameters": [
+            { "name": "url", "type": "string" },
+            { "name": "body", "type": "string|UInt8Array", "optional": true },
+            { "name": "options", "type": "HttpRequestOptions", "optional": true }
+          ],
+          "overloads": [
+            "put(url: string, options?: HttpRequestOptions)",
+            "put(url: string, body?: string|UInt8Array, options?: HttpRequestOptions)"
+          ],
+          "returns": "HttpResponse",
+          "notes": {
+            "en": ["Sends a synchronous PUT request. A positional body takes precedence over options.body."],
+            "zh-CN": ["同步发送 PUT 请求；位置 body 优先于 options.body。"]
+          }
+        },
+        "putAsync": {
+          "kind": "method",
+          "parameters": [
+            { "name": "url", "type": "string" },
+            { "name": "body", "type": "string|UInt8Array", "optional": true },
+            { "name": "options", "type": "HttpRequestOptions", "optional": true },
+            { "name": "callback", "type": "function" }
+          ],
+          "overloads": [
+            "putAsync(url: string, callback: function)",
+            "putAsync(url: string, options: HttpRequestOptions, callback: function)",
+            "putAsync(url: string, body: string|UInt8Array, callback: function)",
+            "putAsync(url: string, body: string|UInt8Array, options: HttpRequestOptions, callback: function)"
+          ],
+          "returns": "boolean",
+          "notes": {
+            "en": ["Schedules a PUT request and calls callback(null, response) or callback(error, null). The callback is the final argument."],
+            "zh-CN": ["调度 PUT 请求并调用 callback(null, response) 或 callback(error, null)；callback 是最后一个参数。"]
+          }
+        },
+        "patch": {
+          "kind": "method",
+          "parameters": [
+            { "name": "url", "type": "string" },
+            { "name": "body", "type": "string|UInt8Array", "optional": true },
+            { "name": "options", "type": "HttpRequestOptions", "optional": true }
+          ],
+          "overloads": [
+            "patch(url: string, options?: HttpRequestOptions)",
+            "patch(url: string, body?: string|UInt8Array, options?: HttpRequestOptions)"
+          ],
+          "returns": "HttpResponse",
+          "notes": {
+            "en": ["Sends a synchronous PATCH request. A positional body takes precedence over options.body."],
+            "zh-CN": ["同步发送 PATCH 请求；位置 body 优先于 options.body。"]
+          }
+        },
+        "patchAsync": {
+          "kind": "method",
+          "parameters": [
+            { "name": "url", "type": "string" },
+            { "name": "body", "type": "string|UInt8Array", "optional": true },
+            { "name": "options", "type": "HttpRequestOptions", "optional": true },
+            { "name": "callback", "type": "function" }
+          ],
+          "overloads": [
+            "patchAsync(url: string, callback: function)",
+            "patchAsync(url: string, options: HttpRequestOptions, callback: function)",
+            "patchAsync(url: string, body: string|UInt8Array, callback: function)",
+            "patchAsync(url: string, body: string|UInt8Array, options: HttpRequestOptions, callback: function)"
+          ],
+          "returns": "boolean",
+          "notes": {
+            "en": ["Schedules a PATCH request and calls callback(null, response) or callback(error, null). The callback is the final argument."],
+            "zh-CN": ["调度 PATCH 请求并调用 callback(null, response) 或 callback(error, null)；callback 是最后一个参数。"]
+          }
+        },
+        "delete": {
+          "kind": "method",
+          "parameters": [
+            { "name": "url", "type": "string" },
+            { "name": "options", "type": "HttpRequestOptions", "optional": true }
+          ],
+          "returns": "HttpResponse",
+          "notes": {
+            "en": ["Sends a synchronous DELETE request."],
+            "zh-CN": ["同步发送 DELETE 请求。"]
+          }
+        },
+        "deleteAsync": {
+          "kind": "method",
+          "parameters": [
+            { "name": "url", "type": "string" },
+            { "name": "options", "type": "HttpRequestOptions", "optional": true },
+            { "name": "callback", "type": "function" }
+          ],
+          "returns": "boolean",
+          "notes": {
+            "en": ["Schedules a DELETE request and calls callback(null, response) or callback(error, null). The callback is the final argument."],
+            "zh-CN": ["调度 DELETE 请求并调用 callback(null, response) 或 callback(error, null)；callback 是最后一个参数。"]
+          }
+        },
+        "head": {
+          "kind": "method",
+          "parameters": [
+            { "name": "url", "type": "string" },
+            { "name": "options", "type": "HttpRequestOptions", "optional": true }
+          ],
+          "returns": "HttpResponse",
+          "notes": {
+            "en": ["Sends a synchronous HEAD request."],
+            "zh-CN": ["同步发送 HEAD 请求。"]
+          }
+        },
+        "headAsync": {
+          "kind": "method",
+          "parameters": [
+            { "name": "url", "type": "string" },
+            { "name": "options", "type": "HttpRequestOptions", "optional": true },
+            { "name": "callback", "type": "function" }
+          ],
+          "returns": "boolean",
+          "notes": {
+            "en": ["Schedules a HEAD request and calls callback(null, response) or callback(error, null). The callback is the final argument."],
+            "zh-CN": ["调度 HEAD 请求并调用 callback(null, response) 或 callback(error, null)；callback 是最后一个参数。"]
+          }
+        }
+      },
+      "notes": {
+        "en": [
+          "Opt-in native HTTP client module imported with `import http from \"http\";`.",
+          "HttpRequestOptions supports headers, body, contentType, and a positive integer timeout in milliseconds.",
+          "HttpResponse contains status, statusText, ok, url, lowercase headers, body, text, and bytes. HTTP error status codes are normal responses; only transport, timeout, and response-reading failures become errors.",
+          "Responses are fully buffered. Redirects and common decompression are automatic, and cookies are not retained."
+        ],
+        "zh-CN": [
+          "通过 `import http from \"http\";` 导入的可选原生 HTTP 客户端模块。",
+          "HttpRequestOptions 支持 headers、body、contentType，以及以毫秒为单位的正整数 timeout。",
+          "HttpResponse 包含 status、statusText、ok、url、小写键 headers、body、text 和 bytes。HTTP 错误状态码仍是正常响应；仅传输、超时和响应读取失败进入错误流程。",
+          "响应会被完整缓冲；自动处理重定向和常见解压，且不会保留 Cookie。"
+        ]
+      }
+    }
+  },
   "globals": {
     "Array": {
       "kind": "constructor",
