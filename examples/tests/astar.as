@@ -203,7 +203,7 @@ export func newPathBuffer(astar) {
 	return Array.withCapacity(astar.width + astar.height);
 }
 
-export func findPathInto(astar, startX, startY, goalX, goalY, outPath, allowDiagonal = true, avoidCornerCut = true) {
+export func findPathInto(astar, startX, startY, goalX,  goalY, outPath, allowDiagonal = true, avoidCornerCut = true) {
 	if (astar == null) {
 		throw "astar is required";
 	}
@@ -248,7 +248,7 @@ export func findPathInto(astar, startX, startY, goalX, goalY, outPath, allowDiag
 		searchId = 1;
 	}
 	astar.searchId = searchId;
-
+	
 	var costs = tdoc Float64Array $(astar.costs);
 	var gScore = tdoc Float64Array $(astar.gScore);
 	var parents = tdoc Int32Array $(astar.parents);

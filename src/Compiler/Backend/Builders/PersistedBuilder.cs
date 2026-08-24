@@ -25,7 +25,6 @@ namespace AuroraScript.Compiler.Backend.Builders
         private readonly PersistedAssemblyBuilder _assemblyBuilder;
         private readonly ModuleBuilder _moduleBuilder;
         private readonly Dictionary<String, ISymbolDocumentWriter> _sourceDocumentMap = new();
-        private int _moduleTypeCount;
 
         public PersistedBuilder(EngineOptions options) : base(options)
         {
@@ -38,7 +37,7 @@ namespace AuroraScript.Compiler.Backend.Builders
 
         public override (MethodInfo Method, ILGenerator IL) DefineModuleInitMethod(ModuleDeclaration module)
         {
-            var typeBuilder = _moduleBuilder.DefineType(ConfuseTypeName("AuroraModule_" + _moduleTypeCount++, ConfuseTarget.Class), TypeAttributes.Public | TypeAttributes.Class | TypeAttributes.Sealed);
+            var typeBuilder = _moduleBuilder.DefineType(ConfuseTypeName(module.Source.ModulePath, ConfuseTarget.Class), TypeAttributes.Public | TypeAttributes.Class | TypeAttributes.Sealed);
             var methodBuilder = typeBuilder.DefineMethod(ConfuseTypeName("Initialize", ConfuseTarget.Method), MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig, typeof(void), [typeof(ScriptContext), typeof(Span<ScriptDatum>)]);
             ISymbolDocumentWriter symbolDoc = null;
             symbolDoc = _moduleBuilder.DefineDocument(module.Source.FullPath, AuroraScriptLanguageId, MicrosoftVendorId, TextDocumentType);

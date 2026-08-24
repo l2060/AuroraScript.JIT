@@ -14,10 +14,10 @@ func ticksToMs(ticks) {
 
 func copyArray(a) {
 	var n = a.length;
-	var b = Array.withCapacity(n);
+	var b = new Int64Array(n);
 
 	for (var i = 0; i < n; i++) {
-		b.push(a[i]);
+		b[i]= a[i];
 	}
 
 	return b;
@@ -62,7 +62,7 @@ export func calcStats(samples) {
 	}
 
 	var sorted = copyArray(samples);
-	sorted.sort();
+	// sorted.sort();
 
 	var sum = 0;
 
@@ -120,7 +120,7 @@ export func benchmark(name, warmups, samples, innerLoops, work) {
 		runLoops(innerLoops, work);
 	}
 
-	var times = Array.withCapacity(samples);
+	var times = new Int64Array(samples);
 	var guard = 0;
 
 	for (var s = 0; s < samples; s++) {
@@ -131,7 +131,7 @@ export func benchmark(name, warmups, samples, innerLoops, work) {
 		var t1 = nowTicks();
 
 		var elapsedMs = ticksToMs(t1 - t0);
-		times.push(elapsedMs / innerLoops);
+		times[s]=(elapsedMs / innerLoops);
 	}
 
 	var stat = calcStats(times);
@@ -178,10 +178,10 @@ export func autoBenchmark(name, work, warmups, samples, minSampleMs, maxInnerLoo
 
 // 示例：测试一个简单数组求和函数
 export func run() {
-	var data = Array.withCapacity(10000);
+	var data = new Int64Array(10000);
 
 	for (var i = 0; i < 10000; i++) {
-		data.push(i);
+		data[i]=i;
 	}
 
 	var work = () => {

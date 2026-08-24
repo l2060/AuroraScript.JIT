@@ -11,7 +11,7 @@ func testFileSystem() {
 func testHttpGet() {
 
 	http.getAsync("https://www.baidu.com", null, (error, res) => {
-			console.log(error, res);
+			console.log(error, res.status);
 		});
 }
 

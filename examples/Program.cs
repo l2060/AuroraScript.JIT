@@ -33,7 +33,7 @@ namespace Examples
             compiler.SourceResolver = ScriptSources.Composite(memorySource, fileSystemSource);
             compiler.MaxDegreeOfParallelism = 0;
             compiler.ExtName = "as";
-            compiler.Mode = CompilationMode.Persistence;
+            compiler.Mode = CompilationMode.Dynamic;
         })
         .WithOutput(output =>
         {
@@ -51,7 +51,7 @@ namespace Examples
         })
         .WithOptimization(optimization =>
         {
-            optimization.StackTrace = true;
+            optimization.StackTrace = false;
             optimization.ModuleConstInlining = true;
             optimization.AutoModuleDirectCall = true;
             optimization.Level = OptimizeOptions.Release;

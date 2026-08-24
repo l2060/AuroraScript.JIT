@@ -11,7 +11,6 @@ namespace AuroraScript.Compiler.Backend.Builders
         private readonly AssemblyBuilder _assemblyBuilder;
         private readonly ModuleBuilder _moduleBuilder;
         private TypeBuilder _typeBuilder;
-        private int _moduleTypeCount;
 
         public OnlyRunBuilder(EngineOptions options) : base(options)
         {
@@ -24,7 +23,7 @@ namespace AuroraScript.Compiler.Backend.Builders
 
         public sealed override (MethodInfo Method, ILGenerator IL) DefineModuleInitMethod(ModuleDeclaration module)
         {
-            var typeBuilder = _moduleBuilder.DefineType(ConfuseTypeName("AuroraModule_" + _moduleTypeCount++, ConfuseTarget.Class), TypeAttributes.Public | TypeAttributes.Class);
+            var typeBuilder = _moduleBuilder.DefineType(ConfuseTypeName(module.Source.ModulePath, ConfuseTarget.Class), TypeAttributes.Public | TypeAttributes.Class);
             var methodBuilder = typeBuilder.DefineMethod(ConfuseTypeName("Initialize", ConfuseTarget.Method), MethodAttributes.Public | MethodAttributes.Static, typeof(void), [typeof(ScriptContext), typeof(Span<ScriptDatum>)]);
             RegisterType(module.Source.FullPath, typeBuilder);
             return (methodBuilder, methodBuilder.GetILGenerator());
