@@ -1,6 +1,15 @@
 using AuroraScript.Tests.Infrastructure;
+using AuroraScript.Runtime;
 using System;
+using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Reflection.Emit;
+using System.Reflection.Metadata;
+using System.Reflection.Metadata.Ecma335;
+using System.Reflection.PortableExecutable;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -8,6 +17,12 @@ namespace AuroraScript.Tests;
 
 public sealed class AstarExampleTests
 {
+    private static readonly Dictionary<ushort, OpCode> CilOpCodes = typeof(OpCodes)
+        .GetFields(BindingFlags.Public | BindingFlags.Static)
+        .Where(field => field.FieldType == typeof(OpCode))
+        .Select(field => (OpCode)field.GetValue(null)!)
+        .ToDictionary(opcode => unchecked((ushort)opcode.Value));
+
     [Theory]
     [InlineData(CompilationMode.Dynamic)]
     [InlineData(CompilationMode.OnlyRun)]
@@ -66,6 +81,412 @@ public sealed class AstarExampleTests
                 new object?[] { true, 0, 2, true, true },
                 TestWorkspace.Execute(domain, "verifyOptimizedAstar", "ASTAR"));
         }
+    }
+
+#if NET9_0_OR_GREATER
+    [Fact]
+    public async Task PersistenceEmitsNativeAstarHotCalls()
+    {
+        using var workspace = new TestWorkspace();
+        var source = File.ReadAllText(FindRepositoryFile("examples", "tests", "astar.as"));
+        source = source[..source.IndexOf("// examples", StringComparison.Ordinal)];
+        var assemblyPath = Path.Combine(workspace.Root, "test-output.dll");
+        var engine = workspace.CreateEngine(
+            CompilationMode.Persistence,
+            assemblyOut: assemblyPath,
+            enableModuleConstInlining: true);
+        workspace.WriteSource("main.as", source);
+        await engine.BuildAsync(["main.as"]);
+
+        using var stream = File.OpenRead(assemblyPath);
+        using var peReader = new PEReader(stream);
+        var reader = peReader.GetMetadataReader();
+        MethodDefinition? heuristic = null;
+        MethodDefinitionHandle heuristicHandle = default;
+        MethodDefinitionHandle heuristicDirectHandle = default;
+        MethodDefinitionHandle heapNativeHandle = default;
+        MethodDefinitionHandle findPathHandle = default;
+        foreach (var handle in reader.MethodDefinitions)
+        {
+            var method = reader.GetMethodDefinition(handle);
+            var name = reader.GetString(method.Name);
+            if (string.Equals(name, "astarHeuristic$native", StringComparison.Ordinal))
+            {
+                heuristic = method;
+                heuristicHandle = handle;
+            }
+            else if (string.Equals(name, "astarHeuristic$direct6", StringComparison.Ordinal))
+            {
+                heuristicDirectHandle = handle;
+            }
+            else if (string.Equals(name, "astarHeapPush$native", StringComparison.Ordinal))
+            {
+                heapNativeHandle = handle;
+            }
+            else if (string.Equals(name, "findPathInto$typed", StringComparison.Ordinal))
+            {
+                findPathHandle = handle;
+            }
+        }
+
+        Assert.True(heuristic.HasValue, "Persisted Astar heuristic native method was not emitted.");
+        // DEFAULT, six parameters, return R8, then R8 x4, Boolean, R8.
+        Assert.Equal(
+            [0x00, 0x06, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x02, 0x0d],
+            reader.GetBlobBytes(heuristic.Value.Signature));
+        Assert.False(heuristicHandle.IsNil);
+        Assert.False(heapNativeHandle.IsNil, "Persisted Astar heap push native method was not emitted.");
+        var heapNative = reader.GetMethodDefinition(heapNativeHandle);
+        var heapOpcodes = ReadOpCodes(
+            peReader.GetMethodBody(heapNative.RelativeVirtualAddress).GetILBytes().AsSpan());
+        Assert.Contains(OpCodes.Ldelem_I4, heapOpcodes);
+        Assert.Contains(OpCodes.Ldelem_R8, heapOpcodes);
+        Assert.Contains(OpCodes.Stelem_I4, heapOpcodes);
+        Assert.Contains(OpCodes.Stelem_R8, heapOpcodes);
+        Assert.False(findPathHandle.IsNil, "Persisted Astar path finder method was not emitted.");
+
+        var findPath = reader.GetMethodDefinition(findPathHandle);
+        var il = peReader.GetMethodBody(findPath.RelativeVirtualAddress).GetILBytes().AsSpan();
+        var astarToBooleanCalls = CountCalls(
+            il,
+            GetMemberReferenceTokens(reader, "ValueOps", "ToBoolean"));
+        var astarFromBooleanCalls = CountCalls(
+            il,
+            GetMemberReferenceTokens(reader, "ScriptDatum", "FromBoolean"));
+        Assert.InRange(astarToBooleanCalls, 0, 12);
+        Assert.InRange(astarFromBooleanCalls, 0, 2);
+        Assert.Equal(
+            0,
+            CountCalls(
+                il,
+                GetMemberReferenceTokens(reader, "ValueOps", "NotEqualBoolean")));
+        Assert.Equal(
+            0,
+            CountCalls(
+                il,
+                GetMemberReferenceTokens(reader, "ValueOps", "Add")));
+        Assert.True(
+            ContainsCall(il, MetadataTokens.GetToken(heapNativeHandle)),
+            "findPathInto should call astarHeapPush$native.");
+        Assert.True(
+            ContainsCall(il, MetadataTokens.GetToken(heuristicHandle)),
+            "findPathInto should call astarHeuristic$native.");
+        if (!heuristicDirectHandle.IsNil)
+        {
+            Assert.False(
+                ContainsCall(il, MetadataTokens.GetToken(heuristicDirectHandle)),
+                "Generic callers should not route coercion-only heuristic calls through an adapter.");
+        }
+    }
+
+    [Fact]
+    public async Task PersistenceComparesNumericOperandsWithoutDynamicRelationalCalls()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func compare(value) {
+                return [
+                    value < 0,
+                    value <= 0,
+                    value > 0,
+                    value >= 0,
+                    0 < value
+                ];
+            }
+            """,
+            CompilationMode.Persistence);
+
+        ScriptAssert.Equal(
+            new object?[] { false, false, true, true, true },
+            TestWorkspace.Execute(
+                domain,
+                "compare",
+                arguments: [ScriptDatum.FromNumber(3)]));
+        ScriptAssert.Equal(
+            new object?[] { true, true, false, false, false },
+            TestWorkspace.Execute(
+                domain,
+                "compare",
+                arguments: [ScriptDatum.FromString("-2")]));
+        // Values that cannot be coerced compare false in every direction.
+        ScriptAssert.Equal(
+            new object?[] { false, false, false, false, false },
+            TestWorkspace.Execute(
+                domain,
+                "compare",
+                arguments: [ScriptDatum.FromString("aurora")]));
+
+        var assemblyPath = Path.Combine(workspace.Root, "test-output.dll");
+        using var stream = File.OpenRead(assemblyPath);
+        using var peReader = new PEReader(stream);
+        var reader = peReader.GetMetadataReader();
+        var handle = Assert.Single(reader.MethodDefinitions.Where(candidate =>
+            string.Equals(
+                reader.GetString(reader.GetMethodDefinition(candidate).Name),
+                "compare$typed",
+                StringComparison.Ordinal)));
+        var il = peReader
+            .GetMethodBody(reader.GetMethodDefinition(handle).RelativeVirtualAddress)
+            .GetILBytes()
+            .AsSpan();
+
+        foreach (var name in new[]
+        {
+            "LessBoolean", "LessEqualBoolean", "GreaterBoolean", "GreaterEqualBoolean"
+        })
+        {
+            Assert.Equal(
+                0,
+                CountCalls(il, GetMemberReferenceTokens(reader, "ValueOps", name)));
+        }
+    }
+
+    [Fact]
+    public async Task PersistenceEmitsLogicalConditionsWithoutBooleanDatumRoundTrips()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func check(first, second, value) {
+                if ((value != 1) && first && second && (value != 0)) return 1;
+                return 0;
+            }
+            export func preserveAnd(first, second) {
+                return first && second;
+            }
+            export func preserveOr(first, second) {
+                return first || second;
+            }
+            """,
+            CompilationMode.Persistence);
+
+        ScriptAssert.Equal(
+            1,
+            TestWorkspace.Execute(
+                domain,
+                "check",
+                arguments:
+                [
+                    ScriptDatum.FromBoolean(true),
+                    ScriptDatum.FromNumber(1),
+                    ScriptDatum.FromNumber(2)
+                ]));
+        ScriptAssert.Equal(
+            0,
+            TestWorkspace.Execute(
+                domain,
+                "preserveAnd",
+                arguments:
+                [
+                    ScriptDatum.FromNumber(0),
+                    ScriptDatum.FromString("right")
+                ]));
+        ScriptAssert.Equal(
+            "left",
+            TestWorkspace.Execute(
+                domain,
+                "preserveOr",
+                arguments:
+                [
+                    ScriptDatum.FromString("left"),
+                    ScriptDatum.FromString("right")
+                ]));
+
+        var assemblyPath = Path.Combine(workspace.Root, "test-output.dll");
+        using var stream = File.OpenRead(assemblyPath);
+        using var peReader = new PEReader(stream);
+        var reader = peReader.GetMetadataReader();
+        var checkHandle = Assert.Single(reader.MethodDefinitions.Where(candidate =>
+            string.Equals(
+                reader.GetString(reader.GetMethodDefinition(candidate).Name),
+                "check$typed",
+                StringComparison.Ordinal)));
+        var check = reader.GetMethodDefinition(checkHandle);
+        var il = peReader.GetMethodBody(check.RelativeVirtualAddress).GetILBytes().AsSpan();
+        var toBooleanTokens = GetMemberReferenceTokens(reader, "ValueOps", "ToBoolean");
+        var fromBooleanTokens = GetMemberReferenceTokens(reader, "ScriptDatum", "FromBoolean");
+        var toBooleanCalls = 0;
+        for (var i = 0; i < toBooleanTokens.Length; i++)
+        {
+            toBooleanCalls += CountCalls(il, toBooleanTokens[i]);
+        }
+        var fromBooleanCalls = 0;
+        for (var i = 0; i < fromBooleanTokens.Length; i++)
+        {
+            fromBooleanCalls += CountCalls(il, fromBooleanTokens[i]);
+        }
+
+        Assert.Equal(2, toBooleanCalls);
+        Assert.Equal(0, fromBooleanCalls);
+    }
+
+    [Fact]
+    public async Task PersistenceCachesRepeatedNumericLocalComparisonsAndRefreshesWrites()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func compare(value) {
+                var key = value;
+                var values = new Int32Array(1);
+                values[0] = 1;
+                var before = values[0] != key;
+                if (before) key = 1;
+                return [before, values[0] != key, key];
+            }
+            """,
+            CompilationMode.Persistence);
+
+        ScriptAssert.Equal(
+            new object?[] { false, false, "1" },
+            TestWorkspace.Execute(
+                domain,
+                "compare",
+                arguments: [ScriptDatum.FromString("1")]));
+        ScriptAssert.Equal(
+            new object?[] { true, false, 1 },
+            TestWorkspace.Execute(
+                domain,
+                "compare",
+                arguments: [ScriptDatum.FromString("not-number")]));
+
+        var assemblyPath = Path.Combine(workspace.Root, "test-output.dll");
+        using var stream = File.OpenRead(assemblyPath);
+        using var peReader = new PEReader(stream);
+        var reader = peReader.GetMetadataReader();
+        var handle = Assert.Single(reader.MethodDefinitions.Where(candidate =>
+            string.Equals(
+                reader.GetString(reader.GetMethodDefinition(candidate).Name),
+                "compare$typed",
+                StringComparison.Ordinal)));
+        var method = reader.GetMethodDefinition(handle);
+        var il = peReader.GetMethodBody(method.RelativeVirtualAddress).GetILBytes().AsSpan();
+
+        Assert.Equal(
+            0,
+            CountCalls(
+                il,
+                GetMemberReferenceTokens(reader, "ValueOps", "NotEqualBoolean")));
+    }
+#endif
+
+    private static bool ContainsCall(ReadOnlySpan<byte> il, int metadataToken)
+    {
+        var offset = 0;
+        while (offset < il.Length)
+        {
+            ushort value = il[offset++];
+            if (value == 0xfe)
+            {
+                value = (ushort)(0xfe00 | il[offset++]);
+            }
+            var opcode = CilOpCodes[value];
+            if (opcode == OpCodes.Call &&
+                BinaryPrimitives.ReadInt32LittleEndian(il.Slice(offset, 4)) == metadataToken)
+            {
+                return true;
+            }
+            offset += GetOperandSize(opcode.OperandType, il.Slice(offset));
+        }
+        return false;
+    }
+
+    private static int CountCalls(ReadOnlySpan<byte> il, int metadataToken)
+    {
+        var count = 0;
+        var offset = 0;
+        while (offset < il.Length)
+        {
+            ushort value = il[offset++];
+            if (value == 0xfe)
+            {
+                value = (ushort)(0xfe00 | il[offset++]);
+            }
+            var opcode = CilOpCodes[value];
+            if (opcode == OpCodes.Call &&
+                BinaryPrimitives.ReadInt32LittleEndian(il.Slice(offset, 4)) == metadataToken)
+            {
+                count++;
+            }
+            offset += GetOperandSize(opcode.OperandType, il.Slice(offset));
+        }
+        return count;
+    }
+
+    private static int CountCalls(ReadOnlySpan<byte> il, int[] metadataTokens)
+    {
+        var count = 0;
+        for (var i = 0; i < metadataTokens.Length; i++)
+        {
+            count += CountCalls(il, metadataTokens[i]);
+        }
+        return count;
+    }
+
+    private static int[] GetMemberReferenceTokens(
+        MetadataReader reader,
+        string typeName,
+        string methodName)
+    {
+        return reader.MemberReferences
+            .Where(handle =>
+            {
+                var member = reader.GetMemberReference(handle);
+                if (!string.Equals(reader.GetString(member.Name), methodName, StringComparison.Ordinal) ||
+                    member.Parent.Kind != HandleKind.TypeReference)
+                {
+                    return false;
+                }
+                var type = reader.GetTypeReference((TypeReferenceHandle)member.Parent);
+                return string.Equals(reader.GetString(type.Name), typeName, StringComparison.Ordinal);
+            })
+            .Select(handle => MetadataTokens.GetToken(handle))
+            .ToArray();
+    }
+
+    private static List<OpCode> ReadOpCodes(ReadOnlySpan<byte> il)
+    {
+        var result = new List<OpCode>();
+        var offset = 0;
+        while (offset < il.Length)
+        {
+            ushort value = il[offset++];
+            if (value == 0xfe)
+            {
+                value = (ushort)(0xfe00 | il[offset++]);
+            }
+            var opcode = CilOpCodes[value];
+            result.Add(opcode);
+            offset += GetOperandSize(opcode.OperandType, il.Slice(offset));
+        }
+        return result;
+    }
+
+    private static int GetOperandSize(
+        OperandType operandType,
+        ReadOnlySpan<byte> remaining)
+    {
+        return operandType switch
+        {
+            OperandType.InlineNone => 0,
+            OperandType.ShortInlineBrTarget or OperandType.ShortInlineI or
+                OperandType.ShortInlineVar => 1,
+            OperandType.InlineVar => 2,
+            OperandType.InlineBrTarget or OperandType.InlineField or
+                OperandType.InlineI or OperandType.InlineMethod or
+                OperandType.InlineSig or OperandType.InlineString or
+                OperandType.InlineTok or OperandType.InlineType or
+                OperandType.ShortInlineR => 4,
+            OperandType.InlineI8 or OperandType.InlineR => 8,
+            OperandType.InlineSwitch =>
+                4 + BinaryPrimitives.ReadInt32LittleEndian(remaining) * 4,
+            _ => throw new InvalidOperationException(
+                "Unsupported CIL operand type: " + operandType)
+        };
     }
 
     private static string FindRepositoryFile(params string[] segments)

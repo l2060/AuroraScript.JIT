@@ -36,6 +36,7 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo ToBooleanObject = Method(typeof(ValueOps), nameof(ValueOps.ToBoolean), typeof(ScriptObject));
         public static readonly MethodInfo ToArithmeticNumber = Method(typeof(ValueOps), nameof(ValueOps.ToArithmeticNumber), typeof(ScriptDatum));
         public static readonly MethodInfo TryToNumber = Method(typeof(ValueOps), nameof(ValueOps.TryToNumber), typeof(ScriptDatum), typeof(double).MakeByRefType());
+        public static readonly MethodInfo TryToInteger = Method(typeof(ScriptDatum), nameof(ScriptDatum.TryToInteger), typeof(ScriptDatum).MakeByRefType(), typeof(long).MakeByRefType());
         public static readonly MethodInfo Add = Method(typeof(ValueOps), nameof(ValueOps.Add), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo AddBoolean = Method(typeof(ValueOps), nameof(ValueOps.AddBoolean), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo AddStringRight = Method(typeof(ValueOps), nameof(ValueOps.AddStringRight), typeof(ScriptDatum), typeof(string));

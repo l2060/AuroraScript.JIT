@@ -52,7 +52,11 @@ public sealed class CompilerBackendPlanTests
         var code = TypedModuleCode.Build(modulePlan);
 
         Assert.Equal(
-            [FlowValueType.Number, FlowValueType.Number],
+            new DirectParameterType[]
+            {
+                new DirectParameterType(FlowValueType.Number),
+                new DirectParameterType(FlowValueType.Number)
+            },
             code.GetDirectParameters(sum.Id));
         Assert.Equal(FlowValueType.Number, code.GetDirect(sum.Id).ReturnType);
     }
@@ -90,6 +94,195 @@ public sealed class CompilerBackendPlanTests
         Assert.Equal(FlowValueType.Number, code.GetLocalType(function.LocalSlots.Single(slot => slot.Name == "i").Id));
         Assert.Equal(FlowValueType.Boolean, code.GetLocalType(function.LocalSlots.Single(slot => slot.Name == "enabled").Id));
         Assert.Equal(FlowValueType.String, code.GetLocalType(function.LocalSlots.Single(slot => slot.Name == "label").Id));
+    }
+
+    [Fact]
+    public void TypedFunctionCodeUsesLocalNumericArrayFactsOnlyForAdditionDemand()
+    {
+        var root = Path.GetTempPath();
+        var options = EngineOptions.Default
+            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var module = Parse(
+            """
+            @module(TEST);
+            export func numericArrayAdd() {
+                var values = [41];
+                return values[0] + 1;
+            }
+            """,
+            root);
+        var session = new BackendCompiler(new DynamicBuilder(options), options).CreateModulePlans([module]);
+        var modulePlan = Assert.Single(session.Modules);
+        var function = Assert.Single(modulePlan.Functions, candidate => candidate.Name == "numericArrayAdd");
+        var binary = Assert.IsType<BinaryExpression>(
+            GetSingleReturnExpression(modulePlan, "numericArrayAdd"));
+
+        var code = TypedFunctionBuilder.Build(modulePlan, function);
+
+        Assert.Equal(FlowValueType.Number, code.GetExpressionType(binary));
+        Assert.Equal(FlowValueType.Dynamic, code.GetExpressionType(binary.Left));
+    }
+
+    [Fact]
+    public void TypedFunctionCodePromotesOnlyDemandClosedDynamicLocals()
+    {
+        var root = Path.GetTempPath();
+        var options = EngineOptions.Default
+            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var module = Parse(
+            """
+            @module(TEST);
+            export func run(value) {
+                var numericOnly = value;
+                var booleanOnly = value;
+                var preserved = value;
+                var numericResult = (numericOnly - 1) * 2;
+                var booleanResult = 0;
+                if (booleanOnly) booleanResult = 1;
+                return [numericResult, booleanResult, preserved];
+            }
+            """,
+            root);
+        var session = new BackendCompiler(new DynamicBuilder(options), options).CreateModulePlans([module]);
+        var modulePlan = Assert.Single(session.Modules);
+        var function = Assert.Single(modulePlan.Functions);
+
+        var code = TypedFunctionBuilder.Build(modulePlan, function);
+
+        Assert.Equal(
+            FlowValueType.Number,
+            code.GetLocalType(function.LocalSlots.Single(slot => slot.Name == "numericOnly").Id));
+        Assert.Equal(
+            FlowValueType.Boolean,
+            code.GetLocalType(function.LocalSlots.Single(slot => slot.Name == "booleanOnly").Id));
+        Assert.Equal(
+            FlowValueType.Dynamic,
+            code.GetLocalType(function.LocalSlots.Single(slot => slot.Name == "preserved").Id));
+    }
+
+    [Fact]
+    public void TypedFunctionCodeCoercesNumericLocalsUsedAsAddsIndexesAndStores()
+    {
+        var root = Path.GetTempPath();
+        var options = EngineOptions.Default
+            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var module = Parse(
+            """
+            @module(TEST);
+            export func numericUses(state) {
+                var width = state.width;
+                var searchId = state.searchId + 1;
+                var minCost = state.minCost;
+                var current = 1;
+                var values = new Int32Array(8);
+                if (searchId > 100) searchId = 1;
+                state.searchId = searchId;
+                values[current + width] = searchId;
+                return (current * width) - (width - 1) + minCost;
+            }
+            export func concatKeepsDynamic(state) {
+                var width = state.width;
+                return "x" + width;
+            }
+            export func equalityWithNullKeepsDynamic(value) {
+                var key = value;
+                return key == null;
+            }
+            """,
+            root);
+        var session = new BackendCompiler(new DynamicBuilder(options), options).CreateModulePlans([module]);
+        var modulePlan = Assert.Single(session.Modules);
+        var numericUses = Assert.Single(modulePlan.Functions, function => function.Name == "numericUses");
+        var concatKeeps = Assert.Single(modulePlan.Functions, function => function.Name == "concatKeepsDynamic");
+        var equalityOnly = Assert.Single(modulePlan.Functions, function => function.Name == "equalityWithNullKeepsDynamic");
+
+        var numericCode = TypedFunctionBuilder.Build(modulePlan, numericUses);
+        var concatCode = TypedFunctionBuilder.Build(modulePlan, concatKeeps);
+        var equalityCode = TypedFunctionBuilder.Build(modulePlan, equalityOnly);
+
+        Assert.Equal(
+            FlowValueType.Number,
+            numericCode.GetLocalType(numericUses.LocalSlots.Single(slot => slot.Name == "width").Id));
+        Assert.Equal(
+            FlowValueType.Number,
+            numericCode.GetLocalType(numericUses.LocalSlots.Single(slot => slot.Name == "searchId").Id));
+        Assert.Equal(
+            FlowValueType.Number,
+            numericCode.GetLocalType(numericUses.LocalSlots.Single(slot => slot.Name == "minCost").Id));
+        Assert.Equal(
+            FlowValueType.Dynamic,
+            concatCode.GetLocalType(concatKeeps.LocalSlots.Single(slot => slot.Name == "width").Id));
+        Assert.Equal(
+            FlowValueType.Dynamic,
+            equalityCode.GetLocalType(equalityOnly.LocalSlots.Single(slot => slot.Name == "key").Id));
+    }
+
+    [Fact]
+    public void TypedModuleCodePropagatesUniversalNumericReturnsAfterMutation()
+    {
+        var root = Path.GetTempPath();
+        var options = EngineOptions.Default
+            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var module = Parse(
+            """
+            @module(TEST);
+            @directCall
+            func bump(value) {
+                value++;
+                return value;
+            }
+            export func run() {
+                var length = 0;
+                length = bump(length);
+                return length;
+            }
+            """,
+            root);
+        var session = new BackendCompiler(new DynamicBuilder(options), options).CreateModulePlans([module]);
+        var modulePlan = Assert.Single(session.Modules);
+        var bump = Assert.Single(modulePlan.Functions, function => function.Name == "bump");
+        var run = Assert.Single(modulePlan.Functions, function => function.Name == "run");
+
+        var code = TypedModuleCode.Build(modulePlan);
+
+        Assert.Equal(FlowValueType.Number, code.GetGeneric(bump.Id).ReturnType);
+        Assert.Equal(
+            FlowValueType.Number,
+            code.GetGeneric(run.Id).GetLocalType(
+                run.LocalSlots.Single(slot => slot.Name == "length").Id));
+    }
+
+    [Fact]
+    public void TypedModuleCodeUsesGenericAndDirectViewsForCoercionAbi()
+    {
+        var root = Path.GetTempPath();
+        var options = EngineOptions.Default
+            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var module = Parse(
+            """
+            @module(TEST);
+            @directCall
+            func numeric(value) {
+                return value - 1;
+            }
+            @directCall
+            func relay(value) {
+                return numeric(value);
+            }
+            export func run() {
+                return relay(4);
+            }
+            """,
+            root);
+        var session = new BackendCompiler(new DynamicBuilder(options), options).CreateModulePlans([module]);
+        var modulePlan = Assert.Single(session.Modules);
+        var numeric = Assert.Single(modulePlan.Functions, function => function.Name == "numeric");
+
+        var code = TypedModuleCode.Build(modulePlan);
+        var parameter = Assert.Single(code.GetDirectParameters(numeric.Id));
+
+        Assert.Equal(FlowValueType.Number, parameter.Type);
+        Assert.Equal(NativeCoercionKind.ArithmeticNumber, parameter.Coercion);
     }
 
     [Fact]

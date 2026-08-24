@@ -55,7 +55,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         private bool _prepared;
         private bool _directMode;
         private StackValueKind _methodReturnKind;
-        private FlowValueType[] _directParameterTypes;
+        private DirectParameterType[] _directParameterTypes;
         private TypedModuleCode _moduleCode;
         private FunctionCallConvention _convention;
         private Label _returnLabel;
@@ -398,7 +398,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             ILGenerator il,
             FunctionCallConvention convention,
             bool directMode,
-            FlowValueType[] directParameterTypes,
+            DirectParameterType[] directParameterTypes,
             StackValueKind returnKind,
             out int localCount)
         {
@@ -555,10 +555,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                 result[i] = DeclareLocal(type);
                 _session.Builder.SetLocalSymInfo(result[i], _function.LocalSlots[i].Name);
                 if (!_directMode &&
-                    _function.LocalSlots[i].IsParameter &&
                     _numericCacheNeeded[i] &&
                     (_capturedLocalBySlot == null || !_capturedLocalBySlot.ContainsKey(i)) &&
-                    !_code.WrittenLocals[i])
+                    _code.LocalTypes[i] == FlowValueType.Dynamic)
                 {
                     _parameterNumbers[i] = DeclareLocal(typeof(double));
                     _parameterNumberValid[i] = DeclareLocal(typeof(bool));
@@ -580,10 +579,16 @@ namespace AuroraScript.Compiler.Backend.Emission
             out bool[] numeric,
             out bool[] boolean)
         {
-            numeric = new bool[code.LocalTypes.Length];
+            var numericUses = new int[code.LocalTypes.Length];
             boolean = new bool[code.LocalTypes.Length];
-            var collector = new ParameterCacheCollector(code, numeric, boolean);
+            var collector = new ParameterCacheCollector(code, numericUses, boolean);
             collector.Visit(code.Function.Declaration?.Body);
+            numeric = new bool[code.LocalTypes.Length];
+            for (var i = 0; i < numeric.Length; i++)
+            {
+                var threshold = code.Function.LocalSlots[i].IsParameter ? 1 : 2;
+                numeric[i] = numericUses[i] >= threshold;
+            }
         }
 
         private static Dictionary<int, int> BuildCapturedLocalMap(FunctionPlan function)
@@ -690,7 +695,39 @@ namespace AuroraScript.Compiler.Backend.Emission
                 _il.Emit(OpCodes.Stfld, TypedRuntimeMetadata.UpvalueValue);
                 return;
             }
+            if (HasNumericCache(slot))
+            {
+                var value = DeclareLocal(typeof(ScriptDatum));
+                _il.Emit(OpCodes.Stloc, value);
+                _il.Emit(OpCodes.Ldloc, value);
+                _il.Emit(OpCodes.Stloc, _locals[slot.Value]);
+                UpdateNumericCache(slot, value);
+                return;
+            }
             _il.Emit(OpCodes.Stloc, _locals[slot.Value]);
+        }
+
+        private bool HasNumericCache(LocalSlotId slot)
+        {
+            return slot.IsValid &&
+                (uint)slot.Value < (uint)_parameterNumbers.Length &&
+                _parameterNumbers[slot.Value] != null;
+        }
+
+        private void UpdateNumericCache(LocalSlotId slot, LocalBuilder value)
+        {
+            _il.Emit(OpCodes.Ldloc, value);
+            _il.Emit(OpCodes.Ldloca, _parameterNumbers[slot.Value]);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.TryToNumber);
+            _il.Emit(OpCodes.Stloc, _parameterNumberValid[slot.Value]);
+
+            var numericReady = _il.DefineLabel();
+            _il.Emit(OpCodes.Ldloc, _parameterNumberValid[slot.Value]);
+            _il.Emit(OpCodes.Brtrue, numericReady);
+            _il.Emit(OpCodes.Ldloc, value);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ToArithmeticNumber);
+            _il.Emit(OpCodes.Stloc, _parameterNumbers[slot.Value]);
+            _il.MarkLabel(numericReady);
         }
 
         private void EmitLoadUpvalue(UpvalueSlotId slot)
@@ -763,21 +800,6 @@ namespace AuroraScript.Compiler.Backend.Emission
                 }
 
                 EmitStoreLocalFromStack(slot.Id);
-                if (_parameterNumbers[slot.Id.Value] != null)
-                {
-                    EmitLoadLocal(slot.Id);
-                    _il.Emit(OpCodes.Ldloca, _parameterNumbers[slot.Id.Value]);
-                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.TryToNumber);
-                    _il.Emit(OpCodes.Stloc, _parameterNumberValid[slot.Id.Value]);
-
-                    var numericReady = _il.DefineLabel();
-                    _il.Emit(OpCodes.Ldloc, _parameterNumberValid[slot.Id.Value]);
-                    _il.Emit(OpCodes.Brtrue, numericReady);
-                    EmitLoadLocal(slot.Id);
-                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ToArithmeticNumber);
-                    _il.Emit(OpCodes.Stloc, _parameterNumbers[slot.Id.Value]);
-                    _il.MarkLabel(numericReady);
-                }
                 if (_parameterBooleans[slot.Id.Value] != null)
                 {
                     EmitLoadLocal(slot.Id);
@@ -2353,38 +2375,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             var commonCount = Math.Min(parameterCount, argumentCount);
             for (var i = 0; i < commonCount; i++)
             {
-                if (prepared.ParameterTypes[i] == FlowValueType.Int32Bitwise)
-                {
-                    EmitInt32Operand(call.Arguments[i], truncateThroughInt64: true);
-                }
-                else if (prepared.ParameterTypes[i] == FlowValueType.Int32Shift)
-                {
-                    EmitInt32Operand(call.Arguments[i], truncateThroughInt64: false);
-                }
-                else if (prepared.ParameterTypes[i] == FlowValueType.Int32)
-                {
-                    EmitInt32Value(call.Arguments[i]);
-                }
-                else if (prepared.ParameterTypes[i] == FlowValueType.Number)
-                {
-                    EmitNumber(call.Arguments[i]);
-                }
-                else if (prepared.ParameterTypes[i] == FlowValueType.Array)
-                {
-                    EmitArrayReference(call.Arguments[i]);
-                }
-                else if (prepared.ParameterTypes[i] == FlowValueType.Boolean)
-                {
-                    EmitCondition(call.Arguments[i]);
-                }
-                else if (FlowValueTypeFacts.IsPackedArray(prepared.ParameterTypes[i]))
-                {
-                    EmitPackedArrayStorage(call.Arguments[i], prepared.ParameterTypes[i]);
-                }
-                else
-                {
-                    EmitDatum(call.Arguments[i]);
-                }
+                EmitDirectArgument(call.Arguments[i], prepared.ParameterTypes[i]);
             }
 
             for (var i = commonCount; i < parameterCount; i++)
@@ -2404,6 +2395,44 @@ namespace AuroraScript.Compiler.Backend.Emission
 
             _il.Emit(OpCodes.Call, prepared.Method);
             return prepared.ReturnKind;
+        }
+
+        private void EmitDirectArgument(
+            Expression argument,
+            DirectParameterType parameter)
+        {
+            if (parameter.Coercion == NativeCoercionKind.Int32Bitwise)
+            {
+                EmitInt32Operand(argument, truncateThroughInt64: true);
+            }
+            else if (parameter.Coercion == NativeCoercionKind.Int32Shift)
+            {
+                EmitInt32Operand(argument, truncateThroughInt64: false);
+            }
+            else if (parameter.Type == FlowValueType.Int32)
+            {
+                EmitInt32Value(argument);
+            }
+            else if (parameter.Type == FlowValueType.Number)
+            {
+                EmitNumber(argument);
+            }
+            else if (parameter.Type == FlowValueType.Boolean)
+            {
+                EmitCondition(argument);
+            }
+            else if (parameter.Type == FlowValueType.Array)
+            {
+                EmitArrayReference(argument);
+            }
+            else if (FlowValueTypeFacts.IsPackedArray(parameter.Type))
+            {
+                EmitPackedArrayStorage(argument, parameter.Type);
+            }
+            else
+            {
+                EmitDatum(argument);
+            }
         }
 
         private bool TryGetDirectCall(FunctionCallExpression call, out FunctionId function)
@@ -3088,6 +3117,21 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private StackValueKind EmitLogical(BinaryExpression binary, bool branchWhenTrue)
         {
+            if (_code.GetExpressionType(binary) == FlowValueType.Boolean)
+            {
+                var booleanResult = DeclareLocal(typeof(bool));
+                var booleanEnd = _il.DefineLabel();
+                EmitCondition(binary.Left);
+                _il.Emit(OpCodes.Dup);
+                _il.Emit(OpCodes.Stloc, booleanResult);
+                _il.Emit(branchWhenTrue ? OpCodes.Brtrue : OpCodes.Brfalse, booleanEnd);
+                EmitCondition(binary.Right);
+                _il.Emit(OpCodes.Stloc, booleanResult);
+                _il.MarkLabel(booleanEnd);
+                _il.Emit(OpCodes.Ldloc, booleanResult);
+                return StackValueKind.Boolean;
+            }
+
             var result = DeclareLocal(typeof(ScriptDatum));
             var end = _il.DefineLabel();
             EmitDatum(binary.Left);
@@ -3134,10 +3178,71 @@ namespace AuroraScript.Compiler.Backend.Emission
                 EmitNativeNumberComparison(op);
                 return;
             }
+            if (IsRelationalComparison(op) &&
+                TryEmitPartiallyNativeRelational(binary, leftType, rightType))
+            {
+                return;
+            }
 
             EmitDatum(binary.Left);
             EmitDatum(binary.Right);
             _il.Emit(OpCodes.Call, GetComparison(op));
+        }
+
+        private bool TryEmitPartiallyNativeRelational(
+            BinaryExpression binary,
+            FlowValueType leftType,
+            FlowValueType rightType)
+        {
+            var leftIsNative = IsAlwaysNumericOperand(leftType);
+            var rightIsNative = IsAlwaysNumericOperand(rightType);
+            if (leftIsNative == rightIsNative)
+            {
+                return false;
+            }
+
+            var left = DeclareLocal(typeof(double));
+            var right = DeclareLocal(typeof(double));
+            var unordered = _il.DefineLabel();
+            var end = _il.DefineLabel();
+
+            if (leftIsNative)
+            {
+                EmitNumber(binary.Left);
+                _il.Emit(OpCodes.Stloc, left);
+                EmitDatum(binary.Right);
+                _il.Emit(OpCodes.Ldloca, right);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.TryToNumber);
+                _il.Emit(OpCodes.Brfalse, unordered);
+            }
+            else
+            {
+                var convertible = DeclareLocal(typeof(bool));
+                EmitDatum(binary.Left);
+                _il.Emit(OpCodes.Ldloca, left);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.TryToNumber);
+                _il.Emit(OpCodes.Stloc, convertible);
+                EmitNumber(binary.Right);
+                _il.Emit(OpCodes.Stloc, right);
+                _il.Emit(OpCodes.Ldloc, convertible);
+                _il.Emit(OpCodes.Brfalse, unordered);
+            }
+
+            _il.Emit(OpCodes.Ldloc, left);
+            _il.Emit(OpCodes.Ldloc, right);
+            EmitNativeNumberComparison(binary.Operator);
+            _il.Emit(OpCodes.Br, end);
+            _il.MarkLabel(unordered);
+            _il.Emit(OpCodes.Ldc_I4_0);
+            _il.MarkLabel(end);
+            return true;
+        }
+
+        private static bool IsAlwaysNumericOperand(FlowValueType type)
+        {
+            // TryToNumber never fails for these kinds, so the runtime guard is
+            // only required on the opposite operand.
+            return FlowValueTypeFacts.IsNumeric(type) || type == FlowValueType.Boolean;
         }
 
         private bool TryEmitCachedParameterComparison(BinaryExpression binary)
@@ -4310,8 +4415,44 @@ namespace AuroraScript.Compiler.Backend.Emission
                 _il.Emit(OpCodes.Ldloc, value);
                 return;
             }
+            if (expression is BinaryExpression binary &&
+                TryEmitLogicalCondition(binary))
+            {
+                return;
+            }
             var kind = EmitExpression(expression);
             ConvertStackToBoolean(kind);
+        }
+
+        private bool TryEmitLogicalCondition(BinaryExpression expression)
+        {
+            if (expression.Operator == Operator.LogicalAnd)
+            {
+                var falseLabel = _il.DefineLabel();
+                var endLabel = _il.DefineLabel();
+                EmitCondition(expression.Left);
+                _il.Emit(OpCodes.Brfalse, falseLabel);
+                EmitCondition(expression.Right);
+                _il.Emit(OpCodes.Br, endLabel);
+                _il.MarkLabel(falseLabel);
+                _il.Emit(OpCodes.Ldc_I4_0);
+                _il.MarkLabel(endLabel);
+                return true;
+            }
+            if (expression.Operator == Operator.LogicalOr)
+            {
+                var trueLabel = _il.DefineLabel();
+                var endLabel = _il.DefineLabel();
+                EmitCondition(expression.Left);
+                _il.Emit(OpCodes.Brtrue, trueLabel);
+                EmitCondition(expression.Right);
+                _il.Emit(OpCodes.Br, endLabel);
+                _il.MarkLabel(trueLabel);
+                _il.Emit(OpCodes.Ldc_I4_1);
+                _il.MarkLabel(endLabel);
+                return true;
+            }
+            return false;
         }
 
         private void ConvertStackToBoolean(StackValueKind kind)
@@ -4476,12 +4617,10 @@ namespace AuroraScript.Compiler.Backend.Emission
             return _directMode ? GetPackedStorageType(type) : GetPackedClrType(type);
         }
 
-        private static Type GetNativeParameterType(FlowValueType type)
+        private static Type GetNativeParameterType(DirectParameterType parameter)
         {
-            if (type == FlowValueType.Int32 || FlowValueTypeFacts.IsInt32Coercion(type))
-            {
-                return typeof(int);
-            }
+            var type = parameter.Type;
+            if (type == FlowValueType.Int32) return typeof(int);
             if (type == FlowValueType.Number) return typeof(double);
             if (type == FlowValueType.Boolean) return typeof(bool);
             if (type == FlowValueType.Array) return typeof(ScriptArray);
@@ -4581,6 +4720,12 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             return op == Operator.Equal || op == Operator.NotEqual ||
                 op == Operator.LessThan || op == Operator.LessThanOrEqual ||
+                op == Operator.GreaterThan || op == Operator.GreaterThanOrEqual;
+        }
+
+        private static bool IsRelationalComparison(Operator op)
+        {
+            return op == Operator.LessThan || op == Operator.LessThanOrEqual ||
                 op == Operator.GreaterThan || op == Operator.GreaterThanOrEqual;
         }
 
@@ -5083,12 +5228,12 @@ namespace AuroraScript.Compiler.Backend.Emission
         private sealed class ParameterCacheCollector
         {
             private readonly TypedFunctionCode _code;
-            private readonly bool[] _numeric;
+            private readonly int[] _numeric;
             private readonly bool[] _boolean;
 
             public ParameterCacheCollector(
                 TypedFunctionCode code,
-                bool[] numeric,
+                int[] numeric,
                 bool[] boolean)
             {
                 _code = code;
@@ -5101,10 +5246,25 @@ namespace AuroraScript.Compiler.Backend.Emission
                 if (node == null || node is FunctionDeclaration || node is LambdaExpression) return;
                 if (node is BinaryExpression binary)
                 {
-                    if (IsComparison(binary.Operator) || IsNumericShadowOperator(binary.Operator))
+                    if (IsRelationalComparison(binary.Operator) ||
+                        IsNumericShadowOperator(binary.Operator))
                     {
                         MarkNumeric(binary.Left);
                         MarkNumeric(binary.Right);
+                    }
+                    else if (binary.Operator == Operator.Equal ||
+                        binary.Operator == Operator.NotEqual)
+                    {
+                        var leftType = _code.GetExpressionType(binary.Left);
+                        var rightType = _code.GetExpressionType(binary.Right);
+                        if (FlowValueTypeFacts.IsNumeric(leftType))
+                        {
+                            MarkNumeric(binary.Right);
+                        }
+                        if (FlowValueTypeFacts.IsNumeric(rightType))
+                        {
+                            MarkNumeric(binary.Left);
+                        }
                     }
                     else if (binary.Operator == Operator.LogicalAnd ||
                         binary.Operator == Operator.LogicalOr)
@@ -5145,9 +5305,24 @@ namespace AuroraScript.Compiler.Backend.Emission
                     op == Operator.Divide || op == Operator.Modulo;
             }
 
+            private static bool IsRelationalComparison(Operator op)
+            {
+                return op == Operator.LessThan ||
+                    op == Operator.LessThanOrEqual ||
+                    op == Operator.GreaterThan ||
+                    op == Operator.GreaterThanOrEqual;
+            }
+
             private void MarkNumeric(Expression expression)
             {
-                Mark(expression, _numeric);
+                if (expression is not NameExpression name) return;
+                var binding = _code.GetName(name);
+                if (!binding.IsLocal ||
+                    (uint)binding.Local.Value >= (uint)_numeric.Length)
+                {
+                    return;
+                }
+                _numeric[binding.Local.Value]++;
             }
 
             private void MarkBoolean(Expression expression)
@@ -5223,7 +5398,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 MethodInfo method,
                 ILGenerator il,
                 TypedFunctionCode code,
-                FlowValueType[] parameterTypes,
+                DirectParameterType[] parameterTypes,
                 StackValueKind returnKind)
             {
                 Method = method;
@@ -5237,7 +5412,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             public MethodInfo Method;
             public ILGenerator IL;
             public TypedFunctionCode Code;
-            public FlowValueType[] ParameterTypes;
+            public DirectParameterType[] ParameterTypes;
             public StackValueKind ReturnKind;
             public bool Emitted;
             public bool IsDefined => Method != null;
@@ -5248,7 +5423,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             public static bool CanEmit(
                 TypedFunctionCode code,
                 Func<FunctionId, bool> canDirectCall,
-                Func<FunctionId, FlowValueType[]> getParameterTypes)
+                Func<FunctionId, DirectParameterType[]> getParameterTypes)
             {
                 var visitor = new Visitor(code, canDirectCall, getParameterTypes);
                 visitor.VisitRoot(code.Function.Declaration?.Body);
@@ -5259,12 +5434,12 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 private readonly TypedFunctionCode _code;
                 private readonly Func<FunctionId, bool> _canDirectCall;
-                private readonly Func<FunctionId, FlowValueType[]> _getParameterTypes;
+                private readonly Func<FunctionId, DirectParameterType[]> _getParameterTypes;
 
                 public Visitor(
                     TypedFunctionCode code,
                     Func<FunctionId, bool> canDirectCall,
-                    Func<FunctionId, FlowValueType[]> getParameterTypes)
+                    Func<FunctionId, DirectParameterType[]> getParameterTypes)
                 {
                     _code = code;
                     _canDirectCall = canDirectCall;

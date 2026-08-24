@@ -530,6 +530,87 @@ public sealed class PackedArrayTests
     }
 
     [Fact]
+    public async Task PersistenceUsesNativeAdditionForProvenLocalArrayElements()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func numericArrayAdd() {
+                var values = [41];
+                return values[0] + 1;
+            }
+            export func stringArrayAdd() {
+                var values = ["41"];
+                return values[0] + 1;
+            }
+            export func pushedArrayAdd() {
+                var values = Array.withCapacity(1);
+                values.push(41);
+                return values[0] + 1;
+            }
+            """,
+            CompilationMode.Persistence);
+
+        var assemblyPath = Path.Combine(workspace.Root, "test-output.dll");
+        using var stream = File.OpenRead(assemblyPath);
+        using var peReader = new PEReader(stream);
+        var reader = peReader.GetMetadataReader();
+
+        List<OpCode> GetMethodOpCodes(string methodName)
+        {
+            var handle = Assert.Single(reader.MethodDefinitions.Where(candidate =>
+                string.Equals(
+                    reader.GetString(reader.GetMethodDefinition(candidate).Name),
+                    methodName,
+                    StringComparison.Ordinal)));
+            var method = reader.GetMethodDefinition(handle);
+            return ReadOpCodes(
+                peReader.GetMethodBody(method.RelativeVirtualAddress).GetILBytes().AsSpan());
+        }
+
+        Assert.Contains(OpCodes.Add, GetMethodOpCodes("numericArrayAdd$typed"));
+        Assert.Contains(OpCodes.Add, GetMethodOpCodes("pushedArrayAdd$typed"));
+        Assert.DoesNotContain(OpCodes.Add, GetMethodOpCodes("stringArrayAdd$typed"));
+    }
+
+    [Fact]
+    public async Task PersistenceStoresPackedElementsWithCoercedDynamicNumericIndexes()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func writeNeighbor(state) {
+                var width = state.width;
+                var current = 1;
+                var opened = new Int32Array(8);
+                var last = width - 1;
+                opened[current + width] = 1;
+                return opened[current + last];
+            }
+            """,
+            CompilationMode.Persistence);
+
+        var assemblyPath = Path.Combine(workspace.Root, "test-output.dll");
+        using var stream = File.OpenRead(assemblyPath);
+        using var peReader = new PEReader(stream);
+        var reader = peReader.GetMetadataReader();
+        var handle = Assert.Single(reader.MethodDefinitions.Where(candidate =>
+            string.Equals(
+                reader.GetString(reader.GetMethodDefinition(candidate).Name),
+                "writeNeighbor$typed",
+                StringComparison.Ordinal)));
+        var opcodes = ReadOpCodes(
+            peReader.GetMethodBody(reader.GetMethodDefinition(handle).RelativeVirtualAddress)
+                .GetILBytes()
+                .AsSpan());
+        Assert.Contains(OpCodes.Stelem_I4, opcodes);
+        Assert.Contains(OpCodes.Ldelem_I4, opcodes);
+        Assert.Contains(OpCodes.Add, opcodes);
+    }
+
+    [Fact]
     public async Task PersistenceUsesRawFloat64ArrayAbiAndR8ElementInstructions()
     {
         using var workspace = new TestWorkspace();

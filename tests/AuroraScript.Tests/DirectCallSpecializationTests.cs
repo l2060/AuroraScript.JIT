@@ -66,6 +66,68 @@ public sealed class DirectCallSpecializationTests
         }
         """;
 
+    private const string ScalarCoercionSource = """
+        @module(TEST);
+
+        @directCall
+        func numeric(value) {
+            return (value - 1) * 2;
+        }
+
+        @directCall
+        func truth(flag) {
+            if (flag) return 1;
+            return 0;
+        }
+
+        @directCall
+        func preserve(value) {
+            if (value) return value;
+            return 0;
+        }
+
+        export func relay(value, flag) {
+            return [numeric(value), truth(flag), preserve(value)];
+        }
+        """;
+
+    private const string LocalCoercionSource = """
+        @module(TEST);
+
+        export func run(value) {
+            var numericOnly = value;
+            var booleanOnly = value;
+            var preserved = value;
+            var numericResult = (numericOnly - 1) * 2;
+            var booleanResult = 0;
+            if (booleanOnly) booleanResult = 1;
+            return [numericResult, booleanResult, preserved];
+        }
+
+        export func observableAssignment(value) {
+            var local = value;
+            return [(local = "4"), local - 1];
+        }
+
+        export func objectCase() {
+            var value = {};
+            var numericOnly = value;
+            var booleanOnly = value;
+            var numericResult = numericOnly - 1;
+            var booleanResult = 0;
+            if (booleanOnly) booleanResult = 1;
+            return [numericResult != numericResult, booleanResult];
+        }
+        """;
+
+    private const string EqualityOnlySource = """
+        @module(TEST);
+
+        export func equalityOnly(value, other) {
+            return [value == null, other != null];
+        }
+        """;
+
     [Theory]
     [InlineData(CompilationMode.Dynamic)]
     [InlineData(CompilationMode.OnlyRun)]
@@ -99,6 +161,44 @@ public sealed class DirectCallSpecializationTests
         if (mode == CompilationMode.Persistence)
         {
             AssertDatumReturnResults(engine.CreateDomain());
+        }
+    }
+
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+    [InlineData(CompilationMode.OnlyRun)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
+    public async Task CoercionOnlyParametersUseNativeScalarAbiFromDynamicCallers(
+        CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        var (engine, domain) = await workspace.CompileModuleAsync(ScalarCoercionSource, mode);
+
+        AssertScalarCoercionResults(domain);
+        if (mode == CompilationMode.Persistence)
+        {
+            AssertScalarCoercionResults(engine.CreateDomain());
+        }
+    }
+
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+    [InlineData(CompilationMode.OnlyRun)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
+    public async Task DemandClosedLocalsUseNativeStorageWithoutChangingValues(
+        CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        var (engine, domain) = await workspace.CompileModuleAsync(LocalCoercionSource, mode);
+
+        AssertLocalCoercionResults(domain);
+        if (mode == CompilationMode.Persistence)
+        {
+            AssertLocalCoercionResults(engine.CreateDomain());
         }
     }
 
@@ -140,6 +240,46 @@ public sealed class DirectCallSpecializationTests
         Assert.Equal([0x08, 0x02], signature[^2..]);
     }
 
+    [Fact]
+    public async Task PersistenceEmitsDemandCoercedNumberAndBooleanSignatures()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.CompileModuleAsync(ScalarCoercionSource, CompilationMode.Persistence);
+
+        using var stream = File.OpenRead(Path.Combine(workspace.Root, "test-output.dll"));
+        using var peReader = new PEReader(stream);
+        var reader = peReader.GetMetadataReader();
+
+        Assert.Equal(
+            [0x00, 0x01, 0x0d, 0x0d],
+            reader.GetBlobBytes(FindMethod(reader, "numeric$native").Signature));
+        Assert.Equal(
+            [0x00, 0x01, 0x08, 0x02],
+            reader.GetBlobBytes(FindMethod(reader, "truth$native").Signature));
+        Assert.False(HasMethod(reader, "preserve$native"));
+    }
+
+    [Fact]
+    public async Task PersistenceDoesNotCreateNumericCachesForEqualityOnlyParameters()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.CompileModuleAsync(EqualityOnlySource, CompilationMode.Persistence);
+
+        using var stream = File.OpenRead(Path.Combine(workspace.Root, "test-output.dll"));
+        using var peReader = new PEReader(stream);
+        var reader = peReader.GetMetadataReader();
+        var method = FindMethodStartingWith(reader, "equalityOnly$typed");
+        var body = peReader.GetMethodBody(method.RelativeVirtualAddress);
+
+        if (!body.LocalSignature.IsNil)
+        {
+            var localSignature = reader.GetStandaloneSignature(body.LocalSignature);
+            Assert.DoesNotContain(
+                (byte)0x0d,
+                reader.GetBlobBytes(localSignature.Signature));
+        }
+    }
+
     private static MethodDefinition FindMethod(MetadataReader reader, string name)
     {
         foreach (var handle in reader.MethodDefinitions)
@@ -151,6 +291,38 @@ public sealed class DirectCallSpecializationTests
             }
         }
         throw new Xunit.Sdk.XunitException("Persisted method not found: " + name);
+    }
+
+    private static MethodDefinition FindMethodStartingWith(
+        MetadataReader reader,
+        string prefix)
+    {
+        MethodDefinition? result = null;
+        foreach (var handle in reader.MethodDefinitions)
+        {
+            var method = reader.GetMethodDefinition(handle);
+            if (!reader.GetString(method.Name).StartsWith(prefix, StringComparison.Ordinal))
+            {
+                continue;
+            }
+            Assert.False(result.HasValue, "Multiple persisted methods start with: " + prefix);
+            result = method;
+        }
+        return result ?? throw new Xunit.Sdk.XunitException(
+            "Persisted method not found with prefix: " + prefix);
+    }
+
+    private static bool HasMethod(MetadataReader reader, string name)
+    {
+        foreach (var handle in reader.MethodDefinitions)
+        {
+            var method = reader.GetMethodDefinition(handle);
+            if (string.Equals(reader.GetString(method.Name), name, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 #endif
 
@@ -196,5 +368,52 @@ public sealed class DirectCallSpecializationTests
                 domain,
                 "fallback",
                 arguments: [ScriptDatum.FromString("Aurora"), ScriptDatum.False]));
+    }
+
+    private static void AssertScalarCoercionResults(ScriptDomain domain)
+    {
+        ScriptAssert.Equal(
+            new object?[] { 6, 1, "4" },
+            TestWorkspace.Execute(
+                domain,
+                "relay",
+                arguments: [ScriptDatum.FromString("4"), ScriptDatum.FromString("yes")]));
+        ScriptAssert.Equal(
+            new object?[] { -2, 0, 0 },
+            TestWorkspace.Execute(
+                domain,
+                "relay",
+                arguments: [ScriptDatum.Null, ScriptDatum.FromString("")]));
+    }
+
+    private static void AssertLocalCoercionResults(ScriptDomain domain)
+    {
+        ScriptAssert.Equal(
+            new object?[] { 6, 1, "4" },
+            TestWorkspace.Execute(
+                domain,
+                "run",
+                arguments: [ScriptDatum.FromString("4")]));
+        ScriptAssert.Equal(
+            new object?[] { -2, 0, null },
+            TestWorkspace.Execute(
+                domain,
+                "run",
+                arguments: [ScriptDatum.Null]));
+        ScriptAssert.Equal(
+            new object?[] { 0, 1, true },
+            TestWorkspace.Execute(
+                domain,
+                "run",
+                arguments: [ScriptDatum.True]));
+        ScriptAssert.Equal(
+            new object?[] { "4", 3 },
+            TestWorkspace.Execute(
+                domain,
+                "observableAssignment",
+                arguments: [ScriptDatum.Null]));
+        ScriptAssert.Equal(
+            new object?[] { true, 1 },
+            TestWorkspace.Execute(domain, "objectCase"));
     }
 }

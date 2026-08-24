@@ -136,6 +136,54 @@ public sealed class ArraySpecializationTests
             TestWorkspace.Execute(domain, "run", "TEST", ScriptDatum.FromBoolean(false)));
     }
 
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+    [InlineData(CompilationMode.OnlyRun)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
+    public async Task LocalArrayElementFactsPreserveHolesStringsMutationsAndEscapes(
+        CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+
+            func replace(values) {
+                values[0] = "4";
+            }
+
+            export func run() {
+                var numeric = [41];
+                var holes = [];
+                var mixed = ["4"];
+                var mutated = [1];
+                mutated[0] = "4";
+                var escaped = [1];
+                replace(escaped);
+                var pushed = Array.withCapacity(1);
+                pushed.push(41);
+                var pushedString = [];
+                pushedString.push("4");
+                return [
+                    numeric[0] + 1,
+                    holes[3] + 1,
+                    mixed[0] + 1,
+                    mutated[0] + 1,
+                    escaped[0] + 1,
+                    pushed[0] + 1,
+                    pushedString[0] + 1
+                ];
+            }
+            """,
+            mode);
+
+        ScriptAssert.Equal(
+            new object?[] { 42, 1, "41", "41", "41", 42, "41" },
+            TestWorkspace.Execute(domain, "run"));
+    }
+
 #if NET9_0_OR_GREATER
     private static void AssertNativeArraySignature(string assemblyPath)
     {

@@ -94,9 +94,9 @@ export func createAStar(width, height, walkable, costs) {
 	var parents = new Int32Array(size);
 	var opened = new Int32Array(size);
 	var closed = new Int32Array(size);
-	var heapNodes = Array.withCapacity(size);
-	var heapScores = Array.withCapacity(size);
-	var heapTies = Array.withCapacity(size);
+	var heapNodes = new Int32Array(size);
+	var heapScores = new Float64Array(size);
+	var heapTies = new Float64Array(size);
 	var uniformCost = costs == null;
 	var minCost = 1;
 	if (uniformCost) {
@@ -254,9 +254,9 @@ export func findPathInto(astar, startX, startY, goalX, goalY, outPath, allowDiag
 	var parents = tdoc Int32Array $(astar.parents);
 	var opened = tdoc Int32Array $(astar.opened);
 	var closed = tdoc Int32Array $(astar.closed);
-	var heapNodes = tdoc Array $(astar.heapNodes);
-	var heapScores = tdoc Array $(astar.heapScores);
-	var heapTies = tdoc Array $(astar.heapTies);
+	var heapNodes = tdoc Int32Array $(astar.heapNodes);
+	var heapScores = tdoc Float64Array $(astar.heapScores);
+	var heapTies = tdoc Float64Array $(astar.heapTies);
 	var minCost = astar.minCost;
 	var uniformCost = astar.uniformCost;
 	var uniformDiagonalCost = minCost * ASTAR_SQRT2;

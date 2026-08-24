@@ -1,5 +1,6 @@
 using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
+using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Compiler.Backend.Plans;
 using AuroraScript.Compiler.Backend.Traversal;
 using System;
@@ -11,12 +12,12 @@ namespace AuroraScript.Compiler.Backend.Code
     {
         private readonly TypedFunctionCode[] _generic;
         private readonly TypedFunctionCode[] _direct;
-        private readonly FlowValueType[][] _directParameters;
+        private readonly DirectParameterType[][] _directParameters;
 
         private TypedModuleCode(
             TypedFunctionCode[] generic,
             TypedFunctionCode[] direct,
-            FlowValueType[][] directParameters)
+            DirectParameterType[][] directParameters)
         {
             _generic = generic;
             _direct = direct;
@@ -38,7 +39,7 @@ namespace AuroraScript.Compiler.Backend.Code
             var size = maxId + 1;
             var generic = new TypedFunctionCode[size];
             var direct = new TypedFunctionCode[size];
-            var directParameters = new FlowValueType[size][];
+            var directParameters = new DirectParameterType[size][];
             var returns = new Dictionary<FunctionId, FlowValueType>();
             for (var i = 0; i < module.Functions.Count; i++)
             {
@@ -54,14 +55,27 @@ namespace AuroraScript.Compiler.Backend.Code
                     directReturnTypes: returns,
                     directParameterTypes: directParameters);
             }
+            var universalReturns = new Dictionary<FunctionId, FlowValueType>();
+            for (var i = 0; i < module.Functions.Count; i++)
+            {
+                var function = module.Functions[i];
+                universalReturns[function.Id] = generic[function.Id.Value].ReturnType;
+            }
 
             var converged = false;
             var passLimit = Math.Min(64, Math.Max(6, module.Functions.Count + 2));
             var evidence = new Dictionary<FunctionId, ParameterEvidence>();
             for (var pass = 0; pass < passLimit; pass++)
             {
+                // Exact call-site evidence is monotonic and bootstraps recursive
+                // native graphs. Dynamic observations are transient because an
+                // early imprecise pass must not permanently poison later facts.
+                foreach (var item in evidence)
+                {
+                    item.Value.ResetTransientEvidence();
+                }
                 CollectParameterEvidence(module, functions, generic, direct, evidence);
-                var int32Demands = CollectInt32ParameterDemands(
+                var parameterDemands = CollectNativeParameterDemands(
                     module,
                     generic,
                     direct,
@@ -75,7 +89,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     var parameterTypes = NormalizeParameterTypes(
                         function,
                         evidence,
-                        int32Demands[function.Id.Value]);
+                        parameterDemands[function.Id.Value]);
                     var oldParameterTypes = directParameters[function.Id.Value];
                     directParameters[function.Id.Value] = parameterTypes;
                     var code = TypedFunctionBuilder.Build(
@@ -83,7 +97,8 @@ namespace AuroraScript.Compiler.Backend.Code
                         function,
                         parameterTypes,
                         returns,
-                        directParameters);
+                        directParameters,
+                        universalReturns);
                     var validatedParameterTypes = ValidateParameterTypes(function, code, parameterTypes);
                     if (!SameTypes(parameterTypes, validatedParameterTypes))
                     {
@@ -94,7 +109,8 @@ namespace AuroraScript.Compiler.Backend.Code
                             function,
                             parameterTypes,
                             returns,
-                            directParameters);
+                            directParameters,
+                            universalReturns);
                     }
                     direct[function.Id.Value] = code;
                     nextReturns[function.Id] = code.ReturnType;
@@ -109,6 +125,8 @@ namespace AuroraScript.Compiler.Backend.Code
                 }
 
                 returns = nextReturns;
+                var nextUniversalReturns =
+                    new Dictionary<FunctionId, FlowValueType>(universalReturns.Count);
                 for (var i = 0; i < module.Functions.Count; i++)
                 {
                     var function = module.Functions[i];
@@ -116,8 +134,17 @@ namespace AuroraScript.Compiler.Backend.Code
                         module,
                         function,
                         directReturnTypes: returns,
-                        directParameterTypes: directParameters);
+                        directParameterTypes: directParameters,
+                        universalReturnTypes: universalReturns);
+                    var universalReturn = generic[function.Id.Value].ReturnType;
+                    nextUniversalReturns[function.Id] = universalReturn;
+                    if (!universalReturns.TryGetValue(function.Id, out var oldUniversal) ||
+                        oldUniversal != universalReturn)
+                    {
+                        changed = true;
+                    }
                 }
+                universalReturns = nextUniversalReturns;
 
                 if (!changed && pass > 0)
                 {
@@ -145,19 +172,23 @@ namespace AuroraScript.Compiler.Backend.Code
                         function,
                         directParameters[function.Id.Value],
                         conservativeReturns,
-                        directParameters);
+                        directParameters,
+                        universalReturns);
                     generic[function.Id.Value] = TypedFunctionBuilder.Build(
                         module,
                         function,
                         directReturnTypes: conservativeReturns,
-                        directParameterTypes: directParameters);
+                        directParameterTypes: directParameters,
+                        universalReturnTypes: universalReturns);
                 }
             }
 
             return new TypedModuleCode(generic, direct, directParameters);
         }
 
-        private static bool SameTypes(FlowValueType[] left, FlowValueType[] right)
+        private static bool SameTypes(
+            DirectParameterType[] left,
+            DirectParameterType[] right)
         {
             if (ReferenceEquals(left, right)) return true;
             if (left == null || right == null || left.Length != right.Length) return false;
@@ -182,7 +213,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 : null;
         }
 
-        public FlowValueType[] GetDirectParameters(FunctionId function)
+        public DirectParameterType[] GetDirectParameters(FunctionId function)
         {
             return function.IsValid && (uint)function.Value < (uint)_directParameters.Length
                 ? _directParameters[function.Value]
@@ -199,27 +230,49 @@ namespace AuroraScript.Compiler.Backend.Code
             for (var i = 0; i < module.Functions.Count; i++)
             {
                 var function = module.Functions[i];
-                var code = direct[function.Id.Value] ?? generic[function.Id.Value];
-                if (code == null || function.Declaration?.Body == null) continue;
-                var collector = new DirectCallCollector(code, functions, evidence);
-                collector.Visit(function.Declaration.Body);
+                if (function.Declaration?.Body == null) continue;
+
+                // Generic flow records coercion boundaries visible from dynamic
+                // callers. Direct flow contributes the more precise facts inside
+                // a specialized call graph. Both views are required: selecting
+                // only the direct graph can incorrectly classify a coercion-only
+                // callee as exact and force generic callers through an adapter.
+                var genericCode = generic[function.Id.Value];
+                if (genericCode != null)
+                {
+                    var genericCollector = new DirectCallCollector(
+                        genericCode,
+                        functions,
+                        evidence);
+                    genericCollector.Visit(function.Declaration.Body);
+                }
+
+                var directCode = direct[function.Id.Value];
+                if (directCode != null && !ReferenceEquals(directCode, genericCode))
+                {
+                    var directCollector = new DirectCallCollector(
+                        directCode,
+                        functions,
+                        evidence);
+                    directCollector.Visit(function.Declaration.Body);
+                }
             }
         }
 
-        private static FlowValueType[] NormalizeParameterTypes(
+        private static DirectParameterType[] NormalizeParameterTypes(
             FunctionPlan function,
             IReadOnlyDictionary<FunctionId, ParameterEvidence> evidence,
-            FlowValueType[] int32Demands)
+            NativeCoercionKind[] parameterDemands)
         {
             var parameterCount = 0;
             for (var i = 0; i < function.LocalSlots.Length; i++)
             {
                 if (function.LocalSlots[i].IsParameter) parameterCount++;
             }
-            if (parameterCount == 0) return Array.Empty<FlowValueType>();
+            if (parameterCount == 0) return Array.Empty<DirectParameterType>();
 
             evidence.TryGetValue(function.Id, out var observed);
-            var result = new FlowValueType[parameterCount];
+            var result = new DirectParameterType[parameterCount];
             var parameterIndex = 0;
             for (var i = 0; i < function.LocalSlots.Length; i++)
             {
@@ -227,35 +280,46 @@ namespace AuroraScript.Compiler.Backend.Code
                 var type = observed != null && parameterIndex < observed.Types.Length
                     ? observed.Types[parameterIndex]
                     : FlowValueType.None;
-                if (FlowValueTypeFacts.IsNumeric(type) &&
-                    int32Demands != null &&
-                    parameterIndex < int32Demands.Length &&
-                    FlowValueTypeFacts.IsInt32Coercion(int32Demands[parameterIndex]))
+                var demand = parameterDemands != null &&
+                    parameterIndex < parameterDemands.Length
+                        ? parameterDemands[parameterIndex]
+                        : NativeCoercionKind.None;
+                var sawNonNative = observed != null &&
+                    parameterIndex < observed.SawNonNative.Length &&
+                    observed.SawNonNative[parameterIndex];
+                var exact = new DirectParameterType(type);
+                if ((!FlowValueTypeFacts.IsNativeDirectParameter(exact) || sawNonNative) &&
+                    demand is NativeCoercionKind.ArithmeticNumber or NativeCoercionKind.Boolean)
                 {
-                    result[parameterIndex] = int32Demands[parameterIndex];
+                    result[parameterIndex] = DirectParameterType.FromCoercion(demand);
+                }
+                else if (FlowValueTypeFacts.IsNumeric(type) &&
+                    demand is NativeCoercionKind.Int32Bitwise or NativeCoercionKind.Int32Shift)
+                {
+                    result[parameterIndex] = DirectParameterType.FromCoercion(demand);
                 }
                 else
                 {
-                    result[parameterIndex] = FlowValueTypeFacts.IsNativeDirectParameter(type)
-                        ? type
-                        : FlowValueType.Dynamic;
+                    result[parameterIndex] = FlowValueTypeFacts.IsNativeDirectParameter(exact)
+                        ? exact
+                        : new DirectParameterType(FlowValueType.Dynamic);
                 }
                 parameterIndex++;
             }
             return result;
         }
 
-        private static FlowValueType[] ValidateParameterTypes(
+        private static DirectParameterType[] ValidateParameterTypes(
             FunctionPlan function,
             TypedFunctionCode code,
-            FlowValueType[] parameterTypes)
+            DirectParameterType[] parameterTypes)
         {
             if (parameterTypes == null || parameterTypes.Length == 0 || code == null)
             {
-                return parameterTypes ?? Array.Empty<FlowValueType>();
+                return parameterTypes ?? Array.Empty<DirectParameterType>();
             }
 
-            FlowValueType[] result = null;
+            DirectParameterType[] result = null;
             var parameterIndex = 0;
             for (var i = 0; i < function.LocalSlots.Length; i++)
             {
@@ -264,28 +328,28 @@ namespace AuroraScript.Compiler.Backend.Code
                 if (FlowValueTypeFacts.IsNativeDirectParameter(parameterType) &&
                     code.LocalTypes[i] != FlowValueTypeFacts.GetDirectLocalType(parameterType))
                 {
-                    result ??= (FlowValueType[])parameterTypes.Clone();
-                    result[parameterIndex] = FlowValueType.Dynamic;
+                    result ??= (DirectParameterType[])parameterTypes.Clone();
+                    result[parameterIndex] = new DirectParameterType(FlowValueType.Dynamic);
                 }
                 parameterIndex++;
             }
             return result ?? parameterTypes;
         }
 
-        private static FlowValueType[][] CollectInt32ParameterDemands(
+        private static NativeCoercionKind[][] CollectNativeParameterDemands(
             ModulePlan module,
             TypedFunctionCode[] generic,
             TypedFunctionCode[] direct,
-            FlowValueType[][] directParameters)
+            DirectParameterType[][] directParameters)
         {
-            var result = new FlowValueType[directParameters.Length][];
+            var result = new NativeCoercionKind[directParameters.Length][];
             for (var i = 0; i < module.Functions.Count; i++)
             {
                 var function = module.Functions[i];
                 var code = direct[function.Id.Value] ?? generic[function.Id.Value];
                 result[function.Id.Value] = code == null
-                    ? Array.Empty<FlowValueType>()
-                    : new Int32ParameterDemandAnalyzer(
+                    ? Array.Empty<NativeCoercionKind>()
+                    : new NativeParameterDemandAnalyzer(
                         function,
                         code,
                         directParameters).Analyze();
@@ -293,19 +357,19 @@ namespace AuroraScript.Compiler.Backend.Code
             return result;
         }
 
-        private sealed class Int32ParameterDemandAnalyzer
+        private sealed class NativeParameterDemandAnalyzer
         {
             private readonly FunctionPlan _function;
             private readonly TypedFunctionCode _code;
-            private readonly FlowValueType[][] _directParameters;
+            private readonly DirectParameterType[][] _directParameters;
             private readonly int[] _parameterByLocal;
-            private readonly FlowValueType[] _demands;
+            private readonly NativeCoercionKind[] _demands;
             private readonly bool[] _invalid;
 
-            public Int32ParameterDemandAnalyzer(
+            public NativeParameterDemandAnalyzer(
                 FunctionPlan function,
                 TypedFunctionCode code,
-                FlowValueType[][] directParameters)
+                DirectParameterType[][] directParameters)
             {
                 _function = function;
                 _code = code;
@@ -319,16 +383,16 @@ namespace AuroraScript.Compiler.Backend.Code
                     if (!function.LocalSlots[i].IsParameter) continue;
                     _parameterByLocal[i] = parameterCount++;
                 }
-                _demands = new FlowValueType[parameterCount];
+                _demands = new NativeCoercionKind[parameterCount];
                 _invalid = new bool[parameterCount];
             }
 
-            public FlowValueType[] Analyze()
+            public NativeCoercionKind[] Analyze()
             {
                 Visit(_function.Declaration?.Body);
                 for (var i = 0; i < _demands.Length; i++)
                 {
-                    if (_invalid[i]) _demands[i] = FlowValueType.None;
+                    if (_invalid[i]) _demands[i] = NativeCoercionKind.None;
                 }
                 return _demands;
             }
@@ -365,14 +429,14 @@ namespace AuroraScript.Compiler.Backend.Code
                 }
 
                 var demand = GetUseDemand(name);
-                if (!FlowValueTypeFacts.IsInt32Coercion(demand))
+                if (demand == NativeCoercionKind.None)
                 {
                     _invalid[parameterIndex] = true;
                     return;
                 }
 
                 var current = _demands[parameterIndex];
-                if (current == FlowValueType.None)
+                if (current == NativeCoercionKind.None)
                 {
                     _demands[parameterIndex] = demand;
                 }
@@ -382,7 +446,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 }
             }
 
-            private FlowValueType GetUseDemand(NameExpression name)
+            private NativeCoercionKind GetUseDemand(NameExpression name)
             {
                 AstNode current = name;
                 while (current.Parent is GroupExpression group &&
@@ -396,27 +460,58 @@ namespace AuroraScript.Compiler.Backend.Code
                     (ReferenceEquals(binary.Left, current) ||
                         ReferenceEquals(binary.Right, current)))
                 {
+                    if (binary.Operator == Operator.Subtract ||
+                        binary.Operator == Operator.Multiply ||
+                        binary.Operator == Operator.Divide ||
+                        binary.Operator == Operator.Modulo)
+                    {
+                        return NativeCoercionKind.ArithmeticNumber;
+                    }
                     if (binary.Operator == Operator.BitwiseAnd ||
                         binary.Operator == Operator.BitwiseOr ||
                         binary.Operator == Operator.BitwiseXor)
                     {
-                        return FlowValueType.Int32Bitwise;
+                        return NativeCoercionKind.Int32Bitwise;
                     }
                     if (binary.Operator == Operator.LeftShift ||
                         binary.Operator == Operator.SignedRightShift ||
                         binary.Operator == Operator.UnSignedRightShift)
                     {
-                        return FlowValueType.Int32Shift;
+                        return NativeCoercionKind.Int32Shift;
                     }
-                    return FlowValueType.None;
+                    return NativeCoercionKind.None;
                 }
 
                 if (current.Parent is UnaryExpression unary &&
                     ReferenceEquals(unary.Expression, current))
                 {
-                    return unary.Operator == Operator.BitwiseNot
-                        ? FlowValueType.Int32Bitwise
-                        : FlowValueType.None;
+                    if (unary.Operator == Operator.BitwiseNot)
+                    {
+                        return NativeCoercionKind.Int32Bitwise;
+                    }
+                    if (unary.Operator == Operator.Negate)
+                    {
+                        return NativeCoercionKind.ArithmeticNumber;
+                    }
+                    return unary.Operator == Operator.LogicalNot
+                        ? NativeCoercionKind.Boolean
+                        : NativeCoercionKind.None;
+                }
+
+                if (current.Parent is IfStatement @if &&
+                    ReferenceEquals(@if.Condition, current))
+                {
+                    return NativeCoercionKind.Boolean;
+                }
+                if (current.Parent is WhileStatement @while &&
+                    ReferenceEquals(@while.Condition, current))
+                {
+                    return NativeCoercionKind.Boolean;
+                }
+                if (current.Parent is ForStatement @for &&
+                    ReferenceEquals(@for.Condition, current))
+                {
+                    return NativeCoercionKind.Boolean;
                 }
 
                 if (current.Parent is FunctionCallExpression call)
@@ -430,30 +525,34 @@ namespace AuroraScript.Compiler.Backend.Code
                     }
                     if (argumentIndex < 0 || call.Target is not NameExpression target)
                     {
-                        return FlowValueType.None;
+                        return NativeCoercionKind.None;
                     }
 
                     var targetFunction = _code.GetName(target).DirectFunction;
                     if (!targetFunction.IsValid ||
                         (uint)targetFunction.Value >= (uint)_directParameters.Length)
                     {
-                        return FlowValueType.None;
+                        return NativeCoercionKind.None;
                     }
                     var parameters = _directParameters[targetFunction.Value];
-                    return parameters != null && argumentIndex < parameters.Length &&
-                        FlowValueTypeFacts.IsInt32Coercion(parameters[argumentIndex])
-                            ? parameters[argumentIndex]
-                            : FlowValueType.None;
+                    if (parameters == null || argumentIndex >= parameters.Length)
+                    {
+                        return NativeCoercionKind.None;
+                    }
+                    var parameter = parameters[argumentIndex];
+                    return parameter.IsCoercion
+                        ? parameter.Coercion
+                        : NativeCoercionKind.None;
                 }
 
-                return FlowValueType.None;
+                return NativeCoercionKind.None;
             }
 
             private readonly struct DemandChildVisitor : IAstChildVisitor
             {
-                private readonly Int32ParameterDemandAnalyzer _owner;
+                private readonly NativeParameterDemandAnalyzer _owner;
 
-                public DemandChildVisitor(Int32ParameterDemandAnalyzer owner)
+                public DemandChildVisitor(NativeParameterDemandAnalyzer owner)
                 {
                     _owner = owner;
                 }
@@ -516,11 +615,13 @@ namespace AuroraScript.Compiler.Backend.Code
                     // is therefore allowed to replace an earlier dynamic graph pass.
                     // Two different exact native kinds, however, disable specialization
                     // deterministically instead of depending on visitation order.
-                    if (FlowValueTypeFacts.IsNativeDirectParameter(argumentType))
+                    if (FlowValueTypeFacts.IsNativeDirectParameter(
+                        new DirectParameterType(argumentType)))
                     {
                         if (evidence.NativeConflict[i]) continue;
                         var current = evidence.Types[i];
-                        if (FlowValueTypeFacts.IsNativeDirectParameter(current) &&
+                        if (FlowValueTypeFacts.IsNativeDirectParameter(
+                                new DirectParameterType(current)) &&
                             current != argumentType)
                         {
                             if (FlowValueTypeFacts.IsNumeric(current) &&
@@ -539,10 +640,17 @@ namespace AuroraScript.Compiler.Backend.Code
                             evidence.Types[i] = argumentType;
                         }
                     }
-                    else if (!FlowValueTypeFacts.IsNativeDirectParameter(evidence.Types[i]) &&
+                    else if (!FlowValueTypeFacts.IsNativeDirectParameter(
+                            new DirectParameterType(evidence.Types[i])) &&
                         !evidence.NativeConflict[i])
                     {
+                        evidence.SawNonNative[i] = true;
                         evidence.Types[i] |= argumentType;
+                    }
+                    else if (!FlowValueTypeFacts.IsNativeDirectParameter(
+                        new DirectParameterType(argumentType)))
+                    {
+                        evidence.SawNonNative[i] = true;
                     }
                 }
             }
@@ -569,10 +677,25 @@ namespace AuroraScript.Compiler.Backend.Code
             {
                 Types = new FlowValueType[count];
                 NativeConflict = new bool[count];
+                SawNonNative = new bool[count];
             }
 
             public FlowValueType[] Types { get; }
             public bool[] NativeConflict { get; }
+            public bool[] SawNonNative { get; }
+
+            public void ResetTransientEvidence()
+            {
+                for (var i = 0; i < Types.Length; i++)
+                {
+                    if (!FlowValueTypeFacts.IsNativeDirectParameter(
+                        new DirectParameterType(Types[i])))
+                    {
+                        Types[i] = FlowValueType.None;
+                    }
+                    SawNonNative[i] = false;
+                }
+            }
         }
     }
 }

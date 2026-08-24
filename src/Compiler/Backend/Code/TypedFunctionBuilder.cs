@@ -15,9 +15,10 @@ namespace AuroraScript.Compiler.Backend.Code
         public static TypedFunctionCode Build(
             ModulePlan module,
             FunctionPlan function,
-            FlowValueType[] parameterTypes = null,
+            DirectParameterType[] parameterTypes = null,
             IReadOnlyDictionary<FunctionId, FlowValueType> directReturnTypes = null,
-            FlowValueType[][] directParameterTypes = null)
+            DirectParameterType[][] directParameterTypes = null,
+            IReadOnlyDictionary<FunctionId, FlowValueType> universalReturnTypes = null)
         {
             ArgumentNullException.ThrowIfNull(module);
             ArgumentNullException.ThrowIfNull(function);
@@ -30,7 +31,8 @@ namespace AuroraScript.Compiler.Backend.Code
                 binder.Declarations,
                 parameterTypes,
                 directReturnTypes,
-                directParameterTypes);
+                directParameterTypes,
+                universalReturnTypes);
             return analyzer.Analyze();
         }
 
@@ -362,13 +364,17 @@ namespace AuroraScript.Compiler.Backend.Code
             private readonly Dictionary<VariableDeclaration, LocalSlotId> _declarations;
             private readonly Dictionary<Expression, FlowValueType> _expressionTypes;
             private readonly FlowValueType[] _locals;
+            private readonly FlowValueType[] _forcedLocalTypes;
             private readonly bool[] _writtenLocals;
-            private readonly FlowValueType[] _parameterTypes;
+            private readonly DirectParameterType[] _parameterTypes;
             private readonly IReadOnlyDictionary<FunctionId, FlowValueType> _directReturnTypes;
-            private readonly FlowValueType[][] _directParameterTypes;
+            private readonly IReadOnlyDictionary<FunctionId, FlowValueType> _universalReturnTypes;
+            private readonly DirectParameterType[][] _directParameterTypes;
             private readonly HashSet<int> _safeInt32Mutations;
             private readonly Dictionary<int, Dictionary<string, FlowValueType>> _localFields;
             private readonly HashSet<int> _invalidLocalFields;
+            private readonly Dictionary<int, FlowValueType> _localArrayElements;
+            private readonly HashSet<int> _invalidLocalArrayElements;
             private readonly bool _optimisticDirect;
             private bool _changed;
             private FlowValueType _passReturnType;
@@ -378,23 +384,28 @@ namespace AuroraScript.Compiler.Backend.Code
                 FunctionPlan function,
                 Dictionary<NameExpression, BoundName> names,
                 Dictionary<VariableDeclaration, LocalSlotId> declarations,
-                FlowValueType[] parameterTypes,
+                DirectParameterType[] parameterTypes,
                 IReadOnlyDictionary<FunctionId, FlowValueType> directReturnTypes,
-                FlowValueType[][] directParameterTypes)
+                DirectParameterType[][] directParameterTypes,
+                IReadOnlyDictionary<FunctionId, FlowValueType> universalReturnTypes)
             {
                 _function = function;
                 _names = names;
                 _declarations = declarations;
                 _expressionTypes = new Dictionary<Expression, FlowValueType>(ReferenceEqualityComparer.Instance);
                 _locals = new FlowValueType[function.LocalSlots.Length];
+                _forcedLocalTypes = new FlowValueType[function.LocalSlots.Length];
                 _writtenLocals = new bool[function.LocalSlots.Length];
                 _parameterTypes = parameterTypes;
                 _directReturnTypes = directReturnTypes;
+                _universalReturnTypes = universalReturnTypes;
                 _directParameterTypes = directParameterTypes;
                 _optimisticDirect = parameterTypes != null;
                 _safeInt32Mutations = new HashSet<int>();
                 _localFields = new Dictionary<int, Dictionary<string, FlowValueType>>();
                 _invalidLocalFields = new HashSet<int>();
+                _localArrayElements = new Dictionary<int, FlowValueType>();
+                _invalidLocalArrayElements = new HashSet<int>();
 
                 var parameterIndex = 0;
                 for (var i = 0; i < function.LocalSlots.Length; i++)
@@ -403,7 +414,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     {
                         _locals[i] = parameterTypes != null &&
                             parameterIndex < parameterTypes.Length &&
-                            parameterTypes[parameterIndex] != FlowValueType.None
+                            parameterTypes[parameterIndex].Type != FlowValueType.None
                                 ? FlowValueTypeFacts.GetDirectLocalType(parameterTypes[parameterIndex])
                                 : FlowValueType.Dynamic;
                         parameterIndex++;
@@ -429,6 +440,21 @@ namespace AuroraScript.Compiler.Backend.Code
                     if (!_changed) break;
                 }
 
+                var storageChanged = ApplyExactNumericStorage(body);
+                storageChanged |= ApplyLocalCoercionStorage(body);
+                if (storageChanged)
+                {
+                    for (var pass = 0; pass < passLimit; pass++)
+                    {
+                        _changed = false;
+                        _passReturnType = FlowValueType.None;
+                        _sawReturn = false;
+                        _expressionTypes.Clear();
+                        AnalyzeStatement(body as Statement);
+                        if (!_changed) break;
+                    }
+                }
+
                 _expressionTypes.Clear();
                 _passReturnType = FlowValueType.None;
                 _sawReturn = false;
@@ -436,6 +462,17 @@ namespace AuroraScript.Compiler.Backend.Code
                 var returnType = _sawReturn
                     ? _passReturnType
                     : FlowValueType.Null;
+                var sequentialReturn = new SequentialReturnTypeAnalyzer(
+                    _function,
+                    _names,
+                    _declarations,
+                    _expressionTypes,
+                    _parameterTypes,
+                    IsCaptured).Analyze(body as Statement);
+                if (sequentialReturn != FlowValueType.None)
+                {
+                    returnType = sequentialReturn;
+                }
                 return new TypedFunctionCode(
                     _function,
                     _names,
@@ -479,6 +516,19 @@ namespace AuroraScript.Compiler.Backend.Code
                             {
                                 MergeLocalFields(slot, map);
                             }
+                            if (variable.Initializer is ArrayLiteralExpression array)
+                            {
+                                MergeLocalArrayElements(slot, array);
+                            }
+                            else if (variable.Initializer is FunctionCallExpression arrayFactory &&
+                                IsArrayFactoryCall(arrayFactory))
+                            {
+                                MergeEmptyLocalArrayElements(slot);
+                            }
+                            else
+                            {
+                                InvalidateLocalArrayElementsUsedAsValue(variable.Initializer);
+                            }
                         }
                         else
                         {
@@ -492,6 +542,7 @@ namespace AuroraScript.Compiler.Backend.Code
                         return;
                     case ReturnStatement @return:
                         _sawReturn = true;
+                        InvalidateLocalArrayElementsUsedAsValue(@return.Expression);
                         if (!_function.IsDirectCallCandidate)
                         {
                             InvalidateLocalFieldsUsedAsValue(@return.Expression);
@@ -554,6 +605,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     case DeleteStatement delete:
                         AnalyzeExpression(delete.Expression);
                         InvalidateLocalFieldsForMutation(delete.Expression);
+                        InvalidateLocalArrayElementsForMutation(delete.Expression);
                         return;
                 }
             }
@@ -579,21 +631,34 @@ namespace AuroraScript.Compiler.Backend.Code
                         type = AnalyzeName(name);
                         break;
                     case BinaryExpression binary:
+                        var binaryLeft = AnalyzeExpression(binary.Left);
+                        var binaryRight = AnalyzeExpression(binary.Right);
+                        if (binary.Operator == Operator.Add)
+                        {
+                            binaryLeft = ApplyLocalArrayArithmeticDemand(binary.Left, binaryLeft);
+                            binaryRight = ApplyLocalArrayArithmeticDemand(binary.Right, binaryRight);
+                        }
                         type = AnalyzeBinary(
                             binary.Operator,
                             binary.Left,
                             binary.Right,
-                            AnalyzeExpression(binary.Left),
-                            AnalyzeExpression(binary.Right));
+                            binaryLeft,
+                            binaryRight);
                         break;
                     case AssignmentExpression assignment:
                         type = AnalyzeExpression(assignment.Right);
+                        InvalidateLocalArrayElementsUsedAsValue(assignment.Right);
                         AnalyzeExpression(assignment.Left);
                         WriteTarget(assignment.Left, type);
                         break;
                     case CompoundExpression compound:
                         var left = AnalyzeExpression(compound.Left);
                         var right = AnalyzeExpression(compound.Right);
+                        if (compound.Operator.SimplerOperator == Operator.Add)
+                        {
+                            left = ApplyLocalArrayArithmeticDemand(compound.Left, left);
+                            right = ApplyLocalArrayArithmeticDemand(compound.Right, right);
+                        }
                         type = AnalyzeBinary(
                             compound.Operator.SimplerOperator,
                             compound.Left,
@@ -617,13 +682,23 @@ namespace AuroraScript.Compiler.Backend.Code
                     case FunctionCallExpression call:
                         AnalyzeExpression(call.Target);
                         var isDirectCall = IsDirectFunctionCall(call);
+                        var isLocalArrayPush = TryGetLocalArrayPush(call, out var pushSlot);
+                        if (!isLocalArrayPush)
+                        {
+                            InvalidateLocalArrayElementsForCallTarget(call.Target);
+                        }
                         for (var i = 0; i < call.Arguments.Count; i++)
                         {
                             AnalyzeExpression(call.Arguments[i]);
+                            InvalidateLocalArrayElementsUsedAsValue(call.Arguments[i]);
                             if (!isDirectCall)
                             {
                                 InvalidateLocalFieldsUsedAsValue(call.Arguments[i]);
                             }
+                        }
+                        if (isLocalArrayPush)
+                        {
+                            UpdateLocalArrayPush(pushSlot, call.Arguments);
                         }
                         if (IsArrayFactoryCall(call))
                         {
@@ -639,6 +714,18 @@ namespace AuroraScript.Compiler.Backend.Code
                                     CanUseDirectReturn(call, targetBinding.DirectFunction))))
                         {
                             type = directReturn;
+                        }
+                        else if (call.Target is NameExpression universalTarget &&
+                            _names.TryGetValue(universalTarget, out var universalBinding) &&
+                            universalBinding.DirectFunction.IsValid &&
+                            _universalReturnTypes != null &&
+                            _universalReturnTypes.TryGetValue(
+                                universalBinding.DirectFunction,
+                                out var universalReturn) &&
+                            universalReturn != FlowValueType.None &&
+                            universalReturn != FlowValueType.Dynamic)
+                        {
+                            type = universalReturn;
                         }
                         else
                         {
@@ -663,28 +750,42 @@ namespace AuroraScript.Compiler.Backend.Code
                         AnalyzeExpression(property.Object);
                         type = AnalyzeExpression(property.Value);
                         UpdateLocalField(property.Object, property.Property, type);
+                        InvalidateLocalArrayElementsUsedAsValue(property.Value);
+                        InvalidateLocalArrayElementsUsedAsValue(property.Object);
                         break;
                     case GetElementExpression element:
                         var elementObjectType = AnalyzeExpression(element.Object);
                         var indexType = AnalyzeExpression(element.Index);
                         InvalidateLocalFieldsUsedAsValue(element.Object);
-                        type = FlowValueTypeFacts.IsPackedArray(elementObjectType) &&
-                            FlowValueTypeFacts.IsNumeric(indexType)
-                                ? FlowValueTypeFacts.GetPackedElementType(elementObjectType)
-                                : FlowValueType.Dynamic;
+                        type = FlowValueTypeFacts.IsPackedArray(elementObjectType)
+                            ? FlowValueTypeFacts.GetPackedElementType(elementObjectType)
+                            : FlowValueType.Dynamic;
                         break;
                     case SetElementExpression element:
                         AnalyzeExpression(element.Object);
-                        AnalyzeExpression(element.Index);
+                        var setIndexType = AnalyzeExpression(element.Index);
                         InvalidateLocalFieldsUsedAsValue(element.Object);
                         type = AnalyzeExpression(element.Value);
+                        UpdateLocalArrayElement(element.Object, setIndexType, type);
+                        InvalidateLocalArrayElementsUsedAsValue(element.Value);
                         break;
                     case ArrayLiteralExpression array:
-                        for (var i = 0; i < array.Elements.Count; i++) AnalyzeExpression(array.Elements[i]);
+                        for (var i = 0; i < array.Elements.Count; i++)
+                        {
+                            AnalyzeExpression(array.Elements[i]);
+                            InvalidateLocalArrayElementsUsedAsValue(array.Elements[i]);
+                        }
                         type = FlowValueType.Array;
                         break;
                     case MapExpression map:
-                        for (var i = 0; i < map.Entries.Count; i++) AnalyzeExpression(map.Entries[i]);
+                        for (var i = 0; i < map.Entries.Count; i++)
+                        {
+                            AnalyzeExpression(map.Entries[i]);
+                            if (map.Entries[i] is MapKeyValueExpression entry)
+                            {
+                                InvalidateLocalArrayElementsUsedAsValue(entry.Value);
+                            }
+                        }
                         type = FlowValueType.Object;
                         break;
                     case MapKeyValueExpression entry:
@@ -980,6 +1081,150 @@ namespace AuroraScript.Compiler.Backend.Code
                     fields.TryGetValue(fieldName, out type);
             }
 
+            private FlowValueType ApplyLocalArrayArithmeticDemand(
+                Expression expression,
+                FlowValueType type)
+            {
+                if (type != FlowValueType.Dynamic ||
+                    expression is not GetElementExpression element ||
+                    !_expressionTypes.TryGetValue(element.Index, out var indexType) ||
+                    !FlowValueTypeFacts.IsNumeric(indexType) ||
+                    !TryGetLocalArrayElementType(element.Object, out _))
+                {
+                    return type;
+                }
+
+                // Keep the element expression itself dynamic so identity-sensitive
+                // uses still observe ScriptDatum semantics. Only '+' receives the
+                // proof that this value can contain a Number or an array hole.
+                return FlowValueType.Number;
+            }
+
+            private void MergeLocalArrayElements(
+                LocalSlotId slot,
+                ArrayLiteralExpression array)
+            {
+                if (!slot.IsValid ||
+                    _invalidLocalArrayElements.Contains(slot.Value) ||
+                    IsCaptured(slot))
+                {
+                    return;
+                }
+
+                for (var i = 0; i < array.Elements.Count; i++)
+                {
+                    var element = array.Elements[i];
+                    if (element is SpreadExpression ||
+                        (element != null &&
+                            (!_expressionTypes.TryGetValue(element, out var elementType) ||
+                                !IsLocalArrayArithmeticExpressionValue(element, elementType))))
+                    {
+                        InvalidateLocalArrayElements(slot);
+                        return;
+                    }
+                }
+
+                MergeEmptyLocalArrayElements(slot);
+            }
+
+            private void MergeEmptyLocalArrayElements(LocalSlotId slot)
+            {
+                if (!slot.IsValid ||
+                    _invalidLocalArrayElements.Contains(slot.Value) ||
+                    IsCaptured(slot))
+                {
+                    return;
+                }
+                if (!_localArrayElements.ContainsKey(slot.Value))
+                {
+                    // A missing element reads as Null. Null and numeric values use
+                    // the same arithmetic '+' branch, so holes do not invalidate
+                    // this narrowly scoped fact.
+                    _localArrayElements[slot.Value] = FlowValueType.Number;
+                    _changed = true;
+                }
+            }
+
+            private bool TryGetLocalArrayPush(
+                FunctionCallExpression call,
+                out LocalSlotId slot)
+            {
+                slot = LocalSlotId.Invalid;
+                if (call?.Target is not GetPropertyExpression property ||
+                    !IsStaticProperty(property.Property, "push") ||
+                    !TryGetLocalSlot(property.Object, out slot) ||
+                    !_localArrayElements.ContainsKey(slot.Value))
+                {
+                    return false;
+                }
+                for (var i = 0; i < call.Arguments.Count; i++)
+                {
+                    if (call.Arguments[i] is SpreadExpression)
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            private void UpdateLocalArrayPush(
+                LocalSlotId slot,
+                IReadOnlyList<Expression> arguments)
+            {
+                for (var i = 0; i < arguments.Count; i++)
+                {
+                    if (!_expressionTypes.TryGetValue(arguments[i], out var argumentType) ||
+                        !IsLocalArrayArithmeticExpressionValue(arguments[i], argumentType))
+                    {
+                        InvalidateLocalArrayElements(slot);
+                        return;
+                    }
+                }
+            }
+
+            private void UpdateLocalArrayElement(
+                Expression objectExpression,
+                FlowValueType indexType,
+                FlowValueType valueType)
+            {
+                if (!TryGetLocalSlot(objectExpression, out var slot) ||
+                    !_localArrayElements.ContainsKey(slot.Value))
+                {
+                    return;
+                }
+                if (!FlowValueTypeFacts.IsNumeric(indexType) ||
+                    !IsLocalArrayArithmeticValue(valueType))
+                {
+                    InvalidateLocalArrayElements(slot);
+                }
+            }
+
+            private bool TryGetLocalArrayElementType(
+                Expression objectExpression,
+                out FlowValueType type)
+            {
+                type = FlowValueType.Dynamic;
+                return TryGetLocalSlot(objectExpression, out var slot) &&
+                    _localArrayElements.TryGetValue(slot.Value, out type);
+            }
+
+            private static bool IsLocalArrayArithmeticValue(FlowValueType type)
+            {
+                return FlowValueTypeFacts.IsNumeric(type) ||
+                    type == FlowValueType.Null;
+            }
+
+            private bool IsLocalArrayArithmeticExpressionValue(
+                Expression expression,
+                FlowValueType type)
+            {
+                return IsLocalArrayArithmeticValue(type) ||
+                    (expression is GetElementExpression element &&
+                        _expressionTypes.TryGetValue(element.Index, out var indexType) &&
+                        FlowValueTypeFacts.IsNumeric(indexType) &&
+                        TryGetLocalArrayElementType(element.Object, out _));
+            }
+
             private void UpdateLocalField(
                 Expression objectExpression,
                 Expression propertyExpression,
@@ -1018,6 +1263,61 @@ namespace AuroraScript.Compiler.Backend.Code
                 }
             }
 
+            private void InvalidateLocalArrayElementsForMutation(Expression expression)
+            {
+                switch (expression)
+                {
+                    case GetPropertyExpression property:
+                        InvalidateLocalArrayElementsUsedAsValue(property.Object);
+                        break;
+                    case GetElementExpression element:
+                        InvalidateLocalArrayElementsUsedAsValue(element.Object);
+                        break;
+                    default:
+                        InvalidateLocalArrayElementsUsedAsValue(expression);
+                        break;
+                }
+            }
+
+            private void InvalidateLocalArrayElementsForCallTarget(Expression target)
+            {
+                if (target is GetPropertyExpression property)
+                {
+                    InvalidateLocalArrayElementsUsedAsValue(property.Object);
+                }
+                else if (target is GetElementExpression element)
+                {
+                    InvalidateLocalArrayElementsUsedAsValue(element.Object);
+                }
+            }
+
+            private void InvalidateLocalArrayElementsUsedAsValue(Expression expression)
+            {
+                switch (expression)
+                {
+                    case null:
+                        return;
+                    case NameExpression:
+                        if (TryGetLocalSlot(expression, out var slot))
+                        {
+                            InvalidateLocalArrayElements(slot);
+                        }
+                        return;
+                    case TypedDocumentExpression tdoc:
+                        InvalidateLocalArrayElementsUsedAsValue(tdoc.Value);
+                        return;
+                    case SpreadExpression spread:
+                        InvalidateLocalArrayElementsUsedAsValue(spread.Expression);
+                        return;
+                    case GroupExpression group:
+                        for (var i = 0; i < group.Expressions.Count; i++)
+                        {
+                            InvalidateLocalArrayElementsUsedAsValue(group.Expressions[i]);
+                        }
+                        return;
+                }
+            }
+
             private void InvalidateLocalFieldsUsedAsValue(Expression expression)
             {
                 if (TryGetLocalSlot(expression, out var slot))
@@ -1051,6 +1351,18 @@ namespace AuroraScript.Compiler.Backend.Code
                 }
             }
 
+            private void InvalidateLocalArrayElements(LocalSlotId slot)
+            {
+                if (!slot.IsValid || !_invalidLocalArrayElements.Add(slot.Value))
+                {
+                    return;
+                }
+                if (_localArrayElements.Remove(slot.Value))
+                {
+                    _changed = true;
+                }
+            }
+
             private static bool TryGetStaticPropertyName(
                 Expression property,
                 out string name)
@@ -1072,8 +1384,16 @@ namespace AuroraScript.Compiler.Backend.Code
                     binding.IsLocal)
                 {
                     InvalidateLocalFields(binding.Local);
+                    InvalidateLocalArrayElements(binding.Local);
                     _writtenLocals[binding.Local.Value] = true;
                     MergeLocal(binding.Local, type);
+                }
+                else if (target is GetElementExpression element)
+                {
+                    var indexType = _expressionTypes.TryGetValue(element.Index, out var analyzedIndex)
+                        ? analyzedIndex
+                        : FlowValueType.Dynamic;
+                    UpdateLocalArrayElement(element.Object, indexType, type);
                 }
             }
 
@@ -1084,6 +1404,10 @@ namespace AuroraScript.Compiler.Backend.Code
                     return;
                 }
                 if (IsCaptured(slot)) type = FlowValueType.Dynamic;
+                else if (_forcedLocalTypes[slot.Value] != FlowValueType.None)
+                {
+                    type = _forcedLocalTypes[slot.Value];
+                }
                 if (type == FlowValueType.None && _optimisticDirect)
                 {
                     return;
@@ -1096,6 +1420,57 @@ namespace AuroraScript.Compiler.Backend.Code
                     _locals[slot.Value] = merged;
                     _changed = true;
                 }
+            }
+
+            private bool ApplyLocalCoercionStorage(AstNode body)
+            {
+                var demands = new LocalCoercionAnalyzer(
+                    _function,
+                    _names,
+                    _expressionTypes,
+                    _directParameterTypes,
+                    IsCaptured).Analyze(body);
+                var changed = false;
+                for (var i = 0; i < demands.Length; i++)
+                {
+                    var type = demands[i] switch
+                    {
+                        NativeCoercionKind.ArithmeticNumber => FlowValueType.Number,
+                        NativeCoercionKind.Boolean => FlowValueType.Boolean,
+                        _ => FlowValueType.None
+                    };
+                    if (type == FlowValueType.None || _forcedLocalTypes[i] == type)
+                    {
+                        continue;
+                    }
+                    _forcedLocalTypes[i] = type;
+                    _locals[i] = type;
+                    changed = true;
+                }
+                return changed;
+            }
+
+            private bool ApplyExactNumericStorage(AstNode body)
+            {
+                var candidates = new ExactNumericDefinitionAnalyzer(
+                    _function,
+                    _names,
+                    _expressionTypes,
+                    IsCaptured).Analyze(body);
+                var changed = false;
+                for (var i = 0; i < candidates.Length; i++)
+                {
+                    if (!candidates[i] ||
+                        FlowValueTypeFacts.IsNumeric(_locals[i]) ||
+                        _forcedLocalTypes[i] == FlowValueType.Number)
+                    {
+                        continue;
+                    }
+                    _forcedLocalTypes[i] = FlowValueType.Number;
+                    _locals[i] = FlowValueType.Number;
+                    changed = true;
+                }
+                return changed;
             }
 
             private bool IsCaptured(LocalSlotId slot)
@@ -1429,6 +1804,716 @@ namespace AuroraScript.Compiler.Backend.Code
                     RegexToken => FlowValueType.Object,
                     _ => FlowValueType.Dynamic
                 };
+            }
+
+            private sealed class SequentialReturnTypeAnalyzer
+            {
+                private readonly FunctionPlan _function;
+                private readonly IReadOnlyDictionary<NameExpression, BoundName> _names;
+                private readonly IReadOnlyDictionary<VariableDeclaration, LocalSlotId> _declarations;
+                private readonly IReadOnlyDictionary<Expression, FlowValueType> _expressionTypes;
+                private readonly DirectParameterType[] _parameterTypes;
+                private readonly Func<LocalSlotId, bool> _isCaptured;
+                private FlowValueType _returnType;
+                private bool _sawReturn;
+                private bool _valid = true;
+
+                public SequentialReturnTypeAnalyzer(
+                    FunctionPlan function,
+                    IReadOnlyDictionary<NameExpression, BoundName> names,
+                    IReadOnlyDictionary<VariableDeclaration, LocalSlotId> declarations,
+                    IReadOnlyDictionary<Expression, FlowValueType> expressionTypes,
+                    DirectParameterType[] parameterTypes,
+                    Func<LocalSlotId, bool> isCaptured)
+                {
+                    _function = function;
+                    _names = names;
+                    _declarations = declarations;
+                    _expressionTypes = expressionTypes;
+                    _parameterTypes = parameterTypes;
+                    _isCaptured = isCaptured;
+                }
+
+                public FlowValueType Analyze(Statement body)
+                {
+                    var locals = new FlowValueType[_function.LocalSlots.Length];
+                    var parameterIndex = 0;
+                    for (var i = 0; i < _function.LocalSlots.Length; i++)
+                    {
+                        var slot = _function.LocalSlots[i];
+                        if (slot.IsParameter)
+                        {
+                            locals[i] = _parameterTypes != null &&
+                                parameterIndex < _parameterTypes.Length
+                                    ? _parameterTypes[parameterIndex].Type
+                                    : FlowValueType.Dynamic;
+                            parameterIndex++;
+                        }
+                        else if (_isCaptured(slot.Id))
+                        {
+                            locals[i] = FlowValueType.Dynamic;
+                        }
+                    }
+
+                    AnalyzeStatement(body, locals);
+                    return _valid && _sawReturn ? _returnType : FlowValueType.None;
+                }
+
+                private void AnalyzeStatement(Statement statement, FlowValueType[] locals)
+                {
+                    if (statement == null || !_valid) return;
+                    switch (statement)
+                    {
+                        case BlockStatement block:
+                            for (var i = 0; i < block.Statements.Count; i++)
+                            {
+                                AnalyzeStatement(block.Statements[i], locals);
+                            }
+                            return;
+                        case VariableDeclaration declaration:
+                            if (declaration.Pattern != null)
+                            {
+                                foreach (var slot in _function.LocalSlots)
+                                {
+                                    if (ReferenceEquals(slot.Declaration, declaration))
+                                    {
+                                        locals[slot.Id.Value] = FlowValueType.Dynamic;
+                                    }
+                                }
+                            }
+                            else if (_declarations.TryGetValue(declaration, out var slot))
+                            {
+                                locals[slot.Value] = declaration.Initializer == null
+                                    ? FlowValueType.Null
+                                    : AnalyzeExpression(declaration.Initializer, locals);
+                            }
+                            return;
+                        case ExpressionStatement expression:
+                            AnalyzeExpression(expression.Expression, locals);
+                            return;
+                        case ReturnStatement @return:
+                            _sawReturn = true;
+                            _returnType = FlowValueTypeFacts.Merge(
+                                _returnType,
+                                @return.Expression == null
+                                    ? FlowValueType.Null
+                                    : AnalyzeExpression(@return.Expression, locals));
+                            return;
+                        case IfStatement @if:
+                            AnalyzeExpression(@if.Condition, locals);
+                            var thenLocals = (FlowValueType[])locals.Clone();
+                            var elseLocals = (FlowValueType[])locals.Clone();
+                            AnalyzeStatement(@if.Body, thenLocals);
+                            AnalyzeStatement(@if.Else, elseLocals);
+                            MergeEnvironments(locals, thenLocals, elseLocals);
+                            return;
+                        case WhileStatement @while:
+                            AnalyzeLoop(@while.Condition, @while.Body, null, locals);
+                            return;
+                        case ForStatement @for:
+                            if (@for.Initializer is Statement initializerStatement)
+                            {
+                                AnalyzeStatement(initializerStatement, locals);
+                            }
+                            else if (@for.Initializer is Expression initializerExpression)
+                            {
+                                AnalyzeExpression(initializerExpression, locals);
+                            }
+                            AnalyzeLoop(@for.Condition, @for.Body, @for.Incrementor, locals);
+                            return;
+                        case ThrowStatement @throw:
+                            AnalyzeExpression(@throw.Expression, locals);
+                            return;
+                        case DeleteStatement delete:
+                            AnalyzeExpression(delete.Expression, locals);
+                            return;
+                        case FunctionDeclaration:
+                            return;
+                        case ForInStatement:
+                        case TryStatement:
+                            _valid = false;
+                            return;
+                    }
+                }
+
+                private void AnalyzeLoop(
+                    Expression condition,
+                    Statement body,
+                    Expression increment,
+                    FlowValueType[] locals)
+                {
+                    AnalyzeExpression(condition, locals);
+                    var entry = (FlowValueType[])locals.Clone();
+                    var state = (FlowValueType[])locals.Clone();
+                    var passLimit = Math.Max(2, locals.Length + 1);
+                    for (var pass = 0; pass < passLimit; pass++)
+                    {
+                        var bodyState = (FlowValueType[])state.Clone();
+                        AnalyzeStatement(body, bodyState);
+                        AnalyzeExpression(increment, bodyState);
+                        var changed = false;
+                        for (var i = 0; i < state.Length; i++)
+                        {
+                            var merged = FlowValueTypeFacts.Merge(entry[i], bodyState[i]);
+                            if (merged == state[i]) continue;
+                            state[i] = merged;
+                            changed = true;
+                        }
+                        if (!changed) break;
+                    }
+                    Array.Copy(state, locals, state.Length);
+                }
+
+                private FlowValueType AnalyzeExpression(
+                    Expression expression,
+                    FlowValueType[] locals)
+                {
+                    if (expression == null) return FlowValueType.Null;
+                    switch (expression)
+                    {
+                        case NameExpression name:
+                            if (_names.TryGetValue(name, out var binding))
+                            {
+                                if (binding.HasConstant) return FromDatum(binding.Constant);
+                                if (binding.IsLocal)
+                                {
+                                    var type = locals[binding.Local.Value];
+                                    return type == FlowValueType.None
+                                        ? FlowValueType.Dynamic
+                                        : type;
+                                }
+                            }
+                            return GetKnownType(expression);
+                        case AssignmentExpression assignment:
+                            var assigned = AnalyzeExpression(assignment.Right, locals);
+                            if (TryGetLocal(assignment.Left, out var assignmentSlot))
+                            {
+                                locals[assignmentSlot.Value] = assigned;
+                            }
+                            return assigned;
+                        case CompoundExpression compound:
+                            var compoundLeft = AnalyzeExpression(compound.Left, locals);
+                            var compoundRight = AnalyzeExpression(compound.Right, locals);
+                            var compoundType = AnalyzeBinary(
+                                compound.Operator.SimplerOperator,
+                                compound.Left,
+                                compound.Right,
+                                compoundLeft,
+                                compoundRight);
+                            if (TryGetLocal(compound.Left, out var compoundSlot))
+                            {
+                                locals[compoundSlot.Value] = compoundType;
+                            }
+                            return compoundType;
+                        case UnaryExpression unary:
+                            var operand = AnalyzeExpression(unary.Expression, locals);
+                            if (!IsMutation(unary.Operator))
+                            {
+                                return unary.Operator == Operator.LogicalNot
+                                    ? FlowValueType.Boolean
+                                    : unary.Operator == Operator.TypeOf
+                                        ? FlowValueType.String
+                                        : unary.Operator == Operator.Negate ||
+                                            unary.Operator == Operator.BitwiseNot
+                                                ? FlowValueType.Number
+                                                : operand;
+                            }
+                            if (TryGetLocal(unary.Expression, out var mutationSlot))
+                            {
+                                locals[mutationSlot.Value] = FlowValueType.Number;
+                            }
+                            return unary.Operator == Operator.PostIncrement ||
+                                unary.Operator == Operator.PostDecrement
+                                    ? operand
+                                    : FlowValueType.Number;
+                        case BinaryExpression binary:
+                            return AnalyzeBinary(
+                                binary.Operator,
+                                binary.Left,
+                                binary.Right,
+                                AnalyzeExpression(binary.Left, locals),
+                                AnalyzeExpression(binary.Right, locals));
+                        case GroupExpression group:
+                            var groupType = FlowValueType.Null;
+                            for (var i = 0; i < group.Expressions.Count; i++)
+                            {
+                                groupType = AnalyzeExpression(group.Expressions[i], locals);
+                            }
+                            return groupType;
+                        default:
+                            return GetKnownType(expression);
+                    }
+                }
+
+                private FlowValueType GetKnownType(Expression expression)
+                {
+                    return _expressionTypes.TryGetValue(expression, out var type)
+                        ? type
+                        : FlowValueType.Dynamic;
+                }
+
+                private bool TryGetLocal(Expression expression, out LocalSlotId slot)
+                {
+                    if (expression is NameExpression name &&
+                        _names.TryGetValue(name, out var binding) &&
+                        binding.IsLocal)
+                    {
+                        slot = binding.Local;
+                        return true;
+                    }
+                    slot = LocalSlotId.Invalid;
+                    return false;
+                }
+
+                private static void MergeEnvironments(
+                    FlowValueType[] target,
+                    FlowValueType[] left,
+                    FlowValueType[] right)
+                {
+                    for (var i = 0; i < target.Length; i++)
+                    {
+                        target[i] = FlowValueTypeFacts.Merge(left[i], right[i]);
+                    }
+                }
+            }
+
+            private sealed class ExactNumericDefinitionAnalyzer
+            {
+                private readonly FunctionPlan _function;
+                private readonly IReadOnlyDictionary<NameExpression, BoundName> _names;
+                private readonly IReadOnlyDictionary<Expression, FlowValueType> _expressionTypes;
+                private readonly List<Expression>[] _definitions;
+                private readonly bool[] _eligible;
+
+                public ExactNumericDefinitionAnalyzer(
+                    FunctionPlan function,
+                    IReadOnlyDictionary<NameExpression, BoundName> names,
+                    IReadOnlyDictionary<Expression, FlowValueType> expressionTypes,
+                    Func<LocalSlotId, bool> isCaptured)
+                {
+                    _function = function;
+                    _names = names;
+                    _expressionTypes = expressionTypes;
+                    _definitions = new List<Expression>[function.LocalSlots.Length];
+                    _eligible = new bool[function.LocalSlots.Length];
+                    for (var i = 0; i < function.LocalSlots.Length; i++)
+                    {
+                        var slot = function.LocalSlots[i];
+                        _definitions[i] = new List<Expression>();
+                        _eligible[i] = !slot.IsParameter &&
+                            !isCaptured(slot.Id) &&
+                            slot.Declaration is not VariableDeclaration { Pattern: not null };
+                    }
+                }
+
+                public bool[] Analyze(AstNode body)
+                {
+                    Visit(body);
+                    for (var i = 0; i < _eligible.Length; i++)
+                    {
+                        if (!_eligible[i] || _definitions[i].Count == 0)
+                        {
+                            _eligible[i] = false;
+                            continue;
+                        }
+                        for (var j = 0; j < _definitions[i].Count; j++)
+                        {
+                            var definition = _definitions[i][j];
+                            if (definition != null &&
+                                _expressionTypes.TryGetValue(definition, out var type) &&
+                                FlowValueTypeFacts.IsNumeric(type))
+                            {
+                                continue;
+                            }
+                            _eligible[i] = false;
+                            break;
+                        }
+                    }
+                    return _eligible;
+                }
+
+                private void Visit(AstNode node)
+                {
+                    if (node == null || node is FunctionDeclaration or LambdaExpression)
+                    {
+                        return;
+                    }
+                    switch (node)
+                    {
+                        case VariableDeclaration declaration:
+                            for (var i = 0; i < _function.LocalSlots.Length; i++)
+                            {
+                                if (!ReferenceEquals(
+                                    _function.LocalSlots[i].Declaration,
+                                    declaration))
+                                {
+                                    continue;
+                                }
+                                if (declaration.Pattern != null)
+                                {
+                                    _eligible[i] = false;
+                                }
+                                else
+                                {
+                                    _definitions[i].Add(declaration.Initializer);
+                                }
+                            }
+                            break;
+                        case AssignmentExpression assignment
+                            when TryGetLocal(assignment.Left, out var assignmentSlot):
+                            _definitions[assignmentSlot.Value].Add(assignment.Right);
+                            break;
+                        case CompoundExpression compound
+                            when TryGetLocal(compound.Left, out var compoundSlot):
+                            _definitions[compoundSlot.Value].Add(compound);
+                            break;
+                        case UnaryExpression unary
+                            when IsMutation(unary.Operator) &&
+                                TryGetLocal(unary.Expression, out _):
+                            // Increment/decrement always stores a Number, including
+                            // when the previous ScriptDatum was null or a string.
+                            break;
+                        case ForInStatement forIn
+                            when TryGetLocal(forIn.Iterator?.Left, out var iteratorSlot):
+                            _eligible[iteratorSlot.Value] = false;
+                            break;
+                    }
+                    var visitor = new DefinitionChildVisitor(this);
+                    AstTraversal.VisitChildren(node, ref visitor);
+                }
+
+                private bool TryGetLocal(Expression expression, out LocalSlotId slot)
+                {
+                    if (expression is NameExpression name &&
+                        _names.TryGetValue(name, out var binding) &&
+                        binding.IsLocal)
+                    {
+                        slot = binding.Local;
+                        return true;
+                    }
+                    slot = LocalSlotId.Invalid;
+                    return false;
+                }
+
+                private readonly struct DefinitionChildVisitor : IAstChildVisitor
+                {
+                    private readonly ExactNumericDefinitionAnalyzer _owner;
+
+                    public DefinitionChildVisitor(ExactNumericDefinitionAnalyzer owner)
+                    {
+                        _owner = owner;
+                    }
+
+                    public void Visit(AstNode node)
+                    {
+                        _owner.Visit(node);
+                    }
+                }
+            }
+
+            private sealed class LocalCoercionAnalyzer
+            {
+                private readonly FunctionPlan _function;
+                private readonly IReadOnlyDictionary<NameExpression, BoundName> _names;
+                private readonly IReadOnlyDictionary<Expression, FlowValueType> _expressionTypes;
+                private readonly DirectParameterType[][] _directParameters;
+                private readonly Func<LocalSlotId, bool> _isCaptured;
+                private readonly NativeCoercionKind[] _demands;
+                private readonly bool[] _invalid;
+
+                public LocalCoercionAnalyzer(
+                    FunctionPlan function,
+                    IReadOnlyDictionary<NameExpression, BoundName> names,
+                    IReadOnlyDictionary<Expression, FlowValueType> expressionTypes,
+                    DirectParameterType[][] directParameters,
+                    Func<LocalSlotId, bool> isCaptured)
+                {
+                    _function = function;
+                    _names = names;
+                    _expressionTypes = expressionTypes;
+                    _directParameters = directParameters;
+                    _isCaptured = isCaptured;
+                    _demands = new NativeCoercionKind[function.LocalSlots.Length];
+                    _invalid = new bool[function.LocalSlots.Length];
+                    for (var i = 0; i < function.LocalSlots.Length; i++)
+                    {
+                        var slot = function.LocalSlots[i];
+                        _invalid[i] = slot.IsParameter ||
+                            isCaptured(slot.Id) ||
+                            slot.Declaration is VariableDeclaration { Pattern: not null };
+                    }
+                }
+
+                public NativeCoercionKind[] Analyze(AstNode body)
+                {
+                    Visit(body);
+                    for (var i = 0; i < _demands.Length; i++)
+                    {
+                        if (_invalid[i]) _demands[i] = NativeCoercionKind.None;
+                    }
+                    return _demands;
+                }
+
+                private void Visit(AstNode node)
+                {
+                    if (node == null || node is FunctionDeclaration or LambdaExpression)
+                    {
+                        return;
+                    }
+                    if (node is NameExpression name)
+                    {
+                        RecordUse(name);
+                    }
+                    var visitor = new ChildVisitor(this);
+                    AstTraversal.VisitChildren(node, ref visitor);
+                }
+
+                private void RecordUse(NameExpression name)
+                {
+                    if (!_names.TryGetValue(name, out var binding) ||
+                        !binding.IsLocal ||
+                        (uint)binding.Local.Value >= (uint)_demands.Length ||
+                        _invalid[binding.Local.Value])
+                    {
+                        return;
+                    }
+
+                    AstNode current = name;
+                    while (current.Parent is GroupExpression group &&
+                        group.Expressions.Count == 1 &&
+                        ReferenceEquals(group.Expression, current))
+                    {
+                        current = group;
+                    }
+
+                    // A discarded simple assignment can convert at the store.
+                    // Any observable assignment result, compound mutation, or
+                    // increment/decrement must retain full ScriptDatum semantics.
+                    if (current.Parent is AssignmentExpression assignment &&
+                        ReferenceEquals(assignment.Left, current))
+                    {
+                        if (assignment.Parent is ExpressionStatement)
+                        {
+                            return;
+                        }
+                        _invalid[binding.Local.Value] = true;
+                        return;
+                    }
+                    if (current.Parent is CompoundExpression compound &&
+                            ReferenceEquals(compound.Left, current) ||
+                        current.Parent is UnaryExpression mutation &&
+                            ReferenceEquals(mutation.Expression, current) &&
+                            IsMutation(mutation.Operator))
+                    {
+                        _invalid[binding.Local.Value] = true;
+                        return;
+                    }
+
+                    // Property/element stores and returns can box at the
+                    // boundary. They must not pin the local to ScriptDatum when
+                    // every observable use already demands a number or boolean.
+                    if (IsBoundaryValueUse(current))
+                    {
+                        return;
+                    }
+
+                    var demand = GetUseDemand(current);
+                    if (demand == NativeCoercionKind.None)
+                    {
+                        _invalid[binding.Local.Value] = true;
+                        return;
+                    }
+                    var existing = _demands[binding.Local.Value];
+                    if (existing == NativeCoercionKind.None)
+                    {
+                        _demands[binding.Local.Value] = demand;
+                    }
+                    else if (existing != demand)
+                    {
+                        _invalid[binding.Local.Value] = true;
+                    }
+                }
+
+                private NativeCoercionKind GetUseDemand(AstNode current)
+                {
+                    if (current.Parent is BinaryExpression binary &&
+                        (ReferenceEquals(binary.Left, current) ||
+                            ReferenceEquals(binary.Right, current)))
+                    {
+                        var demand = GetBinaryOperandDemand(
+                            binary.Operator,
+                            ReferenceEquals(binary.Left, current) ? binary.Right : binary.Left);
+                        if (demand != NativeCoercionKind.None)
+                        {
+                            return demand;
+                        }
+                    }
+                    if (current.Parent is CompoundExpression compound &&
+                        ReferenceEquals(compound.Right, current))
+                    {
+                        var demand = GetBinaryOperandDemand(
+                            compound.Operator.SimplerOperator,
+                            compound.Left);
+                        if (demand != NativeCoercionKind.None)
+                        {
+                            return demand;
+                        }
+                    }
+                    if (IsNumericIndexDemand(current))
+                    {
+                        return NativeCoercionKind.ArithmeticNumber;
+                    }
+                    if (current.Parent is UnaryExpression unary &&
+                        ReferenceEquals(unary.Expression, current))
+                    {
+                        if (unary.Operator == Operator.Negate)
+                        {
+                            return NativeCoercionKind.ArithmeticNumber;
+                        }
+                        if (unary.Operator == Operator.LogicalNot)
+                        {
+                            return NativeCoercionKind.Boolean;
+                        }
+                    }
+                    if (current.Parent is IfStatement @if &&
+                        ReferenceEquals(@if.Condition, current) ||
+                        current.Parent is WhileStatement @while &&
+                            ReferenceEquals(@while.Condition, current) ||
+                        current.Parent is ForStatement @for &&
+                            ReferenceEquals(@for.Condition, current))
+                    {
+                        return NativeCoercionKind.Boolean;
+                    }
+                    if (current.Parent is FunctionCallExpression call)
+                    {
+                        var argumentIndex = -1;
+                        for (var i = 0; i < call.Arguments.Count; i++)
+                        {
+                            if (!ReferenceEquals(call.Arguments[i], current)) continue;
+                            argumentIndex = i;
+                            break;
+                        }
+                        if (argumentIndex >= 0 &&
+                            call.Target is NameExpression target &&
+                            _names.TryGetValue(target, out var targetBinding) &&
+                            targetBinding.DirectFunction.IsValid &&
+                            _directParameters != null &&
+                            (uint)targetBinding.DirectFunction.Value <
+                                (uint)_directParameters.Length)
+                        {
+                            var parameters = _directParameters[targetBinding.DirectFunction.Value];
+                            if (parameters != null && argumentIndex < parameters.Length)
+                            {
+                                var parameter = parameters[argumentIndex];
+                                if (parameter.Coercion is NativeCoercionKind.ArithmeticNumber or
+                                    NativeCoercionKind.Boolean)
+                                {
+                                    return parameter.Coercion;
+                                }
+                                if (FlowValueTypeFacts.IsNumeric(parameter.Type))
+                                {
+                                    return NativeCoercionKind.ArithmeticNumber;
+                                }
+                                if (parameter.Type == FlowValueType.Boolean)
+                                {
+                                    return NativeCoercionKind.Boolean;
+                                }
+                            }
+                        }
+                    }
+                    return NativeCoercionKind.None;
+                }
+
+                private static bool IsBoundaryValueUse(AstNode current)
+                {
+                    if (current.Parent is ReturnStatement)
+                    {
+                        return true;
+                    }
+                    if (current.Parent is SetPropertyExpression setProperty &&
+                        ReferenceEquals(setProperty.Value, current))
+                    {
+                        return true;
+                    }
+                    return current.Parent is SetElementExpression setElement &&
+                        ReferenceEquals(setElement.Value, current);
+                }
+
+                private NativeCoercionKind GetBinaryOperandDemand(Operator op, Expression sibling)
+                {
+                    if (op == Operator.Subtract ||
+                        op == Operator.Multiply ||
+                        op == Operator.Divide ||
+                        op == Operator.Modulo ||
+                        op == Operator.LessThan ||
+                        op == Operator.LessThanOrEqual ||
+                        op == Operator.GreaterThan ||
+                        op == Operator.GreaterThanOrEqual)
+                    {
+                        return NativeCoercionKind.ArithmeticNumber;
+                    }
+                    if (op == Operator.Add ||
+                        op == Operator.Equal ||
+                        op == Operator.NotEqual)
+                    {
+                        var siblingType = GetExpressionType(sibling);
+                        if (siblingType == FlowValueType.String)
+                        {
+                            return NativeCoercionKind.None;
+                        }
+                        if (FlowValueTypeFacts.IsNumeric(siblingType) ||
+                            siblingType == FlowValueType.Boolean)
+                        {
+                            return NativeCoercionKind.ArithmeticNumber;
+                        }
+                    }
+                    return NativeCoercionKind.None;
+                }
+
+                private bool IsNumericIndexDemand(AstNode current)
+                {
+                    Expression objectExpression = null;
+                    if (current.Parent is GetElementExpression getElement &&
+                        ReferenceEquals(getElement.Index, current))
+                    {
+                        objectExpression = getElement.Object;
+                    }
+                    else if (current.Parent is SetElementExpression setElement &&
+                        ReferenceEquals(setElement.Index, current))
+                    {
+                        objectExpression = setElement.Object;
+                    }
+                    if (objectExpression == null)
+                    {
+                        return false;
+                    }
+                    var objectType = GetExpressionType(objectExpression);
+                    return objectType == FlowValueType.Array ||
+                        FlowValueTypeFacts.IsPackedArray(objectType);
+                }
+
+                private FlowValueType GetExpressionType(Expression expression)
+                {
+                    return expression != null &&
+                        _expressionTypes.TryGetValue(expression, out var type)
+                        ? type
+                        : FlowValueType.Dynamic;
+                }
+
+                private readonly struct ChildVisitor : IAstChildVisitor
+                {
+                    private readonly LocalCoercionAnalyzer _owner;
+
+                    public ChildVisitor(LocalCoercionAnalyzer owner)
+                    {
+                        _owner = owner;
+                    }
+
+                    public void Visit(AstNode node)
+                    {
+                        _owner.Visit(node);
+                    }
+                }
             }
 
             private static FlowValueType FromDatum(ScriptDatum datum)

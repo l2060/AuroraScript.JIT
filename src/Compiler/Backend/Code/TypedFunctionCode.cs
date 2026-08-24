@@ -22,12 +22,6 @@ namespace AuroraScript.Compiler.Backend.Code
         Int32 = 1 << 8,
         Array = 1 << 9,
         Float64Array = 1 << 10,
-        // Direct-call ABI markers. They never escape into expression flow: the
-        // callee sees an Int32 local, while the caller performs the same numeric
-        // conversion that the corresponding bitwise operation used before the
-        // call was specialized.
-        Int32Bitwise = 1 << 11,
-        Int32Shift = 1 << 12,
         UInt8Array = 1 << 13,
         Int16Array = 1 << 14,
         UInt16Array = 1 << 15,
@@ -37,6 +31,73 @@ namespace AuroraScript.Compiler.Backend.Code
         Dynamic = Null | Boolean | Number | String | Object |
             Int32Array | Int8Array | BooleanArray | Float64Array |
             UInt8Array | Int16Array | UInt16Array | UInt32Array | Int64Array | UInt64Array | Array
+    }
+
+    internal enum NativeCoercionKind : byte
+    {
+        None,
+        ArithmeticNumber,
+        Boolean,
+        Int32Bitwise,
+        Int32Shift
+    }
+
+    internal readonly struct DirectParameterType : IEquatable<DirectParameterType>
+    {
+        public DirectParameterType(
+            FlowValueType type,
+            NativeCoercionKind coercion = NativeCoercionKind.None)
+        {
+            Type = type;
+            Coercion = coercion;
+        }
+
+        public FlowValueType Type { get; }
+        public NativeCoercionKind Coercion { get; }
+        public bool IsCoercion => Coercion != NativeCoercionKind.None;
+        public bool IsInt32Coercion =>
+            Coercion is NativeCoercionKind.Int32Bitwise or NativeCoercionKind.Int32Shift;
+
+        public static DirectParameterType FromCoercion(NativeCoercionKind coercion)
+        {
+            return coercion switch
+            {
+                NativeCoercionKind.ArithmeticNumber => new DirectParameterType(
+                    FlowValueType.Number,
+                    coercion),
+                NativeCoercionKind.Boolean => new DirectParameterType(
+                    FlowValueType.Boolean,
+                    coercion),
+                NativeCoercionKind.Int32Bitwise or NativeCoercionKind.Int32Shift =>
+                    new DirectParameterType(FlowValueType.Int32, coercion),
+                _ => new DirectParameterType(FlowValueType.Dynamic)
+            };
+        }
+
+        public bool Equals(DirectParameterType other)
+        {
+            return Type == other.Type && Coercion == other.Coercion;
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj is DirectParameterType other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(Type, Coercion);
+        }
+
+        public static bool operator ==(DirectParameterType left, DirectParameterType right)
+        {
+            return left.Equals(right);
+        }
+
+        public static bool operator !=(DirectParameterType left, DirectParameterType right)
+        {
+            return !left.Equals(right);
+        }
     }
 
     internal static class FlowValueTypeFacts
@@ -70,21 +131,17 @@ namespace AuroraScript.Compiler.Backend.Code
             return (type & packed) != 0;
         }
 
-        public static bool IsNativeDirectParameter(FlowValueType type)
+        public static bool IsNativeDirectParameter(DirectParameterType parameter)
         {
-            return type == FlowValueType.Boolean || IsNumeric(type) ||
-                IsInt32Coercion(type) ||
+            var type = parameter.Type;
+            return parameter.IsCoercion ||
+                type == FlowValueType.Boolean || IsNumeric(type) ||
                 IsPackedArray(type) || type == FlowValueType.Array;
         }
 
-        public static bool IsInt32Coercion(FlowValueType type)
+        public static FlowValueType GetDirectLocalType(DirectParameterType parameter)
         {
-            return type is FlowValueType.Int32Bitwise or FlowValueType.Int32Shift;
-        }
-
-        public static FlowValueType GetDirectLocalType(FlowValueType type)
-        {
-            return IsInt32Coercion(type) ? FlowValueType.Int32 : type;
+            return parameter.Type;
         }
 
         public static bool IsNumeric(FlowValueType type)
@@ -93,13 +150,19 @@ namespace AuroraScript.Compiler.Backend.Code
         }
 
         public static bool CanPassNativeArgument(
-            FlowValueType parameterType,
+            DirectParameterType parameter,
             FlowValueType argumentType)
         {
+            var parameterType = parameter.Type;
+            if (parameter.Coercion is
+                NativeCoercionKind.ArithmeticNumber or NativeCoercionKind.Boolean)
+            {
+                return true;
+            }
             return parameterType == argumentType ||
                 (parameterType == FlowValueType.Number &&
                     argumentType == FlowValueType.Int32) ||
-                (IsInt32Coercion(parameterType) && IsNumeric(argumentType));
+                (parameter.IsInt32Coercion && IsNumeric(argumentType));
         }
 
         public static FlowValueType Merge(FlowValueType left, FlowValueType right)
