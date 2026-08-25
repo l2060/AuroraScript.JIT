@@ -1,6 +1,10 @@
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Types;
 using AuroraScript.Tests.Infrastructure;
+using System;
+using System.IO;
+using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -80,6 +84,554 @@ public sealed class TypeCheckTests
                 domain,
                 "first",
                 arguments: [ScriptDatum.FromObject(new ScriptInt32Array(1))]));
+    }
+
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
+    public async Task DeclaredReturnTypesAssertDynamicValuesAndPreserveNativeValues(
+        CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func add(Number a, Number b) Number {
+                return a + b;
+            }
+            export func identity(value) Number {
+                return value;
+            }
+            export func missing() Number {
+                return;
+            }
+            """,
+            mode);
+
+        ScriptAssert.Equal(
+            5,
+            TestWorkspace.Execute(
+                domain,
+                "add",
+                arguments: [
+                    ScriptDatum.FromNumber(2),
+                    ScriptDatum.FromNumber(3)]));
+        ScriptAssert.Equal(
+            7,
+            TestWorkspace.Execute(
+                domain,
+                "identity",
+                arguments: [ScriptDatum.FromNumber(7)]));
+
+        Assert.Throws<AuroraRuntimeException>(() =>
+            TestWorkspace.Execute(
+                domain,
+                "identity",
+                arguments: [ScriptDatum.FromString("7")]));
+        Assert.Throws<AuroraRuntimeException>(() =>
+            TestWorkspace.Execute(domain, "missing"));
+    }
+
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
+    public async Task CustomTypesGrantCompileTimeNativeFieldFacts(
+        CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export type Point {
+                Number x;
+                Number y;
+            }
+            var topLevel = { x: 2, y: 3 } as Point;
+            export func add(Point p) Number {
+                return p.x + p.y;
+            }
+            export func grant(value) Number {
+                var p = value as Point;
+                return p.x + p.y;
+            }
+            export func assignGrant(value) Number {
+                var p;
+                p = value as Point;
+                return p.x + p.y;
+            }
+            func sumPoint(Point p) Number {
+                return p.x + p.y;
+            }
+            export func fromLiteral() Number {
+                return sumPoint({ x: 2, y: 3 });
+            }
+            export func assignLiteral(Point p) Number {
+                p = { x: 4, y: 5 };
+                return p.x + p.y;
+            }
+            export func bothBranches(flag, Point a, Point b) Number {
+                var p;
+                if (flag) p = a;
+                else p = b;
+                return p.x + p.y;
+            }
+            export func mixedBranches(flag, Point a, value) Number {
+                var p;
+                if (flag) p = a;
+                else p = value;
+                return p.x + p.y;
+            }
+            export func origin() Point {
+                return { x: 1, y: 2 };
+            }
+            export func originSum() Number {
+                var p = origin();
+                return p.x + p.y;
+            }
+            export func valid() Point {
+                return { x: 1, y: null };
+            }
+            export func topLevelValue() {
+                return topLevel;
+            }
+            export func acceptWrongShape() {
+                return add({ x: "wrong" });
+            }
+            export func acceptMissingFields() {
+                return add({});
+            }
+            export func nonObject() {
+                return 1 as Point;
+            }
+            export func dynamic(value) Point {
+                return value;
+            }
+            """,
+            mode);
+
+        var point = TestWorkspace.Execute(domain, "valid");
+        Assert.Equal(ValueKind.Object, point.Kind);
+        Assert.Equal(
+            ValueKind.Object,
+            TestWorkspace.Execute(domain, "topLevelValue").Kind);
+        ScriptAssert.Equal(
+            5,
+            TestWorkspace.Execute(
+                domain,
+                "add",
+                arguments: [
+                    ScriptDatum.FromObject(CreatePoint(2, 3))]));
+        ScriptAssert.Equal(
+            9,
+            TestWorkspace.Execute(domain, "grant", arguments: [
+                ScriptDatum.FromObject(CreatePoint(4, 5))]));
+        ScriptAssert.Equal(
+            11,
+            TestWorkspace.Execute(domain, "assignGrant", arguments: [
+                ScriptDatum.FromObject(CreatePoint(6, 5))]));
+        ScriptAssert.Equal(5, TestWorkspace.Execute(domain, "fromLiteral"));
+        ScriptAssert.Equal(
+            9,
+            TestWorkspace.Execute(
+                domain,
+                "assignLiteral",
+                arguments: [ScriptDatum.FromObject(CreatePoint(0, 0))]));
+        ScriptAssert.Equal(
+            10,
+            TestWorkspace.Execute(
+                domain,
+                "bothBranches",
+                arguments: [
+                    ScriptDatum.True,
+                    ScriptDatum.FromObject(CreatePoint(4, 6)),
+                    ScriptDatum.FromObject(CreatePoint(1, 2))]));
+        ScriptAssert.Equal(
+            3,
+            TestWorkspace.Execute(
+                domain,
+                "bothBranches",
+                arguments: [
+                    ScriptDatum.False,
+                    ScriptDatum.FromObject(CreatePoint(4, 6)),
+                    ScriptDatum.FromObject(CreatePoint(1, 2))]));
+        ScriptAssert.Equal(
+            5,
+            TestWorkspace.Execute(
+                domain,
+                "mixedBranches",
+                arguments: [
+                    ScriptDatum.True,
+                    ScriptDatum.FromObject(CreatePoint(2, 3)),
+                    ScriptDatum.FromObject(CreatePoint(8, 1))]));
+        ScriptAssert.Equal(3, TestWorkspace.Execute(domain, "originSum"));
+        Assert.Equal(
+            ValueKind.Number,
+            TestWorkspace.Execute(domain, "nonObject").Kind);
+        Assert.Equal(
+            ValueKind.Number,
+            TestWorkspace.Execute(
+                domain,
+                "dynamic",
+                arguments: [ScriptDatum.FromNumber(1)]).Kind);
+        Assert.True(double.IsNaN(
+            TestWorkspace.Execute(domain, "acceptWrongShape").Number));
+        ScriptAssert.Equal(
+            0,
+            TestWorkspace.Execute(domain, "acceptMissingFields"));
+    }
+
+    private static ScriptObject CreatePoint(double x, double y)
+    {
+        var point = new ScriptObject();
+        point.Define("x", ScriptDatum.FromNumber(x));
+        point.Define("y", ScriptDatum.FromNumber(y));
+        return point;
+    }
+
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
+    public async Task ExportedTypesFlowThroughQualifiedModuleImports(
+        CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource(
+            "models.as",
+            """
+            @module(MODELS);
+            export type Point {
+                Number x;
+                Number y;
+            }
+            type InternalPoint {
+                Number x;
+            }
+            """);
+        workspace.WriteSource(
+            "main.as",
+            """
+            @module(TEST);
+            import models from './models';
+            func add(models.Point p) Number {
+                return p.x + p.y;
+            }
+            export func run(value) Number {
+                var p = value as models.Point;
+                return add(p);
+            }
+            export func create() models.Point {
+                return { x: 4, y: 5 };
+            }
+            """);
+
+        var engine = workspace.CreateEngine(
+            mode,
+            assemblyOut: mode == CompilationMode.Persistence
+                ? Path.Combine(workspace.Root, "test-output.dll")
+                : null);
+        await engine.BuildAsync(["main.as"]);
+        var domain = engine.CreateDomain();
+
+        ScriptAssert.Equal(
+            7,
+            TestWorkspace.Execute(
+                domain,
+                "run",
+                arguments: [ScriptDatum.FromObject(CreatePoint(3, 4))]));
+        Assert.Equal(ValueKind.Object, TestWorkspace.Execute(domain, "create").Kind);
+    }
+
+    [Fact]
+    public async Task ImportedTypesMustExistAndBeExported()
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource(
+            "models.as",
+            """
+            @module(MODELS);
+            type InternalPoint {
+                Number x;
+            }
+            """);
+        workspace.WriteSource(
+            "main.as",
+            """
+            @module(TEST);
+            import models from './models';
+            export func run(models.InternalPoint value) {
+                return value;
+            }
+            """);
+
+        var engine = workspace.CreateEngine();
+        var error = await Assert.ThrowsAsync<AuroraCompilationException>(
+            () => engine.BuildAsync(["main.as"]));
+        Assert.Contains(
+            "Unknown or inaccessible type 'models.InternalPoint'",
+            error.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ImportedTypesCannotBeUsedAsValues()
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource(
+            "models.as",
+            """
+            @module(MODELS);
+            export type Point {
+                Number x;
+                Number y;
+            }
+            export func add(Point p) Number {
+                return p.x + p.y;
+            }
+            """);
+        workspace.WriteSource(
+            "main.as",
+            """
+            @module(TEST);
+            import models from './models';
+            export func run() {
+                return models.Point;
+            }
+            """);
+
+        var engine = workspace.CreateEngine();
+        var error = await Assert.ThrowsAsync<AuroraCompilationException>(
+            () => engine.BuildAsync(["main.as"]));
+        Assert.Contains(
+            "Type 'models.Point' is compile-time only and cannot be used as a value",
+            error.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ImportedModuleValueExportsRemainReadable()
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource(
+            "models.as",
+            """
+            @module(MODELS);
+            export type Point {
+                Number x;
+                Number y;
+            }
+            export const originX = 1;
+            export func add(Point p) Number {
+                return p.x + p.y;
+            }
+            """);
+        workspace.WriteSource(
+            "main.as",
+            """
+            @module(TEST);
+            import models from './models';
+            export func run(models.Point p) Number {
+                return models.add(p) + models.originX;
+            }
+            """);
+
+        var engine = workspace.CreateEngine();
+        await engine.BuildAsync(["main.as"]);
+        var domain = engine.CreateDomain();
+        ScriptAssert.Equal(
+            6,
+            TestWorkspace.Execute(
+                domain,
+                "run",
+                arguments: [ScriptDatum.FromObject(CreatePoint(2, 3))]));
+    }
+
+#if NET9_0_OR_GREATER
+    [Fact]
+    public async Task PointFieldArithmeticEmitsNativeKernel()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export type Point {
+                Number x;
+                Number y;
+            }
+            @directCall
+            func sumPoint(Point p) Number {
+                return p.x + p.y;
+            }
+            export func run() Number {
+                return sumPoint({ x: 2, y: 3 });
+            }
+            """,
+            CompilationMode.Persistence);
+
+        using var stream = File.OpenRead(Path.Combine(workspace.Root, "test-output.dll"));
+        using var peReader = new PEReader(stream);
+        var reader = peReader.GetMetadataReader();
+        foreach (var handle in reader.MethodDefinitions)
+        {
+            var method = reader.GetMethodDefinition(handle);
+            if (string.Equals(
+                reader.GetString(method.Name),
+                "sumPoint$native",
+                StringComparison.Ordinal))
+            {
+                return;
+            }
+        }
+        Assert.Fail("Persisted method not found: sumPoint$native");
+    }
+#endif
+
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
+    public async Task NestedShapesDeriveNativeFieldsThroughObjectMembers(
+        CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export type Point {
+                Number x;
+                Number y;
+            }
+            export type Rect {
+                Point origin;
+                Number width;
+                Number height;
+            }
+            export func area(Rect rect) Number {
+                return rect.origin.x * rect.width;
+            }
+            export func fromLiteral() Number {
+                return area({
+                    origin: { x: 2, y: 0 },
+                    width: 4,
+                    height: 1
+                });
+            }
+            """,
+            mode);
+
+        var rect = new ScriptObject();
+        rect.Define("origin", ScriptDatum.FromObject(CreatePoint(3, 9)));
+        rect.Define("width", ScriptDatum.FromNumber(5));
+        rect.Define("height", ScriptDatum.FromNumber(2));
+        ScriptAssert.Equal(
+            15,
+            TestWorkspace.Execute(
+                domain,
+                "area",
+                arguments: [ScriptDatum.FromObject(rect)]));
+        ScriptAssert.Equal(8, TestWorkspace.Execute(domain, "fromLiteral"));
+    }
+
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
+    public async Task NestedShapesAcceptQualifiedImportedFieldTypes(
+        CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource(
+            "models.as",
+            """
+            @module(MODELS);
+            export type Point {
+                Number x;
+                Number y;
+            }
+            """);
+        workspace.WriteSource(
+            "main.as",
+            """
+            @module(TEST);
+            import models from './models';
+            export type Rect {
+                models.Point origin;
+                Number width;
+            }
+            export func left(Rect rect) Number {
+                return rect.origin.x + rect.width;
+            }
+            """);
+
+        var engine = workspace.CreateEngine(
+            mode,
+            assemblyOut: mode == CompilationMode.Persistence
+                ? Path.Combine(workspace.Root, "test-output.dll")
+                : null);
+        await engine.BuildAsync(["main.as"]);
+        var domain = engine.CreateDomain();
+        var rect = new ScriptObject();
+        rect.Define("origin", ScriptDatum.FromObject(CreatePoint(1, 2)));
+        rect.Define("width", ScriptDatum.FromNumber(6));
+        ScriptAssert.Equal(
+            7,
+            TestWorkspace.Execute(
+                domain,
+                "left",
+                arguments: [ScriptDatum.FromObject(rect)]));
+    }
+
+    [Fact]
+    public async Task NestedShapesRejectCyclicDeclarations()
+    {
+        using var workspace = new TestWorkspace();
+        var error = await Assert.ThrowsAsync<AuroraCompilationException>(() =>
+            workspace.CompileModuleAsync(
+                """
+                @module(TEST);
+                export type Node {
+                    Node next;
+                    Number value;
+                }
+                export func run(Node node) {
+                    return node.next;
+                }
+                """));
+        Assert.Contains(
+            "cyclic shape",
+            error.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task NestedShapesRejectMutualCycles()
+    {
+        using var workspace = new TestWorkspace();
+        var error = await Assert.ThrowsAsync<AuroraCompilationException>(() =>
+            workspace.CompileModuleAsync(
+                """
+                @module(TEST);
+                export type Left {
+                    Right other;
+                }
+                export type Right {
+                    Left other;
+                }
+                export func run(Left value) {
+                    return value;
+                }
+                """));
+        Assert.Contains(
+            "cyclic shape",
+            error.Message,
+            StringComparison.Ordinal);
     }
 
     [Fact]

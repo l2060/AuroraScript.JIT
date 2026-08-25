@@ -87,6 +87,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     var function = module.Functions[i];
                     var parameterTypes = NormalizeParameterTypes(
+                        module,
                         function,
                         evidence,
                         parameterDemands[function.Id.Value]);
@@ -260,6 +261,7 @@ namespace AuroraScript.Compiler.Backend.Code
         }
 
         private static DirectParameterType[] NormalizeParameterTypes(
+            ModulePlan module,
             FunctionPlan function,
             IReadOnlyDictionary<FunctionId, ParameterEvidence> evidence,
             NativeCoercionKind[] parameterDemands)
@@ -279,8 +281,9 @@ namespace AuroraScript.Compiler.Backend.Code
                 if (!function.LocalSlots[i].IsParameter) continue;
                 var checkedType = function.LocalSlots[i].Declaration is
                     ParameterDeclaration parameter
-                        ? FlowValueTypeFacts.FromCheckedTypeName(
-                            parameter.CheckedTypeName)
+                        ? TypeReferenceFacts.GetFlowType(
+                            module.Declaration,
+                            parameter.DeclaredType)
                         : FlowValueType.None;
                 if (checkedType != FlowValueType.None)
                 {

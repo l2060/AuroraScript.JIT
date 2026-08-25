@@ -24,6 +24,11 @@ public sealed class TextMateGrammarTests
         AssertPattern(repository, "function-calls", "entity.name.function.member.aurora", ".log(");
         AssertPattern(repository, "function-calls", "variable.other.property.aurora", ".PI");
         AssertPattern(repository, "function-calls", "entity.name.function.aurora", " abc(");
+        AssertPattern(
+            repository,
+            "declarations",
+            "keyword.declaration.type.aurora",
+            "export type Point {");
         AssertPattern(repository, "comments", "comment.line.double-slash.aurora", "// comment");
         AssertBeginPattern(repository, "comments", "comment.block.aurora", "/* comment */");
         AssertPattern(repository, "keywords", "keyword.operator.word.aurora", "typeof value in obj");

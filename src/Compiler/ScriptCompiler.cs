@@ -108,6 +108,7 @@ namespace AuroraScript.Compiler
             var modules = _modulesByPath.Values.ToArray();
             Array.Sort(modules, CompareModulesByPath);
             LinkModules(modules);
+            ValidateLinkedTypeReferences(modules);
             ModuleNameConflictCheck(modules);
             return ModuleSort(modules);
         }
@@ -351,6 +352,12 @@ namespace AuroraScript.Compiler
                     import.Module = dependency;
                 }
             }
+        }
+
+        private static void ValidateLinkedTypeReferences(
+            ModuleDeclaration[] modules)
+        {
+            LinkedTypeReferenceValidator.Validate(modules);
         }
 
         private static void ModuleNameConflictCheck(ModuleDeclaration[] modules)

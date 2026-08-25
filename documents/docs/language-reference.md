@@ -79,7 +79,9 @@ Duplicate declarations in one scope are rejected. A child block may shadow an ou
 
 ### 4. Define functions and methods
 
-`func` and `function` are equivalent. There are no return-type annotations; a function returns the value supplied to `return`.
+`func` and `function` are equivalent. Types remain optional. A function
+without a return contract keeps the normal weakly typed behavior; a type name
+after the parameter list adds an exact boundary contract:
 
 ```as
 func clamp(value, minimum, maximum) {
@@ -92,6 +94,10 @@ func sum(first, ...rest) {
     var total = first;
     for (var item in rest) total += item;
     return total;
+}
+
+func add(Number left, Number right) Number {
+    return left + right;
 }
 ```
 
@@ -123,6 +129,67 @@ The source-level primitive and collection forms are:
 | `regex` | `/pattern/flags`, `new Regex(pattern, flags)` | Literal flags are `g`, `i`, `m`, `u`, and `y`. |
 | `enum` | `enum Mode { Read, Write = 4 }` | Object whose members are 32-bit integer numbers. |
 
+Named `type` declarations are compile-time shapes. They do not change the
+weakly typed object model and do not insert runtime structure scans:
+
+```as
+export type Point {
+    Number x;
+    Number y;
+}
+
+func add(Point p) Number {
+    return p.x + p.y;
+}
+```
+
+After a value is granted as `Point` (`Point p`, `value as Point`, or a
+declared `Point` return), the compiler treats `p.x` and `p.y` as `Number` so
+arithmetic can use native code. Object literals in those same positions are
+also granted the shape, so `return { x: 1, y: 2 }` and `sum(Point p)` of
+`{ x: 1, y: 2 }` do not need `as Point`. A local keeps the shape only when
+every branch agrees. Missing or ill-typed fields still follow ordinary weak
+coercion (for example arithmetic becomes `NaN`); they are not rejected as a
+`Point` mismatch. Runtime exact checks remain only on builtin native types
+(`Number`, `Boolean`, packed arrays, and the other `CheckedType` names) at
+typed parameters, declared native returns that are not already proven, and
+`value as Number`.
+
+Exported shapes can be referenced through an imported module alias:
+
+```as
+import models from "./models";
+
+func distance(models.Point point) Number {
+    return point.x * point.x + point.y * point.y;
+}
+```
+
+A shape field may itself be another shape. Nested members stay objects at
+runtime; reading through them continues Native derivation:
+
+```as
+export type Rect {
+    Point origin;
+    Number width;
+    Number height;
+}
+
+func left(Rect rect) Number {
+    return rect.origin.x;
+}
+```
+
+Recursive or mutually recursive shapes are rejected. Nested shapes do not
+add runtime object scans.
+
+Only `export type` declarations are visible through the alias. Qualified
+shape references remain compile-time metadata and do not add runtime module
+properties or object checks. Using an imported type as a value
+(`models.Point` in an expression) is rejected at compile time. The alias
+itself is still the module instance: `models.add` is a function, `models.Point`
+is not a property.
+
 There is no separate `Unit`/`void` value type in the script language, and the current runtime provides `Float64Array` but not `Float32Array`.
 
 Common object-like built-ins are `Date`, `Error`, `HashMap`, `Path`, `Proxy`, `Regex`, and `StringBuffer`. Construct them with `new` and use the members documented in `schema/runtime-api.json` and the Script API pages. `TDoc` additionally provides the compiler-recognized `tdoc` expression for typed document values.
@@ -146,7 +213,7 @@ var flags = new BooleanArray(size);
 
 Each constructor accepts an optional non-negative length and zero-initializes contiguous primitive storage. `length` is read-only; `push`, `pop`, and element deletion are not supported. Use a general `Array` when the collection must grow or contain mixed values. Script numbers are doubles, so values read from `Int64Array` and `UInt64Array` must be exactly representable as a script number; use TDoc typed values when exact 64-bit persistence is required.
 
-`typeof` reports the constructor name for these packed arrays (`"Int8Array"`, `"UInt8Array"`, and so on). They remain object-backed `ScriptDatum` values; they do not consume a dedicated `ValueKind` bit. `check Int8Array value` is the exact assertion used by the typed backend, while `typeof value == "Int8Array"` is the dynamic name check.
+`typeof` reports the constructor name for these packed arrays (`"Int8Array"`, `"UInt8Array"`, and so on). They remain object-backed `ScriptDatum` values; they do not consume a dedicated `ValueKind` bit. `value as Int8Array` is the exact assertion used by the typed backend, while `typeof value == "Int8Array"` is the dynamic name check.
 
 ### 7. Understand the strong-typing path
 
@@ -366,7 +433,7 @@ typeof new HashMap();          // "HashMap"
 typeof new Path("mem://app");  // "Path"
 ```
 
-`check TypeName value` is a runtime assertion (for example `check Number n` or `check Int8Array bytes`) and is not a substitute for `typeof`. Host code should call `ScriptDatum.TypeOf` / `GetTypeName` for the same names; `ValueKind` is only the datum storage tag.
+`value as Number` (and other builtin native type names) is a runtime assertion and is not a substitute for `typeof`. `value as Point` is a compile-time grant that unlocks native field facts; it does not scan the object. Host code should call `ScriptDatum.TypeOf` / `GetTypeName` for the same names; `ValueKind` is only the datum storage tag.
 
 ## Templates
 

@@ -778,14 +778,21 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void ConvertArgumentToLocalStorage(LocalSlotId slot)
         {
-            var checkedType = _function.LocalSlots[slot.Value].Declaration is
+            var declaredType = _function.LocalSlots[slot.Value].Declaration is
                 ParameterDeclaration parameter
-                    ? parameter.CheckedTypeName
+                    ? parameter.DeclaredType
                     : null;
-            if (checkedType != null)
+            if (TypeReferenceFacts.TryGetCustomType(
+                _module.Declaration,
+                declaredType,
+                out _))
             {
-                var type = FlowValueTypeFacts.FromCheckedTypeName(checkedType);
-                EmitInt32((int)FlowValueTypeFacts.GetCheckedType(checkedType));
+                return;
+            }
+            if (declaredType != null)
+            {
+                var type = FlowValueTypeFacts.FromCheckedTypeName(declaredType.Name);
+                EmitInt32((int)FlowValueTypeFacts.GetCheckedType(declaredType.Name));
                 _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckType);
                 var kind = EmitCheckedDatumConversion(type);
                 if (type == FlowValueType.Object)
@@ -881,26 +888,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     }
                     return;
                 case ReturnStatement @return:
-                    if (_methodReturnKind == StackValueKind.Int32)
-                    {
-                        if (@return.Expression == null) _il.Emit(OpCodes.Ldc_I4_0);
-                        else EmitInt32Value(@return.Expression);
-                    }
-                    else if (_methodReturnKind == StackValueKind.Number)
-                    {
-                        if (@return.Expression == null) _il.Emit(OpCodes.Ldc_R8, double.NaN);
-                        else EmitNumber(@return.Expression);
-                    }
-                    else if (_methodReturnKind == StackValueKind.Boolean)
-                    {
-                        if (@return.Expression == null) _il.Emit(OpCodes.Ldc_I4_0);
-                        else EmitCondition(@return.Expression);
-                    }
-                    else
-                    {
-                        if (@return.Expression == null) EmitNull();
-                        else EmitDatum(@return.Expression);
-                    }
+                    EmitReturnValue(@return.Expression);
                     if (!_usesReturnEpilogue)
                     {
                         _il.Emit(OpCodes.Ret);
@@ -952,6 +940,92 @@ namespace AuroraScript.Compiler.Backend.Emission
                 default:
                     throw new NotSupportedException("Typed statement: " + statement.GetType().Name);
             }
+        }
+
+        private void EmitReturnValue(Expression expression)
+        {
+            var returnReference = _function.Declaration?.ReturnType;
+            var declaredName = returnReference?.Name;
+            if (TypeReferenceFacts.TryGetCustomType(
+                _module.Declaration,
+                returnReference,
+                out _))
+            {
+                if (expression == null) EmitNull();
+                else EmitDatum(expression);
+                return;
+            }
+
+            var declaredType = FlowValueTypeFacts.FromCheckedTypeName(declaredName);
+            var expressionType = expression == null
+                ? FlowValueType.Null
+                : _code.GetExpressionType(expression);
+            if (declaredType != FlowValueType.None &&
+                !ReturnTypeIsProven(expressionType, declaredType))
+            {
+                if (expression == null) EmitNull();
+                else EmitDatum(expression);
+                EmitInt32((int)FlowValueTypeFacts.GetCheckedType(declaredName));
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckType);
+                if (_methodReturnKind == StackValueKind.Datum) return;
+
+                var converted = EmitCheckedDatumConversion(declaredType);
+                ConvertReturnStack(converted);
+                return;
+            }
+
+            if (_methodReturnKind == StackValueKind.Int32)
+            {
+                if (expression == null) _il.Emit(OpCodes.Ldc_I4_0);
+                else EmitInt32Value(expression);
+            }
+            else if (_methodReturnKind == StackValueKind.Number)
+            {
+                if (expression == null) _il.Emit(OpCodes.Ldc_R8, double.NaN);
+                else EmitNumber(expression);
+            }
+            else if (_methodReturnKind == StackValueKind.Boolean)
+            {
+                if (expression == null) _il.Emit(OpCodes.Ldc_I4_0);
+                else EmitCondition(expression);
+            }
+            else
+            {
+                if (expression == null) EmitNull();
+                else EmitDatum(expression);
+            }
+        }
+
+        private static bool ReturnTypeIsProven(
+            FlowValueType actual,
+            FlowValueType declared)
+        {
+            if (declared == FlowValueType.Number)
+            {
+                return actual is FlowValueType.Number or FlowValueType.Int32;
+            }
+            return actual == declared;
+        }
+
+        private void ConvertReturnStack(StackValueKind kind)
+        {
+            if (_methodReturnKind == kind) return;
+            if (_methodReturnKind == StackValueKind.Int32)
+            {
+                ConvertStackToInt32(kind, truncateThroughInt64: false);
+                return;
+            }
+            if (_methodReturnKind == StackValueKind.Number)
+            {
+                ConvertStackToNumber(kind);
+                return;
+            }
+            if (_methodReturnKind == StackValueKind.Boolean)
+            {
+                ConvertStackToBoolean(kind);
+                return;
+            }
+            ConvertToDatum(kind);
         }
 
         private void EmitDebugger()
@@ -1465,6 +1539,13 @@ namespace AuroraScript.Compiler.Backend.Emission
         private StackValueKind EmitCheck(CheckExpression expression)
         {
             EmitDatum(expression.Value);
+            if (TypeReferenceFacts.TryGetCustomType(
+                _module.Declaration,
+                expression.AssertedType,
+                out _))
+            {
+                return StackValueKind.Datum;
+            }
             var type = FlowValueTypeFacts.FromCheckedTypeName(expression.TypeName);
             EmitInt32((int)FlowValueTypeFacts.GetCheckedType(expression.TypeName));
             _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckType);
@@ -1547,9 +1628,39 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return StackValueKind.Int32;
             }
             EmitDatum(expression.Object);
-            _il.Emit(OpCodes.Ldarg_0);
-            _session.Builder.LoadStringConstant(_il, name);
-            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetProperty);
+            if (_directMode)
+            {
+                _session.Builder.LoadStringConstant(_il, name);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetPropertyDirect);
+            }
+            else
+            {
+                _il.Emit(OpCodes.Ldarg_0);
+                _session.Builder.LoadStringConstant(_il, name);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetProperty);
+            }
+
+            var fieldType = _code.GetExpressionType(expression);
+            if (fieldType == FlowValueType.Number)
+            {
+                ConvertStackToNumber(StackValueKind.Datum);
+                return StackValueKind.Number;
+            }
+            if (fieldType == FlowValueType.Int32)
+            {
+                ConvertStackToInt32(StackValueKind.Datum, truncateThroughInt64: false);
+                return StackValueKind.Int32;
+            }
+            if (fieldType == FlowValueType.Boolean)
+            {
+                ConvertStackToBoolean(StackValueKind.Datum);
+                return StackValueKind.Boolean;
+            }
+            if (fieldType == FlowValueType.String)
+            {
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumToString);
+                return StackValueKind.String;
+            }
             return StackValueKind.Datum;
         }
 
@@ -1559,10 +1670,18 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 throw new NotSupportedException("Dynamic dot-property name.");
             }
+
+            var receiver = DeclareLocal(typeof(ScriptDatum));
+            var value = DeclareLocal(typeof(ScriptDatum));
             EmitDatum(expression.Object);
+            _il.Emit(OpCodes.Stloc, receiver);
+            EmitDatum(expression.Value);
+            _il.Emit(OpCodes.Stloc, value);
+
+            _il.Emit(OpCodes.Ldloc, receiver);
             _il.Emit(OpCodes.Ldarg_0);
             _session.Builder.LoadStringConstant(_il, name);
-            EmitDatum(expression.Value);
+            _il.Emit(OpCodes.Ldloc, value);
             _il.Emit(OpCodes.Call, TypedRuntimeMetadata.SetProperty);
             return StackValueKind.Datum;
         }
@@ -6136,6 +6255,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                             CanEmitExpression(code, property.Object, canDirectCall, allowRuntimeBoundary);
                         return propertySupported &&
                             (allowRuntimeBoundary ||
+                                IsContextFreeNativeProperty(code, property) ||
                                 ((FlowValueTypeFacts.IsPackedArray(code.GetExpressionType(property.Object)) ||
                                     code.GetExpressionType(property.Object) == FlowValueType.Array) &&
                                     StringComparer.Ordinal.Equals(propertyName, "length")));
@@ -6253,6 +6373,18 @@ namespace AuroraScript.Compiler.Backend.Emission
                     op == Operator.LeftShift || op == Operator.SignedRightShift ||
                     op == Operator.UnSignedRightShift || op == Operator.LogicalAnd || op == Operator.LogicalOr;
             }
+        }
+
+        private static bool IsContextFreeNativeProperty(
+            TypedFunctionCode code,
+            GetPropertyExpression property)
+        {
+            var type = code.GetExpressionType(property);
+            return type is FlowValueType.Number or
+                FlowValueType.Int32 or
+                FlowValueType.Boolean or
+                FlowValueType.String ||
+                code.GetStructuralType(property) != null;
         }
     }
 }

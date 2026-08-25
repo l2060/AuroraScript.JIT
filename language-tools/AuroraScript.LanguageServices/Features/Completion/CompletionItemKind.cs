@@ -11,5 +11,6 @@ public enum CompletionItemKind
     Constructor,
     Object,
     Module,
-    Enum
+    Enum,
+    Type
 }

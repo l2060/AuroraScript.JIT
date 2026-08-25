@@ -406,6 +406,13 @@ namespace AuroraScript.Compiler.Backend.Emission
         private void EmitCheck(CheckExpression expression)
         {
             EmitExpression(expression.Value);
+            if (TypeReferenceFacts.TryGetCustomType(
+                _module.Declaration,
+                expression.AssertedType,
+                out _))
+            {
+                return;
+            }
             _il.Emit(
                 OpCodes.Ldc_I4,
                 (int)FlowValueTypeFacts.GetCheckedType(expression.TypeName));

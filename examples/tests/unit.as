@@ -6,10 +6,10 @@ import xxx from './libs/timer';
 include 'constant';
 import mem from 'seed';
 import debug_test from '../temp/debug_test';
+
 var __testCases = [];
 mem.go();
 debug_test.run();
-
 
 
 

@@ -1,7 +1,9 @@
 using AuroraScript.LanguageServices.Builtins;
-using AuroraScript.LanguageServices.Features.SemanticTokens;
+using AuroraScript.LanguageServices.Features.Completion;
 using AuroraScript.LanguageServices.Text;
+using AuroraScript.LanguageServices.Features.SemanticTokens;
 using System;
+using System.IO;
 using Xunit;
 
 namespace AuroraScript.LanguageServices.Tests;
@@ -58,6 +60,180 @@ public sealed class TypedDocumentLanguageFeatureTests
             "func add(Number value, Float64Array items)",
             functionHover!.Contents,
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void StructuralTypesProvideSemanticTokensHoverAndDefinitions()
+    {
+        const string source =
+            "export type Point {\n" +
+            "    Number x;\n" +
+            "    Number y;\n" +
+            "}\n" +
+            "// Creates a point.\n" +
+            "export func make(Number x, Number y) Point {\n" +
+            "    return { x: x, y: y };\n" +
+            "}\n" +
+            "export func accept(Point value) {\n" +
+            "    return value as Point;\n" +
+            "}\n";
+        var service = new AuroraLanguageService(
+            BuiltinApiLoader.LoadFromFile(BuiltinApiCatalogTests.GetRuntimeApiPath()));
+
+        Assert.Empty(service.GetDiagnostics("main.as", source));
+        var tokens = service.GetSemanticTokens("main.as", source);
+        AssertToken(source, tokens, "Point", AuroraSemanticTokenTypes.Type);
+        AssertToken(source, tokens, "x", AuroraSemanticTokenTypes.Property);
+
+        var returnType = PositionOf(source, "Point {\n    return");
+        var hover = service.GetHover("main.as", source, returnType);
+        Assert.NotNull(hover);
+        Assert.Contains("type Point", hover!.Contents, StringComparison.Ordinal);
+        Assert.NotNull(service.GetDefinition("main.as", source, returnType));
+
+        var functionHover = service.GetHover(
+            "main.as",
+            source,
+            PositionOf(source, "make("));
+        Assert.NotNull(functionHover);
+        Assert.Contains(
+            "func make(Number x, Number y) Point",
+            functionHover!.Contents,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ShapeFieldsProvideHoverDefinitionAndCompletions()
+    {
+        const string source =
+            "export type Point {\n" +
+            "    Number x;\n" +
+            "    Number y;\n" +
+            "}\n" +
+            "export type Rect {\n" +
+            "    Point origin;\n" +
+            "    Number width;\n" +
+            "}\n" +
+            "export func add(Point p) Number {\n" +
+            "    return p.x + p.y;\n" +
+            "}\n" +
+            "export func left(Rect rect) Number {\n" +
+            "    return rect.origin.x + rect.width;\n" +
+            "}\n";
+        var service = new AuroraLanguageService(
+            BuiltinApiLoader.LoadFromFile(BuiltinApiCatalogTests.GetRuntimeApiPath()));
+
+        var fieldHover = service.GetHover("main.as", source, PositionAfter(source, "return p."));
+        Assert.NotNull(fieldHover);
+        Assert.Contains("Number x", fieldHover!.Contents, StringComparison.Ordinal);
+
+        var nestedHover = service.GetHover(
+            "main.as",
+            source,
+            PositionAfter(source, "rect.origin."));
+        Assert.NotNull(nestedHover);
+        Assert.Contains("Number x", nestedHover!.Contents, StringComparison.Ordinal);
+
+        var originHover = service.GetHover("main.as", source, PositionAfter(source, "rect."));
+        Assert.NotNull(originHover);
+        Assert.Contains("Point origin", originHover!.Contents, StringComparison.Ordinal);
+
+        var definition = service.GetDefinition("main.as", source, PositionAfter(source, "return p."));
+        Assert.NotNull(definition);
+        Assert.Equal(
+            PositionOf(source, "Number x;").Line,
+            definition!.Range.Start.Line);
+
+        var nestedDefinition = service.GetDefinition(
+            "main.as",
+            source,
+            PositionAfter(source, "rect.origin."));
+        Assert.NotNull(nestedDefinition);
+        Assert.Equal(
+            PositionOf(source, "Number x;").Line,
+            nestedDefinition!.Range.Start.Line);
+
+        var pointCompletions = service.GetCompletions(
+            "main.as",
+            source,
+            PositionAfter(source, "return p."));
+        Assert.Contains(pointCompletions.Items, item => item.Label == "x" && item.Kind == CompletionItemKind.Property);
+        Assert.Contains(pointCompletions.Items, item => item.Label == "y");
+        Assert.DoesNotContain(pointCompletions.Items, item => item.Label == "Math");
+
+        var originCompletions = service.GetCompletions(
+            "main.as",
+            source,
+            PositionAfter(source, "return rect.origin."));
+        Assert.Contains(originCompletions.Items, item => item.Label == "x");
+        Assert.Contains(originCompletions.Items, item => item.Label == "y");
+        Assert.DoesNotContain(originCompletions.Items, item => item.Label == "width");
+    }
+
+    [Fact]
+    public void QualifiedImportedTypesProvideHoverAndDefinition()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "aurora-type-index-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var modelsPath = Path.Combine(root, "models.as");
+            var mainPath = Path.Combine(root, "main.as");
+            const string models =
+                "export type Point { Number x; Number y; }\n";
+            const string main =
+                "import models from './models';\n" +
+                "export func add(models.Point p) Number {\n" +
+                "    return p.x + p.y;\n" +
+                "}\n";
+            File.WriteAllText(modelsPath, models);
+
+            var service = new AuroraLanguageService(
+                new AuroraLanguageServiceOptions(
+                    BuiltinApiLoader.LoadFromFile(
+                        BuiltinApiCatalogTests.GetRuntimeApiPath()))
+                {
+                    BaseDirectory = root,
+                    IndexWorkspaceFiles = true
+                });
+            service.OpenOrUpdateDocument(modelsPath, models);
+            service.OpenOrUpdateDocument(mainPath, main);
+
+            var pointPosition = PositionOf(main, "Point p");
+            var hover = service.GetHover(mainPath, pointPosition);
+            Assert.NotNull(hover);
+            Assert.Contains("export type Point", hover!.Contents, StringComparison.Ordinal);
+
+            var definition = service.GetDefinition(mainPath, pointPosition);
+            Assert.NotNull(definition);
+            Assert.Equal(
+                Path.GetFullPath(modelsPath),
+                Path.GetFullPath(definition!.Path));
+
+            var qualifierDefinition = service.GetDefinition(
+                mainPath,
+                PositionOf(main, "models.Point"));
+            Assert.NotNull(qualifierDefinition);
+            Assert.Equal(
+                Path.GetFullPath(mainPath),
+                Path.GetFullPath(qualifierDefinition!.Path));
+
+            var fieldHover = service.GetHover(mainPath, PositionAfter(main, "return p."));
+            Assert.NotNull(fieldHover);
+            Assert.Contains("Number x", fieldHover!.Contents, StringComparison.Ordinal);
+
+            var fieldCompletions = service.GetCompletions(
+                mainPath,
+                PositionAfter(main, "return p."));
+            Assert.Contains(fieldCompletions.Items, item => item.Label == "x");
+            Assert.Contains(fieldCompletions.Items, item => item.Label == "y");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     [Fact]
@@ -127,7 +303,18 @@ public sealed class TypedDocumentLanguageFeatureTests
     {
         var offset = source.IndexOf(text, StringComparison.Ordinal);
         Assert.True(offset >= 0, $"Source does not contain '{text}'.");
+        return PositionAtOffset(source, offset);
+    }
 
+    private static TextPosition PositionAfter(string source, string text)
+    {
+        var offset = source.IndexOf(text, StringComparison.Ordinal);
+        Assert.True(offset >= 0, $"Source does not contain '{text}'.");
+        return PositionAtOffset(source, offset + text.Length);
+    }
+
+    private static TextPosition PositionAtOffset(string source, int offset)
+    {
         var line = 0;
         var character = 0;
         for (var i = 0; i < offset; i++)

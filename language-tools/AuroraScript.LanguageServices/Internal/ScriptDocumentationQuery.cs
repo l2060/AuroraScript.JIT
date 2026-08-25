@@ -169,7 +169,11 @@ internal static class ScriptDocumentationQuery
             builder.Append("export ");
         }
 
-        AppendFunctionSignature(builder, function.Name.Value, function.Parameters);
+        AppendFunctionSignature(
+            builder,
+            function.Name.Value,
+            function.Parameters,
+            function.ReturnType);
         builder.Append("\n```");
         AppendComments(builder, comments);
         hover = new HoverResult(builder.ToString(), hoverRange);
@@ -384,7 +388,11 @@ internal static class ScriptDocumentationQuery
         builder.Append("```").Append(MarkdownLanguageId).Append('\n');
         if (value is LambdaExpression lambda)
         {
-            AppendFunctionSignature(builder, name, lambda.Function.Parameters);
+            AppendFunctionSignature(
+                builder,
+                name,
+                lambda.Function.Parameters,
+                lambda.Function.ReturnType);
         }
         else
         {
@@ -433,7 +441,8 @@ internal static class ScriptDocumentationQuery
     private static void AppendFunctionSignature(
         StringBuilder builder,
         string name,
-        IReadOnlyList<ParameterDeclaration> parameters)
+        IReadOnlyList<ParameterDeclaration> parameters,
+        TypeReference returnType)
     {
         builder.Append("func ").Append(name).Append('(');
         for (var i = 0; i < parameters.Count; i++)
@@ -443,9 +452,11 @@ internal static class ScriptDocumentationQuery
                 builder.Append(", ");
             }
 
-            if (parameters[i].CheckedTypeName != null)
+            if (parameters[i].DeclaredType != null)
             {
-                builder.Append(parameters[i].CheckedTypeName).Append(' ');
+                builder
+                    .Append(parameters[i].DeclaredType.DisplayName)
+                    .Append(' ');
             }
 
             if (parameters[i].IsSpreadOperator)
@@ -457,6 +468,10 @@ internal static class ScriptDocumentationQuery
         }
 
         builder.Append(')');
+        if (returnType != null)
+        {
+            builder.Append(' ').Append(returnType.DisplayName);
+        }
     }
 
     private static bool TryFindDeclaration(

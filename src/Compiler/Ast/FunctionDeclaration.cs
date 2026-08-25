@@ -41,7 +41,8 @@ namespace AuroraScript.Compiler.Ast
             IReadOnlyList<ParameterDeclaration> parameters,
             Statement body,
             FunctionFlags flags,
-            IReadOnlyList<FunctionAnnotation> annotations = null)
+            IReadOnlyList<FunctionAnnotation> annotations = null,
+            TypeReference returnType = null)
         {
             Access = access;
             Name = identifier;
@@ -49,6 +50,7 @@ namespace AuroraScript.Compiler.Ast
             Body = body;
             Flags = flags;
             Annotations = annotations ?? Array.Empty<FunctionAnnotation>();
+            ReturnType = returnType;
             if (Parameters.Count > 0)
             {
                 for (int i = 0; i < Parameters.Count; i++) Parameters[i].Parent = this;
@@ -83,6 +85,12 @@ namespace AuroraScript.Compiler.Ast
         public FunctionFlags Flags { get; private set; }
 
         public IReadOnlyList<FunctionAnnotation> Annotations { get; private set; }
+
+        /// <summary>
+        /// Optional source-level return contract. A missing contract preserves
+        /// the existing weakly typed, inference-only behavior.
+        /// </summary>
+        public TypeReference ReturnType { get; }
 
 
         public override void Accept(IAstVisitor visitor)

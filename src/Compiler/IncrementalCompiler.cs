@@ -33,6 +33,7 @@ namespace AuroraScript.Compiler
             var moduleSyntaxTrees = await BuildSyntaxTreeAsync(source, cancellationToken).ConfigureAwait(false);
             var globalDeclarations = await BuildGlobalDeclarationIndexAsync(cancellationToken).ConfigureAwait(false);
             LinkModules(moduleSyntaxTrees);
+            ValidateLinkedTypeReferences(moduleSyntaxTrees);
 
             var mainModule = moduleSyntaxTrees.First(
                 module => ScriptPath.Comparer.Equals(module.Source.FullPath, sourcePath));
@@ -88,6 +89,12 @@ namespace AuroraScript.Compiler
                     import.Module = dependency;
                 }
             }
+        }
+
+        private static void ValidateLinkedTypeReferences(
+            IReadOnlyList<ModuleDeclaration> modules)
+        {
+            LinkedTypeReferenceValidator.Validate(modules);
         }
 
         private void ValidateExplicitModuleNames(IReadOnlyList<ModuleDeclaration> modules)

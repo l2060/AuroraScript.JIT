@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
   <Metadata>
-    <Identity Id="AuroraScript.VisualStudio" Version="4.0.11" Language="en-US" Publisher="AuroraScript" />
+    <Identity Id="AuroraScript.VisualStudio" Version="4.0.16" Language="en-US" Publisher="AuroraScript" />
     <DisplayName>AuroraScript for Visual Studio</DisplayName>
     <Description xml:space="preserve">AuroraScript and TDoc language support for Visual Studio: syntax coloring, IntelliSense, diagnostics, definition, references, rename, and built-in API declaration navigation.</Description>
     <License>Assets\LICENSE.txt</License>

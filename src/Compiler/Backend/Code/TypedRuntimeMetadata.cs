@@ -86,6 +86,7 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo TypeOf = Method(typeof(ValueOps), nameof(ValueOps.TypeOf), typeof(ScriptDatum));
 
         public static readonly MethodInfo GetProperty = Method(typeof(ObjectOps), nameof(ObjectOps.GetProperty), typeof(ScriptDatum), typeof(ScriptContext), typeof(string));
+        public static readonly MethodInfo GetPropertyDirect = Method(typeof(ObjectOps), nameof(ObjectOps.GetProperty), typeof(ScriptDatum), typeof(string));
         public static readonly MethodInfo SetProperty = Method(typeof(ObjectOps), nameof(ObjectOps.SetProperty), typeof(ScriptDatum), typeof(ScriptContext), typeof(string), typeof(ScriptDatum));
         public static readonly MethodInfo GetElement = Method(typeof(ObjectOps), nameof(ObjectOps.GetElement), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo GetElementNumber = Method(typeof(ObjectOps), nameof(ObjectOps.GetElementNumber), typeof(ScriptDatum), typeof(double));

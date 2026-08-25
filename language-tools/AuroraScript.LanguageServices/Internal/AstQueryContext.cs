@@ -12,6 +12,8 @@ internal sealed class AstQueryContext
     /// </summary>
     public Token? TypeReference { get; init; }
 
+    public Token? TypeQualifier { get; init; }
+
     public NameExpression? Name { get; init; }
     public GetPropertyExpression? PropertyAccess { get; init; }
     public FunctionCallExpression? Call { get; init; }

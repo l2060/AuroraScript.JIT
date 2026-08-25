@@ -20,10 +20,26 @@ internal static class AuroraCompletionResolver
         }
 
         var context = AstQuery.Find(module.Module, position);
-        if (context?.PropertyAccess != null &&
-            TryResolveOwnerName(context.PropertyAccess.Object, out var ownerName))
+        if (context?.PropertyAccess != null)
         {
-            return GetMemberCompletions(index, module, ownerName);
+            var shapeCompletions = AuroraShapeQuery.GetFieldCompletions(
+                index,
+                module,
+                context.PropertyAccess.Object);
+            if (shapeCompletions.Items.Count != 0)
+            {
+                return shapeCompletions;
+            }
+
+            if (TryResolveOwnerName(context.PropertyAccess.Object, out var ownerName))
+            {
+                return GetMemberCompletions(index, module, ownerName);
+            }
+
+            if (context.IsAfterMemberAccessDot)
+            {
+                return shapeCompletions;
+            }
         }
 
         return GetGlobalCompletions(index, module, position);
@@ -188,6 +204,7 @@ internal static class AuroraCompletionResolver
             AuroraSymbolKind.Function => CompletionItemKind.Function,
             AuroraSymbolKind.Constant => CompletionItemKind.Constant,
             AuroraSymbolKind.Enum => CompletionItemKind.Enum,
+            AuroraSymbolKind.Type => CompletionItemKind.Type,
             AuroraSymbolKind.ImportAlias => CompletionItemKind.Module,
             _ => CompletionItemKind.Variable
         };
@@ -200,6 +217,7 @@ internal static class AuroraCompletionResolver
             AuroraSymbolKind.Function => CompletionItemKind.Method,
             AuroraSymbolKind.Constant => CompletionItemKind.Constant,
             AuroraSymbolKind.Enum => CompletionItemKind.Enum,
+            AuroraSymbolKind.Type => CompletionItemKind.Type,
             _ => CompletionItemKind.Property
         };
     }
@@ -211,6 +229,7 @@ internal static class AuroraCompletionResolver
             AuroraSymbolKind.Function => "module function",
             AuroraSymbolKind.Constant => "module const",
             AuroraSymbolKind.Enum => "enum",
+            AuroraSymbolKind.Type => "type",
             AuroraSymbolKind.ImportAlias => "module alias",
             _ => "module variable"
         };
@@ -223,6 +242,7 @@ internal static class AuroraCompletionResolver
             AuroraSymbolKind.Function => "exported function",
             AuroraSymbolKind.Constant => "exported const",
             AuroraSymbolKind.Enum => "exported enum",
+            AuroraSymbolKind.Type => "exported type",
             _ => "exported variable"
         };
     }

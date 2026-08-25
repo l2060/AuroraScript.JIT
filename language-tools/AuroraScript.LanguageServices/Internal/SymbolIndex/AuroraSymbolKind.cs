@@ -6,5 +6,6 @@ internal enum AuroraSymbolKind
     Variable,
     Constant,
     Enum,
+    Type,
     ImportAlias
 }

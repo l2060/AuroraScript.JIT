@@ -29,6 +29,20 @@ namespace AuroraScript.Compiler
             AfterVisitNode(node);
         }
 
+        public void AcceptTypeDeclaration(TypeDeclaration node)
+        {
+            BeforeVisitNode(node);
+            VisitTypeDeclaration(node);
+            AfterVisitNode(node);
+        }
+
+        public void AcceptTypeFieldDeclaration(TypeFieldDeclaration node)
+        {
+            BeforeVisitNode(node);
+            VisitTypeFieldDeclaration(node);
+            AfterVisitNode(node);
+        }
+
 
         public void AcceptLambdaExpression(LambdaExpression node)
         {
@@ -361,6 +375,10 @@ namespace AuroraScript.Compiler
             {
                 node.Imports[i].Accept(this);
             }
+            for (var i = 0; i < node.Types.Count; i++)
+            {
+                node.Types[i].Accept(this);
+            }
             VisitBlock(node);
         }
 
@@ -486,6 +504,18 @@ namespace AuroraScript.Compiler
         protected virtual void VisitReturnStatement(ReturnStatement node)
         {
             node.Expression?.Accept(this);
+        }
+
+        protected virtual void VisitTypeDeclaration(TypeDeclaration node)
+        {
+            for (var i = 0; i < node.Fields.Count; i++)
+            {
+                node.Fields[i].Accept(this);
+            }
+        }
+
+        protected virtual void VisitTypeFieldDeclaration(TypeFieldDeclaration node)
+        {
         }
 
         protected virtual void VisitExpressionStatement(ExpressionStatement node)

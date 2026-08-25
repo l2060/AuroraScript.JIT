@@ -183,6 +183,15 @@
     "declarations": {
       "patterns": [
         {
+          "name": "meta.declaration.type.aurora",
+          "match": "\\b(?:(export)\\s+)?(type)\\s+([\\p{L}_$][\\p{L}\\p{N}_$]*)(?=\\s*\\{)",
+          "captures": {
+            "1": { "name": "keyword.control.export.aurora" },
+            "2": { "name": "keyword.declaration.type.aurora" },
+            "3": { "name": "entity.name.type.aurora" }
+          }
+        },
+        {
           "name": "meta.declaration.function.aurora",
           "match": "\\b(?:(export)\\s+)?(func|function)\\s+([\\p{L}_$][\\p{L}\\p{N}_$]*)",
           "captures": {

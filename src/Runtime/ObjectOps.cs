@@ -12,6 +12,12 @@ namespace AuroraScript.Runtime
     internal static class ObjectOps
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum GetProperty(ScriptDatum receiver, string name)
+        {
+            return GetProperty(receiver, null, name);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum GetProperty(ScriptDatum receiver, ScriptContext context, string name)
         {
             if (StringComparer.Ordinal.Equals(name, "length"))

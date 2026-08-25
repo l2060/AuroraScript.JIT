@@ -8,21 +8,29 @@ namespace AuroraScript.Compiler.Ast.Expressions
     {
         internal CheckExpression(
             Expression value,
-            string typeName,
             Token asToken,
+            Token typeToken)
+            : this(value, asToken, null, typeToken)
+        {
+        }
+
+        internal CheckExpression(
+            Expression value,
+            Token asToken,
+            Token typeQualifier,
             Token typeToken)
         {
             Value = value;
-            TypeName = typeName;
+            AssertedType = new TypeReference(typeQualifier, typeToken);
             AsToken = asToken;
-            TypeToken = typeToken;
             if (value != null) value.Parent = this;
         }
 
         public Expression Value { get; }
-        public string TypeName { get; }
+        public TypeReference AssertedType { get; }
+        public string TypeName => AssertedType.Name;
         public Token AsToken { get; }
-        public Token TypeToken { get; }
+        public Token TypeToken => AssertedType.Token;
 
         public override void Accept(IAstVisitor visitor)
         {

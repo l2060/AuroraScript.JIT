@@ -325,6 +325,7 @@ internal static class LspMapper
             CompletionItemKind.Property => 10,
             CompletionItemKind.Module => 9,
             CompletionItemKind.Enum => 13,
+            CompletionItemKind.Type => 7,
             CompletionItemKind.Constant => 21,
             CompletionItemKind.Object => 23,
             _ => 1

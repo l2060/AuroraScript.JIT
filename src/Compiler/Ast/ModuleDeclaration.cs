@@ -16,8 +16,13 @@ namespace AuroraScript.Compiler.Ast
         public Dictionary<String, Object> MetaInfos = new Dictionary<string, object>();
 
         private List<ImportDeclaration> _imports;
+        private List<TypeDeclaration> _types;
+        private Dictionary<string, TypeDeclaration> _typesByName;
 
         public IReadOnlyList<ImportDeclaration> Imports => _imports ?? (IReadOnlyList<ImportDeclaration>)Array.Empty<ImportDeclaration>();
+
+        public IReadOnlyList<TypeDeclaration> Types =>
+            _types ?? (IReadOnlyList<TypeDeclaration>)Array.Empty<TypeDeclaration>();
 
 
         internal ModuleDeclaration(ScriptSourceReference source)
@@ -49,11 +54,72 @@ namespace AuroraScript.Compiler.Ast
             AttachParent(import, this);
         }
 
+        public bool AddType(TypeDeclaration declaration)
+        {
+            ArgumentNullException.ThrowIfNull(declaration);
+            _typesByName ??= new Dictionary<string, TypeDeclaration>(StringComparer.Ordinal);
+            if (!_typesByName.TryAdd(declaration.Name.Value, declaration))
+            {
+                return false;
+            }
+            _types ??= new List<TypeDeclaration>();
+            _types.Add(declaration);
+            AttachParent(declaration, this);
+            return true;
+        }
+
+        public bool TryGetType(string name, out TypeDeclaration declaration)
+        {
+            if (_typesByName != null)
+            {
+                return _typesByName.TryGetValue(name, out declaration);
+            }
+            declaration = null;
+            return false;
+        }
+
+        public bool TryResolveType(
+            TypeReference reference,
+            out TypeDeclaration declaration)
+        {
+            declaration = null;
+            if (reference == null)
+            {
+                return false;
+            }
+            if (reference.Qualifier == null)
+            {
+                return TryGetType(reference.Name, out declaration);
+            }
+
+            for (var i = 0; i < Imports.Count; i++)
+            {
+                var import = Imports[i];
+                if (import.Include ||
+                    import.Name == null ||
+                    !StringComparer.Ordinal.Equals(
+                        import.Name.Value,
+                        reference.QualifierName) ||
+                    import.Module == null ||
+                    !import.Module.TryGetType(reference.Name, out declaration))
+                {
+                    continue;
+                }
+                if (declaration.Access == MemberAccess.Export)
+                {
+                    return true;
+                }
+                declaration = null;
+                return false;
+            }
+            return false;
+        }
+
 
 
         public Boolean IsEmpty()
         {
-            return Functions.Count == 0 && Statements.Count == 0;
+            return Functions.Count == 0 && Statements.Count == 0 && Types.Count == 0;
         }
     }
 

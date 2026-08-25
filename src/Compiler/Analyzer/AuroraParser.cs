@@ -201,6 +201,18 @@ namespace AuroraScript.Compiler.Analyzer
                         this.Root.AddImport(importDeclaration);
                         importDeclaration.Parent = Root;
                     }
+                    else if (node is TypeDeclaration typeDeclaration)
+                    {
+                        RejectGlobalNonDeclareStatement(node);
+                        if (!this.Root.AddType(typeDeclaration))
+                        {
+                            throw new AuroraCompilationException(
+                                AuroraCompilationStage.Parsing,
+                                Lexer.FullPath,
+                                typeDeclaration.Name,
+                                $"Duplicate type declaration '{typeDeclaration.Name.Value}'.");
+                        }
+                    }
                     else
                     {
                         RejectGlobalNonDeclareStatement(node);
@@ -209,6 +221,7 @@ namespace AuroraScript.Compiler.Analyzer
 
                     _seenEffectiveModuleStatement = true;
                 }
+                ValidateTypeReferences();
                 SetSourceRecursive(this.Root);
             }
             if (scopeStack.Count > 0)
@@ -316,7 +329,8 @@ namespace AuroraScript.Compiler.Analyzer
                 symbol == Symbols.KW_IMPORT ||
                 symbol == Symbols.KW_INCLUDE ||
                 symbol == Symbols.KW_EXPORT ||
-                symbol == Symbols.KW_DECLARE)
+                symbol == Symbols.KW_DECLARE ||
+                IsTypeDeclarationStart())
             {
                 var token = this.Lexer.LookAtHead();
                 throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, token, $"CompileBlock does not support module-level statement '{token.Value}'.");
@@ -339,6 +353,7 @@ namespace AuroraScript.Compiler.Analyzer
             if (symbol == Symbols.KW_IMPORT) { var res = ParseImport(); if (res != null) res.IsIndependent = true; return res; }
             if (symbol == Symbols.KW_INCLUDE) { var res = ParseInclude(); if (res != null) res.IsIndependent = true; return res; }
             if (symbol == Symbols.KW_EXPORT) { var res = ParseExportStatement(); if (res != null) res.IsIndependent = true; return res; }
+            if (IsTypeDeclarationStart()) { var res = ParseTypeDeclaration(MemberAccess.Internal); if (res != null) res.IsIndependent = true; return res; }
             if (symbol == Symbols.KW_FUNCTION || symbol == Symbols.KW_FUNC) { var res = ParseFunctionDeclaration(MemberAccess.Internal); if (res != null) res.IsIndependent = true; return res; }
             if (symbol == Symbols.KW_DECLARE) { var res = ParseDeclare(MemberAccess.Internal); if (res != null) res.IsIndependent = true; return res; }
             if (symbol == Symbols.KW_CONST || symbol == Symbols.KW_VAR) { var res = ParseVariableDeclaration(MemberAccess.Internal); if (res != null) res.IsIndependent = true; return res; }
@@ -449,20 +464,16 @@ namespace AuroraScript.Compiler.Analyzer
         private Expression ParseTypeAssertion(Expression value)
         {
             var asToken = this.Lexer.NextOfKind<IdentifierToken>();
-            var typeToken = this.Lexer.NextOfKind<IdentifierToken>();
-            if (!IsCheckTypeName(typeToken.Value))
-            {
-                throw new AuroraCompilationException(
-                    AuroraCompilationStage.Parsing,
-                    this.Lexer.FullPath,
-                    typeToken,
-                    $"Unsupported assertion type '{typeToken.Value}'.");
-            }
+            var type = ParseTypeReference();
 
             return SetRange(
-                new CheckExpression(value, typeToken.Value, asToken, typeToken),
+                new CheckExpression(
+                    value,
+                    asToken,
+                    type.Qualifier,
+                    type.Token),
                 value.Range,
-                typeToken.Range);
+                type.Token.Range);
         }
 
         private Expression ParsePrefix(Token token)
@@ -1199,6 +1210,10 @@ namespace AuroraScript.Compiler.Analyzer
             {
                 return ParseEnumDeclaration(MemberAccess.Export);
             }
+            else if (IsTypeDeclarationStart())
+            {
+                return ParseTypeDeclaration(MemberAccess.Export);
+            }
 
             var token = this.Lexer.LookAtHead();
             throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, token, "Invalid keywords appear in export declaration.");
@@ -1212,6 +1227,62 @@ namespace AuroraScript.Compiler.Analyzer
             return SetRange(func, start, func.Range);
         }
 
+        private bool IsTypeDeclarationStart()
+        {
+            return PeekToken(0) is IdentifierToken { Value: "type" } &&
+                PeekToken(1) is IdentifierToken &&
+                PeekSymbol(2) == Symbols.PT_LEFTBRACE;
+        }
+
+        private TypeDeclaration ParseTypeDeclaration(MemberAccess access)
+        {
+            if (scopeStack.Current != ScopeType.MODULE)
+            {
+                throw new AuroraCompilationException(
+                    AuroraCompilationStage.Parsing,
+                    Lexer.FullPath,
+                    Lexer.LookAtHead(),
+                    "Type declarations are only allowed at module scope.");
+            }
+
+            var start = Lexer.NextOfKind<IdentifierToken>();
+            var name = Lexer.NextOfKind<IdentifierToken>();
+            if (IsCheckTypeName(name.Value))
+            {
+                throw new AuroraCompilationException(
+                    AuroraCompilationStage.Parsing,
+                    Lexer.FullPath,
+                    name,
+                    $"Type declaration '{name.Value}' conflicts with a built-in type.");
+            }
+            Lexer.Expect(Symbols.PT_LEFTBRACE);
+            var fields = new List<TypeFieldDeclaration>();
+            var fieldNames = new HashSet<string>(StringComparer.Ordinal);
+            while (!Lexer.TestSymbol(Symbols.PT_RIGHTBRACE))
+            {
+                var fieldType = ParseTypeReference();
+                var fieldName = Lexer.NextOfKind<IdentifierToken>();
+                if (!fieldNames.Add(fieldName.Value))
+                {
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Parsing,
+                        Lexer.FullPath,
+                        fieldName,
+                        $"Duplicate field '{fieldName.Value}' in type '{name.Value}'.");
+                }
+                var end = Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
+                fields.Add(SetRange(
+                    new TypeFieldDeclaration(fieldType, fieldName),
+                    fieldType.Qualifier?.Range ?? fieldType.Token.Range,
+                    end));
+            }
+            var close = Lexer.NextRangeOfKind(Symbols.PT_RIGHTBRACE);
+            return SetRange(
+                new TypeDeclaration(access, name, fields),
+                start.Range,
+                close);
+        }
+
         private FunctionDeclaration ParseFunction(
             IdentifierToken functionName,
             MemberAccess access = MemberAccess.Internal,
@@ -1221,10 +1292,15 @@ namespace AuroraScript.Compiler.Analyzer
             var leftParenRange = this.Lexer.NextRangeOfKind(Symbols.PT_LEFTPARENTHESIS);
             var arguments = this.ParseFunctionArguments();
             // ParseFunctionArguments consumes the )
+            TypeReference returnType = null;
 
             if (flags == FunctionFlags.Lambda)
             {
                 this.Lexer.Expect(Symbols.PT_LAMBDA);
+            }
+            else if (IsTypeReferenceFollowedBy(Symbols.PT_LEFTBRACE))
+            {
+                returnType = ParseTypeReference();
             }
 
             using (scopeStack.Scope(ScopeType.FUNCTION))
@@ -1237,7 +1313,14 @@ namespace AuroraScript.Compiler.Analyzer
                     body = newBody;
                 }
                 ((BlockStatement)body).IsFunction = true;
-                var declaration = new FunctionDeclaration(access, functionName, arguments, body, flags, annotations);
+                var declaration = new FunctionDeclaration(
+                    access,
+                    functionName,
+                    arguments,
+                    body,
+                    flags,
+                    annotations,
+                    returnType);
                 return SetRange(declaration, (functionName?.Range ?? leftParenRange), body.Range);
             }
         }
@@ -1256,8 +1339,19 @@ namespace AuroraScript.Compiler.Analyzer
                 this.Lexer.Expect(Symbols.PT_LEFTPARENTHESIS);
                 var arguments = this.ParseFunctionArguments();
                 // ParseFunctionArguments consumes the )
+                TypeReference returnType = null;
+                if (IsTypeReferenceFollowedBy(Symbols.PT_SEMICOLON))
+                {
+                    returnType = ParseTypeReference();
+                }
                 var semiRange = this.Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
-                var declaration = new FunctionDeclaration(access, funcName, arguments, null, FunctionFlags.Declare);
+                var declaration = new FunctionDeclaration(
+                    access,
+                    funcName,
+                    arguments,
+                    null,
+                    FunctionFlags.Declare,
+                    returnType: returnType);
                 return SetRange(declaration, funcName.Range, semiRange);
             }
             if (this.Lexer.TestSymbol(Symbols.KW_VAR) || this.Lexer.TestSymbol(Symbols.KW_CONST))
@@ -2501,13 +2595,20 @@ namespace AuroraScript.Compiler.Analyzer
             var seenSpread = false;
             while (true)
             {
-                Token checkedType = null;
-                if (PeekToken(0) is IdentifierToken parameterType &&
-                    IsCheckTypeName(parameterType.Value) &&
+                TypeReference declaredType = null;
+                if (PeekToken(0) is IdentifierToken &&
                     (PeekToken(1) is IdentifierToken ||
                         PeekSymbol(1) == Symbols.OP_SPREAD))
                 {
-                    checkedType = this.Lexer.NextOfKind<IdentifierToken>();
+                    declaredType = ParseTypeReference();
+                }
+                else if (PeekToken(0) is IdentifierToken &&
+                    PeekSymbol(1) == Symbols.PT_DOT &&
+                    PeekToken(2) is IdentifierToken &&
+                    (PeekToken(3) is IdentifierToken ||
+                        PeekSymbol(3) == Symbols.OP_SPREAD))
+                {
+                    declaredType = ParseTypeReference();
                 }
                 // Check for spread operator
                 bool isSpread = this.Lexer.TestNext(Symbols.OP_SPREAD);
@@ -2539,11 +2640,12 @@ namespace AuroraScript.Compiler.Analyzer
 
                 var param = SetRange(
                     new ParameterDeclaration((Byte)arguments.Count, varname, defaultValue),
-                    checkedType?.Range ?? varname.Range,
+                    declaredType?.Qualifier?.Range ??
+                        declaredType?.Token.Range ??
+                        varname.Range,
                     defaultValue?.Range ?? varname.Range);
                 param.IsSpreadOperator = isSpread;
-                param.CheckedTypeName = checkedType?.Value;
-                param.CheckedTypeToken = checkedType;
+                param.DeclaredType = declaredType;
                 arguments.Add(param);
 
                 if (this.Lexer.TestSymbol(Symbols.PT_RIGHTPARENTHESIS)) break;
@@ -2551,6 +2653,27 @@ namespace AuroraScript.Compiler.Analyzer
             }
             this.Lexer.Expect(Symbols.PT_RIGHTPARENTHESIS);
             return arguments;
+        }
+
+        private bool IsTypeReferenceFollowedBy(Symbols terminal)
+        {
+            return PeekToken(0) is IdentifierToken &&
+                (PeekSymbol(1) == terminal ||
+                    (PeekSymbol(1) == Symbols.PT_DOT &&
+                        PeekToken(2) is IdentifierToken &&
+                        PeekSymbol(3) == terminal));
+        }
+
+        private TypeReference ParseTypeReference()
+        {
+            var first = this.Lexer.NextOfKind<IdentifierToken>();
+            if (!this.Lexer.TestNext(Symbols.PT_DOT))
+            {
+                return new TypeReference(first);
+            }
+            return new TypeReference(
+                first,
+                this.Lexer.NextOfKind<IdentifierToken>());
         }
 
         private static bool IsCheckTypeName(string typeName)
@@ -2740,6 +2863,70 @@ namespace AuroraScript.Compiler.Analyzer
         private void SetSourceRecursive(AstNode node)
         {
             _sourceFileVisitor.Apply(node, this.Lexer.FullPath);
+        }
+
+        private void ValidateTypeReferences()
+        {
+            new TypeReferenceValidator(Root, Lexer.FullPath).Apply();
+        }
+
+        private sealed class TypeReferenceValidator : IAstVisitor
+        {
+            private readonly ModuleDeclaration _module;
+            private readonly string _sourceName;
+
+            public TypeReferenceValidator(
+                ModuleDeclaration module,
+                string sourceName)
+            {
+                _module = module;
+                _sourceName = sourceName;
+            }
+
+            public void Apply()
+            {
+                _module.Accept(this);
+            }
+
+            protected override void VisitFunction(FunctionDeclaration node)
+            {
+                Validate(node.ReturnType);
+                for (var i = 0; i < node.Parameters.Count; i++)
+                {
+                    Validate(node.Parameters[i].DeclaredType);
+                }
+                base.VisitFunction(node);
+            }
+
+            protected override void VisitCheckExpression(CheckExpression node)
+            {
+                Validate(node.AssertedType);
+                base.VisitCheckExpression(node);
+            }
+
+            protected override void VisitTypeFieldDeclaration(
+                TypeFieldDeclaration node)
+            {
+                Validate(node.Type);
+                base.VisitTypeFieldDeclaration(node);
+            }
+
+            private void Validate(TypeReference type)
+            {
+                if (type == null ||
+                    IsCheckTypeName(type.Name) ||
+                    type.Qualifier != null ||
+                    _module.TryGetType(type.Name, out _))
+                {
+                    return;
+                }
+
+                throw new AuroraCompilationException(
+                    AuroraCompilationStage.Parsing,
+                    _sourceName,
+                    type.Token,
+                    $"Unknown type '{type.Name}'.");
+            }
         }
 
         private SourceSpan MergeRanges(SourceSpan start, SourceSpan end)

@@ -17,12 +17,13 @@ namespace AuroraScript.Compiler.Ast.Expressions
         public Byte Index { get; set; }
 
         /// <summary>
-        /// Exact runtime type required at the function boundary, or null when
-        /// the parameter remains dynamically typed.
+        /// Optional source-level type contract at the function boundary.
         /// </summary>
-        public string CheckedTypeName { get; set; }
+        public TypeReference DeclaredType { get; set; }
 
-        public Token CheckedTypeToken { get; set; }
+        public string CheckedTypeName => DeclaredType?.Name;
+
+        public Token CheckedTypeToken => DeclaredType?.Token;
 
         /// <summary>
         /// 扩展运算符（Spread Operator）

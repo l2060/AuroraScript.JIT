@@ -44,6 +44,11 @@ internal static class AuroraDefinitionResolver
             return localDefinition;
         }
 
+        if (AuroraShapeQuery.TryGetFieldDefinition(index, module, context, out var shapeFieldDefinition))
+        {
+            return shapeFieldDefinition;
+        }
+
         if (context.PropertyAccess != null &&
             context.IsOnPropertyName &&
             TryResolveGlobalMember(index, module, localIndex, context.PropertyAccess, globalDeclarations, out var globalMemberDefinition))

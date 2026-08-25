@@ -40,7 +40,11 @@ namespace AuroraScript.Runtime
         UInt64Array
     }
 
-    /// <summary>Exact runtime assertions used by typed parameters and <c>value as Type</c>.</summary>
+    /// <summary>
+    /// Exact runtime assertions for native builtin types on typed parameters
+    /// and <c>value as Number</c>-style checks. Custom <c>type</c> names are
+    /// compile-time grants and never reach this helper.
+    /// </summary>
     public static class TypeCheckOps
     {
         /// <summary>

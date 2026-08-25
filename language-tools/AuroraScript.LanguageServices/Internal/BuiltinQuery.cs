@@ -80,10 +80,14 @@ internal static class BuiltinQuery
         AstQueryContext? context,
         string? locale = null)
     {
-        if (context?.PropertyAccess != null &&
-            TryResolveOwnerName(context.PropertyAccess.Object, out var ownerName))
+        if (context?.PropertyAccess != null)
         {
-            return GetMemberCompletions(builtins, declaration, ownerName, locale);
+            if (TryResolveOwnerName(context.PropertyAccess.Object, out var ownerName))
+            {
+                return GetMemberCompletions(builtins, declaration, ownerName, locale);
+            }
+
+            return new CompletionResult(Array.Empty<CompletionItem>());
         }
 
         return CompleteGlobals(builtins.Globals, locale);

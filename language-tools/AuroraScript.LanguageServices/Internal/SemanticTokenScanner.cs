@@ -583,6 +583,12 @@ internal static class SemanticTokenScanner
                 {
                     Predeclare(node.Functions[i]);
                 }
+                for (var i = 0; i < node.Types.Count; i++)
+                {
+                    Declare(
+                        node.Types[i].Name.Value,
+                        AuroraSemanticTokenTypes.Type);
+                }
 
                 for (var i = 0; i < node.Imports.Count; i++)
                 {
@@ -597,6 +603,10 @@ internal static class SemanticTokenScanner
                 for (var i = 0; i < node.Functions.Count; i++)
                 {
                     node.Functions[i].Accept(this);
+                }
+                for (var i = 0; i < node.Types.Count; i++)
+                {
+                    node.Types[i].Accept(this);
                 }
             }
             finally
@@ -645,6 +655,13 @@ internal static class SemanticTokenScanner
                     : AuroraSemanticTokenTypes.Function;
                 _builder.AddToken(node.Name, type, SemanticTokenPriority.Declaration);
             }
+            if (node.ReturnType != null)
+            {
+                _builder.AddToken(
+                    node.ReturnType.Token,
+                    AuroraSemanticTokenTypes.Type,
+                    SemanticTokenPriority.Ast);
+            }
 
             PushScope();
             try
@@ -682,6 +699,31 @@ internal static class SemanticTokenScanner
             }
 
             node.Initializer?.Accept(this);
+        }
+
+        protected override void VisitTypeDeclaration(TypeDeclaration node)
+        {
+            _builder.AddToken(
+                node.Name,
+                AuroraSemanticTokenTypes.Type,
+                SemanticTokenPriority.Declaration);
+            for (var i = 0; i < node.Fields.Count; i++)
+            {
+                node.Fields[i].Accept(this);
+            }
+        }
+
+        protected override void VisitTypeFieldDeclaration(
+            TypeFieldDeclaration node)
+        {
+            _builder.AddToken(
+                node.Type.Token,
+                AuroraSemanticTokenTypes.Type,
+                SemanticTokenPriority.Ast);
+            _builder.AddToken(
+                node.Name,
+                AuroraSemanticTokenTypes.Property,
+                SemanticTokenPriority.Declaration);
         }
 
         protected override void VisitVarDeclaration(VariableDeclaration node)

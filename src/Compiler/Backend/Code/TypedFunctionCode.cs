@@ -313,13 +313,16 @@ namespace AuroraScript.Compiler.Backend.Code
         private readonly Dictionary<NameExpression, BoundName> _names;
         private readonly Dictionary<VariableDeclaration, LocalSlotId> _declarations;
         private readonly Dictionary<Expression, FlowValueType> _expressionTypes;
+        private readonly Dictionary<Expression, TypeDeclaration> _structuralTypes;
 
         public TypedFunctionCode(
             FunctionPlan function,
             Dictionary<NameExpression, BoundName> names,
             Dictionary<VariableDeclaration, LocalSlotId> declarations,
             Dictionary<Expression, FlowValueType> expressionTypes,
+            Dictionary<Expression, TypeDeclaration> structuralTypes,
             FlowValueType[] localTypes,
+            TypeDeclaration[] localStructuralTypes,
             bool[] writtenLocals,
             FlowValueType returnType)
         {
@@ -327,13 +330,16 @@ namespace AuroraScript.Compiler.Backend.Code
             _names = names ?? throw new ArgumentNullException(nameof(names));
             _declarations = declarations ?? throw new ArgumentNullException(nameof(declarations));
             _expressionTypes = expressionTypes ?? throw new ArgumentNullException(nameof(expressionTypes));
+            _structuralTypes = structuralTypes ?? throw new ArgumentNullException(nameof(structuralTypes));
             LocalTypes = localTypes ?? throw new ArgumentNullException(nameof(localTypes));
+            LocalStructuralTypes = localStructuralTypes ?? throw new ArgumentNullException(nameof(localStructuralTypes));
             WrittenLocals = writtenLocals ?? throw new ArgumentNullException(nameof(writtenLocals));
             ReturnType = returnType;
         }
 
         public FunctionPlan Function { get; }
         public FlowValueType[] LocalTypes { get; }
+        public TypeDeclaration[] LocalStructuralTypes { get; }
         public bool[] WrittenLocals { get; }
         public FlowValueType ReturnType { get; }
 
@@ -363,6 +369,22 @@ namespace AuroraScript.Compiler.Backend.Code
             return slot.IsValid && (uint)slot.Value < (uint)LocalTypes.Length
                 ? LocalTypes[slot.Value]
                 : FlowValueType.Dynamic;
+        }
+
+        public TypeDeclaration GetStructuralType(Expression expression)
+        {
+            return expression != null &&
+                _structuralTypes.TryGetValue(expression, out var type)
+                    ? type
+                    : null;
+        }
+
+        public TypeDeclaration GetLocalStructuralType(LocalSlotId slot)
+        {
+            return slot.IsValid &&
+                (uint)slot.Value < (uint)LocalStructuralTypes.Length
+                    ? LocalStructuralTypes[slot.Value]
+                    : null;
         }
     }
 }

@@ -26,6 +26,7 @@ namespace AuroraScript.Compiler.Backend.Code
             var binder = new NameBinder(module, function);
             binder.Bind();
             var analyzer = new TypeAnalyzer(
+                module,
                 function,
                 binder.Names,
                 binder.Declarations,
@@ -362,11 +363,14 @@ namespace AuroraScript.Compiler.Backend.Code
 
         private sealed class TypeAnalyzer
         {
+            private readonly ModulePlan _module;
             private readonly FunctionPlan _function;
             private readonly Dictionary<NameExpression, BoundName> _names;
             private readonly Dictionary<VariableDeclaration, LocalSlotId> _declarations;
             private readonly Dictionary<Expression, FlowValueType> _expressionTypes;
+            private readonly Dictionary<Expression, TypeDeclaration> _structuralTypes;
             private readonly FlowValueType[] _locals;
+            private readonly TypeDeclaration[] _localStructuralTypes;
             private readonly FlowValueType[] _forcedLocalTypes;
             private readonly bool[] _writtenLocals;
             private readonly DirectParameterType[] _parameterTypes;
@@ -384,6 +388,7 @@ namespace AuroraScript.Compiler.Backend.Code
             private bool _sawReturn;
 
             public TypeAnalyzer(
+                ModulePlan module,
                 FunctionPlan function,
                 Dictionary<NameExpression, BoundName> names,
                 Dictionary<VariableDeclaration, LocalSlotId> declarations,
@@ -392,11 +397,14 @@ namespace AuroraScript.Compiler.Backend.Code
                 DirectParameterType[][] directParameterTypes,
                 IReadOnlyDictionary<FunctionId, FlowValueType> universalReturnTypes)
             {
+                _module = module;
                 _function = function;
                 _names = names;
                 _declarations = declarations;
                 _expressionTypes = new Dictionary<Expression, FlowValueType>(ReferenceEqualityComparer.Instance);
+                _structuralTypes = new Dictionary<Expression, TypeDeclaration>(ReferenceEqualityComparer.Instance);
                 _locals = new FlowValueType[function.LocalSlots.Length];
+                _localStructuralTypes = new TypeDeclaration[function.LocalSlots.Length];
                 _forcedLocalTypes = new FlowValueType[function.LocalSlots.Length];
                 _writtenLocals = new bool[function.LocalSlots.Length];
                 _parameterTypes = parameterTypes;
@@ -417,8 +425,9 @@ namespace AuroraScript.Compiler.Backend.Code
                     {
                         var checkedType = function.LocalSlots[i].Declaration is
                             ParameterDeclaration parameter
-                                ? FlowValueTypeFacts.FromCheckedTypeName(
-                                    parameter.CheckedTypeName)
+                                ? TypeReferenceFacts.GetFlowType(
+                                    module.Declaration,
+                                    parameter.DeclaredType)
                                 : FlowValueType.None;
                         _locals[i] = checkedType != FlowValueType.None
                             ? checkedType
@@ -427,6 +436,15 @@ namespace AuroraScript.Compiler.Backend.Code
                             parameterTypes[parameterIndex].Type != FlowValueType.None
                                 ? FlowValueTypeFacts.GetDirectLocalType(parameterTypes[parameterIndex])
                                 : FlowValueType.Dynamic;
+                        if (function.LocalSlots[i].Declaration is
+                                ParameterDeclaration typedParameter &&
+                            TypeReferenceFacts.TryGetCustomType(
+                                module.Declaration,
+                                typedParameter.DeclaredType,
+                                out var parameterStructuralType))
+                        {
+                            _localStructuralTypes[i] = parameterStructuralType;
+                        }
                         parameterIndex++;
                     }
                     else if (IsCaptured(function.LocalSlots[i].Id))
@@ -446,6 +464,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     _passReturnType = FlowValueType.None;
                     _sawReturn = false;
                     _expressionTypes.Clear();
+                    _structuralTypes.Clear();
                     AnalyzeStatement(body as Statement);
                     if (!_changed) break;
                 }
@@ -460,6 +479,7 @@ namespace AuroraScript.Compiler.Backend.Code
                         _passReturnType = FlowValueType.None;
                         _sawReturn = false;
                         _expressionTypes.Clear();
+                        _structuralTypes.Clear();
                         AnalyzeStatement(body as Statement);
                         if (!_changed) break;
                     }
@@ -483,12 +503,26 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     returnType = sequentialReturn;
                 }
+                var declaredReturnType = FlowValueTypeFacts.FromCheckedTypeName(
+                    _function.Declaration?.ReturnType?.Name);
+                if (declaredReturnType == FlowValueType.None)
+                {
+                    declaredReturnType = TypeReferenceFacts.GetFlowType(
+                        _module.Declaration,
+                        _function.Declaration?.ReturnType);
+                }
+                if (declaredReturnType != FlowValueType.None)
+                {
+                    returnType = declaredReturnType;
+                }
                 return new TypedFunctionCode(
                     _function,
                     _names,
                     _declarations,
                     _expressionTypes,
+                    _structuralTypes,
                     _locals,
+                    _localStructuralTypes,
                     _writtenLocals,
                     returnType);
             }
@@ -522,6 +556,15 @@ namespace AuroraScript.Compiler.Backend.Code
                                 ? FlowValueType.Null
                                 : AnalyzeExpression(variable.Initializer);
                             MergeLocal(slot, initializerType);
+                            if (!_writtenLocals[slot.Value] &&
+                                variable.Initializer != null &&
+                                _structuralTypes.TryGetValue(
+                                    variable.Initializer,
+                                    out var initializerStructuralType))
+                            {
+                                _localStructuralTypes[slot.Value] =
+                                    initializerStructuralType;
+                            }
                             if (variable.Initializer is MapExpression map)
                             {
                                 MergeLocalFields(slot, map);
@@ -565,17 +608,24 @@ namespace AuroraScript.Compiler.Backend.Code
                         return;
                     case IfStatement @if:
                         AnalyzeExpression(@if.Condition);
+                        var ifBefore = SnapshotStructural();
                         AnalyzeStatement(@if.Body);
+                        var thenStructural = SnapshotStructural();
+                        RestoreStructural(ifBefore);
                         AnalyzeStatement(@if.Else);
+                        IntersectStructural(thenStructural);
                         return;
                     case WhileStatement @while:
                         AnalyzeExpression(@while.Condition);
+                        var whileBefore = SnapshotStructural();
                         AnalyzeStatement(@while.Body);
+                        IntersectStructural(whileBefore);
                         return;
                     case ForStatement @for:
                         if (@for.Initializer is Statement initializerStatement) AnalyzeStatement(initializerStatement);
                         else if (@for.Initializer is Expression initializerExpression) AnalyzeExpression(initializerExpression);
                         AnalyzeExpression(@for.Condition);
+                        var forBefore = SnapshotStructural();
                         AnalyzeStatement(@for.Body);
                         if (TryGetSafeInt32Induction(@for, out var inductionSlot))
                         {
@@ -593,6 +643,7 @@ namespace AuroraScript.Compiler.Backend.Code
                         {
                             AnalyzeExpression(@for.Incrementor);
                         }
+                        IntersectStructural(forBefore);
                         return;
                     case ForInStatement forIn:
                         AnalyzeStatement(forIn.Initializer);
@@ -602,11 +653,20 @@ namespace AuroraScript.Compiler.Backend.Code
                             if (iterator.Local.IsValid) _writtenLocals[iterator.Local.Value] = true;
                             MergeLocal(iterator.Local, FlowValueType.Dynamic);
                         }
+                        var forInBefore = SnapshotStructural();
                         AnalyzeStatement(forIn.Body);
+                        IntersectStructural(forInBefore);
                         return;
                     case TryStatement @try:
+                        var tryBefore = SnapshotStructural();
                         AnalyzeStatement(@try.Body);
-                        AnalyzeStatement(@try.CatchBody);
+                        if (@try.CatchBody != null)
+                        {
+                            var afterTry = SnapshotStructural();
+                            RestoreStructural(tryBefore);
+                            AnalyzeStatement(@try.CatchBody);
+                            IntersectStructural(afterTry);
+                        }
                         AnalyzeStatement(@try.FinallyBody);
                         return;
                     case ThrowStatement @throw:
@@ -632,7 +692,9 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     case CheckExpression check:
                         AnalyzeExpression(check.Value);
-                        type = FlowValueTypeFacts.FromCheckedTypeName(check.TypeName);
+                        type = TypeReferenceFacts.GetFlowType(
+                            _module.Declaration,
+                            check.AssertedType);
                         break;
                     case TypedDocumentExpression tdoc:
                         var inferredTDocType = AnalyzeExpression(tdoc.Value);
@@ -663,7 +725,13 @@ namespace AuroraScript.Compiler.Backend.Code
                         type = AnalyzeExpression(assignment.Right);
                         InvalidateLocalArrayElementsUsedAsValue(assignment.Right);
                         AnalyzeExpression(assignment.Left);
-                        WriteTarget(assignment.Left, type);
+                        _structuralTypes.TryGetValue(
+                            assignment.Right,
+                            out var assignedStructuralType);
+                        WriteTarget(
+                            assignment.Left,
+                            type,
+                            assignedStructuralType);
                         break;
                     case CompoundExpression compound:
                         var left = AnalyzeExpression(compound.Left);
@@ -679,14 +747,17 @@ namespace AuroraScript.Compiler.Backend.Code
                             compound.Right,
                             left,
                             right);
-                        WriteTarget(compound.Left, type);
+                        WriteTarget(compound.Left, type, null);
                         break;
                     case UnaryExpression unary:
                         var operand = AnalyzeExpression(unary.Expression);
                         type = AnalyzeUnary(unary, operand);
                         if (IsMutation(unary.Operator))
                         {
-                            WriteTarget(unary.Expression, GetMutationWriteType(unary));
+                            WriteTarget(
+                                unary.Expression,
+                                GetMutationWriteType(unary),
+                                null);
                         }
                         break;
                     case GroupExpression group:
@@ -752,6 +823,11 @@ namespace AuroraScript.Compiler.Backend.Code
                                 propertyObjectType == FlowValueType.Array) &&
                             IsStaticProperty(property.Property, "length")
                                 ? FlowValueType.Int32
+                                : TryGetStructuralFieldType(
+                                    property.Object,
+                                    property.Property,
+                                    out var structuralFieldType)
+                                    ? structuralFieldType
                                 : TryGetLocalFieldType(property, out var fieldType)
                                     ? fieldType
                                     : FlowValueType.Dynamic;
@@ -839,7 +915,242 @@ namespace AuroraScript.Compiler.Backend.Code
                 }
 
                 _expressionTypes[expression] = type;
+                var structuralType = InferStructuralType(expression);
+                if (structuralType != null)
+                {
+                    _structuralTypes[expression] = structuralType;
+                }
                 return type;
+            }
+
+            private TypeDeclaration InferStructuralType(Expression expression)
+            {
+                if (expression is CheckExpression check &&
+                    TypeReferenceFacts.TryGetCustomType(
+                        _module.Declaration,
+                        check.AssertedType,
+                        out var asserted))
+                {
+                    return asserted;
+                }
+
+                if (expression is NameExpression name &&
+                    _names.TryGetValue(name, out var binding) &&
+                    binding.IsLocal)
+                {
+                    return _localStructuralTypes[binding.Local.Value];
+                }
+
+                if (expression is FunctionCallExpression call &&
+                    call.Target is NameExpression target &&
+                    _names.TryGetValue(target, out var targetBinding) &&
+                    targetBinding.DirectFunction.IsValid)
+                {
+                    for (var i = 0; i < _module.Functions.Count; i++)
+                    {
+                        var function = _module.Functions[i];
+                        if (function.Id.Equals(targetBinding.DirectFunction) &&
+                            TypeReferenceFacts.TryGetCustomType(
+                                _module.Declaration,
+                                function.Declaration.ReturnType,
+                                out var returned))
+                        {
+                            return returned;
+                        }
+                    }
+                }
+
+                if (expression is GetPropertyExpression property)
+                {
+                    return InferStructuralFieldType(property);
+                }
+
+                if (expression is AssignmentExpression assignment &&
+                    _structuralTypes.TryGetValue(assignment.Right, out var assigned))
+                {
+                    return assigned;
+                }
+
+                if (expression is MapExpression)
+                {
+                    return InferStructuralTypeFromContext(expression);
+                }
+
+                return null;
+            }
+
+            private TypeDeclaration InferStructuralFieldType(
+                GetPropertyExpression property)
+            {
+                if (!_structuralTypes.TryGetValue(property.Object, out var owner) ||
+                    !TryGetStaticPropertyName(property.Property, out var name))
+                {
+                    return null;
+                }
+
+                var module = GetTypeModule(owner);
+                for (var i = 0; i < owner.Fields.Count; i++)
+                {
+                    var field = owner.Fields[i];
+                    if (StringComparer.Ordinal.Equals(field.Name.Value, name) &&
+                        TypeReferenceFacts.TryGetCustomType(
+                            module,
+                            field.Type,
+                            out var nested))
+                    {
+                        return nested;
+                    }
+                }
+
+                return null;
+            }
+
+            private static ModuleDeclaration GetTypeModule(TypeDeclaration declaration)
+            {
+                return declaration.Parent as ModuleDeclaration;
+            }
+
+            private TypeDeclaration InferStructuralTypeFromContext(Expression expression)
+            {
+                var parent = SkipGroups(expression.Parent);
+                if (parent is ReturnStatement)
+                {
+                    return TypeReferenceFacts.TryGetCustomType(
+                        _module.Declaration,
+                        _function.Declaration?.ReturnType,
+                        out var returned)
+                            ? returned
+                            : null;
+                }
+
+                if (parent is FunctionCallExpression call)
+                {
+                    for (var i = 0; i < call.Arguments.Count; i++)
+                    {
+                        if (ReferenceEquals(UnwrapGroups(call.Arguments[i]), expression))
+                        {
+                            return GetCallArgumentStructuralType(call, i);
+                        }
+                    }
+                    return null;
+                }
+
+                if (parent is AssignmentExpression assignment &&
+                    ReferenceEquals(UnwrapGroups(assignment.Right), expression))
+                {
+                    return InferStructuralType(assignment.Left);
+                }
+
+                if (parent is VariableDeclaration variable &&
+                    ReferenceEquals(UnwrapGroups(variable.Initializer), expression) &&
+                    _declarations.TryGetValue(variable, out var slot))
+                {
+                    return _localStructuralTypes[slot.Value];
+                }
+
+                return null;
+            }
+
+            private TypeDeclaration GetCallArgumentStructuralType(
+                FunctionCallExpression call,
+                int argumentIndex)
+            {
+                if (call.Target is not NameExpression target ||
+                    !_names.TryGetValue(target, out var binding) ||
+                    !binding.DirectFunction.IsValid)
+                {
+                    return null;
+                }
+
+                for (var i = 0; i < _module.Functions.Count; i++)
+                {
+                    var function = _module.Functions[i];
+                    if (!function.Id.Equals(binding.DirectFunction) ||
+                        function.Declaration == null ||
+                        argumentIndex >= function.Declaration.Parameters.Count)
+                    {
+                        continue;
+                    }
+
+                    return TypeReferenceFacts.TryGetCustomType(
+                        _module.Declaration,
+                        function.Declaration.Parameters[argumentIndex].DeclaredType,
+                        out var parameterType)
+                            ? parameterType
+                            : null;
+                }
+
+                return null;
+            }
+
+            private static Expression UnwrapGroups(Expression expression)
+            {
+                while (expression is GroupExpression group &&
+                    group.Expressions.Count == 1)
+                {
+                    expression = group.Expressions[0];
+                }
+                return expression;
+            }
+
+            private static AstNode SkipGroups(AstNode node)
+            {
+                while (node is GroupExpression group)
+                {
+                    node = group.Parent;
+                }
+                return node;
+            }
+
+            private TypeDeclaration[] SnapshotStructural()
+            {
+                var snapshot = new TypeDeclaration[_localStructuralTypes.Length];
+                Array.Copy(_localStructuralTypes, snapshot, snapshot.Length);
+                return snapshot;
+            }
+
+            private void RestoreStructural(TypeDeclaration[] snapshot)
+            {
+                Array.Copy(snapshot, _localStructuralTypes, snapshot.Length);
+            }
+
+            private void IntersectStructural(TypeDeclaration[] other)
+            {
+                for (var i = 0; i < _localStructuralTypes.Length; i++)
+                {
+                    if (ReferenceEquals(_localStructuralTypes[i], other[i]))
+                    {
+                        continue;
+                    }
+
+                    _localStructuralTypes[i] = null;
+                    _changed = true;
+                }
+            }
+
+            private bool TryGetStructuralFieldType(
+                Expression owner,
+                Expression property,
+                out FlowValueType type)
+            {
+                type = FlowValueType.Dynamic;
+                if (!_structuralTypes.TryGetValue(owner, out var declaration) ||
+                    !TryGetStaticPropertyName(property, out var name))
+                {
+                    return false;
+                }
+
+                for (var i = 0; i < declaration.Fields.Count; i++)
+                {
+                    var field = declaration.Fields[i];
+                    if (StringComparer.Ordinal.Equals(field.Name.Value, name))
+                    {
+                        var module = GetTypeModule(declaration);
+                        type = TypeReferenceFacts.GetFlowType(module, field.Type);
+                        return type != FlowValueType.None;
+                    }
+                }
+                return false;
             }
 
             private static FlowValueType GetTypedDocumentFlowType(
@@ -1394,7 +1705,10 @@ namespace AuroraScript.Compiler.Backend.Code
                 return false;
             }
 
-            private void WriteTarget(Expression target, FlowValueType type)
+            private void WriteTarget(
+                Expression target,
+                FlowValueType type,
+                TypeDeclaration structuralType)
             {
                 if (target is NameExpression name &&
                     _names.TryGetValue(name, out var binding) &&
@@ -1403,6 +1717,13 @@ namespace AuroraScript.Compiler.Backend.Code
                     InvalidateLocalFields(binding.Local);
                     InvalidateLocalArrayElements(binding.Local);
                     _writtenLocals[binding.Local.Value] = true;
+                    if (!ReferenceEquals(
+                        _localStructuralTypes[binding.Local.Value],
+                        structuralType))
+                    {
+                        _localStructuralTypes[binding.Local.Value] = structuralType;
+                        _changed = true;
+                    }
                     MergeLocal(binding.Local, type);
                 }
                 else if (target is GetElementExpression element)

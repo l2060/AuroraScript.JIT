@@ -1,4 +1,5 @@
 using AuroraScript.Core;
+using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.GlobalDeclarations;
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.LanguageServices.Builtins;
@@ -21,6 +22,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 
 namespace AuroraScript.LanguageServices;
 
@@ -181,9 +183,28 @@ public sealed class AuroraLanguageService
         {
             return hover;
         }
+        if (TryGetStructuralTypeHover(
+            parseResult.Module,
+            context,
+            null,
+            null,
+            out var structuralHover))
+        {
+            return structuralHover;
+        }
 
         var snapshot = CreateWorkspaceSnapshot(sourceName, sourceText, null, out var normalizedSource);
         var index = AuroraWorkspaceIndex.Build(_parseService, snapshot, normalizedSource);
+        if (AuroraShapeQuery.TryGetFieldHover(
+            parseResult.Module,
+            context,
+            index,
+            normalizedSource,
+            out var fieldHover))
+        {
+            return fieldHover;
+        }
+
         if (TryGetUserSymbolHover(index, normalizedSource, sourceText, position, context, out var userHover))
         {
             return userHover;
@@ -236,8 +257,27 @@ public sealed class AuroraLanguageService
         {
             return hover;
         }
-
         var index = GetWorkspaceIndex(normalizedPath);
+        if (TryGetStructuralTypeHover(
+            parseResult.Module,
+            context,
+            index,
+            normalizedPath,
+            out var structuralHover))
+        {
+            return structuralHover;
+        }
+
+        if (AuroraShapeQuery.TryGetFieldHover(
+            parseResult.Module,
+            context,
+            index,
+            normalizedPath,
+            out var fieldHover))
+        {
+            return fieldHover;
+        }
+
         if (TryGetUserSymbolHover(index, normalizedPath, text, position, context, out var userHover))
         {
             return userHover;
@@ -388,6 +428,7 @@ public sealed class AuroraLanguageService
         var index = AuroraWorkspaceIndex.Build(_parseService, snapshot, normalizedSource);
         var globalIndex = BuildGlobalDeclarationIndex(snapshot);
         return ResolveBuiltinDefinition(normalizedSource, sourceText, position, snapshot) ??
+            ResolveStructuralTypeDefinition(index, normalizedSource, position) ??
             AuroraDefinitionResolver.Resolve(index, normalizedSource, position, globalIndex);
     }
 
@@ -416,6 +457,7 @@ public sealed class AuroraLanguageService
         }
 
         return ResolveBuiltinDefinition(normalizedPath, text, position, snapshot) ??
+            ResolveStructuralTypeDefinition(index, normalizedPath, position) ??
             AuroraDefinitionResolver.Resolve(index, normalizedPath, position, globalIndex);
     }
 
@@ -993,6 +1035,148 @@ public sealed class AuroraLanguageService
             or FileNotFoundException
             or PathTooLongException
             or NotSupportedException;
+    }
+
+    private static bool TryGetStructuralTypeHover(
+        ModuleDeclaration module,
+        AstQueryContext context,
+        AuroraWorkspaceIndex? index,
+        string? sourceName,
+        out HoverResult hover)
+    {
+        hover = null!;
+        if (context.TypeReference == null ||
+            !TryResolveStructuralType(
+                module,
+                context,
+                index,
+                sourceName,
+                out var declaration))
+        {
+            return false;
+        }
+
+        var builder = new StringBuilder();
+        builder.Append("```aurorascript\n");
+        if (declaration.Access == MemberAccess.Export)
+        {
+            builder.Append("export ");
+        }
+        builder.Append("type ").Append(declaration.Name.Value).Append(" {\n");
+        for (var i = 0; i < declaration.Fields.Count; i++)
+        {
+            var field = declaration.Fields[i];
+            builder
+                .Append("    ")
+                .Append(field.Type.DisplayName)
+                .Append(' ')
+                .Append(field.Name.Value)
+                .Append(";\n");
+        }
+        builder.Append("}\n```");
+        hover = new HoverResult(
+            builder.ToString(),
+            TextRange.FromSourceSpan(context.TypeReference.Range));
+        return true;
+    }
+
+    private static bool TryResolveStructuralType(
+        ModuleDeclaration module,
+        AstQueryContext context,
+        AuroraWorkspaceIndex? index,
+        string? sourceName,
+        out TypeDeclaration declaration)
+    {
+        declaration = null!;
+        if (context.TypeReference == null)
+        {
+            return false;
+        }
+        if (context.TypeQualifier == null)
+        {
+            return module.TryGetType(
+                context.TypeReference.Value,
+                out declaration);
+        }
+        if (index == null || string.IsNullOrEmpty(sourceName))
+        {
+            return false;
+        }
+
+        var indexedModule = index.TryGetModule(sourceName);
+        if (indexedModule == null ||
+            !indexedModule.ImportsByAlias.TryGetValue(
+                context.TypeQualifier.Value,
+                out var import))
+        {
+            return false;
+        }
+        var target = index.TryGetModule(import.TargetPath);
+        if (target == null ||
+            !target.Exports.TryGetValue(
+                context.TypeReference.Value,
+                out var symbol) ||
+            symbol.Kind != AuroraSymbolKind.Type)
+        {
+            return false;
+        }
+        return target.Module.TryGetType(symbol.Name, out declaration);
+    }
+
+    private static DefinitionLocation? ResolveStructuralTypeDefinition(
+        AuroraWorkspaceIndex index,
+        string sourceName,
+        TextPosition position)
+    {
+        var module = index.TryGetModule(sourceName);
+        if (module == null)
+        {
+            return null;
+        }
+        var context = AstQuery.Find(module.Module, position);
+        if (context?.TypeReference == null)
+        {
+            return null;
+        }
+
+        if (context.TypeQualifier == null)
+        {
+            if (!module.Symbols.TryGetValue(
+                    context.TypeReference.Value,
+                    out var localSymbol) ||
+                localSymbol == null ||
+                localSymbol.Kind != AuroraSymbolKind.Type)
+            {
+                return null;
+            }
+            return new DefinitionLocation(
+                localSymbol.FilePath,
+                localSymbol.NameRange);
+        }
+
+        if (!module.ImportsByAlias.TryGetValue(
+                context.TypeQualifier.Value,
+                out var import) ||
+            import == null)
+        {
+            return null;
+        }
+        if (context.TypeQualifier.Range.Contains(position))
+        {
+            return new DefinitionLocation(module.Path, import.AliasRange);
+        }
+        if (index.TryGetModule(import.TargetPath) is not { } target ||
+            !target.Exports.TryGetValue(
+                context.TypeReference.Value,
+                out var exportedSymbol) ||
+            exportedSymbol == null ||
+            exportedSymbol.Kind != AuroraSymbolKind.Type)
+        {
+            return null;
+        }
+        return new DefinitionLocation(
+            exportedSymbol.FilePath,
+            exportedSymbol.NameRange);
     }
 
     private DefinitionLocation? ResolveBuiltinDefinition(
