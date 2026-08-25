@@ -1,5 +1,6 @@
 using AuroraScript.Tests.Infrastructure;
 using AuroraScript.Runtime;
+using AuroraScript.Runtime.Types;
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
@@ -160,6 +161,8 @@ public sealed class AstarExampleTests
             CountCalls(
                 il,
                 GetMemberReferenceTokens(reader, "ValueOps", "NotEqualBoolean")));
+        // The explicit Number checks on the A* boundary keep neighbour costs
+        // and heap scores native throughout the hot loop.
         Assert.Equal(
             0,
             CountCalls(
@@ -241,6 +244,51 @@ public sealed class AstarExampleTests
                 0,
                 CountCalls(il, GetMemberReferenceTokens(reader, "ValueOps", name)));
         }
+    }
+
+    [Fact]
+    public async Task PersistenceComparesNativeReferencesWithNullWithoutDatumBoxing()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func missing(Int8Array values) {
+                return values == null;
+            }
+            """,
+            CompilationMode.Persistence);
+
+        ScriptAssert.Equal(
+            false,
+            TestWorkspace.Execute(
+                domain,
+                "missing",
+                arguments: [ScriptDatum.FromObject(new ScriptInt8Array(1))]));
+
+        var assemblyPath = Path.Combine(workspace.Root, "test-output.dll");
+        using var stream = File.OpenRead(assemblyPath);
+        using var peReader = new PEReader(stream);
+        var reader = peReader.GetMetadataReader();
+        var handle = Assert.Single(reader.MethodDefinitions.Where(candidate =>
+            string.Equals(
+                reader.GetString(reader.GetMethodDefinition(candidate).Name),
+                "missing$typed",
+                StringComparison.Ordinal)));
+        var method = reader.GetMethodDefinition(handle);
+        var il = peReader.GetMethodBody(method.RelativeVirtualAddress).GetILBytes().AsSpan();
+
+        Assert.Contains(OpCodes.Ceq, ReadOpCodes(il));
+        Assert.Equal(
+            0,
+            CountCalls(
+                il,
+                GetMemberReferenceTokens(reader, "ValueOps", "EqualBoolean")));
+        Assert.Equal(
+            0,
+            CountCalls(
+                il,
+                GetMemberReferenceTokens(reader, "ScriptDatum", "FromObject")));
     }
 
     [Fact]

@@ -189,6 +189,13 @@ Operators, high to low:
 
 Assignments are right-associative.
 
+`typeof` results:
+
+- lowercase for primitives and privileged kinds: `"null"`, `"boolean"`, `"number"`, `"string"`, `"object"`, `"array"`, `"date"`, `"regex"`, `"function"`, `"type"`, `"error"`, `"clr:function"`, `"clr:bonding"`
+- constructor names for native objects stored as `ValueKind.Object`: `"Int8Array"`, `"UInt8Array"`, `"Int16Array"`, `"UInt16Array"`, `"Int32Array"`, `"UInt32Array"`, `"Int64Array"`, `"UInt64Array"`, `"Float64Array"`, `"BooleanArray"`, `"StringBuffer"`, `"HashMap"`, `"Path"`
+- Do not assume JavaScript `typeof new Int8Array() === "object"`. Use `typeof bytes == "Int8Array"` or `check Int8Array bytes`.
+- Do not add a new `ValueKind` member for a native type; identity lives on the object (`TypeOfValue`).
+
 ## Template Strings
 
 ```as
@@ -208,6 +215,7 @@ Constructors and globals:
 
 - `Array`, `String`, `Boolean`, `Object`, `Number`, `Date`
 - `Error`, `HashMap`, `Regex`, `Proxy`, `StringBuffer`, `Path`
+- Packed arrays: `Int8Array`, `UInt8Array`, `Int16Array`, `UInt16Array`, `Int32Array`, `UInt32Array`, `Int64Array`, `UInt64Array`, `Float64Array`, `BooleanArray`
 - `console`, `JSON`, `TDoc`, `Math`, `HotPatch`
 
 Common APIs:
@@ -283,6 +291,7 @@ import http from "http";
 - Enable module const inlining for modules with stable exported constants.
 - Use normal template strings for small or medium formatting; the compiler already selects concat or builder paths.
 - Use `StringBuffer` for long loops or many incremental appends.
+- Use `typeof value == "Int8Array"` (or the matching constructor name) to distinguish packed arrays; they are not `"object"`.
 - Use `@directCall` on helper functions that should remain directly callable when the compiler cannot infer it.
 - Avoid `console.log` in hot paths.
 - Avoid unnecessary closure captures in loops.

@@ -24,6 +24,8 @@ namespace AuroraScript.Runtime.Types
         /// <summary> The string representation of the boolean. </summary>
         public readonly StringValue StrValue;
 
+        internal override ScriptDatum TypeOfValue => TypeNames.Boolean;
+
         private BooleanValue(bool val, int intVal, StringValue valueString) : base(Prototypes.BooleanValuePrototype)
         {
             Value = val;

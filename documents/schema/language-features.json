@@ -96,6 +96,18 @@
       "notes": ["Interpolations evaluate left to right.", "Compiler selects concat or StringBuilder strategy by element count."]
     },
     {
+      "id": "expression.typeof",
+      "syntax": "typeof value",
+      "scope": "expression",
+      "notes": [
+        "Returns an interned type-name string.",
+        "Primitives and privileged kinds use lowercase names: null, boolean, number, string, object, array, date, regex, function, type, error, clr:function, clr:bonding.",
+        "Native objects stored as ValueKind.Object report constructor names: Int8Array, UInt8Array, Int16Array, UInt16Array, Int32Array, UInt32Array, Int64Array, UInt64Array, Float64Array, BooleanArray, StringBuffer, HashMap, Path.",
+        "Do not add ValueKind members for new native types; override ScriptObject.TypeOfValue instead.",
+        "check TypeName value is a separate exact runtime assertion used by the typed backend."
+      ]
+    },
+    {
       "id": "expression.tdoc-literal",
       "syntax": "tdoc [TypeName] value",
       "scope": "expression",

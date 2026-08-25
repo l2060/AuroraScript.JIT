@@ -161,7 +161,7 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
-    public void TypedFunctionCodeCoercesNumericLocalsUsedAsAddsIndexesAndStores()
+    public void TypedFunctionCodeCoercesOnlyLocalsWhoseUsesMatchArithmeticCoercion()
     {
         var root = Path.GetTempPath();
         var options = EngineOptions.Default
@@ -177,8 +177,18 @@ public sealed class CompilerBackendPlanTests
                 var values = new Int32Array(8);
                 if (searchId > 100) searchId = 1;
                 state.searchId = searchId;
-                values[current + width] = searchId;
+                values[current * width] = searchId;
                 return (current * width) - (width - 1) + minCost;
+            }
+            export func additionKeepsDynamic(state) {
+                var offset = state.offset;
+                var values = new Int32Array(8);
+                values[1 + offset] = 1;
+                return values[1 + offset];
+            }
+            export func comparisonKeepsDynamic(state) {
+                var limit = state.limit;
+                return limit < 10;
             }
             export func concatKeepsDynamic(state) {
                 var width = state.width;
@@ -195,19 +205,27 @@ public sealed class CompilerBackendPlanTests
         var numericUses = Assert.Single(modulePlan.Functions, function => function.Name == "numericUses");
         var concatKeeps = Assert.Single(modulePlan.Functions, function => function.Name == "concatKeepsDynamic");
         var equalityOnly = Assert.Single(modulePlan.Functions, function => function.Name == "equalityWithNullKeepsDynamic");
+        var additionKeeps = Assert.Single(modulePlan.Functions, function => function.Name == "additionKeepsDynamic");
+        var comparisonKeeps = Assert.Single(modulePlan.Functions, function => function.Name == "comparisonKeepsDynamic");
 
         var numericCode = TypedFunctionBuilder.Build(modulePlan, numericUses);
         var concatCode = TypedFunctionBuilder.Build(modulePlan, concatKeeps);
         var equalityCode = TypedFunctionBuilder.Build(modulePlan, equalityOnly);
+        var additionCode = TypedFunctionBuilder.Build(modulePlan, additionKeeps);
+        var comparisonCode = TypedFunctionBuilder.Build(modulePlan, comparisonKeeps);
 
+        // Multiplication, subtraction, and packed indexing all coerce exactly
+        // the way native storage does, so 'width' can drop its ScriptDatum.
         Assert.Equal(
             FlowValueType.Number,
             numericCode.GetLocalType(numericUses.LocalSlots.Single(slot => slot.Name == "width").Id));
+        // 'searchId' is only compared and stored, and '+' feeds 'minCost'.
+        // Neither proves the value is not a string or null, so both stay dynamic.
         Assert.Equal(
-            FlowValueType.Number,
+            FlowValueType.Dynamic,
             numericCode.GetLocalType(numericUses.LocalSlots.Single(slot => slot.Name == "searchId").Id));
         Assert.Equal(
-            FlowValueType.Number,
+            FlowValueType.Dynamic,
             numericCode.GetLocalType(numericUses.LocalSlots.Single(slot => slot.Name == "minCost").Id));
         Assert.Equal(
             FlowValueType.Dynamic,
@@ -215,6 +233,16 @@ public sealed class CompilerBackendPlanTests
         Assert.Equal(
             FlowValueType.Dynamic,
             equalityCode.GetLocalType(equalityOnly.LocalSlots.Single(slot => slot.Name == "key").Id));
+        // '1 + offset' concatenates for a string offset, which indexes a
+        // different element than the arithmetic sum would.
+        Assert.Equal(
+            FlowValueType.Dynamic,
+            additionCode.GetLocalType(additionKeeps.LocalSlots.Single(slot => slot.Name == "offset").Id));
+        // 'null < 10' is false, but the arithmetic coercion would read null as
+        // zero and make it true.
+        Assert.Equal(
+            FlowValueType.Dynamic,
+            comparisonCode.GetLocalType(comparisonKeeps.LocalSlots.Single(slot => slot.Name == "limit").Id));
     }
 
     [Fact]

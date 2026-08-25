@@ -48,6 +48,25 @@ public sealed class PackedArrayTests
         Assert.Same(float64._items, storage);
     }
 
+    [Fact]
+    public void NativeObjectsKeepObjectKindAndReportConstructorTypeNames()
+    {
+        AssertNativeType(new ScriptInt8Array(1), "Int8Array");
+        AssertNativeType(new ScriptUInt8Array(1), "UInt8Array");
+        AssertNativeType(new ScriptInt32Array(1), "Int32Array");
+        AssertNativeType(new StringBuffer(""), "StringBuffer");
+        AssertNativeType(new ScriptHashMap(), "HashMap");
+        AssertNativeType(new ScriptPathValue("mem://app"), "Path");
+    }
+
+    private static void AssertNativeType(ScriptObject value, string typeName)
+    {
+        var datum = ScriptDatum.FromObject(value);
+        Assert.Equal(ValueKind.Object, datum.Kind);
+        Assert.Equal(typeName, ScriptDatum.GetTypeName(datum));
+        Assert.Equal(typeName, ScriptDatum.TypeOf(datum).StringText);
+    }
+
     [Theory]
     [InlineData(CompilationMode.Dynamic)]
     [InlineData(CompilationMode.OnlyRun)]
@@ -583,11 +602,10 @@ public sealed class PackedArrayTests
             @module(TEST);
             export func writeNeighbor(state) {
                 var width = state.width;
-                var current = 1;
                 var opened = new Int32Array(8);
                 var last = width - 1;
-                opened[current + width] = 1;
-                return opened[current + last];
+                opened[last + 1] = 1;
+                return opened[last];
             }
             """,
             CompilationMode.Persistence);

@@ -339,6 +339,7 @@ Use these defaults unless the user asks for a different style:
 - Cache repeated object paths before reuse: `var items = model.items;`.
 - Use `const` for module constants and local values that do not change.
 - Use `StringBuffer` for large loop-built strings.
+- Distinguish packed arrays with `typeof value == "Int8Array"` or `check Int8Array value`; do not compare `typeof` to `"object"` for those values.
 - Keep `console.log` and `console.error` out of hot paths.
 - Avoid array methods such as `map`, `filter`, or `reduce` in performance-sensitive examples unless clarity matters more and the API is known in `runtime-api.json`.
 

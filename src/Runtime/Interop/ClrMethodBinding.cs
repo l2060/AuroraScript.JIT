@@ -41,6 +41,8 @@ namespace AuroraScript.Runtime.Interop
     /// </summary>
     public sealed class ClrMethodBinding : ScriptObject
     {
+        internal override ScriptDatum TypeOfValue => TypeNames.ClrFunction;
+
         internal readonly ClrTypeDescriptor _descriptor;
         internal readonly MethodInvoker[] _compiledInvokers;
         internal readonly ClrInstanceObject _instance;

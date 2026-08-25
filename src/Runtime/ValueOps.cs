@@ -124,6 +124,32 @@ namespace AuroraScript.Runtime
             return ToBoolean(Add(left, right));
         }
 
+        /// <summary>
+        /// Adds a native number to a dynamic right operand and coerces the sum,
+        /// equivalent to <c>ToArithmeticNumber(Add(left, right))</c>. Only a
+        /// string right operand can turn the addition into a concatenation, so
+        /// the number kind is checked before taking the native path.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static double AddToNumberLeft(double left, ScriptDatum right)
+        {
+            return right.Kind == ValueKind.Number
+                ? left + right.Number
+                : ToArithmeticNumber(Add(ScriptDatum.FromNumber(left), right));
+        }
+
+        /// <summary>
+        /// Adds a dynamic left operand to a native number and coerces the sum,
+        /// equivalent to <c>ToArithmeticNumber(Add(left, right))</c>.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static double AddToNumberRight(ScriptDatum left, double right)
+        {
+            return left.Kind == ValueKind.Number
+                ? left.Number + right
+                : ToArithmeticNumber(Add(left, ScriptDatum.FromNumber(right)));
+        }
+
         /// <summary>Concatenates a dynamic value with a literal suffix.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum AddStringRight(ScriptDatum left, string right)

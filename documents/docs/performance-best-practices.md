@@ -125,6 +125,8 @@ for (var i = 0; i < nodeCount; i++) {
 
 These arrays have primitive CLR backing storage and rely on CLR zero initialization. When the exact array type remains visible to flow analysis, generated code uses native `ldelem`/`stelem` instructions and keeps numeric and boolean values unboxed through the loop.
 
+`typeof` reports the constructor name (`"Int8Array"`, `"Float64Array"`, …). The datum `Kind` stays `Object`; do not treat `ValueKind` as the packed-array type registry.
+
 Within a specialized direct-call graph, packed-array parameters and locals are passed as raw `int[]`, `double[]`, `sbyte[]`, or `bool[]` storage. Native helper-to-helper calls therefore do not reload wrapper fields or allocate replacement wrappers.
 
 Keep the array in an exact local or pass it directly to an `@directCall` helper. Storing it in an ordinary object and reading it back erases the compile-time element type; access remains allocation-free apart from the array itself, but it uses the dynamic helper path and is measurably slower. This explicit boundary keeps the runtime small and predictable without speculative object-shape optimization.

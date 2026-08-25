@@ -29,6 +29,8 @@ public sealed class TextMateGrammarTests
         AssertPattern(repository, "keywords", "keyword.operator.word.aurora", "typeof value in obj");
         AssertPattern(repository, "keywords", "keyword.control.return.aurora", "return value");
         AssertPattern(repository, "keywords", "keyword.control.throw.aurora", "throw error");
+        AssertPattern(repository, "keywords", "keyword.operator.type-check.aurora", "value as Number");
+        AssertPatternDoesNotMatch(repository, "keywords", "keyword.operator.type-check.aurora", "as(value)");
         AssertPattern(repository, "map-keys", "variable.other.member.map-key.aurora", "name: value");
         AssertPattern(repository, "map-keys", "meta.object-literal.key.string.aurora", "\"path\": value");
         AssertPattern(repository, "map-keys", "meta.object-literal.key.literal.aurora", "3: value");
@@ -84,6 +86,21 @@ public sealed class TextMateGrammarTests
         Assert.NotNull(pattern);
         var match = Regex.Match(sample, pattern!.Value.GetProperty("match").GetString()!, RegexOptions.CultureInvariant);
         Assert.True(match.Success, $"{scopeName} did not match '{sample}'.");
+    }
+
+    private static void AssertPatternDoesNotMatch(
+        JsonElement repository,
+        string sectionName,
+        string scopeName,
+        string sample)
+    {
+        var pattern = FindPattern(repository.GetProperty(sectionName), scopeName);
+        Assert.NotNull(pattern);
+        var match = Regex.Match(
+            sample,
+            pattern!.Value.GetProperty("match").GetString()!,
+            RegexOptions.CultureInvariant);
+        Assert.False(match.Success, $"{scopeName} unexpectedly matched '{sample}'.");
     }
 
     private static void AssertBeginPattern(JsonElement repository, string sectionName, string scopeName, string sample)

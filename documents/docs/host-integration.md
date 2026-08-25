@@ -504,7 +504,7 @@ declare var ONLINE_TOTAL;
 - CLR to script: `null`, numbers, `bool`, `string`, `DateTime`, `DateTimeOffset`, `Enum`, `Delegate`, `IDictionary`, `IEnumerable`, `ScriptObject`, `ScriptDatum`, registered CLR objects.
 - Script to CLR: strings, numbers, booleans, arrays, `ScriptObject`, CLR instance wrappers.
 
-Use `ScriptDatum` when you need exact runtime values and minimum conversion overhead.
+Use `ScriptDatum` when you need exact runtime values and minimum conversion overhead. `ValueKind` is the storage tag: packed arrays, `StringBuffer`, `Path`, and `HashMap` stay `ValueKind.Object`. Call `ScriptDatum.TypeOf` or `GetTypeName` for the script `typeof` string (`"Int8Array"`, `"StringBuffer"`, and so on).
 
 ## Domains And State
 

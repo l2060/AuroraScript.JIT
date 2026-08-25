@@ -117,6 +117,9 @@ namespace AuroraScript.Compiler.Backend.Emission
             _context.RecordExpression(expression);
             switch (expression)
             {
+                case CheckExpression check:
+                    VisitExpression(check.Value);
+                    return;
                 case TypedDocumentExpression tdoc:
                     VisitExpression(tdoc.Value);
                     return;

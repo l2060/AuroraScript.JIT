@@ -8,6 +8,21 @@ namespace AuroraScript.LanguageServices.Tests;
 public sealed class TypedDocumentLanguageFeatureTests
 {
     [Fact]
+    public void TypeAssertionsAndTypedParametersUseSemanticTokens()
+    {
+        const string source =
+            "export func convert(Number value) { return value as Number; }";
+        var service = new AuroraLanguageService(
+            BuiltinApiLoader.LoadFromFile(BuiltinApiCatalogTests.GetRuntimeApiPath()));
+
+        Assert.Empty(service.GetDiagnostics("main.as", source));
+        var result = service.GetSemanticTokens("main.as", source);
+
+        AssertToken(source, result, "as", AuroraSemanticTokenTypes.Keyword);
+        AssertToken(source, result, "Number", AuroraSemanticTokenTypes.Type);
+    }
+
+    [Fact]
     public void StandaloneTDocDocumentsUseTDocParserAndSemanticTokens()
     {
         const string source =

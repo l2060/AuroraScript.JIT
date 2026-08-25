@@ -31,6 +31,10 @@ Use this map when changing language behavior.
 - Path-keyed module registry and explicit-name lookup: `src/Runtime/ScriptGlobal.cs`
 - Runtime module metadata: `src/Runtime/ScriptModule.cs`
 - Compact value representation: `src/Runtime/ScriptDatum.cs`
+- Storage tags (not the script type-name registry): `src/Runtime/ValueKind.cs`
+- Interned `typeof` strings: `src/Runtime/TypeNames.cs`
+- Object identity for `typeof` / `GetTypeName`: `ScriptObject.TypeOfValue` in `src/Runtime/Types/ScriptObject.cs`
+- Exact `check TypeName` assertions: `src/Runtime/TypeCheckOps.cs`
 - Primitive dynamic boundaries: `src/Runtime/ValueOps.cs`
 - Object and collection boundaries: `src/Runtime/ObjectOps.cs`, `src/Runtime/IterationOps.cs`
 - Calls and lightweight frames: `src/Runtime/CallOps.cs`, `src/Runtime/CallFrameOps.cs`
@@ -45,6 +49,8 @@ Use this map when changing language behavior.
 - Lexer behavior: `tests/AuroraScript.Tests/LexerTests.cs`
 - Backend plans and diagnostics: `tests/AuroraScript.Tests/CompilerBackendPlanTests.cs`
 - Runtime language behavior: `tests/AuroraScript.Tests/LanguageFeatureExecutionTests.cs`, `tests/AuroraScript.Tests/StatementExecutionTests.cs`
+- `typeof` and native object names: `tests/AuroraScript.Tests/ExpressionExecutionTests.cs`, `tests/AuroraScript.Tests/PackedArrayTests.cs`
+- Exact `check` assertions: `tests/AuroraScript.Tests/TypeCheckTests.cs`
 - Module graph and build errors: `tests/AuroraScript.Tests/ModuleCompilationTests.cs`
 - Regression coverage: `tests/AuroraScript.Tests/ReleaseRegressionTests.cs`, `tests/AuroraScript.Tests/CompilationModeTests.cs`
 

@@ -122,29 +122,14 @@ namespace AuroraScript.Runtime.Debugging
                 return "null";
             }
 
-            return obj switch
+            var typeName = obj.TypeOfValue;
+            if (!ReferenceEquals(typeName.StringText, TypeNames.Object.StringText) ||
+                obj.GetType() == typeof(ScriptObject))
             {
-                ScriptArray => "array",
-                ScriptInt32Array => "Int32Array",
-                ScriptInt8Array => "Int8Array",
-                ScriptFloat64Array => "Float64Array",
-                ScriptBooleanArray => "BooleanArray",
-                ScriptUInt8Array => "UInt8Array",
-                ScriptInt16Array => "Int16Array",
-                ScriptUInt16Array => "UInt16Array",
-                ScriptUInt32Array => "UInt32Array",
-                ScriptInt64Array => "Int64Array",
-                ScriptUInt64Array => "UInt64Array",
-                StringValue => "string",
-                NumberValue => "number",
-                BooleanValue => "boolean",
-                ScriptDate => "date",
-                ScriptRegex => "regex",
-                ClosureFunction => "function",
-                ScriptType => "type",
-                ScriptError => "error",
-                _ => obj.GetType() == typeof(ScriptObject) ? "object" : obj.GetType().Name
-            };
+                return typeName.StringText;
+            }
+
+            return obj.GetType().Name;
         }
 
         public static string FormatValue(ScriptDatum datum)

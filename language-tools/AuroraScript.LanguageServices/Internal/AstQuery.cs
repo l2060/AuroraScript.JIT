@@ -62,6 +62,9 @@ internal static class AstQuery
             case TypedDocumentExpression typedDocument:
                 Visit(typedDocument.Value, state);
                 return;
+            case CheckExpression check:
+                Visit(check.Value, state);
+                return;
             case NameExpression name:
                 state.Expression = name;
                 state.Name = name;

@@ -335,6 +335,9 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             switch (expression)
             {
+                case CheckExpression check:
+                    EmitCheck(check);
+                    return;
                 case TypedDocumentExpression tdoc:
                     EmitTypedDocument(tdoc);
                     return;
@@ -398,6 +401,15 @@ namespace AuroraScript.Compiler.Backend.Emission
                 default:
                     throw new NotSupportedException("Module initializer expression " + expression.GetType().Name);
             }
+        }
+
+        private void EmitCheck(CheckExpression expression)
+        {
+            EmitExpression(expression.Value);
+            _il.Emit(
+                OpCodes.Ldc_I4,
+                (int)FlowValueTypeFacts.GetCheckedType(expression.TypeName));
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckType);
         }
 
         private void EmitCondition(Expression expression)

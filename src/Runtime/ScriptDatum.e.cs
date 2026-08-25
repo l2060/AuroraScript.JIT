@@ -445,40 +445,26 @@ namespace AuroraScript.Runtime
 
         /// <summary>
         /// Returns a datum representing the type of the given datum.
+        /// Primitive kinds are identified from <see cref="ValueKind"/>; object
+        /// identity comes from <see cref="ScriptObject.TypeOfValue"/>.
         /// </summary>
         public static ScriptDatum TypeOf(ScriptDatum d)
         {
+            if (d.Reference is ScriptObject scriptObject)
+            {
+                return scriptObject.TypeOfValue;
+            }
+
             switch (d.Kind)
             {
-                case ValueKind.Null:
-                    return TypeNames.Null;
                 case ValueKind.Boolean:
                     return TypeNames.Boolean;
                 case ValueKind.Number:
                     return TypeNames.Number;
                 case ValueKind.String:
                     return TypeNames.String;
-                case ValueKind.Object:
-                    return TypeNames.Object;
-                case ValueKind.Date:
-                    return TypeNames.Date;
-                case ValueKind.Array:
-                    return TypeNames.Array;
-                case ValueKind.Regex:
-                    return TypeNames.Regex;
-                case ValueKind.Function:
-                    return TypeNames.Function;
-                case ValueKind.Type:
-                    return TypeNames.Type;
-                case ValueKind.ClrFunction:
-                    return TypeNames.ClrFunction;
-                case ValueKind.ClrBonding:
-                    return TypeNames.ClrBonding;
-                case ValueKind.Error:
-                    return TypeNames.Error;
-
                 default:
-                    return TypeNames.Object;
+                    return TypeNames.Null;
             }
         }
 

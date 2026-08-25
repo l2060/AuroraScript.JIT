@@ -1,6 +1,7 @@
 using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Ast.Statements;
+using AuroraScript.Runtime;
 using AuroraScript.Runtime.Serialization;
 using AuroraScript.Source;
 using AuroraScript.Tokens;
@@ -398,6 +399,8 @@ namespace AuroraScript.Compiler.Analyzer
         // Pratt Parsing for Expressions
         // =================================================================================
 
+        private const int TypeAssertionPrecedence = 14;
+
         private Expression ParseExpression(int precedence)
         {
             var symbol = this.Lexer.PeekSymbol();
@@ -420,8 +423,20 @@ namespace AuroraScript.Compiler.Analyzer
             }
             if (expression == null) return null;
 
-            while (precedence < GetPrecedence(this.Lexer.PeekSymbol()))
+            while (true)
             {
+                if (precedence < TypeAssertionPrecedence &&
+                    PeekToken(0) is IdentifierToken { Value: "as" })
+                {
+                    expression = ParseTypeAssertion(expression);
+                    continue;
+                }
+
+                if (precedence >= GetPrecedence(this.Lexer.PeekSymbol()))
+                {
+                    break;
+                }
+
                 var opSymbol = this.Lexer.NextSymbol(out var opRange);
                 var op = Operator.FromSymbols(opSymbol, true); // Infix/Postfix
                 expression = ParseInfix(expression, opSymbol, opRange, op);
@@ -429,6 +444,25 @@ namespace AuroraScript.Compiler.Analyzer
             }
 
             return expression;
+        }
+
+        private Expression ParseTypeAssertion(Expression value)
+        {
+            var asToken = this.Lexer.NextOfKind<IdentifierToken>();
+            var typeToken = this.Lexer.NextOfKind<IdentifierToken>();
+            if (!IsCheckTypeName(typeToken.Value))
+            {
+                throw new AuroraCompilationException(
+                    AuroraCompilationStage.Parsing,
+                    this.Lexer.FullPath,
+                    typeToken,
+                    $"Unsupported assertion type '{typeToken.Value}'.");
+            }
+
+            return SetRange(
+                new CheckExpression(value, typeToken.Value, asToken, typeToken),
+                value.Range,
+                typeToken.Range);
         }
 
         private Expression ParsePrefix(Token token)
@@ -446,7 +480,6 @@ namespace AuroraScript.Compiler.Analyzer
                 }
                 return SetRange(value, token.Range, value.Range);
             }
-
             // Literals
             if (token is ValueToken vt)
             {
@@ -2468,6 +2501,14 @@ namespace AuroraScript.Compiler.Analyzer
             var seenSpread = false;
             while (true)
             {
+                Token checkedType = null;
+                if (PeekToken(0) is IdentifierToken parameterType &&
+                    IsCheckTypeName(parameterType.Value) &&
+                    (PeekToken(1) is IdentifierToken ||
+                        PeekSymbol(1) == Symbols.OP_SPREAD))
+                {
+                    checkedType = this.Lexer.NextOfKind<IdentifierToken>();
+                }
                 // Check for spread operator
                 bool isSpread = this.Lexer.TestNext(Symbols.OP_SPREAD);
                 if (seenSpread)
@@ -2496,8 +2537,13 @@ namespace AuroraScript.Compiler.Analyzer
                     }
                 }
 
-                var param = SetRange(new ParameterDeclaration((Byte)arguments.Count, varname, defaultValue), varname.Range, (defaultValue?.Range ?? varname.Range));
+                var param = SetRange(
+                    new ParameterDeclaration((Byte)arguments.Count, varname, defaultValue),
+                    checkedType?.Range ?? varname.Range,
+                    defaultValue?.Range ?? varname.Range);
                 param.IsSpreadOperator = isSpread;
+                param.CheckedTypeName = checkedType?.Value;
+                param.CheckedTypeToken = checkedType;
                 arguments.Add(param);
 
                 if (this.Lexer.TestSymbol(Symbols.PT_RIGHTPARENTHESIS)) break;
@@ -2505,6 +2551,15 @@ namespace AuroraScript.Compiler.Analyzer
             }
             this.Lexer.Expect(Symbols.PT_RIGHTPARENTHESIS);
             return arguments;
+        }
+
+        private static bool IsCheckTypeName(string typeName)
+        {
+            return Enum.TryParse<CheckedType>(
+                    typeName,
+                    ignoreCase: false,
+                    out var checkedType) &&
+                Enum.IsDefined(checkedType);
         }
 
         // Helper for Infix Lambda

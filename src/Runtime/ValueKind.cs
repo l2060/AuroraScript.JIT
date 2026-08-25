@@ -3,8 +3,10 @@ using System;
 namespace AuroraScript.Runtime
 {
     /// <summary>
-    /// Specifies the various kinds of values that can be stored in a <see cref="ScriptDatum"/>.
-    /// This enum uses a bit-flag layout to distinguish between primitive types and object-based types.
+    /// Storage and hot-path dispatch tags for a <see cref="ScriptDatum"/>.
+    /// This enum is not the script type-name registry: native objects such as
+    /// <c>Int8Array</c> and <c>StringBuffer</c> stay <see cref="Object"/> and
+    /// report their identity through <see cref="Types.ScriptObject.TypeOfValue"/>.
     /// </summary>
     [Flags]
     public enum ValueKind : short

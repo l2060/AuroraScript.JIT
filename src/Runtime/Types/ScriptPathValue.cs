@@ -10,6 +10,8 @@ namespace AuroraScript.Runtime.Types
     {
         private string _value;
 
+        internal override ScriptDatum TypeOfValue => TypeNames.Path;
+
         internal ScriptPathValue(string root, Span<ScriptDatum> segments, int segmentStart = 0)
             : base(Prototypes.PathPrototype)
         {

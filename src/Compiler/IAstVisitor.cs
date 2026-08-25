@@ -217,6 +217,13 @@ namespace AuroraScript.Compiler
             AfterVisitNode(node);
         }
 
+        public void AcceptCheckExpression(CheckExpression node)
+        {
+            BeforeVisitNode(node);
+            VisitCheckExpression(node);
+            AfterVisitNode(node);
+        }
+
         public void AcceptTemplateStringExpression(TemplateStringExpression node)
         {
             BeforeVisitNode(node);
@@ -533,6 +540,11 @@ namespace AuroraScript.Compiler
         }
 
         protected virtual void VisitTypedDocumentExpression(TypedDocumentExpression node)
+        {
+            node.Value?.Accept(this);
+        }
+
+        protected virtual void VisitCheckExpression(CheckExpression node)
         {
             node.Value?.Accept(this);
         }

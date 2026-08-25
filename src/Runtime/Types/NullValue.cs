@@ -13,6 +13,8 @@ namespace AuroraScript.Runtime.Types
         /// <summary> The global singleton instance of Null. </summary>
         public readonly static NullValue Instance = new NullValue();
 
+        internal override ScriptDatum TypeOfValue => TypeNames.Null;
+
         private NullValue() : base(Prototypes.NullValuePrototype)
         {
             Frozen();

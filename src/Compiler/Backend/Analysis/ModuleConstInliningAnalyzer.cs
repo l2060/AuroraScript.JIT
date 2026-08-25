@@ -108,6 +108,10 @@ namespace AuroraScript.Compiler.Backend.Analysis
                         return true;
                     case TypedDocumentExpression tdoc:
                         return TryEvaluate(tdoc.Value, ref value);
+                    case CheckExpression:
+                        // Runtime assertions must not disappear during constant
+                        // inlining, including mismatches that are required to throw.
+                        return false;
                     case GroupExpression group:
                         return TryEvaluate(group.Expression, ref value);
                     case LiteralExpression literal:

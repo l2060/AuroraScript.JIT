@@ -17,6 +17,8 @@ namespace AuroraScript.Runtime.Types
         private static int _pooledBuilderCount;
         private StringBuilder _builder;
 
+        internal override ScriptDatum TypeOfValue => TypeNames.StringBuffer;
+
         /// <summary>
         /// Gets a pooled <see cref="StringBuffer"/> instance or creates a new one.
         /// </summary>

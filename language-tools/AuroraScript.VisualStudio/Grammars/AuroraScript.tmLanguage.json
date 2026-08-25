@@ -361,7 +361,7 @@
         },
         {
           "name": "keyword.operator.word.aurora",
-          "match": "\\b(?:in|new|typeof)\\b"
+          "match": "\\b(?:in|new|typeof|as)\\b"
         }
       ]
     },

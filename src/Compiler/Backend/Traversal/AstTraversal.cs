@@ -148,6 +148,9 @@ namespace AuroraScript.Compiler.Backend.Traversal
                 case TypedDocumentExpression tdoc:
                     VisitIfNotNull(tdoc.Value, ref visitor);
                     return;
+                case CheckExpression check:
+                    VisitIfNotNull(check.Value, ref visitor);
+                    return;
                 case MapKeyValueExpression mapEntry:
                     VisitIfNotNull(mapEntry.Value, ref visitor);
                     return;

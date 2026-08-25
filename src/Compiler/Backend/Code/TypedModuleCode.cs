@@ -277,6 +277,17 @@ namespace AuroraScript.Compiler.Backend.Code
             for (var i = 0; i < function.LocalSlots.Length; i++)
             {
                 if (!function.LocalSlots[i].IsParameter) continue;
+                var checkedType = function.LocalSlots[i].Declaration is
+                    ParameterDeclaration parameter
+                        ? FlowValueTypeFacts.FromCheckedTypeName(
+                            parameter.CheckedTypeName)
+                        : FlowValueType.None;
+                if (checkedType != FlowValueType.None)
+                {
+                    result[parameterIndex++] =
+                        new DirectParameterType(checkedType);
+                    continue;
+                }
                 var type = observed != null && parameterIndex < observed.Types.Length
                     ? observed.Types[parameterIndex]
                     : FlowValueType.None;

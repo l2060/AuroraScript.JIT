@@ -34,5 +34,31 @@ namespace AuroraScript.Runtime
         public static readonly ScriptDatum Type = ScriptDatum.FromString(new StringValue("type"));
         /// <summary> Standard identifier for error. </summary>
         public static readonly ScriptDatum Error = ScriptDatum.FromString(new StringValue("error"));
+        /// <summary> Standard identifier for StringBuffer. </summary>
+        public static readonly ScriptDatum StringBuffer = ScriptDatum.FromString(new StringValue("StringBuffer"));
+        /// <summary> Standard identifier for Path. </summary>
+        public static readonly ScriptDatum Path = ScriptDatum.FromString(new StringValue("Path"));
+        /// <summary> Standard identifier for HashMap. </summary>
+        public static readonly ScriptDatum HashMap = ScriptDatum.FromString(new StringValue("HashMap"));
+        /// <summary> Standard identifier for Int32Array. </summary>
+        public static readonly ScriptDatum Int32Array = ScriptDatum.FromString(new StringValue("Int32Array"));
+        /// <summary> Standard identifier for Int8Array. </summary>
+        public static readonly ScriptDatum Int8Array = ScriptDatum.FromString(new StringValue("Int8Array"));
+        /// <summary> Standard identifier for Float64Array. </summary>
+        public static readonly ScriptDatum Float64Array = ScriptDatum.FromString(new StringValue("Float64Array"));
+        /// <summary> Standard identifier for BooleanArray. </summary>
+        public static readonly ScriptDatum BooleanArray = ScriptDatum.FromString(new StringValue("BooleanArray"));
+        /// <summary> Standard identifier for UInt8Array. </summary>
+        public static readonly ScriptDatum UInt8Array = ScriptDatum.FromString(new StringValue("UInt8Array"));
+        /// <summary> Standard identifier for Int16Array. </summary>
+        public static readonly ScriptDatum Int16Array = ScriptDatum.FromString(new StringValue("Int16Array"));
+        /// <summary> Standard identifier for UInt16Array. </summary>
+        public static readonly ScriptDatum UInt16Array = ScriptDatum.FromString(new StringValue("UInt16Array"));
+        /// <summary> Standard identifier for UInt32Array. </summary>
+        public static readonly ScriptDatum UInt32Array = ScriptDatum.FromString(new StringValue("UInt32Array"));
+        /// <summary> Standard identifier for Int64Array. </summary>
+        public static readonly ScriptDatum Int64Array = ScriptDatum.FromString(new StringValue("Int64Array"));
+        /// <summary> Standard identifier for UInt64Array. </summary>
+        public static readonly ScriptDatum UInt64Array = ScriptDatum.FromString(new StringValue("UInt64Array"));
     }
 }

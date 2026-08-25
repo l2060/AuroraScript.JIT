@@ -108,6 +108,9 @@ public sealed class AuroraSemanticAnalyzer
                 case TypedDocumentExpression typedDocument:
                     Visit(typedDocument.Value);
                     return;
+                case CheckExpression check:
+                    Visit(check.Value);
+                    return;
                 case AssignmentExpression assignment:
                     ValidateAssignmentTarget(assignment.Left);
                     Visit(assignment.Right);

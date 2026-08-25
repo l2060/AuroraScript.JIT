@@ -109,6 +109,9 @@ namespace AuroraScript.Compiler.Backend.Analysis
                     case TypedDocumentExpression tdoc:
                         Visit(tdoc.Value);
                         return;
+                    case CheckExpression check:
+                        Visit(check.Value);
+                        return;
                     case MapKeyValueExpression mapEntry:
                         Visit(mapEntry.Value);
                         return;

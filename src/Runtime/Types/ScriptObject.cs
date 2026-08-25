@@ -55,6 +55,12 @@ namespace AuroraScript.Runtime.Types
 
         internal bool HasValueEquality => (flags & ObjectFlags.ValueEquality) == ObjectFlags.ValueEquality;
 
+        /// <summary>
+        /// Interned <c>typeof</c> result for this object. Native types override this
+        /// instead of consuming a <see cref="ValueKind"/> bit.
+        /// </summary>
+        internal virtual ScriptDatum TypeOfValue => TypeNames.Object;
+
         [DebuggerBrowsable(DebuggerBrowsableState.Never)]
         internal string DebuggerDisplayValue => ScriptDebugView.FormatValue(this);
 

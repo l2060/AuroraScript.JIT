@@ -402,6 +402,9 @@ namespace AuroraScript.Compiler.Backend.Binding
                     case TypedDocumentExpression tdoc:
                         Visit(tdoc.Value);
                         return;
+                    case CheckExpression check:
+                        Visit(check.Value);
+                        return;
                     case NameExpression name:
                         AddName(name);
                         return;

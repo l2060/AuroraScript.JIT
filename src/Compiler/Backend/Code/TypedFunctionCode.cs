@@ -102,6 +102,55 @@ namespace AuroraScript.Compiler.Backend.Code
 
     internal static class FlowValueTypeFacts
     {
+        public static FlowValueType FromCheckedTypeName(string typeName)
+        {
+            return TryGetCheckedType(typeName, out var checkedType)
+                ? checkedType switch
+                {
+                    Runtime.CheckedType.Null => FlowValueType.Null,
+                    Runtime.CheckedType.Boolean => FlowValueType.Boolean,
+                    Runtime.CheckedType.Number => FlowValueType.Number,
+                    Runtime.CheckedType.String => FlowValueType.String,
+                    Runtime.CheckedType.Object => FlowValueType.Object,
+                    Runtime.CheckedType.Array => FlowValueType.Array,
+                    Runtime.CheckedType.Int32Array => FlowValueType.Int32Array,
+                    Runtime.CheckedType.Int8Array => FlowValueType.Int8Array,
+                    Runtime.CheckedType.Float64Array => FlowValueType.Float64Array,
+                    Runtime.CheckedType.BooleanArray => FlowValueType.BooleanArray,
+                    Runtime.CheckedType.UInt8Array => FlowValueType.UInt8Array,
+                    Runtime.CheckedType.Int16Array => FlowValueType.Int16Array,
+                    Runtime.CheckedType.UInt16Array => FlowValueType.UInt16Array,
+                    Runtime.CheckedType.UInt32Array => FlowValueType.UInt32Array,
+                    Runtime.CheckedType.Int64Array => FlowValueType.Int64Array,
+                    Runtime.CheckedType.UInt64Array => FlowValueType.UInt64Array,
+                    _ => FlowValueType.None
+                }
+                : FlowValueType.None;
+        }
+
+        public static Runtime.CheckedType GetCheckedType(string typeName)
+        {
+            if (TryGetCheckedType(typeName, out var checkedType))
+            {
+                return checkedType;
+            }
+            throw new ArgumentOutOfRangeException(
+                nameof(typeName),
+                typeName,
+                "Unsupported checked type.");
+        }
+
+        private static bool TryGetCheckedType(
+            string typeName,
+            out Runtime.CheckedType checkedType)
+        {
+            return Enum.TryParse(
+                    typeName,
+                    ignoreCase: false,
+                    out checkedType) &&
+                Enum.IsDefined(checkedType);
+        }
+
         public static bool IsPackedArray(FlowValueType type)
         {
             return type is FlowValueType.Int32Array or

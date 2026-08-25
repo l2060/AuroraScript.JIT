@@ -598,10 +598,12 @@
       ],
       "notes": {
         "en": [
-          "Primitive-backed array for compact signed-byte data."
+          "Primitive-backed array for compact signed-byte data.",
+          "typeof returns \"Int8Array\". The datum Kind remains Object."
         ],
         "zh-CN": [
-          "使用原生有符号字节存储，适合紧凑数据。"
+          "使用原生有符号字节存储，适合紧凑数据。",
+          "typeof 返回 \"Int8Array\"；Datum 的 Kind 仍为 Object。"
         ]
       }
     },
@@ -1463,10 +1465,12 @@
       ],
       "notes": {
         "en": [
-          "HashMap constructor for key-value collections."
+          "HashMap constructor for key-value collections.",
+          "typeof returns \"HashMap\". The datum Kind remains Object."
         ],
         "zh-CN": [
-          "HashMap 构造器，用于键值集合。"
+          "HashMap 构造器，用于键值集合。",
+          "typeof 返回 \"HashMap\"；Datum 的 Kind 仍为 Object。"
         ]
       }
     },
@@ -1566,10 +1570,12 @@
       ],
       "notes": {
         "en": [
-          "Use for high-volume incremental string building."
+          "Use for high-volume incremental string building.",
+          "typeof returns \"StringBuffer\". The datum Kind remains Object."
         ],
         "zh-CN": [
-          "用于大量增量字符串构建。"
+          "用于大量增量字符串构建。",
+          "typeof 返回 \"StringBuffer\"；Datum 的 Kind 仍为 Object。"
         ]
       }
     },
@@ -2418,10 +2424,12 @@
       },
       "notes": {
         "en": [
-          "Path constructor and protocol-aware path manipulation API."
+          "Path constructor and protocol-aware path manipulation API.",
+          "typeof returns \"Path\". The datum Kind remains Object."
         ],
         "zh-CN": [
-          "Path 构造器和支持协议路径的路径处理 API。"
+          "Path 构造器和支持协议路径的路径处理 API。",
+          "typeof 返回 \"Path\"；Datum 的 Kind 仍为 Object。"
         ]
       }
     },

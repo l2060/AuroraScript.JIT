@@ -19,6 +19,9 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo DatumToObject = Method(typeof(ScriptDatum), nameof(ScriptDatum.ToObject), typeof(ScriptDatum));
         public static readonly MethodInfo DatumToString = Method(typeof(ScriptDatum), nameof(ScriptDatum.ToString), typeof(ScriptDatum));
         public static readonly FieldInfo DatumNull = typeof(ScriptDatum).GetField(nameof(ScriptDatum.Null));
+        public static readonly MethodInfo CheckType = Method(typeof(TypeCheckOps), nameof(TypeCheckOps.Check), typeof(ScriptDatum), typeof(CheckedType));
+        public static readonly MethodInfo DatumNumber = typeof(ScriptDatum).GetProperty(nameof(ScriptDatum.Number)).GetMethod;
+        public static readonly MethodInfo DatumBoolean = typeof(ScriptDatum).GetProperty(nameof(ScriptDatum.Boolean)).GetMethod;
         public static readonly FieldInfo ContextDomain = typeof(ScriptContext).GetField(nameof(ScriptContext.Domain));
         public static readonly FieldInfo ContextModule = typeof(ScriptContext).GetField(nameof(ScriptContext.Module));
         public static readonly FieldInfo ContextGlobal = typeof(ScriptContext).GetField(nameof(ScriptContext.Global));
@@ -39,6 +42,8 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo TryToInteger = Method(typeof(ScriptDatum), nameof(ScriptDatum.TryToInteger), typeof(ScriptDatum).MakeByRefType(), typeof(long).MakeByRefType());
         public static readonly MethodInfo Add = Method(typeof(ValueOps), nameof(ValueOps.Add), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo AddBoolean = Method(typeof(ValueOps), nameof(ValueOps.AddBoolean), typeof(ScriptDatum), typeof(ScriptDatum));
+        public static readonly MethodInfo AddToNumberLeft = Method(typeof(ValueOps), nameof(ValueOps.AddToNumberLeft), typeof(double), typeof(ScriptDatum));
+        public static readonly MethodInfo AddToNumberRight = Method(typeof(ValueOps), nameof(ValueOps.AddToNumberRight), typeof(ScriptDatum), typeof(double));
         public static readonly MethodInfo AddStringRight = Method(typeof(ValueOps), nameof(ValueOps.AddStringRight), typeof(ScriptDatum), typeof(string));
         public static readonly MethodInfo AddStringLeft = Method(typeof(ValueOps), nameof(ValueOps.AddStringLeft), typeof(string), typeof(ScriptDatum));
         public static readonly MethodInfo AddStringMiddle = Method(typeof(ValueOps), nameof(ValueOps.AddStringMiddle), typeof(ScriptDatum), typeof(string), typeof(ScriptDatum));

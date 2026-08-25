@@ -672,6 +672,10 @@ internal static class SemanticTokenScanner
 
         protected override void VisitParameterDeclaration(ParameterDeclaration node)
         {
+            _builder.AddToken(
+                node.CheckedTypeToken,
+                AuroraSemanticTokenTypes.Type,
+                SemanticTokenPriority.Ast);
             if (node.Name != null)
             {
                 _builder.AddToken(node.Name, AuroraSemanticTokenTypes.Parameter, SemanticTokenPriority.Declaration);
@@ -779,6 +783,19 @@ internal static class SemanticTokenScanner
         protected override void VisitTypedDocumentExpression(TypedDocumentExpression node)
         {
             _builder.AddToken(node.TypeToken, AuroraSemanticTokenTypes.Type, SemanticTokenPriority.Ast);
+            node.Value?.Accept(this);
+        }
+
+        protected override void VisitCheckExpression(CheckExpression node)
+        {
+            _builder.AddToken(
+                node.AsToken,
+                AuroraSemanticTokenTypes.Keyword,
+                SemanticTokenPriority.Ast);
+            _builder.AddToken(
+                node.TypeToken,
+                AuroraSemanticTokenTypes.Type,
+                SemanticTokenPriority.Ast);
             node.Value?.Accept(this);
         }
 

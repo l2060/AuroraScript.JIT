@@ -146,6 +146,8 @@ var flags = new BooleanArray(size);
 
 Each constructor accepts an optional non-negative length and zero-initializes contiguous primitive storage. `length` is read-only; `push`, `pop`, and element deletion are not supported. Use a general `Array` when the collection must grow or contain mixed values. Script numbers are doubles, so values read from `Int64Array` and `UInt64Array` must be exactly representable as a script number; use TDoc typed values when exact 64-bit persistence is required.
 
+`typeof` reports the constructor name for these packed arrays (`"Int8Array"`, `"UInt8Array"`, and so on). They remain object-backed `ScriptDatum` values; they do not consume a dedicated `ValueKind` bit. `check Int8Array value` is the exact assertion used by the typed backend, while `typeof value == "Int8Array"` is the dynamic name check.
+
 ### 7. Understand the strong-typing path
 
 The compiler performs flow analysis rather than requiring explicit annotations. Stable numbers, booleans, integer loop variables, and known packed-array references can be emitted as native CIL locals and direct array accesses. When a value is put in a dynamic object, read through an unknown property, passed to an unknown host callback, assigned an unrelated kind, or otherwise escapes the proven flow, the compiler boxes it into the normal `ScriptDatum` representation.
@@ -352,6 +354,20 @@ var two = (x, y = 1) => x + y;
 var block = () => { return 1; };
 ```
 
+`typeof` returns interned type-name strings. Primitive and privileged object kinds stay lowercase; native objects that share `ValueKind.Object` storage report their constructor name:
+
+```as
+typeof 1;                      // "number"
+typeof [];                     // "array"
+typeof {};                     // "object"
+typeof new Int8Array(2);       // "Int8Array"
+typeof new StringBuffer("");   // "StringBuffer"
+typeof new HashMap();          // "HashMap"
+typeof new Path("mem://app");  // "Path"
+```
+
+`check TypeName value` is a runtime assertion (for example `check Number n` or `check Int8Array bytes`) and is not a substitute for `typeof`. Host code should call `ScriptDatum.TypeOf` / `GetTypeName` for the same names; `ValueKind` is only the datum storage tag.
+
 ## Templates
 
 ```as
@@ -377,9 +393,10 @@ Object values:
 - error
 - regex
 - date
-- hash map
-- string buffer
-- path
+- hash map (`typeof` → `"HashMap"`)
+- string buffer (`typeof` → `"StringBuffer"`)
+- path (`typeof` → `"Path"`)
+- packed arrays (`typeof` → `"Int8Array"`, `"UInt8Array"`, `"Int16Array"`, `"UInt16Array"`, `"Int32Array"`, `"UInt32Array"`, `"Int64Array"`, `"UInt64Array"`, `"Float64Array"`, `"BooleanArray"`)
 - CLR interop objects exposed by the host
 
 ## Runtime Constructors

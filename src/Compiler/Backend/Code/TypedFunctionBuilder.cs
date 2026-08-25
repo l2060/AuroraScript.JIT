@@ -180,6 +180,9 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     switch (expression)
                     {
+                        case CheckExpression check:
+                            BindExpression(check.Value);
+                            break;
                         case TypedDocumentExpression tdoc:
                             BindExpression(tdoc.Value);
                             break;
@@ -412,7 +415,14 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     if (function.LocalSlots[i].IsParameter)
                     {
-                        _locals[i] = parameterTypes != null &&
+                        var checkedType = function.LocalSlots[i].Declaration is
+                            ParameterDeclaration parameter
+                                ? FlowValueTypeFacts.FromCheckedTypeName(
+                                    parameter.CheckedTypeName)
+                                : FlowValueType.None;
+                        _locals[i] = checkedType != FlowValueType.None
+                            ? checkedType
+                            : parameterTypes != null &&
                             parameterIndex < parameterTypes.Length &&
                             parameterTypes[parameterIndex].Type != FlowValueType.None
                                 ? FlowValueTypeFacts.GetDirectLocalType(parameterTypes[parameterIndex])
@@ -620,6 +630,10 @@ namespace AuroraScript.Compiler.Backend.Code
                 FlowValueType type;
                 switch (expression)
                 {
+                    case CheckExpression check:
+                        AnalyzeExpression(check.Value);
+                        type = FlowValueTypeFacts.FromCheckedTypeName(check.TypeName);
+                        break;
                     case TypedDocumentExpression tdoc:
                         var inferredTDocType = AnalyzeExpression(tdoc.Value);
                         type = GetTypedDocumentFlowType(tdoc, inferredTDocType);
@@ -1305,6 +1319,9 @@ namespace AuroraScript.Compiler.Backend.Code
                         return;
                     case TypedDocumentExpression tdoc:
                         InvalidateLocalArrayElementsUsedAsValue(tdoc.Value);
+                        return;
+                    case CheckExpression check:
+                        InvalidateLocalArrayElementsUsedAsValue(check.Value);
                         return;
                     case SpreadExpression spread:
                         InvalidateLocalArrayElementsUsedAsValue(spread.Expression);
@@ -2340,9 +2357,7 @@ namespace AuroraScript.Compiler.Backend.Code
                         (ReferenceEquals(binary.Left, current) ||
                             ReferenceEquals(binary.Right, current)))
                     {
-                        var demand = GetBinaryOperandDemand(
-                            binary.Operator,
-                            ReferenceEquals(binary.Left, current) ? binary.Right : binary.Left);
+                        var demand = GetBinaryOperandDemand(binary.Operator, current);
                         if (demand != NativeCoercionKind.None)
                         {
                             return demand;
@@ -2353,7 +2368,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     {
                         var demand = GetBinaryOperandDemand(
                             compound.Operator.SimplerOperator,
-                            compound.Left);
+                            current);
                         if (demand != NativeCoercionKind.None)
                         {
                             return demand;
@@ -2424,45 +2439,45 @@ namespace AuroraScript.Compiler.Backend.Code
                     return NativeCoercionKind.None;
                 }
 
-                private static bool IsBoundaryValueUse(AstNode current)
+                private bool IsBoundaryValueUse(AstNode current)
                 {
-                    if (current.Parent is ReturnStatement)
-                    {
-                        return true;
-                    }
-                    if (current.Parent is SetPropertyExpression setProperty &&
-                        ReferenceEquals(setProperty.Value, current))
-                    {
-                        return true;
-                    }
+                    // A packed array coerces whatever it stores to its native
+                    // element type, so feeding it a promoted local is not
+                    // observable. Returns, property stores, and object arrays
+                    // keep the original value and must pin the ScriptDatum.
                     return current.Parent is SetElementExpression setElement &&
-                        ReferenceEquals(setElement.Value, current);
+                        ReferenceEquals(setElement.Value, current) &&
+                        FlowValueTypeFacts.IsPackedArray(GetExpressionType(setElement.Object));
                 }
 
-                private NativeCoercionKind GetBinaryOperandDemand(Operator op, Expression sibling)
+                private NativeCoercionKind GetBinaryOperandDemand(Operator op, AstNode operand)
                 {
                     if (op == Operator.Subtract ||
                         op == Operator.Multiply ||
                         op == Operator.Divide ||
-                        op == Operator.Modulo ||
+                        op == Operator.Modulo)
+                    {
+                        return NativeCoercionKind.ArithmeticNumber;
+                    }
+
+                    // Native storage keeps the arithmetic coercion, which turns
+                    // null into zero and parses strings. '+' concatenates when
+                    // either side is a string, and comparisons leave null
+                    // unordered, so both disagree with it. Only an operand that
+                    // is already numeric can be demanded here; a dynamic one
+                    // falls back to the ScriptDatum plus numeric shadow, which
+                    // reproduces those semantics exactly.
+                    if (op == Operator.Add ||
+                        op == Operator.Equal ||
+                        op == Operator.NotEqual ||
                         op == Operator.LessThan ||
                         op == Operator.LessThanOrEqual ||
                         op == Operator.GreaterThan ||
                         op == Operator.GreaterThanOrEqual)
                     {
-                        return NativeCoercionKind.ArithmeticNumber;
-                    }
-                    if (op == Operator.Add ||
-                        op == Operator.Equal ||
-                        op == Operator.NotEqual)
-                    {
-                        var siblingType = GetExpressionType(sibling);
-                        if (siblingType == FlowValueType.String)
-                        {
-                            return NativeCoercionKind.None;
-                        }
-                        if (FlowValueTypeFacts.IsNumeric(siblingType) ||
-                            siblingType == FlowValueType.Boolean)
+                        var operandType = GetExpressionType(operand as Expression);
+                        if (FlowValueTypeFacts.IsNumeric(operandType) ||
+                            operandType == FlowValueType.Boolean)
                         {
                             return NativeCoercionKind.ArithmeticNumber;
                         }

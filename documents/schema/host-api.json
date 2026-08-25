@@ -1344,7 +1344,10 @@
         },
         "Kind": {
           "kind": "field",
-          "signature": "ValueKind Kind"
+          "signature": "ValueKind Kind",
+          "notes": [
+            "Storage and hot-path dispatch tag. Packed arrays, StringBuffer, Path, and HashMap use ValueKind.Object; call TypeOf or GetTypeName for the script type name."
+          ]
         },
         "Number": {
           "kind": "field",
@@ -1389,6 +1392,9 @@
             "static string ToString(ScriptDatum d)",
             "static bool TryToNumber(in ScriptDatum d, out double value)",
             "static bool TryToInteger(in ScriptDatum d, out long value)"
+          ],
+          "notes": [
+            "TypeOf and GetTypeName match the script typeof operator, including constructor names such as Int8Array and StringBuffer."
           ]
         },
         "TryGet": {
@@ -1422,7 +1428,11 @@
       "kind": "enum",
       "namespace": "AuroraScript.Runtime",
       "values": ["Null", "Boolean", "Number", "String", "Object", "Array", "Date", "Regex", "Function", "Type", "ClrFunction", "ClrBonding", "Error"],
-      "summary": "Tagged value kind used by ScriptDatum."
+      "summary": "Storage and hot-path dispatch tags for ScriptDatum. Not the script type-name registry.",
+      "notes": [
+        "Native objects such as Int8Array, StringBuffer, Path, and HashMap stay Object and report identity through ScriptObject.TypeOfValue / ScriptDatum.TypeOf.",
+        "Do not add enum members for new native types; remaining flag bits are reserved for privileged storage shapes."
+      ]
     },
     "ObjectFlags": {
       "kind": "enum",
@@ -2251,6 +2261,11 @@
       "id": "runtime.convert-values",
       "summary": "Use ClrMarshaller.ToDatum/ToScript for normal host values; use ScriptDatum factories when exact runtime kinds are required.",
       "apis": ["ClrMarshaller", "ScriptDatum", "ScriptObject", "ScriptArray"]
+    },
+    {
+      "id": "runtime.typeof-native-objects",
+      "summary": "Use ScriptDatum.TypeOf or GetTypeName for script type names. Packed arrays and other native objects remain ValueKind.Object; Kind is not a complete type registry.",
+      "apis": ["ScriptDatum.TypeOf", "ScriptDatum.GetTypeName", "ValueKind", "ScriptObject"]
     },
     {
       "id": "runtime.serialize-json",

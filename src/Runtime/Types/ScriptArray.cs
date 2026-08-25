@@ -13,6 +13,8 @@ namespace AuroraScript.Runtime.Types
         internal ScriptDatum[] _items;
         private int _count;
 
+        internal override ScriptDatum TypeOfValue => TypeNames.Array;
+
         /// <summary>
         /// Initializes a new <see cref="ScriptArray"/> by copying another array.
         /// </summary>
