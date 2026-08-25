@@ -1017,6 +1017,12 @@ public sealed class AuroraLanguageService
                 : null;
         }
 
+        if (context.TypeReference != null &&
+            _builtinDocuments.TryGetGlobalLocation(context.TypeReference.Value, out var typeLocation))
+        {
+            return typeLocation;
+        }
+
         if (context.PropertyAccess != null &&
             context.PropertyAccess.Object is NameExpression moduleOwner &&
             BuiltinModuleQuery.TryResolve(

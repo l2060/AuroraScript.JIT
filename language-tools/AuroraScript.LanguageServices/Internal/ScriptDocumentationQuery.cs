@@ -443,6 +443,11 @@ internal static class ScriptDocumentationQuery
                 builder.Append(", ");
             }
 
+            if (parameters[i].CheckedTypeName != null)
+            {
+                builder.Append(parameters[i].CheckedTypeName).Append(' ');
+            }
+
             if (parameters[i].IsSpreadOperator)
             {
                 builder.Append("...");

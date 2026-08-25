@@ -75,7 +75,7 @@ internal static class LightweightBuiltinHoverQuery
                 RegexOptions.CultureInvariant) ||
             Regex.IsMatch(
                 maskedSource,
-                $@"(?<!{IdentifierBoundary})(?:function|func)\s+[$_\p{{L}}][$_\p{{L}}\p{{Nd}}]*\s*\([^)]*(?<!{IdentifierBoundary}){escapedName}(?!{IdentifierBoundary})",
+                $@"(?<!{IdentifierBoundary})(?:function|func)\s+[$_\p{{L}}][$_\p{{L}}\p{{Nd}}]*\s*\([^)]*(?<!{IdentifierBoundary}){escapedName}(?!{IdentifierBoundary})(?!\s+(?:\.\.\.)?[$_\p{{L}}])",
                 RegexOptions.CultureInvariant);
     }
 

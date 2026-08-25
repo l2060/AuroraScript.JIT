@@ -360,8 +360,12 @@
           "match": "\\b(?:const|declare|enum|func|function|var|readonly)\\b"
         },
         {
+          "name": "keyword.operator.type-check.aurora",
+          "match": "\\bas\\b(?=\\s+(?:Array|Boolean|BooleanArray|Date|Float64Array|HashMap|Int16Array|Int32Array|Int64Array|Int8Array|Number|Object|Regex|String|StringBuffer|UInt16Array|UInt32Array|UInt64Array|UInt8Array)\\b)"
+        },
+        {
           "name": "keyword.operator.word.aurora",
-          "match": "\\b(?:in|new|typeof|as)\\b"
+          "match": "\\b(?:in|new|typeof)\\b"
         }
       ]
     },

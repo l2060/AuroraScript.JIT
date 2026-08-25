@@ -1,6 +1,7 @@
 using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Ast.Statements;
+using AuroraScript.Compiler;
 using AuroraScript.LanguageServices.Text;
 using System.Collections.Generic;
 
@@ -12,7 +13,10 @@ internal static class AstQuery
     {
         var state = new QueryState(position);
         Visit(root, state);
-        if (state.Name == null && state.PropertyAccess == null && state.Call == null)
+        if (state.Name == null &&
+            state.PropertyAccess == null &&
+            state.Call == null &&
+            state.TypeReference == null)
         {
             return null;
         }
@@ -20,6 +24,7 @@ internal static class AstQuery
         return new AstQueryContext
         {
             Expression = state.Expression,
+            TypeReference = state.TypeReference,
             Name = state.Name,
             PropertyAccess = state.PropertyAccess,
             Call = state.Call,
@@ -53,6 +58,10 @@ internal static class AstQuery
             case FunctionDeclaration function:
                 VisitFunction(function, state);
                 return;
+            case ParameterDeclaration parameter:
+                VisitTypeReference(parameter.CheckedTypeToken, state);
+                Visit(parameter.Initializer, state);
+                return;
             case VariableDeclaration variable:
                 Visit(variable.Initializer, state);
                 return;
@@ -63,6 +72,7 @@ internal static class AstQuery
                 Visit(typedDocument.Value, state);
                 return;
             case CheckExpression check:
+                VisitTypeReference(check.TypeToken, state);
                 Visit(check.Value, state);
                 return;
             case NameExpression name:
@@ -199,6 +209,14 @@ internal static class AstQuery
         Visit(function.Body, state);
     }
 
+    private static void VisitTypeReference(Token? token, QueryState state)
+    {
+        if (token != null && token.Range.Contains(state.Position))
+        {
+            state.TypeReference = token;
+        }
+    }
+
     private static void VisitGetProperty(GetPropertyExpression node, QueryState state)
     {
         state.PropertyAccess = node;
@@ -253,6 +271,7 @@ internal static class AstQuery
 
         public TextPosition Position { get; }
         public Expression? Expression { get; set; }
+        public Token? TypeReference { get; set; }
         public NameExpression? Name { get; set; }
         public GetPropertyExpression? PropertyAccess { get; set; }
         public FunctionCallExpression? Call { get; set; }

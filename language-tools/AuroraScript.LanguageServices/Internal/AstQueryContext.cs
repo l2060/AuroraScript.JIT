@@ -1,3 +1,4 @@
+using AuroraScript.Compiler;
 using AuroraScript.Compiler.Ast.Expressions;
 
 namespace AuroraScript.LanguageServices.Internal;
@@ -5,6 +6,12 @@ namespace AuroraScript.LanguageServices.Internal;
 internal sealed class AstQueryContext
 {
     public Expression? Expression { get; init; }
+
+    /// <summary>
+    /// Type name asserted by a typed parameter or an <c>as</c> expression.
+    /// </summary>
+    public Token? TypeReference { get; init; }
+
     public NameExpression? Name { get; init; }
     public GetPropertyExpression? PropertyAccess { get; init; }
     public FunctionCallExpression? Call { get; init; }

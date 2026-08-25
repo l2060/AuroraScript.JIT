@@ -1,5 +1,6 @@
 using AuroraScript.LanguageServices.Builtins;
 using AuroraScript.LanguageServices.Features.SemanticTokens;
+using AuroraScript.LanguageServices.Text;
 using System;
 using Xunit;
 
@@ -20,6 +21,43 @@ public sealed class TypedDocumentLanguageFeatureTests
 
         AssertToken(source, result, "as", AuroraSemanticTokenTypes.Keyword);
         AssertToken(source, result, "Number", AuroraSemanticTokenTypes.Type);
+    }
+
+    [Fact]
+    public void TypedParameterAndAssertionTypesResolveToBuiltinTypes()
+    {
+        const string source =
+            "// Adds a scalar to the first packed element.\n" +
+            "export func add(Number value, Float64Array items) {\n" +
+            "\tvar buffer = items as Float64Array;\n" +
+            "\treturn value + buffer[0];\n" +
+            "}\n";
+        var service = new AuroraLanguageService(
+            BuiltinApiLoader.LoadFromFile(BuiltinApiCatalogTests.GetRuntimeApiPath()));
+
+        Assert.Empty(service.GetDiagnostics("main.as", source));
+
+        var parameterTypeHover = service.GetHover("main.as", source, PositionOf(source, "Number value"));
+        Assert.NotNull(parameterTypeHover);
+        Assert.Contains("Number", parameterTypeHover!.Contents, StringComparison.Ordinal);
+
+        var packedTypeHover = service.GetHover("main.as", source, PositionOf(source, "Float64Array items"));
+        Assert.NotNull(packedTypeHover);
+        Assert.Contains("Float64Array", packedTypeHover!.Contents, StringComparison.Ordinal);
+
+        var assertionTypeHover = service.GetHover("main.as", source, PositionOf(source, "Float64Array;"));
+        Assert.NotNull(assertionTypeHover);
+        Assert.Contains("Float64Array", assertionTypeHover!.Contents, StringComparison.Ordinal);
+
+        Assert.NotNull(service.GetDefinition("main.as", source, PositionOf(source, "Number value")));
+        Assert.NotNull(service.GetDefinition("main.as", source, PositionOf(source, "Float64Array;")));
+
+        var functionHover = service.GetHover("main.as", source, PositionOf(source, "add("));
+        Assert.NotNull(functionHover);
+        Assert.Contains(
+            "func add(Number value, Float64Array items)",
+            functionHover!.Contents,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -83,6 +121,29 @@ public sealed class TypedDocumentLanguageFeatureTests
             "Object { Date createdAt \"2026-08-19 21:08:07 123\" }"));
         Assert.Contains("$.createdAt", date.Message, StringComparison.Ordinal);
         Assert.Contains("DateTimeFormat", date.Message, StringComparison.Ordinal);
+    }
+
+    private static TextPosition PositionOf(string source, string text)
+    {
+        var offset = source.IndexOf(text, StringComparison.Ordinal);
+        Assert.True(offset >= 0, $"Source does not contain '{text}'.");
+
+        var line = 0;
+        var character = 0;
+        for (var i = 0; i < offset; i++)
+        {
+            if (source[i] == '\n')
+            {
+                line++;
+                character = 0;
+            }
+            else
+            {
+                character++;
+            }
+        }
+
+        return new TextPosition(line, character);
     }
 
     private static void AssertToken(string source, SemanticTokensResult result, string text, int type)

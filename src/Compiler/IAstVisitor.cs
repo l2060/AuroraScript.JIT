@@ -1,4 +1,4 @@
-﻿using AuroraScript.Compiler.Ast;
+using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Ast.Statements;
 

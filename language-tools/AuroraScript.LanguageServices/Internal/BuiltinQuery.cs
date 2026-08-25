@@ -20,6 +20,15 @@ internal static class BuiltinQuery
         out HoverResult hover)
     {
         hover = null!;
+        if (context.TypeReference != null &&
+            builtins.TryGetGlobal(context.TypeReference.Value, out var assertedType))
+        {
+            hover = new HoverResult(
+                BuiltinFormat.FormatGlobal(assertedType, locale),
+                TextRange.FromSourceSpan(context.TypeReference.Range));
+            return true;
+        }
+
         if (context.PropertyAccess != null &&
             context.IsOnPropertyOwner &&
             context.PropertyAccess.Object is NameExpression ownerName)
