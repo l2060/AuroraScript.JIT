@@ -212,7 +212,7 @@ export func setWalkable(AStar astar, Number x, Number y, Boolean canWalk) Boolea
 	return true;
 }
 
-export func setCost(AStar astar, Number x, Number y, Number cost) Boolean {
+export  func setCost(AStar astar, Number x, Number y, Number cost) Boolean {
 	var index = toIndex(astar, x, y);
 	if (index < 0 || cost <= 0) {
 		return false;
