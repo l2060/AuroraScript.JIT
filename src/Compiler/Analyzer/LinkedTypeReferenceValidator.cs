@@ -22,7 +22,6 @@ namespace AuroraScript.Compiler.Analyzer
             {
                 new LinkedTypeReferenceValidator(modules[i]).Apply();
             }
-            ValidateCycles(modules);
         }
 
         private void Apply()
@@ -169,58 +168,5 @@ namespace AuroraScript.Compiler.Analyzer
                 Enum.IsDefined(checkedType);
         }
 
-        private static void ValidateCycles(IReadOnlyList<ModuleDeclaration> modules)
-        {
-            var visiting = new HashSet<TypeDeclaration>(ReferenceEqualityComparer.Instance);
-            var visited = new HashSet<TypeDeclaration>(ReferenceEqualityComparer.Instance);
-            for (var i = 0; i < modules.Count; i++)
-            {
-                var module = modules[i];
-                for (var typeIndex = 0; typeIndex < module.Types.Count; typeIndex++)
-                {
-                    VisitType(module.Types[typeIndex], visiting, visited);
-                }
-            }
-        }
-
-        private static void VisitType(
-            TypeDeclaration declaration,
-            HashSet<TypeDeclaration> visiting,
-            HashSet<TypeDeclaration> visited)
-        {
-            if (declaration == null || visited.Contains(declaration))
-            {
-                return;
-            }
-
-            if (!visiting.Add(declaration))
-            {
-                throw new AuroraCompilationException(
-                    AuroraCompilationStage.Linking,
-                    GetModule(declaration)?.Source.FullPath,
-                    declaration.Name,
-                    $"Type '{declaration.Name.Value}' contains a cyclic shape.");
-            }
-
-            var module = GetModule(declaration);
-            for (var i = 0; i < declaration.Fields.Count; i++)
-            {
-                if (module != null &&
-                    module.TryResolveType(
-                        declaration.Fields[i].Type,
-                        out var nested))
-                {
-                    VisitType(nested, visiting, visited);
-                }
-            }
-
-            visiting.Remove(declaration);
-            visited.Add(declaration);
-        }
-
-        private static ModuleDeclaration GetModule(TypeDeclaration declaration)
-        {
-            return declaration.Parent as ModuleDeclaration;
-        }
     }
 }

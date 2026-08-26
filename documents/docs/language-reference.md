@@ -201,8 +201,35 @@ func left(Rect rect) Number {
 }
 ```
 
-Recursive or mutually recursive shapes are rejected. Nested shapes do not
-add runtime object scans.
+Shapes may also reference themselves or other shapes cyclically. Cycles
+remain compile-time metadata only; the compiler does not validate custom
+shape legality at runtime:
+
+```as
+export type Node {
+    Number value;
+    Node next;
+}
+
+func tailValue(Node node) Number {
+    return node.next.value;
+}
+```
+
+Mutually recursive shapes are also allowed:
+
+```as
+export type Left {
+    Number value;
+    Right other;
+}
+export type Right {
+    Number value;
+    Left other;
+}
+```
+
+Nested and cyclic shapes do not add runtime object scans.
 
 Only `export type` declarations are visible through the alias. Qualified
 shape references remain compile-time metadata and do not add runtime module

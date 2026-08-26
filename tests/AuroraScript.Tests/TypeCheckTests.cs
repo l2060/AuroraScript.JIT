@@ -587,50 +587,103 @@ public sealed class TypeCheckTests
                 arguments: [ScriptDatum.FromObject(rect)]));
     }
 
-    [Fact]
-    public async Task NestedShapesRejectCyclicDeclarations()
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
+    public async Task CyclicShapesDeriveNativeFieldsThroughLinks(
+        CompilationMode mode)
     {
         using var workspace = new TestWorkspace();
-        var error = await Assert.ThrowsAsync<AuroraCompilationException>(() =>
-            workspace.CompileModuleAsync(
-                """
-                @module(TEST);
-                export type Node {
-                    Node next;
-                    Number value;
-                }
-                export func run(Node node) {
-                    return node.next;
-                }
-                """));
-        Assert.Contains(
-            "cyclic shape",
-            error.Message,
-            StringComparison.Ordinal);
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export type Node {
+                Number value;
+                Node next;
+            }
+            export func head(Node node) Number {
+                return node.value;
+            }
+            export func tailValue(Node node) Number {
+                return node.next.value;
+            }
+            export func walk(Number total, Node node) Number {
+                if (node == null) return total;
+                return walk(total + node.value, node.next);
+            }
+            """,
+            mode);
+
+        var tail = new ScriptObject();
+        tail.Define("value", ScriptDatum.FromNumber(2));
+        tail.Define("next", ScriptDatum.Null);
+        var head = new ScriptObject();
+        head.Define("value", ScriptDatum.FromNumber(1));
+        head.Define("next", ScriptDatum.FromObject(tail));
+
+        ScriptAssert.Equal(
+            1,
+            TestWorkspace.Execute(
+                domain,
+                "head",
+                arguments: [ScriptDatum.FromObject(head)]));
+        ScriptAssert.Equal(
+            2,
+            TestWorkspace.Execute(
+                domain,
+                "tailValue",
+                arguments: [ScriptDatum.FromObject(head)]));
+        ScriptAssert.Equal(
+            3,
+            TestWorkspace.Execute(
+                domain,
+                "walk",
+                arguments: [
+                    ScriptDatum.FromNumber(0),
+                    ScriptDatum.FromObject(head)]));
     }
 
-    [Fact]
-    public async Task NestedShapesRejectMutualCycles()
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
+    public async Task MutuallyRecursiveShapesDeriveNativeFields(
+        CompilationMode mode)
     {
         using var workspace = new TestWorkspace();
-        var error = await Assert.ThrowsAsync<AuroraCompilationException>(() =>
-            workspace.CompileModuleAsync(
-                """
-                @module(TEST);
-                export type Left {
-                    Right other;
-                }
-                export type Right {
-                    Left other;
-                }
-                export func run(Left value) {
-                    return value;
-                }
-                """));
-        Assert.Contains(
-            "cyclic shape",
-            error.Message,
-            StringComparison.Ordinal);
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export type Left {
+                Number value;
+                Right other;
+            }
+            export type Right {
+                Number value;
+                Left other;
+            }
+            export func leftScore(Left value) Number {
+                return value.value + value.other.value;
+            }
+            """,
+            mode);
+
+        var right = new ScriptObject();
+        right.Define("value", ScriptDatum.FromNumber(20));
+        right.Define("other", ScriptDatum.Null);
+        var left = new ScriptObject();
+        left.Define("value", ScriptDatum.FromNumber(1));
+        left.Define("other", ScriptDatum.FromObject(right));
+
+        ScriptAssert.Equal(
+            21,
+            TestWorkspace.Execute(
+                domain,
+                "leftScore",
+                arguments: [ScriptDatum.FromObject(left)]));
     }
 
     [Fact]
