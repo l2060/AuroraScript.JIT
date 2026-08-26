@@ -27,5 +27,5 @@ func testNative() {
 	console.log(Stats.chat(a, c));
 	console.log(Stats.chat(a, d));
 	console.log(Stats.chat(b, c));
-	console.log(Stats.chat(e, e));
+	// console.log(Stats.chat(e, e));
 }

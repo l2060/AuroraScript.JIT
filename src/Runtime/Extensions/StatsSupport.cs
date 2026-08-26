@@ -40,8 +40,8 @@ namespace AuroraScript.Runtime.Extensions
         /// <summary>Concatenates a string and an exact Int32 value.</summary>
         [AuroraExport("chat", Failure = AuroraExportFailure.Throw)]
         public static string Chat(
-            [AuroraParam(Coercion = AuroraParamCoercion.Exact)] string value,
-            [AuroraParam(Coercion = AuroraParamCoercion.Exact)] Double pice)
+            [AuroraParam(Coercion = AuroraParamCoercion.Weak)] string value,
+            [AuroraParam(Coercion = AuroraParamCoercion.Weak)] Double pice)
             => value + pice;
     }
 }
