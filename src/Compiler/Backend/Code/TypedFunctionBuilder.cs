@@ -812,6 +812,22 @@ namespace AuroraScript.Compiler.Backend.Code
                         {
                             type = universalReturn;
                         }
+                        else if (_function.ImportedNativeCalls.TryGetValue(
+                                call,
+                                out var importedNative) &&
+                            CanUseImportedNativeCall(
+                                call,
+                                importedNative))
+                        {
+                            type = TypeReferenceFacts.GetFlowType(
+                                importedNative.Declaration.Parent
+                                    as ModuleDeclaration,
+                                importedNative.Declaration.ReturnType);
+                            if (type == FlowValueType.None)
+                            {
+                                type = FlowValueType.Dynamic;
+                            }
+                        }
                         else
                         {
                             type = FlowValueType.Dynamic;
@@ -1267,6 +1283,45 @@ namespace AuroraScript.Compiler.Backend.Code
                 }
 
                 return true;
+            }
+
+            private bool CanUseImportedNativeCall(
+                FunctionCallExpression call,
+                FunctionPlan target)
+            {
+                var parameters = target.Declaration.Parameters;
+                for (var i = 0; i < parameters.Count; i++)
+                {
+                    var type = TypeReferenceFacts.GetFlowType(
+                        target.Declaration.Parent as ModuleDeclaration,
+                        parameters[i].DeclaredType);
+                    if (!RequiresNativeProof(type))
+                    {
+                        continue;
+                    }
+                    if (i >= call.Arguments.Count ||
+                        !FlowValueTypeFacts.CanPassNativeArgument(
+                            new DirectParameterType(type),
+                            _expressionTypes.TryGetValue(
+                                call.Arguments[i],
+                                out var argumentType)
+                                    ? argumentType
+                                    : FlowValueType.Dynamic))
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            private static bool RequiresNativeProof(
+                FlowValueType type)
+            {
+                return FlowValueTypeFacts.IsNumeric(type) ||
+                    type == FlowValueType.Boolean ||
+                    type == FlowValueType.String ||
+                    type == FlowValueType.Array ||
+                    FlowValueTypeFacts.IsPackedArray(type);
             }
 
             private FlowValueType AnalyzeName(NameExpression name)

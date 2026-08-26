@@ -169,6 +169,11 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo ScriptGlobalRegisterModule = InstanceMethod(typeof(ScriptGlobal), nameof(ScriptGlobal.RegisterModule), typeof(int), typeof(ScriptModule));
         public static readonly ConstructorInfo ScriptSourceReferenceConstructor = Constructor(typeof(ScriptSourceReference), typeof(string), typeof(string), typeof(string));
         public static readonly ConstructorInfo ScriptModuleConstructor = Constructor(typeof(ScriptModule), typeof(string), typeof(ScriptSourceReference));
+        public static readonly MethodInfo ScriptModuleRegisterNativeFunction =
+            InstanceMethod(
+                typeof(ScriptModule),
+                nameof(ScriptModule.RegisterNativeFunction),
+                typeof(string));
         public static readonly MethodInfo ScriptObjectClearProperties = InstanceMethod(typeof(ScriptObject), nameof(ScriptObject.ClearProperties));
 
         public static readonly MethodInfo ValidatePackedArrayLength = Method(typeof(ScriptPackedArray), nameof(ScriptPackedArray.ValidateLength), typeof(double));
@@ -198,10 +203,8 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly FieldInfo ScriptInt64ArrayItems = Field(typeof(ScriptInt64Array), "_items");
         public static readonly FieldInfo ScriptUInt64ArrayItems = Field(typeof(ScriptUInt64Array), "_items");
 
-        public static readonly MethodInfo EnterDirectFrame = Method(typeof(CallFrameOps), nameof(CallFrameOps.EnterDirect), typeof(ScriptContext), typeof(string));
         public static readonly MethodInfo EnterModuleFrame = Method(typeof(CallFrameOps), nameof(CallFrameOps.EnterModule), typeof(ScriptContext), typeof(ScriptModule));
         public static readonly MethodInfo LeaveFrame = Method(typeof(CallFrameOps), nameof(CallFrameOps.Leave), typeof(ScriptContext), typeof(int));
-        public static readonly MethodInfo CaptureExceptionFrame = Method(typeof(CallFrameOps), nameof(CallFrameOps.CaptureException), typeof(ScriptContext));
         public static readonly MethodInfo GetArgument = Method(typeof(CallFrameOps), nameof(CallFrameOps.GetArgument), typeof(Span<ScriptDatum>), typeof(int));
         public static readonly MethodInfo GetArgumentOrDefault = Method(typeof(CallFrameOps), nameof(CallFrameOps.GetArgumentOrDefault), typeof(Span<ScriptDatum>), typeof(int), typeof(ScriptDatum));
         public static readonly MethodInfo IsNullOrEmpty = Method(typeof(string), nameof(string.IsNullOrEmpty), typeof(string));

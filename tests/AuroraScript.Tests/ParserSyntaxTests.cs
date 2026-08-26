@@ -66,6 +66,21 @@ public sealed class ParserSyntaxTests
     }
 
     [Fact]
+    public void NativeIsAContextualFunctionModifier()
+    {
+        var module = Parse(
+            """
+            var native = 1;
+            native func internalValue() Number { return native; }
+            export native function exportedValue() Number { return internalValue(); }
+            """);
+
+        Assert.Equal(2, module.Functions.Count);
+        Assert.All(module.Functions, function => Assert.True(function.IsNative));
+        Assert.Equal(MemberAccess.Export, module.Functions[1].Access);
+    }
+
+    [Fact]
     public void AllowsMultipleImportsAndIncludesAtModuleTop()
     {
         using var workspace = new TestWorkspace();
@@ -281,37 +296,15 @@ public sealed class ParserSyntaxTests
     }
 
     [Fact]
-    public void ParsesFunctionAnnotations()
+    public void RejectsRemovedDirectCallAnnotation()
     {
-        var module = Parse(
-            """
-            @module(TEST);
-            @directCall
-            export func run() { return 42; }
-            """);
+        var error = Assert.Throws<AuroraCompilationException>(() => Parse(
+            "@module(TEST);\n@directCall\nfunc run() { return 42; }"));
 
-        var function = Assert.Single(module.Functions);
-        Assert.Equal("run", function.Name.Value);
-        var annotation = Assert.Single(function.Annotations);
-        Assert.Equal("directCall", annotation.Name.Value);
-        Assert.Empty(annotation.Arguments);
-    }
-
-    [Fact]
-    public void ParsesDirectCallAnnotationArgument()
-    {
-        var module = Parse(
-            """
-            @module(TEST);
-            @directCall(false)
-            func run() { return 42; }
-            """);
-
-        var function = Assert.Single(module.Functions);
-        var annotation = Assert.Single(function.Annotations);
-        Assert.Equal("directCall", annotation.Name.Value);
-        var argument = Assert.IsType<AuroraScript.Tokens.BooleanToken>(annotation.Arguments[0]);
-        Assert.False(argument.BoolValue);
+        Assert.Contains(
+            "Function annotations are not supported",
+            error.Message,
+            StringComparison.Ordinal);
     }
 
     [Fact]

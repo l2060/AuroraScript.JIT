@@ -26,8 +26,7 @@ public sealed class ArraySpecializationTests
             """
             @module(TEST);
 
-            @directCall
-            func arrayWork(values, count) {
+            native func arrayWork(Array values, Number count) Number {
                 for (var i = 0; i < count; i++) values[i] += i;
                 values[-1]++;
                 return count + values.length;
@@ -198,16 +197,18 @@ public sealed class ArraySpecializationTests
         var signature = reader.GetBlobReader(reader.GetMethodDefinition(handle).Signature);
 
         Assert.Equal(0, signature.ReadByte());
-        Assert.Equal(2, signature.ReadCompressedInteger());
+        Assert.Equal(3, signature.ReadCompressedInteger());
         Assert.Equal(0x0d, signature.ReadByte());
         Assert.Equal(0x12, signature.ReadByte());
+        signature.ReadCompressedInteger(); // ScriptContext
 
+        Assert.Equal(0x12, signature.ReadByte());
         var encodedType = signature.ReadCompressedInteger();
         Assert.Equal(1, encodedType & 0x03);
         var type = reader.GetTypeReference(MetadataTokens.TypeReferenceHandle(encodedType >> 2));
         Assert.Equal("AuroraScript.Runtime.Types", reader.GetString(type.Namespace));
         Assert.Equal(nameof(AuroraScript.Runtime.Types.ScriptArray), reader.GetString(type.Name));
-        Assert.Equal(0x08, signature.ReadByte());
+        Assert.Equal(0x0d, signature.ReadByte());
         Assert.Equal(0, signature.RemainingBytes);
     }
 #endif

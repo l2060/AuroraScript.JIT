@@ -1,4 +1,5 @@
 using AuroraScript.Compiler.Ast;
+using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Compiler.Backend.Binding;
 using AuroraScript.Core;
@@ -27,13 +28,6 @@ namespace AuroraScript.Compiler.Backend.Plans
         Fast5,
         Fast6,
         Fast7
-    }
-
-    internal enum DirectCallDirective
-    {
-        Auto,
-        PreserveClosure,
-        Disabled
     }
 
     internal readonly struct LocalSlot
@@ -134,8 +128,10 @@ namespace AuroraScript.Compiler.Backend.Plans
             UpvalueSlots = Array.Empty<UpvalueSlot>();
             CapturedLocalSlots = Array.Empty<UpvalueSlot>();
             NestedFunctions = Array.Empty<FunctionId>();
-            DirectCallDirective = FunctionAnnotationBinder.ResolveDirectCallDirective(declaration);
             ParentLocalScopeId = -1;
+            ImportedNativeCalls =
+                new Dictionary<FunctionCallExpression, FunctionPlan>(
+                    ReferenceEqualityComparer.Instance);
         }
 
         public FunctionId Id { get; }
@@ -147,7 +143,6 @@ namespace AuroraScript.Compiler.Backend.Plans
         public FunctionVisibility Visibility { get; set; }
         public FunctionCallConvention CallConvention { get; set; }
         public MethodInfo Method { get; set; }
-        public MethodInfo DirectEntryMethod { get; set; }
         public int DynamicDelegateId { get; set; }
         public LocalSlot[] LocalSlots { get; set; }
         public LocalScope[] LocalScopes { get; set; }
@@ -156,13 +151,16 @@ namespace AuroraScript.Compiler.Backend.Plans
         public UpvalueSlot[] CapturedLocalSlots { get; set; }
         public FunctionId[] NestedFunctions { get; set; }
         public bool IsDirectCallCandidate { get; set; }
-        public DirectCallDirective DirectCallDirective { get; }
         public bool UsesArgumentsObject { get; set; }
         public bool HasDefaultParameters { get; set; }
         public bool RequiresClosureObject { get; set; } = true;
         public bool CanCacheClosureObject { get; set; }
         public int ParentLocalScopeId { get; set; }
+        public Dictionary<FunctionCallExpression, FunctionPlan>
+            ImportedNativeCalls { get; }
         public bool IsLambda => Declaration?.Flags == FunctionFlags.Lambda;
+        public bool IsNativeDeclared => Declaration?.IsNative == true;
+        public MethodInfo NativeEntryMethod { get; set; }
 
     }
 

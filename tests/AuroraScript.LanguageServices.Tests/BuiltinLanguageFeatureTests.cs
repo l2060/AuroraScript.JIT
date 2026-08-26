@@ -236,14 +236,13 @@ public sealed class BuiltinLanguageFeatureTests
     }
 
     [Fact]
-    public void HoverReturnsScriptFunctionCommentsBeforeAnnotations()
+    public void HoverReturnsCommentsForNativeFunctions()
     {
         const string source =
             """
             @module(TEST);
             // Fast callable.
-            @directCall
-            func helper(value) {
+            native func helper(Number value) Number {
                 return value;
             }
             """;
@@ -277,22 +276,21 @@ public sealed class BuiltinLanguageFeatureTests
     }
 
     [Fact]
-    public void HoverReturnsAnnotationDocumentation()
+    public void HoverReturnsModuleAnnotationDocumentation()
     {
         const string source =
             """
             @module(TEST);
-            @directCall
             func helper() {
                 return 1;
             }
             """;
         var service = CreateService("zh-CN");
 
-        var hover = service.GetHover("test.as", source, PositionOf(source, "@directCall"));
+        var hover = service.GetHover("test.as", source, PositionOf(source, "@module"));
 
         Assert.NotNull(hover);
-        Assert.Contains("直接调用", hover!.Contents, StringComparison.Ordinal);
+        Assert.Contains("显式查询名称", hover!.Contents, StringComparison.Ordinal);
     }
 
     [Fact]

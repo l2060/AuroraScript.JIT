@@ -31,8 +31,7 @@ export type AStar {
 	Float64Array heapTies;
 }
 
-@directCall
-func astarHeuristic(Number x, Number y, Number goalX, Number goalY, Boolean allowDiagonal, Number minCost) Number {
+native func astarHeuristic(Number x, Number y, Number goalX, Number goalY, Boolean allowDiagonal, Number minCost) Number {
 	var dx = x - goalX;
 	if (dx < 0) {
 		dx = -dx;
@@ -54,8 +53,7 @@ func astarHeuristic(Number x, Number y, Number goalX, Number goalY, Boolean allo
 	return(dx + dy) * minCost;
 }
 
-@directCall
-func astarHeapPush(Int32Array heapNodes, Float64Array heapScores, Float64Array heapTies, Number heapLength, Number node, Number score, Number tie) Number {
+native func astarHeapPush(Int32Array heapNodes, Float64Array heapScores, Float64Array heapTies, Number heapLength, Number node, Number score, Number tie) Number {
 	var i = heapLength;
 	heapLength++;
 
@@ -98,7 +96,6 @@ func astarHeapPush(Int32Array heapNodes, Float64Array heapScores, Float64Array h
 	return heapLength;
 }
 
-@directCall
 func astarClearSearchState(AStar astar) {
 	var opened = astar.opened;
 	var closed = astar.closed;
@@ -637,7 +634,7 @@ var startY = 0;
 var goalX = width - 1;
 var goalY = height - 1;
 
-func astarRand01(SeededRng rng) Number {
+native func astarRand01(SeededRng rng) Number {
 	var x = rng.seed;
 
 	x = x ^ (x << 13);

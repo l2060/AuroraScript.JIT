@@ -131,9 +131,10 @@ public sealed class AstarExampleTests
         }
 
         Assert.True(heuristic.HasValue, "Persisted Astar heuristic native method was not emitted.");
-        // DEFAULT, six parameters, return R8, then R8 x4, Boolean, R8.
+        // DEFAULT, seven parameters, return R8, then ScriptContext,
+        // R8 x4, Boolean, R8.
         Assert.Equal(
-            [0x00, 0x06, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x02, 0x0d],
+            [0x00, 0x07, 0x0d, 0x12, 0x25, 0x0d, 0x0d, 0x0d, 0x0d, 0x02, 0x0d],
             reader.GetBlobBytes(heuristic.Value.Signature));
         Assert.False(heuristicHandle.IsNil);
         Assert.False(heapNativeHandle.IsNil, "Persisted Astar heap push native method was not emitted.");

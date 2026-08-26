@@ -2,24 +2,20 @@
 
 import helper from "helper";
 
-@directCall(false)
 func localAdd(a, b, c) {
     return a + b + c;
 }
 
-@directCall
-func localAddNative(a, b, c) {
+native func localAddNative(Number a, Number b, Number c) Number {
     return a + b + c;
 }
 
-@directCall
 func localMaybeDirect(value, returnValue) {
     if (returnValue) return value;
     return null;
 }
 
-@directCall
-func localInt32Mix(value, input, salt) {
+native func localInt32Mix(Number value, Number input, Number salt) Number {
     value = value ^ input;
     value = value ^ salt;
     value = value ^ (value << 13);
@@ -238,8 +234,7 @@ export func int8AndBooleanArrayIndex(iterations = 1000) {
     return sum;
 }
 
-@directCall
-func int32PrngCore(iterations, seed) {
+native func int32PrngCore(Number iterations, Number seed) Number {
     var state = seed;
     var checksum = 0;
     for (var i = 0; i < iterations; i++) {
@@ -255,8 +250,7 @@ export func int32PrngKernel(iterations = 1000) {
     return int32PrngCore(iterations | 0, 123456789);
 }
 
-@directCall
-func packedChecksumCore(iterations) {
+native func packedChecksumCore(Number iterations) Number {
     var values = new Int32Array(iterations);
     var state = 246353424;
     for (var i = 0; i < iterations; i++) {
@@ -277,8 +271,7 @@ export func packedChecksumKernel(iterations = 1000) {
     return packedChecksumCore(iterations | 0);
 }
 
-@directCall
-func integerHeapKernelCore(iterations) {
+native func integerHeapKernelCore(Number iterations) Number {
     var heap = new Int32Array(iterations);
     var scores = new Int32Array(iterations);
     var checksum = 0;

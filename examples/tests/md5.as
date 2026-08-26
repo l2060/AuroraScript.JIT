@@ -7,60 +7,48 @@
 *
 **/
 
-@directCall()
 function throwMethod() {
 	console.log("Start testError");
 	var ax = xxxx.c(1);
 	console.log("End testError");
 }
 
-@directCall()
-function RotateLeft(lValue, iShiftBits) {
+native function RotateLeft(Number lValue, Number iShiftBits) Number {
 	return(lValue << iShiftBits) | (lValue >>> (32 - iShiftBits));
 }
 
-@directCall()
-function AddUnsigned(lX, lY) {
+native function AddUnsigned(Number lX, Number lY) Number {
 	// Convert the exact sum back to a signed 32-bit word. This is addition
 	// modulo 2^32 without the branch-heavy sign-bit reconstruction.
 	return (lX + lY) | 0;
 }
 
-@directCall()
-function F(x, y, z) { return(x & y) | ((~x) & z); }
-@directCall()
-function G(x, y, z) { return(x & z) | (y & (~z)); }
-@directCall()
-function H(x, y, z) { return(x ^ y ^ z); }
-@directCall()
-function I(x, y, z) { return(y ^ (x | (~z))); }
+native function F(Number x, Number y, Number z) Number { return(x & y) | ((~x) & z); }
+native function G(Number x, Number y, Number z) Number { return(x & z) | (y & (~z)); }
+native function H(Number x, Number y, Number z) Number { return(x ^ y ^ z); }
+native function I(Number x, Number y, Number z) Number { return(y ^ (x | (~z))); }
 
-@directCall()
-function FF(a, b, c, d, x, s, ac) {
+native function FF(Number a, Number b, Number c, Number d, Number x, Number s, Number ac) Number {
 	a = AddUnsigned(a, AddUnsigned(AddUnsigned(F(b, c, d), x), ac));
 	return AddUnsigned(RotateLeft(a, s), b);
 };
 
-@directCall()
-function GG(a, b, c, d, x, s, ac) {
+native function GG(Number a, Number b, Number c, Number d, Number x, Number s, Number ac) Number {
 	a = AddUnsigned(a, AddUnsigned(AddUnsigned(G(b, c, d), x), ac));
 	return AddUnsigned(RotateLeft(a, s), b);
 };
 
-@directCall()
-function HH(a, b, c, d, x, s, ac) {
+native function HH(Number a, Number b, Number c, Number d, Number x, Number s, Number ac) Number {
 	a = AddUnsigned(a, AddUnsigned(AddUnsigned(H(b, c, d), x), ac));
 	return AddUnsigned(RotateLeft(a, s), b);
 };
 
-@directCall()
-function II(a, b, c, d, x, s, ac) {
+native function II(Number a, Number b, Number c, Number d, Number x, Number s, Number ac) Number {
 	a = AddUnsigned(a, AddUnsigned(AddUnsigned(I(b, c, d), x), ac));
 	return AddUnsigned(RotateLeft(a, s), b);
 };
 
-@directCall()
-function WordToHex(lValue) {
+native function WordToHex(Number lValue) String {
 	var WordToHexValue = '';
 	var WordToHexValue_temp = '';
 	var lByte;
@@ -73,7 +61,7 @@ function WordToHex(lValue) {
 	return WordToHexValue;
 };
 
-export function MD5(input) {
+export native function MD5(String input) String {
 
 	var a = 0x67452301;
 	var b = 0xEFCDAB89;

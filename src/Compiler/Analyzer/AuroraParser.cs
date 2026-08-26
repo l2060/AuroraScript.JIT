@@ -348,12 +348,13 @@ namespace AuroraScript.Compiler.Analyzer
                 return null;
             }
 
-            if (symbol == Symbols.PT_METAINFO) { var res = ParseMetaInfoOrAnnotatedFunction(); if (res != null) res.IsIndependent = true; return res; }
+            if (symbol == Symbols.PT_METAINFO) { var res = ParseMetaInfo(); if (res != null) res.IsIndependent = true; return res; }
             if (symbol == Symbols.PT_LEFTBRACE) { var res = ParseBlock(); if (res != null) res.IsIndependent = true; return res; }
             if (symbol == Symbols.KW_IMPORT) { var res = ParseImport(); if (res != null) res.IsIndependent = true; return res; }
             if (symbol == Symbols.KW_INCLUDE) { var res = ParseInclude(); if (res != null) res.IsIndependent = true; return res; }
             if (symbol == Symbols.KW_EXPORT) { var res = ParseExportStatement(); if (res != null) res.IsIndependent = true; return res; }
             if (IsTypeDeclarationStart()) { var res = ParseTypeDeclaration(MemberAccess.Internal); if (res != null) res.IsIndependent = true; return res; }
+            if (IsNativeFunctionDeclarationStart()) { var res = ParseNativeFunctionDeclaration(MemberAccess.Internal); if (res != null) res.IsIndependent = true; return res; }
             if (symbol == Symbols.KW_FUNCTION || symbol == Symbols.KW_FUNC) { var res = ParseFunctionDeclaration(MemberAccess.Internal); if (res != null) res.IsIndependent = true; return res; }
             if (symbol == Symbols.KW_DECLARE) { var res = ParseDeclare(MemberAccess.Internal); if (res != null) res.IsIndependent = true; return res; }
             if (symbol == Symbols.KW_CONST || symbol == Symbols.KW_VAR) { var res = ParseVariableDeclaration(MemberAccess.Internal); if (res != null) res.IsIndependent = true; return res; }
@@ -1020,55 +1021,41 @@ namespace AuroraScript.Compiler.Analyzer
             return IsIdentifierStart(c) || (c >= '0' && c <= '9');
         }
 
-        private Statement ParseMetaInfoOrAnnotatedFunction()
+        private Statement ParseMetaInfo()
         {
-            var annotations = new List<FunctionAnnotation>();
             var annotation = ParseAnnotation();
-            if (this.Lexer.TestNext(Symbols.PT_SEMICOLON))
+            if (!this.Lexer.TestNext(Symbols.PT_SEMICOLON))
             {
-                if (annotation.Name.Value == "global")
-                {
-                    if (annotation.Arguments.Count != 0)
-                    {
-                        throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, annotation.Name, "@global() does not accept arguments.");
-                    }
+                throw new AuroraCompilationException(
+                    AuroraCompilationStage.Parsing,
+                    this.Lexer.FullPath,
+                    annotation.Name,
+                    "Function annotations are not supported. Use 'native func' for an explicit native direct call.");
+            }
 
-                    var globalStatement = SetDebug(new ModuleMetaStatement((IdentifierToken)annotation.Name, null), annotation.Name);
-                    return globalStatement;
+            if (annotation.Name.Value == "global")
+            {
+                if (annotation.Arguments.Count != 0)
+                {
+                    throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, annotation.Name, "@global() does not accept arguments.");
                 }
 
-                if (annotation.Arguments.Count != 1 || annotation.Arguments[0] is not IdentifierToken)
-                {
-                    throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, annotation.Name, "Module metadata requires exactly one identifier value.");
-                }
-
-                var statement = SetDebug(new ModuleMetaStatement((IdentifierToken)annotation.Name, annotation.Arguments[0]), annotation.Name);
-                return statement;
+                return SetDebug(
+                    new ModuleMetaStatement((IdentifierToken)annotation.Name, null),
+                    annotation.Name);
             }
 
-            annotations.Add(annotation);
-            while (this.Lexer.PeekSymbol() == Symbols.PT_METAINFO)
+            if (annotation.Arguments.Count != 1 ||
+                annotation.Arguments[0] is not IdentifierToken)
             {
-                annotations.Add(ParseAnnotation());
-                if (this.Lexer.TestNext(Symbols.PT_SEMICOLON))
-                {
-                    throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, annotations[^1].Name, "Function annotations must not end with semicolon.");
-                }
+                throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, annotation.Name, "Module metadata requires exactly one identifier value.");
             }
 
-            var symbol = this.Lexer.PeekSymbol();
-            if (symbol == Symbols.KW_FUNCTION || symbol == Symbols.KW_FUNC)
-            {
-                return ParseFunctionDeclaration(MemberAccess.Internal, annotations);
-            }
-
-            if (symbol == Symbols.KW_EXPORT)
-            {
-                return ParseExportStatement(annotations);
-            }
-
-            var token = this.Lexer.LookAtHead();
-            throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, token, "Function annotations must be followed by a function declaration.");
+            return SetDebug(
+                new ModuleMetaStatement(
+                    (IdentifierToken)annotation.Name,
+                    annotation.Arguments[0]),
+                annotation.Name);
         }
 
         private FunctionAnnotation ParseAnnotation()
@@ -1176,7 +1163,7 @@ namespace AuroraScript.Compiler.Analyzer
             return SetRange(import, importRange, closed);
         }
 
-        private Statement ParseExportStatement(IReadOnlyList<FunctionAnnotation> annotations = null)
+        private Statement ParseExportStatement()
         {
             var exportRange = this.Lexer.NextRangeOfKind(Symbols.KW_EXPORT);
 
@@ -1188,13 +1175,13 @@ namespace AuroraScript.Compiler.Analyzer
             var symbol = this.Lexer.PeekSymbol();
             if (symbol == Symbols.KW_FUNCTION || symbol == Symbols.KW_FUNC)
             {
-                return ParseFunctionDeclaration(MemberAccess.Export, annotations);
+                return ParseFunctionDeclaration(MemberAccess.Export);
             }
-            if (annotations != null && annotations.Count > 0)
+            if (IsNativeFunctionDeclarationStart())
             {
-                throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, exportRange, "Function annotations can only be applied to function declarations.");
+                return ParseNativeFunctionDeclaration(MemberAccess.Export);
             }
-            else if (symbol == Symbols.KW_VAR)
+            if (symbol == Symbols.KW_VAR)
             {
                 return ParseVariableDeclaration(MemberAccess.Export);
             }
@@ -1219,12 +1206,41 @@ namespace AuroraScript.Compiler.Analyzer
             throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, token, "Invalid keywords appear in export declaration.");
         }
 
-        private Statement ParseFunctionDeclaration(MemberAccess access = MemberAccess.Internal, IReadOnlyList<FunctionAnnotation> annotations = null)
+        private Statement ParseFunctionDeclaration(MemberAccess access = MemberAccess.Internal)
         {
             var start = this.Lexer.NextRangeOfKind(Symbols.KW_FUNCTION, Symbols.KW_FUNC);
             var functionName = this.Lexer.NextOfKind<IdentifierToken>();
-            var func = this.ParseFunction(functionName, access, FunctionFlags.General, annotations);
+            var func = this.ParseFunction(functionName, access, FunctionFlags.General);
             return SetRange(func, start, func.Range);
+        }
+
+        private bool IsNativeFunctionDeclarationStart()
+        {
+            var symbol = PeekSymbol(1);
+            return PeekToken(0) is IdentifierToken { Value: "native" } &&
+                (symbol == Symbols.KW_FUNCTION || symbol == Symbols.KW_FUNC);
+        }
+
+        private Statement ParseNativeFunctionDeclaration(MemberAccess access)
+        {
+            if (scopeStack.Current != ScopeType.MODULE)
+            {
+                throw new AuroraCompilationException(
+                    AuroraCompilationStage.Parsing,
+                    Lexer.FullPath,
+                    Lexer.LookAtHead(),
+                    "Native functions are only allowed at module scope.");
+            }
+
+            var start = Lexer.NextOfKind<IdentifierToken>();
+            Lexer.NextRangeOfKind(Symbols.KW_FUNCTION, Symbols.KW_FUNC);
+            var functionName = Lexer.NextOfKind<IdentifierToken>();
+            var function = ParseFunction(
+                functionName,
+                access,
+                FunctionFlags.Native);
+            function.NativeToken = start;
+            return SetRange(function, start.Range, function.Range);
         }
 
         private bool IsTypeDeclarationStart()
@@ -1286,8 +1302,7 @@ namespace AuroraScript.Compiler.Analyzer
         private FunctionDeclaration ParseFunction(
             IdentifierToken functionName,
             MemberAccess access = MemberAccess.Internal,
-            FunctionFlags flags = FunctionFlags.General,
-            IReadOnlyList<FunctionAnnotation> annotations = null)
+            FunctionFlags flags = FunctionFlags.General)
         {
             var leftParenRange = this.Lexer.NextRangeOfKind(Symbols.PT_LEFTPARENTHESIS);
             var arguments = this.ParseFunctionArguments();
@@ -1319,7 +1334,6 @@ namespace AuroraScript.Compiler.Analyzer
                     arguments,
                     body,
                     flags,
-                    annotations,
                     returnType);
                 return SetRange(declaration, (functionName?.Range ?? leftParenRange), body.Range);
             }

@@ -225,6 +225,7 @@ namespace AuroraScript.Compiler.Backend.Binding
                     }
 
                     CollectDeclarations(declaration.Body);
+                    ValidateNativeContract(declaration);
                 }
                 finally
                 {
@@ -237,6 +238,169 @@ namespace AuroraScript.Compiler.Backend.Binding
                 if (_nestedFunctions != null)
                 {
                     _function.NestedFunctions = _nestedFunctions.ToArray();
+                }
+                BindImportedNativeCalls(declaration.Body);
+            }
+
+            private void BindImportedNativeCalls(AstNode node)
+            {
+                if (node == null ||
+                    node is FunctionDeclaration or LambdaExpression)
+                {
+                    return;
+                }
+
+                if (node is FunctionCallExpression call)
+                {
+                    TryBindImportedNativeCall(call);
+                }
+
+                var visitor = new ImportedNativeCallVisitor(this);
+                AstTraversal.VisitChildren(node, ref visitor);
+            }
+
+            private void TryBindImportedNativeCall(
+                FunctionCallExpression call)
+            {
+                if (call.Target is not GetPropertyExpression
+                    {
+                        Object: NameExpression owner,
+                        Property: NameExpression member
+                    } ||
+                    HasSpreadArgument(call) ||
+                    HasLocal(owner.Identifier.Value))
+                {
+                    return;
+                }
+
+                ImportDeclaration import = null;
+                for (var i = 0; i < _modulePlan.Declaration.Imports.Count; i++)
+                {
+                    var candidate = _modulePlan.Declaration.Imports[i];
+                    if (!candidate.Include &&
+                        candidate.Name?.Value == owner.Identifier.Value)
+                    {
+                        import = candidate;
+                        break;
+                    }
+                }
+                if (import?.Module == null)
+                {
+                    return;
+                }
+
+                for (var moduleIndex = 0;
+                    moduleIndex < _session.Modules.Length;
+                    moduleIndex++)
+                {
+                    var module = _session.Modules[moduleIndex];
+                    if (!ReferenceEquals(
+                        module.Declaration,
+                        import.Module))
+                    {
+                        continue;
+                    }
+                    for (var functionIndex = 0;
+                        functionIndex < module.Functions.Count;
+                        functionIndex++)
+                    {
+                        var target = module.Functions[functionIndex];
+                        if (target.IsNativeDeclared &&
+                            target.Visibility ==
+                                FunctionVisibility.Exported &&
+                            target.Name == member.Identifier.Value)
+                        {
+                            _function.ImportedNativeCalls[call] = target;
+                            return;
+                        }
+                    }
+                    return;
+                }
+            }
+
+            private bool HasLocal(string name)
+            {
+                for (var i = 0; i < _function.LocalSlots.Length; i++)
+                {
+                    if (string.Equals(
+                        _function.LocalSlots[i].Name,
+                        name,
+                        StringComparison.Ordinal))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            private static bool HasSpreadArgument(
+                FunctionCallExpression call)
+            {
+                for (var i = 0; i < call.Arguments.Count; i++)
+                {
+                    if (call.Arguments[i] is SpreadExpression)
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            private readonly struct ImportedNativeCallVisitor :
+                IAstChildVisitor
+            {
+                private readonly FunctionBodyBinder _owner;
+
+                public ImportedNativeCallVisitor(
+                    FunctionBodyBinder owner)
+                {
+                    _owner = owner;
+                }
+
+                public void Visit(AstNode node)
+                {
+                    _owner.BindImportedNativeCalls(node);
+                }
+            }
+
+            private void ValidateNativeContract(FunctionDeclaration declaration)
+            {
+                if (!declaration.IsNative)
+                {
+                    return;
+                }
+
+                if (declaration.ReturnType == null)
+                {
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Binding,
+                        declaration,
+                        $"Native function '{declaration.Name.Value}' requires a declared return type.");
+                }
+                if (_function.HasDefaultParameters)
+                {
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Binding,
+                        declaration,
+                        $"Native function '{declaration.Name.Value}' cannot declare default parameters.");
+                }
+                if (_function.UsesArgumentsObject)
+                {
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Binding,
+                        declaration,
+                        $"Native function '{declaration.Name.Value}' cannot use $args.");
+                }
+                for (var i = 0; i < declaration.Parameters.Count; i++)
+                {
+                    var parameter = declaration.Parameters[i];
+                    if (parameter.IsSpreadOperator)
+                    {
+                        throw new AuroraCompilationException(
+                            AuroraCompilationStage.Binding,
+                            parameter,
+                            $"Native function '{declaration.Name.Value}' cannot declare spread parameters.");
+                    }
                 }
             }
 

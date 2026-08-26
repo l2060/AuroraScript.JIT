@@ -116,6 +116,22 @@ public sealed class SemanticTokensFeatureTests : IDisposable
     }
 
     [Fact]
+    public void HighlightsContextualNativeFunctionModifier()
+    {
+        const string source =
+            "export native func add(Number a, Number b) Number { return a + b; }";
+        var service = CreateService(_root);
+
+        var result = service.GetSemanticTokens("main.as", source);
+
+        AssertToken(
+            source,
+            result,
+            "native",
+            AuroraSemanticTokenTypes.Keyword);
+    }
+
+    [Fact]
     public void SemanticTokenPositionsDoNotDriftAfterStrings()
     {
         const string source =

@@ -12,8 +12,7 @@ func test(){
 
 
 
-@directCall
-func sub(Number a, Number b) Number{
+native func sub(Number a, Number b) Number{
 	return a - b;
 }
 

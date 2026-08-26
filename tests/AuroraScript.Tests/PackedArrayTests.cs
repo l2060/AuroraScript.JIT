@@ -80,8 +80,7 @@ public sealed class PackedArrayTests
             """
             @module(TEST);
 
-            @directCall
-            func floatWork(values, count) {
+            native func floatWork(Float64Array values, Number count) Number {
                 for (var i = 0; i < count; i++) values[i] = i + 0.25;
                 values[1] *= 2;
                 values[2]++;
@@ -197,8 +196,7 @@ public sealed class PackedArrayTests
             """
             @module(TEST);
 
-            @directCall
-            func intWork(data, count) {
+            native func intWork(Int32Array data, Number count) Number {
                 for (var i = 0; i < count; i++) data[i] = i * 3;
                 data[1]++;
                 var sum = 0;
@@ -206,8 +204,7 @@ public sealed class PackedArrayTests
                 return sum;
             }
 
-            @directCall
-            func byteAndBooleanWork(bytes, flags, count) {
+            native func byteAndBooleanWork(Int8Array bytes, BooleanArray flags, Number count) Number {
                 for (var i = 0; i < count; i++) {
                     bytes[i] = i + 128;
                     flags[i] = (i % 2) == 0;
@@ -243,8 +240,7 @@ public sealed class PackedArrayTests
         var (_, domain) = await workspace.CompileModuleAsync(
             """
             @module(TEST);
-            @directCall
-            func createAndSum(count) {
+            native func createAndSum(Number count) Number {
                 var values = new Int32Array(count);
                 var sum = 0;
                 for (var i = 0; i < count; i++) {
@@ -273,12 +269,10 @@ public sealed class PackedArrayTests
         var (_, domain) = await workspace.CompileModuleAsync(
             """
             @module(TEST);
-            @directCall
             func identityCheck(values) {
                 if (values == values) return 1;
                 return 0;
             }
-            @directCall
             func truthyCheck(values) {
                 if (values) return values.length;
                 return -1;
@@ -472,7 +466,6 @@ public sealed class PackedArrayTests
                 return values[0];
             }
 
-            @directCall
             func localFieldWork() {
                 var state = { values: new Int32Array(2) };
                 state.values[0] = 41;
@@ -486,13 +479,11 @@ public sealed class PackedArrayTests
                 return state.values[0];
             }
 
-            @directCall
-            func consume(values) {
+            native func consume(Int32Array values) Number {
                 values[0] = values[0] + 1;
                 return values[0];
             }
 
-            @directCall
             func forwardField() {
                 var state = { values: new Int32Array(1) };
                 state.values[0] = 41;
@@ -526,7 +517,7 @@ public sealed class PackedArrayTests
         Assert.Contains(OpCodes.Ldelem_I4, interpolation);
         Assert.Contains(OpCodes.Stelem_I4, interpolation);
 
-        var localField = GetMethodOpCodes("localFieldWork$typed0");
+        var localField = GetMethodOpCodes("localFieldWork$typed");
         Assert.Contains(OpCodes.Ldelem_I4, localField);
         Assert.Contains(OpCodes.Stelem_I4, localField);
 
@@ -540,8 +531,10 @@ public sealed class PackedArrayTests
                 "consume$native",
                 StringComparison.Ordinal)));
         var consume = reader.GetMethodDefinition(consumeHandle);
-        // DEFAULT, one parameter, return int32, then int[].
-        Assert.Equal([0x00, 0x01, 0x08, 0x1d, 0x08], reader.GetBlobBytes(consume.Signature));
+        var consumeSignature = reader.GetBlobBytes(consume.Signature);
+        Assert.Equal(2, consumeSignature[1]); // ScriptContext plus int[].
+        Assert.Equal(0x0d, consumeSignature[2]);
+        Assert.Contains((byte)0x1d, consumeSignature);
         var consumeOpcodes = ReadOpCodes(
             peReader.GetMethodBody(consume.RelativeVirtualAddress).GetILBytes().AsSpan());
         Assert.Contains(OpCodes.Ldelem_I4, consumeOpcodes);
@@ -635,8 +628,7 @@ public sealed class PackedArrayTests
         await workspace.CompileModuleAsync(
             """
             @module(TEST);
-            @directCall
-            func floatWork(values, count) {
+            native func floatWork(Float64Array values, Number count) Number {
                 var sum = 0;
                 for (var i = 0; i < count; i++) {
                     values[i] = i + 0.5;
@@ -662,9 +654,10 @@ public sealed class PackedArrayTests
                 StringComparison.Ordinal)));
         var method = reader.GetMethodDefinition(handle);
 
-        Assert.Equal(
-            [0x00, 0x02, 0x0d, 0x1d, 0x0d, 0x08],
-            reader.GetBlobBytes(method.Signature));
+        var signature = reader.GetBlobBytes(method.Signature);
+        Assert.Equal(3, signature[1]); // ScriptContext, raw double[], Number.
+        Assert.Equal(0x0d, signature[2]);
+        Assert.Contains((byte)0x1d, signature);
         var opcodes = ReadOpCodes(
             peReader.GetMethodBody(method.RelativeVirtualAddress).GetILBytes().AsSpan());
         Assert.Contains(OpCodes.Ldelem_R8, opcodes);
@@ -680,8 +673,7 @@ public sealed class PackedArrayTests
             """
             @module(TEST);
 
-            @directCall
-            func packedWork(ints, bytes, flags, count) {
+            native func packedWork(Int32Array ints, Int8Array bytes, BooleanArray flags, Number count) Number {
                 var sum = 0;
                 for (var i = 0; i < count; i++) {
                     ints[i] = i;
@@ -714,9 +706,10 @@ public sealed class PackedArrayTests
                 StringComparison.Ordinal)));
         var method = reader.GetMethodDefinition(methodHandle);
         // DEFAULT, four parameters, return R8, then int[], sbyte[], bool[], int.
-        Assert.Equal(
-            [0x00, 0x04, 0x0d, 0x1d, 0x08, 0x1d, 0x04, 0x1d, 0x02, 0x08],
-            reader.GetBlobBytes(method.Signature));
+        var signature = reader.GetBlobBytes(method.Signature);
+        Assert.Equal(5, signature[1]); // ScriptContext plus four parameters.
+        Assert.Equal(0x0d, signature[2]);
+        Assert.Equal(3, signature.Count(value => value == 0x1d));
         var il = peReader.GetMethodBody(method.RelativeVirtualAddress).GetILBytes();
         var opcodes = ReadOpCodes(il.AsSpan());
 

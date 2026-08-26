@@ -28,7 +28,6 @@ public sealed class EngineOptionsAndSourceTests
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithOptimization(optimization => optimization.Level = OptimizeOptions.Release)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true)
             .WithOptimization(optimization => optimization.ModuleConstInlining = true)
             .WithOutput(output => output.Confused = true)
             .WithRuntime(runtime => runtime.DateTimeFormat = "O")
@@ -41,8 +40,6 @@ public sealed class EngineOptionsAndSourceTests
         Assert.Equal(CompilationMode.Dynamic, configured.Compiler.Mode);
         Assert.Equal(OptimizeOptions.Release, configured.Optimization.Level);
         Assert.False(configured.Runtime.EnableHotReload);
-        Assert.True(configured.Optimization.EnableAutoModuleDirectCall);
-        Assert.False(original.Optimization.EnableAutoModuleDirectCall);
         Assert.True(configured.Optimization.EnableModuleConstInlining);
         Assert.False(original.Optimization.EnableModuleConstInlining);
         Assert.True(configured.Output.EnableConfused);

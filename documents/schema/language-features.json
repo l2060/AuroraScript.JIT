@@ -78,12 +78,6 @@
       "notes": ["function is also accepted as a keyword."]
     },
     {
-      "id": "function.annotation.directCall",
-      "syntax": "@directCall | @directCall(true) | @directCall(false)",
-      "scope": "function",
-      "notes": ["Only supported function annotation in the current binder."]
-    },
-    {
       "id": "lambda",
       "syntax": "x => x + 1; (a, b = 1) => { return a + b; }",
       "scope": "expression",

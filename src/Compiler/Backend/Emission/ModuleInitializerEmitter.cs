@@ -24,7 +24,6 @@ namespace AuroraScript.Compiler.Backend.Emission
         private readonly EmissionSession _session;
         private readonly ModulePlan _module;
         private Dictionary<FunctionDeclaration, FunctionPlan> _functionsByDeclaration;
-        private Dictionary<string, FunctionPlan> _directFunctionsByName;
         private MethodInfo _initializer;
         private ILGenerator _il;
         private bool _defined;
@@ -82,6 +81,19 @@ namespace AuroraScript.Compiler.Backend.Emission
             for (var i = 0; i < _module.Functions.Count; i++)
             {
                 var function = _module.Functions[i];
+                if (function.IsNativeDeclared)
+                {
+                    _il.Emit(OpCodes.Ldarg_0);
+                    _il.Emit(
+                        OpCodes.Ldfld,
+                        TypedRuntimeMetadata.ContextModule);
+                    _session.Builder.LoadStringConstant(
+                        _il,
+                        function.Name);
+                    _il.Emit(
+                        OpCodes.Callvirt,
+                        TypedRuntimeMetadata.ScriptModuleRegisterNativeFunction);
+                }
                 if (!CanMaterialize(function))
                 {
                     continue;
@@ -1613,11 +1625,6 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitCall(FunctionCallExpression call)
         {
-            if (TryEmitDirectCall(call))
-            {
-                return;
-            }
-
             if (call.Target is GetPropertyExpression property && TryGetStaticPropertyName(property, out var name))
             {
                 EmitPropertyCall(call, property, name);
@@ -1637,145 +1644,6 @@ namespace AuroraScript.Compiler.Backend.Emission
                 EmitExpression(call.Arguments[i]);
             }
             _il.Emit(OpCodes.Call, GetInvokeMethod(call.Arguments.Count));
-        }
-
-        private bool TryEmitDirectCall(FunctionCallExpression call)
-        {
-            if (call.Target is not NameExpression target ||
-                HasSpread(call.Arguments) ||
-                !TryResolveDirectCallTarget(target, out var function))
-            {
-                return false;
-            }
-
-            EmitDirectCall(call, function);
-            return true;
-        }
-
-        private bool TryResolveDirectCallTarget(NameExpression target, out FunctionPlan function)
-        {
-            function = null;
-            var name = target.Identifier?.Value;
-            if (string.IsNullOrEmpty(name) ||
-                !_session.CompileSession.Capabilities.CanUseModuleDirectCall)
-            {
-                return false;
-            }
-
-            var functions = GetDirectFunctionsByName();
-            return functions.TryGetValue(name, out function) &&
-                CanUseFastDirectSignature(function);
-        }
-
-        private Dictionary<string, FunctionPlan> GetDirectFunctionsByName()
-        {
-            if (_directFunctionsByName != null)
-            {
-                return _directFunctionsByName;
-            }
-
-            var map = new Dictionary<string, FunctionPlan>(StringComparer.Ordinal);
-            for (var i = 0; i < _module.Functions.Count; i++)
-            {
-                var function = _module.Functions[i];
-                if (!string.IsNullOrEmpty(function.Name) &&
-                    function.IsDirectCallCandidate)
-                {
-                    map[function.Name] = function;
-                }
-            }
-
-            _directFunctionsByName = map;
-            return map;
-        }
-
-        private void EmitDirectCall(FunctionCallExpression call, FunctionPlan target)
-        {
-            var arity = GetFastArity(target.CallConvention);
-            var argumentLocals = EmitDirectCallArguments(call.Arguments, arity, out var deferredArguments);
-            _il.Emit(OpCodes.Ldarg_0);
-            for (var i = 0; i < arity; i++)
-            {
-                if (i >= argumentLocals.Length)
-                {
-                    _session.Builder.LoadNull(_il);
-                }
-                else if (deferredArguments[i])
-                {
-                    EmitExpression(call.Arguments[i]);
-                }
-                else
-                {
-                    _il.Emit(OpCodes.Ldloc, argumentLocals[i]);
-                }
-            }
-
-            _il.Emit(OpCodes.Call, target.DirectEntryMethod);
-        }
-
-        private LocalBuilder[] EmitDirectCallArguments(IReadOnlyList<Expression> arguments, int arity, out bool[] deferredArguments)
-        {
-            if (arguments.Count == 0 || arity == 0)
-            {
-                for (var i = 0; i < arguments.Count; i++)
-                {
-                    EmitExpressionDiscarded(arguments[i]);
-                }
-
-                deferredArguments = Array.Empty<bool>();
-                return Array.Empty<LocalBuilder>();
-            }
-
-            var count = Math.Min(arguments.Count, arity);
-            var locals = new LocalBuilder[count];
-            deferredArguments = new bool[count];
-            var lastPreEvaluated = GetLastDirectCallPreEvaluationIndex(arguments, arity);
-            for (var i = 0; i < arguments.Count; i++)
-            {
-                if (i < count)
-                {
-                    if (i > lastPreEvaluated && CanDeferDirectCallArgument(arguments[i]))
-                    {
-                        deferredArguments[i] = true;
-                        continue;
-                    }
-
-                    EmitExpression(arguments[i]);
-                    var local = DeclareTemp();
-                    _il.Emit(OpCodes.Stloc, local);
-                    locals[i] = local;
-                }
-                else
-                {
-                    EmitExpressionDiscarded(arguments[i]);
-                }
-            }
-
-            return locals;
-        }
-
-        private static int GetLastDirectCallPreEvaluationIndex(IReadOnlyList<Expression> arguments, int arity)
-        {
-            var last = -1;
-            for (var i = 0; i < arguments.Count; i++)
-            {
-                if (i >= arity || !CanDeferDirectCallArgument(arguments[i]))
-                {
-                    last = i;
-                }
-            }
-
-            return last;
-        }
-
-        private static bool CanDeferDirectCallArgument(Expression expression)
-        {
-            return expression switch
-            {
-                GroupExpression group => CanDeferDirectCallArgument(group.Expression),
-                LiteralExpression literal => literal.Token is NumberToken or BooleanToken or NullToken,
-                _ => false
-            };
         }
 
         private void EmitPropertyCall(FunctionCallExpression call, GetPropertyExpression property, string name)
@@ -2095,45 +1963,5 @@ namespace AuroraScript.Compiler.Backend.Emission
             };
         }
 
-        private static bool CanUseFastDirectSignature(FunctionPlan function)
-        {
-            return function != null &&
-                function.Method != null &&
-                function.DirectEntryMethod != null &&
-                function.IsDirectCallCandidate &&
-                !function.HasDefaultParameters &&
-                !function.UsesArgumentsObject &&
-                GetParameterCount(function) <= 7;
-        }
-
-        private static int GetParameterCount(FunctionPlan function)
-        {
-            var count = 0;
-            for (var i = 0; i < function.LocalSlots.Length; i++)
-            {
-                if (function.LocalSlots[i].IsParameter)
-                {
-                    count++;
-                }
-            }
-
-            return count;
-        }
-
-        private static int GetFastArity(FunctionCallConvention convention)
-        {
-            return convention switch
-            {
-                FunctionCallConvention.Fast0 => 0,
-                FunctionCallConvention.Fast1 => 1,
-                FunctionCallConvention.Fast2 => 2,
-                FunctionCallConvention.Fast3 => 3,
-                FunctionCallConvention.Fast4 => 4,
-                FunctionCallConvention.Fast5 => 5,
-                FunctionCallConvention.Fast6 => 6,
-                FunctionCallConvention.Fast7 => 7,
-                _ => -1
-            };
-        }
     }
 }

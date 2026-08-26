@@ -43,37 +43,32 @@ namespace AuroraScript.Compiler.Backend.Analysis
             for (var i = 0; i < modulePlan.Functions.Count; i++)
             {
                 var function = modulePlan.Functions[i];
+                if (!function.IsNativeDeclared)
+                {
+                    continue;
+                }
                 var usage = usages[i];
-                if (function.DirectCallDirective == DirectCallDirective.Disabled)
+                if (usage.HasAssignment)
                 {
-                    continue;
-                }
-
-                if (function.DirectCallDirective == DirectCallDirective.PreserveClosure)
-                {
-                    if (usage.HasAssignment)
-                    {
-                        throw new AuroraCompilationException(AuroraCompilationStage.Binding, function.Declaration, "@directCall() function name cannot be assigned.");
-                    }
-
-                    if (usage.DirectCallCount > 0)
-                    {
-                        function.IsDirectCallCandidate = true;
-                    }
-                    continue;
-                }
-
-                if (usage.DirectCallCount == 0 || usage.HasAssignment || usage.HasValueRead)
-                {
-                    continue;
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Binding,
+                        function.Declaration,
+                        $"Native function '{function.Name}' cannot be assigned.");
                 }
 
                 function.IsDirectCallCandidate = true;
-                function.Visibility = FunctionVisibility.InternalOnly;
+                if (function.Visibility != FunctionVisibility.Exported)
+                {
+                    // $native is an additional entry point, never the script
+                    // function object used at dynamic boundaries.
+                    function.Visibility = FunctionVisibility.ModuleVisible;
+                }
             }
         }
 
-        private static Dictionary<string, int> BuildCandidateNameMap(CompileSession session, ModulePlan modulePlan)
+        private static Dictionary<string, int> BuildCandidateNameMap(
+            CompileSession session,
+            ModulePlan modulePlan)
         {
             var occurrences = new Dictionary<string, int>(StringComparer.Ordinal);
             var firstIndexByName = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -83,7 +78,7 @@ namespace AuroraScript.Compiler.Backend.Analysis
                 var function = modulePlan.Functions[i];
                 if (!function.IsModuleFunction ||
                     string.IsNullOrEmpty(function.Name) ||
-                    !CanAnalyzeCandidate(session, function))
+                    !function.IsNativeDeclared)
                 {
                     continue;
                 }
@@ -113,17 +108,6 @@ namespace AuroraScript.Compiler.Backend.Analysis
                 }
             }
             return result;
-        }
-
-        private static bool CanAnalyzeCandidate(CompileSession session, FunctionPlan function)
-        {
-            return function.DirectCallDirective switch
-            {
-                DirectCallDirective.PreserveClosure => true,
-                DirectCallDirective.Disabled => false,
-                _ => session.Capabilities.CanInferAutoModuleDirectCall &&
-                    function.Visibility == FunctionVisibility.ModuleVisible
-            };
         }
 
         private struct FunctionUsage

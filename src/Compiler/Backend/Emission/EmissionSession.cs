@@ -42,10 +42,16 @@ namespace AuroraScript.Compiler.Backend.Emission
             var modules = CompileSession.Modules ?? Array.Empty<ModulePlan>();
             var results = new ModuleEmissionResult[modules.Length];
             var moduleEmitter = new ModuleEmitter(this);
+            var states = new ModuleEmitter.ModuleEmissionState[modules.Length];
             for (var i = 0; i < modules.Length; i++)
             {
                 CompileSession.CancellationToken.ThrowIfCancellationRequested();
-                results[i] = moduleEmitter.Emit(modules[i]);
+                states[i] = moduleEmitter.Prepare(modules[i]);
+            }
+            for (var i = 0; i < modules.Length; i++)
+            {
+                CompileSession.CancellationToken.ThrowIfCancellationRequested();
+                results[i] = moduleEmitter.Emit(states[i]);
             }
 
             CompleteDynamicDelegates();
@@ -56,10 +62,16 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             var modules = CompileSession.Modules ?? Array.Empty<ModulePlan>();
             var moduleEmitter = new ModuleEmitter(this);
+            var states = new ModuleEmitter.ModuleEmissionState[modules.Length];
             for (var i = 0; i < modules.Length; i++)
             {
                 CompileSession.CancellationToken.ThrowIfCancellationRequested();
-                moduleEmitter.EmitWithoutReport(modules[i]);
+                states[i] = moduleEmitter.Prepare(modules[i]);
+            }
+            for (var i = 0; i < modules.Length; i++)
+            {
+                CompileSession.CancellationToken.ThrowIfCancellationRequested();
+                moduleEmitter.EmitWithoutReport(states[i]);
             }
 
             CompleteDynamicDelegates();

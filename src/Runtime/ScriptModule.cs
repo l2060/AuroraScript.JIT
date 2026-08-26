@@ -1,5 +1,7 @@
 ﻿using AuroraScript.Runtime.Types;
 using AuroraScript.Core;
+using System.Collections.Generic;
+using System.ComponentModel;
 
 namespace AuroraScript.Runtime
 {
@@ -13,6 +15,8 @@ namespace AuroraScript.Runtime
     /// </remarks>
     public sealed class ScriptModule : ScriptObject
     {
+        private HashSet<string> _nativeFunctions;
+
         /// <summary> Gets the explicit lookup name, or null when the module is anonymous. </summary>
         public readonly string Name;
 
@@ -28,6 +32,29 @@ namespace AuroraScript.Runtime
         {
             Name = moduleName;
             Source = source;
+        }
+
+        /// <summary>
+        /// Records a compiler-emitted native function that cannot be hot updated.
+        /// </summary>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public void RegisterNativeFunction(string name)
+        {
+            if (!string.IsNullOrEmpty(name))
+            {
+                (_nativeFunctions ??= new HashSet<string>(
+                    System.StringComparer.Ordinal)).Add(name);
+            }
+        }
+
+        /// <summary>
+        /// Reports whether the module contains a compiler-emitted native function.
+        /// </summary>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public bool IsNativeFunction(string name)
+        {
+            return !string.IsNullOrEmpty(name) &&
+                _nativeFunctions?.Contains(name) == true;
         }
 
         /// <summary>

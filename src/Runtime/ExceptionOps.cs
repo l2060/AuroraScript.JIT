@@ -54,7 +54,9 @@ namespace AuroraScript.Runtime
                 return ScriptDatum.FromError(runtime.internalError);
             }
 
-            var trace = context?.TakeExceptionStack() ?? [];
+            var trace = RuntimeExceptionStackAnalyzer.MergeNativeFrames(
+                exception,
+                context?.TakeExceptionStack());
             return ScriptDatum.FromError(new ScriptError(exception.Message, trace));
         }
 

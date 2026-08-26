@@ -109,6 +109,31 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 var function = _module.Functions[i];
                 if (function.Method != null) continue;
+                if (function.IsNativeDeclared)
+                {
+                    if (!HasDirectMethod(function.Id))
+                    {
+                        throw new AuroraCompilationException(
+                            AuroraCompilationStage.Emission,
+                            function.Declaration,
+                            $"Native function '{function.Name}' cannot be emitted with a native signature.");
+                    }
+
+                    ref var native = ref _directMethods[function.Id.Value];
+                    var nativeName = string.IsNullOrEmpty(function.Name)
+                        ? "lambda_" + function.Id.Value
+                        : function.Name;
+                    var (shell, shellIl) = _session.Builder.DefineMethod(
+                        _module.Source.FullPath,
+                        nativeName + "$typed",
+                        typeof(ScriptDatum),
+                        s_spanParameters);
+                    EmitNativeDatumShell(shellIl, native, function);
+                    function.CallConvention = FunctionCallConvention.Span;
+                    function.Method = shell;
+                    function.DynamicDelegateId = 0;
+                    continue;
+                }
                 if (!genericCandidates[function.Id.Value]) continue;
 
                 var code = _moduleCode.GetGeneric(function.Id);
@@ -133,7 +158,6 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
 
 
-            PrepareGenericDirectAdapters();
             EmitDirectMethods();
         }
 
@@ -207,19 +231,23 @@ namespace AuroraScript.Compiler.Backend.Emission
                     var function = _module.Functions[i];
                     if (!candidates[function.Id.Value]) continue;
                     var code = _moduleCode.GetDirect(function.Id);
-                    if (TypedSubsetValidator.CanEmit(
+                    var subsetSupported = TypedSubsetValidator.CanEmit(
                         code,
                         id => id.IsValid &&
                             (uint)id.Value < (uint)candidates.Length &&
                             candidates[id.Value],
                         directMode: true,
-                        requireNativeLocal: false) &&
+                        requireNativeLocal: false,
+                        allowRuntimeBoundaryInDirectMode:
+                            function.IsNativeDeclared);
+                    var signatureSupported = function.IsNativeDeclared ||
                         NativeDirectCallSignatureValidator.CanEmit(
                             code,
                             id => id.IsValid &&
                                 (uint)id.Value < (uint)candidates.Length &&
                                 candidates[id.Value],
-                            id => _moduleCode.GetDirectParameters(id)))
+                            id => _moduleCode.GetDirectParameters(id));
+                    if (subsetSupported && signatureSupported)
                     {
                         continue;
                     }
@@ -236,32 +264,43 @@ namespace AuroraScript.Compiler.Backend.Emission
                 var code = _moduleCode.GetDirect(function.Id);
                 var parameterTypes = _moduleCode.GetDirectParameters(function.Id);
 
-                var nativeParameters = new Type[parameterTypes.Length];
+                var nativeParameters = new Type[
+                    parameterTypes.Length +
+                    (function.IsNativeDeclared ? 1 : 0)];
+                var nativeParameterOffset = function.IsNativeDeclared ? 1 : 0;
+                if (function.IsNativeDeclared)
+                {
+                    nativeParameters[0] = typeof(ScriptContext);
+                }
                 for (var parameterIndex = 0; parameterIndex < parameterTypes.Length; parameterIndex++)
                 {
-                    nativeParameters[parameterIndex] = GetNativeParameterType(parameterTypes[parameterIndex]);
+                    nativeParameters[parameterIndex + nativeParameterOffset] =
+                        GetNativeParameterType(parameterTypes[parameterIndex]);
                 }
 
                 var name = string.IsNullOrEmpty(function.Name)
                     ? "lambda_" + function.Id.Value
                     : function.Name;
-                var (method, il) = _session.Builder.DefineMethod(
+                var returnType = code.ReturnType switch
+                {
+                    FlowValueType.Int32 => typeof(int),
+                    FlowValueType.Boolean => typeof(bool),
+                    FlowValueType.Number => typeof(double),
+                    _ => typeof(ScriptDatum)
+                };
+                var native = _session.Builder.DefineMethod(
                     _module.Source.FullPath,
                     name + "$native",
-                    code.ReturnType switch
-                    {
-                        FlowValueType.Int32 => typeof(int),
-                        FlowValueType.Boolean => typeof(bool),
-                        FlowValueType.Number => typeof(double),
-                        _ => typeof(ScriptDatum)
-                    },
+                    returnType,
                     nativeParameters,
                     aggressiveInlining: true);
+                var method = native.Method;
                 _directMethods[function.Id.Value] = new PreparedDirectMethod(
                     method,
-                    il,
+                    native.IL,
                     code,
                     parameterTypes,
+                    function.IsNativeDeclared,
                     code.ReturnType == FlowValueType.Int32
                         ? StackValueKind.Int32
                         : code.ReturnType == FlowValueType.Boolean
@@ -269,6 +308,10 @@ namespace AuroraScript.Compiler.Backend.Emission
                         : code.ReturnType == FlowValueType.Number
                             ? StackValueKind.Number
                             : StackValueKind.Datum);
+                if (function.IsNativeDeclared)
+                {
+                    function.NativeEntryMethod = method;
+                }
             }
         }
 
@@ -279,73 +322,99 @@ namespace AuroraScript.Compiler.Backend.Emission
                 _directMethods[function.Value].IsDefined;
         }
 
-        private bool HasGenericDirectMethod(FunctionId function)
+        private void EmitNativeDatumShell(
+            ILGenerator il,
+            PreparedDirectMethod native,
+            FunctionPlan function)
         {
-            return function.IsValid &&
-                (uint)function.Value < (uint)_methods.Length &&
-                _methods[function.Value].DirectMethod != null;
-        }
-
-        private void PrepareGenericDirectAdapters()
-        {
-            for (var i = 0; i < _module.Functions.Count; i++)
+            il.Emit(OpCodes.Ldarg_0);
+            for (var i = 0; i < native.ParameterTypes.Length; i++)
             {
-                var function = _module.Functions[i];
-                ref var prepared = ref _methods[function.Id.Value];
-                if (!function.IsDirectCallCandidate ||
-                    !prepared.IsDefined ||
-                    prepared.Convention == FunctionCallConvention.Span)
+                il.Emit(OpCodes.Ldarg_1);
+                il.Emit(OpCodes.Ldc_I4, i);
+                il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetArgument);
+
+                var declared = function.Declaration.Parameters[i].DeclaredType;
+                if (declared != null &&
+                    FlowValueTypeFacts.FromCheckedTypeName(declared.Name) !=
+                        FlowValueType.None)
                 {
-                    continue;
+                    il.Emit(
+                        OpCodes.Ldc_I4,
+                        (int)FlowValueTypeFacts.GetCheckedType(declared.Name));
+                    il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckType);
                 }
 
-                var name = string.IsNullOrEmpty(function.Name)
-                    ? "lambda_" + function.Id.Value
-                    : function.Name;
-                var parameterTypes = GetParameterTypes(prepared.Convention);
-                var (adapter, il) = _session.Builder.DefineMethod(
-                    _module.Source.FullPath,
-                    name + "$direct" + GetFastArity(prepared.Convention),
-                    typeof(ScriptDatum),
-                    parameterTypes);
-                EmitGenericDirectAdapter(il, prepared.Method, parameterTypes.Length, name);
-                prepared.DirectMethod = adapter;
-                function.DirectEntryMethod = adapter;
+                EmitDatumToNativeParameter(
+                    il,
+                    native.ParameterTypes[i]);
             }
+
+            il.Emit(OpCodes.Call, native.Method);
+            switch (native.ReturnKind)
+            {
+                case StackValueKind.Int32:
+                    il.Emit(OpCodes.Conv_R8);
+                    il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromNumber);
+                    break;
+                case StackValueKind.Number:
+                    il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromNumber);
+                    break;
+                case StackValueKind.Boolean:
+                    il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromBoolean);
+                    break;
+            }
+            il.Emit(OpCodes.Ret);
         }
 
-        private void EmitGenericDirectAdapter(
+        private static void EmitDatumToNativeParameter(
             ILGenerator il,
-            MethodInfo target,
-            int parameterCount,
-            string functionName)
+            DirectParameterType parameter)
         {
-            var frame = il.DeclareLocal(typeof(int));
-            var result = il.DeclareLocal(typeof(ScriptDatum));
-            il.Emit(OpCodes.Ldarg_0);
-            _session.Builder.LoadStringConstant(il, functionName);
-            il.Emit(OpCodes.Call, TypedRuntimeMetadata.EnterDirectFrame);
-            il.Emit(OpCodes.Stloc, frame);
+            var type = parameter.Type;
+            if (type == FlowValueType.Int32)
+            {
+                il.Emit(OpCodes.Call, TypedRuntimeMetadata.ToArithmeticNumber);
+                il.Emit(OpCodes.Conv_I4);
+                return;
+            }
+            if (type == FlowValueType.Number)
+            {
+                var datum = il.DeclareLocal(typeof(ScriptDatum));
+                il.Emit(OpCodes.Stloc, datum);
+                il.Emit(OpCodes.Ldloca, datum);
+                il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumNumber);
+                return;
+            }
+            if (type == FlowValueType.Boolean)
+            {
+                var datum = il.DeclareLocal(typeof(ScriptDatum));
+                il.Emit(OpCodes.Stloc, datum);
+                il.Emit(OpCodes.Ldloca, datum);
+                il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumBoolean);
+                return;
+            }
+            if (type == FlowValueType.String)
+            {
+                il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumToString);
+                return;
+            }
+            if (type == FlowValueType.Array)
+            {
+                il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumToObject);
+                il.Emit(OpCodes.Castclass, typeof(ScriptArray));
+                return;
+            }
+            if (FlowValueTypeFacts.IsPackedArray(type))
+            {
+                il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumToObject);
+                il.Emit(OpCodes.Castclass, GetPackedClrType(type));
+                il.Emit(OpCodes.Ldfld, GetPackedItemsField(type));
+                return;
+            }
 
-            il.BeginExceptionBlock();
-            for (var i = 0; i < parameterCount; i++) il.Emit(OpCodes.Ldarg, i);
-            il.Emit(OpCodes.Call, target);
-            il.Emit(OpCodes.Stloc, result);
-            il.BeginCatchBlock(typeof(Exception));
-            il.Emit(OpCodes.Pop);
-            il.Emit(OpCodes.Ldarg_0);
-            il.Emit(OpCodes.Call, TypedRuntimeMetadata.CaptureExceptionFrame);
-            il.Emit(OpCodes.Ldarg_0);
-            il.Emit(OpCodes.Ldloc, frame);
-            il.Emit(OpCodes.Call, TypedRuntimeMetadata.LeaveFrame);
-            il.Emit(OpCodes.Rethrow);
-            il.EndExceptionBlock();
-
-            il.Emit(OpCodes.Ldarg_0);
-            il.Emit(OpCodes.Ldloc, frame);
-            il.Emit(OpCodes.Call, TypedRuntimeMetadata.LeaveFrame);
-            il.Emit(OpCodes.Ldloc, result);
-            il.Emit(OpCodes.Ret);
+            // Object, String, custom shapes, and untyped slots intentionally
+            // remain ScriptDatum in a mixed native signature.
         }
 
         private void EmitDirectMethods()
@@ -374,6 +443,11 @@ namespace AuroraScript.Compiler.Backend.Emission
             localCount = 0;
             if (!_prepared) Prepare();
             if (function == null || (uint)function.Id.Value >= (uint)_methods.Length) return false;
+            if (function.IsNativeDeclared && function.Method != null)
+            {
+                method = function.Method;
+                return true;
+            }
 
             ref var prepared = ref _methods[function.Id.Value];
             if (!prepared.IsDefined || prepared.Emitted) return false;
@@ -416,8 +490,11 @@ namespace AuroraScript.Compiler.Backend.Emission
             try
             {
                 var body = function.Declaration.Body as Statement;
-                _handlesFinallyReturn = !directMode && ContainsReturnInFinally(body);
-                _hasArgumentBufferCleanup = !directMode &&
+                var supportsRuntimeBoundary =
+                    !directMode || function.IsNativeDeclared;
+                _handlesFinallyReturn = supportsRuntimeBoundary &&
+                    ContainsReturnInFinally(body);
+                _hasArgumentBufferCleanup = supportsRuntimeBoundary &&
                     PooledArgumentCallDetector.Contains(function.Declaration);
                 _argumentBuffers = _hasArgumentBufferCleanup
                     ? new List<(LocalBuilder Arguments, LocalBuilder Count)>()
@@ -770,7 +847,9 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 var slot = _function.LocalSlots[i];
                 if (!slot.IsParameter) continue;
-                _il.Emit(OpCodes.Ldarg, parameterIndex);
+                _il.Emit(
+                    OpCodes.Ldarg,
+                    parameterIndex + (_function.IsNativeDeclared ? 1 : 0));
                 EmitStoreLocalFromStack(slot.Id);
                 parameterIndex++;
             }
@@ -1494,8 +1573,11 @@ namespace AuroraScript.Compiler.Backend.Emission
                 case UnaryExpression unary:
                     return EmitUnary(unary);
                 case FunctionCallExpression call:
+                    if (TryGetImportedNativeCall(call, out var imported))
+                    {
+                        return EmitImportedNativeCall(call, imported);
+                    }
                     if (TryGetDirectCall(call, out _)) return EmitDirectCall(call);
-                    if (TryGetGenericDirectCall(call, out _)) return EmitGenericDirectCall(call);
                     return EmitCall(call);
                 case GetPropertyExpression property:
                     return EmitGetProperty(property);
@@ -2610,6 +2692,10 @@ namespace AuroraScript.Compiler.Backend.Emission
             var parameterCount = prepared.ParameterTypes.Length;
             var argumentCount = call.Arguments.Count;
             var commonCount = Math.Min(parameterCount, argumentCount);
+            if (prepared.HasContext)
+            {
+                _il.Emit(OpCodes.Ldarg_0);
+            }
             for (var i = 0; i < commonCount; i++)
             {
                 EmitDirectArgument(call.Arguments[i], prepared.ParameterTypes[i]);
@@ -2632,6 +2718,97 @@ namespace AuroraScript.Compiler.Backend.Emission
 
             _il.Emit(OpCodes.Call, prepared.Method);
             return prepared.ReturnKind;
+        }
+
+        private bool TryGetImportedNativeCall(
+            FunctionCallExpression call,
+            out FunctionPlan target)
+        {
+            if (_function.ImportedNativeCalls.TryGetValue(
+                    call,
+                    out target) &&
+                target.NativeEntryMethod != null)
+            {
+                var parameters = target.Declaration.Parameters;
+                for (var i = 0; i < parameters.Count; i++)
+                {
+                    var type = TypeReferenceFacts.GetFlowType(
+                        target.Declaration.Parent as ModuleDeclaration,
+                        parameters[i].DeclaredType);
+                    if (!RequiresNativeArgumentProof(type))
+                    {
+                        continue;
+                    }
+                    if (i >= call.Arguments.Count ||
+                        !FlowValueTypeFacts.CanPassNativeArgument(
+                            new DirectParameterType(type),
+                            _code.GetExpressionType(call.Arguments[i])))
+                    {
+                        target = null;
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            target = null;
+            return false;
+        }
+
+        private StackValueKind EmitImportedNativeCall(
+            FunctionCallExpression call,
+            FunctionPlan target)
+        {
+            _il.Emit(OpCodes.Ldarg_0);
+            var parameters = target.Declaration.Parameters;
+            var common = Math.Min(
+                parameters.Count,
+                call.Arguments.Count);
+            for (var i = 0; i < common; i++)
+            {
+                var type = TypeReferenceFacts.GetFlowType(
+                    target.Declaration.Parent as ModuleDeclaration,
+                    parameters[i].DeclaredType);
+                EmitDirectArgument(
+                    call.Arguments[i],
+                    new DirectParameterType(
+                        RequiresNativeArgumentProof(type)
+                            ? type
+                            : FlowValueType.Dynamic));
+            }
+            for (var i = common; i < parameters.Count; i++)
+            {
+                EmitNull();
+            }
+            for (var i = parameters.Count;
+                i < call.Arguments.Count;
+                i++)
+            {
+                EmitExpression(call.Arguments[i]);
+                _il.Emit(OpCodes.Pop);
+            }
+
+            _il.Emit(OpCodes.Call, target.NativeEntryMethod);
+            var returnType = TypeReferenceFacts.GetFlowType(
+                target.Declaration.Parent as ModuleDeclaration,
+                target.Declaration.ReturnType);
+            return returnType switch
+            {
+                FlowValueType.Int32 => StackValueKind.Int32,
+                FlowValueType.Number => StackValueKind.Number,
+                FlowValueType.Boolean => StackValueKind.Boolean,
+                _ => StackValueKind.Datum
+            };
+        }
+
+        private static bool RequiresNativeArgumentProof(
+            FlowValueType type)
+        {
+            return FlowValueTypeFacts.IsNumeric(type) ||
+                type == FlowValueType.Boolean ||
+                type == FlowValueType.String ||
+                type == FlowValueType.Array ||
+                FlowValueTypeFacts.IsPackedArray(type);
         }
 
         private void EmitDirectArgument(
@@ -2657,6 +2834,10 @@ namespace AuroraScript.Compiler.Backend.Emission
             else if (parameter.Type == FlowValueType.Boolean)
             {
                 EmitCondition(argument);
+            }
+            else if (parameter.Type == FlowValueType.String)
+            {
+                EmitString(argument);
             }
             else if (parameter.Type == FlowValueType.Array)
             {
@@ -2700,52 +2881,12 @@ namespace AuroraScript.Compiler.Backend.Emission
             return true;
         }
 
-        private bool TryGetGenericDirectCall(FunctionCallExpression call, out FunctionId function)
-        {
-            if (!_directMode && call?.Target is NameExpression target && !HasSpread(call.Arguments))
-            {
-                function = _code.GetName(target).DirectFunction;
-                return HasGenericDirectMethod(function);
-            }
-            function = FunctionId.Invalid;
-            return false;
-        }
-
-        private StackValueKind EmitGenericDirectCall(FunctionCallExpression call)
-        {
-            var targetName = (NameExpression)call.Target;
-            var function = _code.GetName(targetName).DirectFunction;
-            ref var prepared = ref _methods[function.Value];
-            var arity = GetFastArity(prepared.Convention);
-            if (arity < 0)
-            {
-                throw new NotSupportedException("Direct span call.");
-            }
-
-            _il.Emit(OpCodes.Ldarg_0);
-            var common = Math.Min(arity, call.Arguments.Count);
-            for (var i = 0; i < common; i++) EmitDatum(call.Arguments[i]);
-            for (var i = common; i < arity; i++) EmitNull();
-            for (var i = arity; i < call.Arguments.Count; i++)
-            {
-                EmitExpression(call.Arguments[i]);
-                _il.Emit(OpCodes.Pop);
-            }
-            _il.Emit(OpCodes.Call, prepared.DirectMethod);
-            return StackValueKind.Datum;
-        }
-
         private StackValueKind EmitCall(FunctionCallExpression call)
         {
             if (TryEmitArrayFactoryCall(call, out var arrayFactoryResult))
             {
                 return arrayFactoryResult;
             }
-            if (_directMode)
-            {
-                throw new NotSupportedException("Native direct code cannot cross a dynamic call boundary.");
-            }
-
             if (call.Target is GetPropertyExpression property &&
                 TryGetStaticPropertyName(property.Property, out var name))
             {
@@ -4763,7 +4904,9 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitLocation(AstNode node)
         {
-            if (_directMode || node == null || node.Range.StartLine <= 0 ||
+            if ((_directMode && !_function.IsNativeDeclared) ||
+                node == null ||
+                node.Range.StartLine <= 0 ||
                 (!_session.Options.Optimization.StackTrace &&
                     _session.Options.Optimization.Level != OptimizeOptions.Debug))
             {
@@ -4996,6 +5139,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             if (type == FlowValueType.Int32) return typeof(int);
             if (type == FlowValueType.Number) return typeof(double);
             if (type == FlowValueType.Boolean) return typeof(bool);
+            if (type == FlowValueType.String) return typeof(string);
             if (type == FlowValueType.Array) return typeof(ScriptArray);
             if (FlowValueTypeFacts.IsPackedArray(type)) return GetPackedStorageType(type);
             return typeof(ScriptDatum);
@@ -5388,6 +5532,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             switch (statement)
             {
                 case ReturnStatement:
+                case ThrowStatement:
                     return true;
                 case BlockStatement block:
                     for (var i = 0; i < block.Statements.Count; i++)
@@ -5786,7 +5931,6 @@ namespace AuroraScript.Compiler.Backend.Emission
             public PreparedMethod(MethodInfo method, ILGenerator il, FunctionCallConvention convention, TypedFunctionCode code)
             {
                 Method = method;
-                DirectMethod = null;
                 IL = il;
                 Convention = convention;
                 Code = code;
@@ -5794,7 +5938,6 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
 
             public MethodInfo Method;
-            public MethodInfo DirectMethod;
             public ILGenerator IL;
             public FunctionCallConvention Convention;
             public TypedFunctionCode Code;
@@ -5809,12 +5952,14 @@ namespace AuroraScript.Compiler.Backend.Emission
                 ILGenerator il,
                 TypedFunctionCode code,
                 DirectParameterType[] parameterTypes,
+                bool hasContext,
                 StackValueKind returnKind)
             {
                 Method = method;
                 IL = il;
                 Code = code;
                 ParameterTypes = parameterTypes;
+                HasContext = hasContext;
                 ReturnKind = returnKind;
                 Emitted = false;
             }
@@ -5823,6 +5968,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             public ILGenerator IL;
             public TypedFunctionCode Code;
             public DirectParameterType[] ParameterTypes;
+            public bool HasContext;
             public StackValueKind ReturnKind;
             public bool Emitted;
             public bool IsDefined => Method != null;
@@ -5950,7 +6096,8 @@ namespace AuroraScript.Compiler.Backend.Emission
                 TypedFunctionCode code,
                 Func<FunctionId, bool> canDirectCall,
                 bool directMode,
-                bool requireNativeLocal)
+                bool requireNativeLocal,
+                bool allowRuntimeBoundaryInDirectMode = false)
             {
                 if (code == null || canDirectCall == null) return false;
                 var function = code.Function;
@@ -5987,9 +6134,18 @@ namespace AuroraScript.Compiler.Backend.Emission
 
                 for (var i = 0; i < function.Declaration.Parameters.Count; i++)
                 {
-                    if (!CanEmitExpression(code, function.Declaration.Parameters[i].Initializer, canDirectCall, !directMode)) return false;
+                    if (!CanEmitExpression(
+                        code,
+                        function.Declaration.Parameters[i].Initializer,
+                        canDirectCall,
+                        !directMode || allowRuntimeBoundaryInDirectMode)) return false;
                 }
-                return CanEmitStatement(code, body, loopDepth: 0, canDirectCall, !directMode);
+                return CanEmitStatement(
+                    code,
+                    body,
+                    loopDepth: 0,
+                    canDirectCall,
+                    !directMode || allowRuntimeBoundaryInDirectMode);
             }
 
             private static bool CanEmitStatement(

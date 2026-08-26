@@ -463,8 +463,7 @@ public sealed class TypeCheckTests
                 Number x;
                 Number y;
             }
-            @directCall
-            func sumPoint(Point p) Number {
+            native func sumPoint(Point p) Number {
                 return p.x + p.y;
             }
             export func run() Number {

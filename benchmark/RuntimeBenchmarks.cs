@@ -46,7 +46,6 @@ namespace AuroraBenchmark
                 .WithOptimization(optimization =>
                 {
                     optimization.Level = OptimizeOptions.Release;
-                    optimization.AutoModuleDirectCall = true;
                 });
 
             engine = new AuroraEngine(options);

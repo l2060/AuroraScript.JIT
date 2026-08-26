@@ -164,8 +164,7 @@ namespace AuroraScript.Compiler.Backend.Binding
         private static void PreserveWideCallFallback(FunctionPlan function)
         {
             if (!function.IsDirectCallCandidate ||
-                GetParameterCount(function) <= 7 ||
-                function.DirectCallDirective == DirectCallDirective.PreserveClosure)
+                GetParameterCount(function) <= 7)
             {
                 return;
             }
@@ -181,11 +180,6 @@ namespace AuroraScript.Compiler.Backend.Binding
 
         private static bool RequiresClosureObject(FunctionPlan function)
         {
-            if (function.DirectCallDirective == DirectCallDirective.PreserveClosure)
-            {
-                return true;
-            }
-
             return function.Visibility != FunctionVisibility.InternalOnly || !function.IsDirectCallCandidate;
         }
 

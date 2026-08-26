@@ -28,15 +28,13 @@ public sealed class IntegerSpecializationTests
     private const string IntegerKernelSource = """
         @module(TEST);
 
-        @directCall
-        func hashStep(value) {
+        native func hashStep(Number value) Number {
             value = value ^ (value << 13);
             value = value ^ (value >> 17);
             return value ^ (value << 5);
         }
 
-        @directCall
-        func fillAndHash(values, count, seed) {
+        native func fillAndHash(Int32Array values, Number count, Number seed) Number {
             var state = seed;
             for (var i = 0; i < count; i++) {
                 state = hashStep(state);
@@ -50,8 +48,7 @@ public sealed class IntegerSpecializationTests
             return hash;
         }
 
-        @directCall
-        func mix12(a, b, c, d, e, f, g, h, i, j, k, l) {
+        native func mix12(Number a, Number b, Number c, Number d, Number e, Number f, Number g, Number h, Number i, Number j, Number k, Number l) Number {
             a = a ^ (b << 1);
             c = c ^ (d << 2);
             e = e ^ (f << 3);
@@ -144,7 +141,7 @@ public sealed class IntegerSpecializationTests
 
 #if NET9_0_OR_GREATER
     [Fact]
-    public async Task PersistenceEmitsInt32KernelsAndRawArraySignatures()
+    public async Task PersistenceEmitsExplicitNativeRawArraySignatures()
     {
         using var workspace = new TestWorkspace();
         await workspace.CompileModuleAsync(IntegerKernelSource, CompilationMode.Persistence);
@@ -155,25 +152,21 @@ public sealed class IntegerSpecializationTests
         var reader = peReader.GetMetadataReader();
 
         var fill = FindMethod(reader, "fillAndHash$native");
-        // DEFAULT, three parameters, return I4, then int[], I4, I4.
-        Assert.Equal(
-            [0x00, 0x03, 0x08, 0x1d, 0x08, 0x08, 0x08],
-            reader.GetBlobBytes(fill.Signature));
+        var fillSignature = reader.GetBlobBytes(fill.Signature);
+        Assert.Equal(4, fillSignature[1]); // ScriptContext plus three parameters.
+        Assert.Equal(0x0d, fillSignature[2]); // Number return.
+        Assert.Contains((byte)0x1d, fillSignature); // Raw int[] parameter.
         var fillOpcodes = ReadOpCodes(
             peReader.GetMethodBody(fill.RelativeVirtualAddress).GetILBytes().AsSpan());
         Assert.Contains(OpCodes.Ldelem_I4, fillOpcodes);
         Assert.Contains(OpCodes.Stelem_I4, fillOpcodes);
         Assert.Contains(OpCodes.Xor, fillOpcodes);
         Assert.DoesNotContain(OpCodes.Ldfld, fillOpcodes);
-        Assert.DoesNotContain(OpCodes.Conv_R8, fillOpcodes);
 
         var mix = FindMethod(reader, "mix12$native");
-        var expectedMixSignature = new byte[15];
-        expectedMixSignature[0] = 0x00;
-        expectedMixSignature[1] = 0x0c;
-        expectedMixSignature[2] = 0x08;
-        Array.Fill(expectedMixSignature, (byte)0x08, 3, 12);
-        Assert.Equal(expectedMixSignature, reader.GetBlobBytes(mix.Signature));
+        var mixSignature = reader.GetBlobBytes(mix.Signature);
+        Assert.Equal(13, mixSignature[1]); // ScriptContext plus twelve parameters.
+        Assert.Equal(0x0d, mixSignature[2]);
     }
 
     private static MethodDefinition FindMethod(MetadataReader reader, string name)

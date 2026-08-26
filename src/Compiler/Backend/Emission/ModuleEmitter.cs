@@ -15,8 +15,18 @@ namespace AuroraScript.Compiler.Backend.Emission
         public ModuleEmissionResult Emit(ModulePlan module)
         {
             ArgumentNullException.ThrowIfNull(module);
+            return Emit(Prepare(module));
+        }
 
-            var state = CreateState(module);
+        internal ModuleEmissionState Prepare(ModulePlan module)
+        {
+            ArgumentNullException.ThrowIfNull(module);
+            return CreateState(module);
+        }
+
+        internal ModuleEmissionResult Emit(ModuleEmissionState state)
+        {
+            var module = state.Module;
             var functions = new FunctionEmissionResult[module.Functions.Count];
             for (var i = 0; i < module.Functions.Count; i++)
             {
@@ -36,8 +46,12 @@ namespace AuroraScript.Compiler.Backend.Emission
         public void EmitWithoutReport(ModulePlan module)
         {
             ArgumentNullException.ThrowIfNull(module);
+            EmitWithoutReport(Prepare(module));
+        }
 
-            var state = CreateState(module);
+        internal void EmitWithoutReport(ModuleEmissionState state)
+        {
+            var module = state.Module;
             for (var i = 0; i < module.Functions.Count; i++)
             {
                 _session.CompileSession.CancellationToken.ThrowIfCancellationRequested();
@@ -60,17 +74,25 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
 
             var functionEmitter = new FunctionEmitter(_session, module, typed);
-            return new ModuleEmissionState(functionEmitter, initializerEmitter);
+            return new ModuleEmissionState(
+                module,
+                functionEmitter,
+                initializerEmitter);
         }
 
-        private readonly struct ModuleEmissionState
+        internal readonly struct ModuleEmissionState
         {
-            public ModuleEmissionState(FunctionEmitter functionEmitter, ModuleInitializerEmitter initializerEmitter)
+            public ModuleEmissionState(
+                ModulePlan module,
+                FunctionEmitter functionEmitter,
+                ModuleInitializerEmitter initializerEmitter)
             {
+                Module = module;
                 FunctionEmitter = functionEmitter;
                 InitializerEmitter = initializerEmitter;
             }
 
+            public ModulePlan Module { get; }
             public FunctionEmitter FunctionEmitter { get; }
             public ModuleInitializerEmitter InitializerEmitter { get; }
         }

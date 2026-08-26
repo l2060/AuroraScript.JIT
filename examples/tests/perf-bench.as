@@ -2,13 +2,11 @@
 
 const TICKS_PER_MS = 10000;
 
-@directCall
-func nowTicks() {
+native func nowTicks() Number {
 	return Date.utcNow().ticks;
 }
 
-@directCall
-func ticksToMs(ticks) {
+native func ticksToMs(Number ticks) Number {
 	return ticks / TICKS_PER_MS;
 }
 

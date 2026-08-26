@@ -211,18 +211,6 @@ namespace AuroraScript.Runtime
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal int EnterDirect(string name)
-        {
-            EnsureActive();
-            var restoreDepth = PushCurrentFrame();
-            Target = null;
-            DirectName = name;
-            Upvalues = null;
-            Location = 0;
-            return restoreDepth;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal int EnterModule(ScriptModule module)
         {
             EnsureActive();

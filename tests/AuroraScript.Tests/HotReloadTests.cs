@@ -44,6 +44,59 @@ public sealed class HotReloadTests
     }
 
     [Fact]
+    public async Task NativeFunctionCannotBeHotUpdated()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            "@module(TEST); export func version() { return 1; }",
+            enableHotReload: true);
+
+        var error = Assert.Throws<AuroraCompilationException>(() =>
+            domain.DynamicPatch(
+                workspace.MemorySource(
+                    "main.as",
+                    "@module(TEST); export native func version() Number { return 2; }"),
+                HotPatchType.Incremental));
+        Assert.Contains(
+            "cannot be hot updated",
+            error.Message,
+            StringComparison.Ordinal);
+
+        var replaceError = Assert.Throws<AuroraCompilationException>(() =>
+            domain.DynamicPatch(
+                workspace.MemorySource(
+                    "main.as",
+                    "@module(TEST); export native func version() Number { return 3; }"),
+                HotPatchType.Replace));
+        Assert.Contains(
+            "cannot be hot updated",
+            replaceError.Message,
+            StringComparison.Ordinal);
+        ScriptAssert.Equal(1, TestWorkspace.Execute(domain, "version"));
+    }
+
+    [Fact]
+    public async Task ExistingNativeFunctionCannotBeReplacedByRegularFunction()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            "@module(TEST); export native func version() Number { return 1; }",
+            enableHotReload: true);
+
+        var error = Assert.Throws<AuroraCompilationException>(() =>
+            domain.DynamicPatch(
+                workspace.MemorySource(
+                    "main.as",
+                    "@module(TEST); export func version() { return 2; }"),
+                HotPatchType.Replace));
+        Assert.Contains(
+            "cannot be hot updated",
+            error.Message,
+            StringComparison.Ordinal);
+        ScriptAssert.Equal(1, TestWorkspace.Execute(domain, "version"));
+    }
+
+    [Fact]
     public async Task AnonymousPatchKeepsExistingExplicitModuleName()
     {
         using var workspace = new TestWorkspace();

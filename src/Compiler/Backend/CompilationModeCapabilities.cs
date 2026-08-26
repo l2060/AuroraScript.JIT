@@ -4,16 +4,12 @@ namespace AuroraScript.Compiler.Backend
 {
     internal readonly struct CompilationModeCapabilities
     {
-        public CompilationModeCapabilities(
-            bool canUseModuleDirectCall,
-            bool canInferAutoModuleDirectCall)
+        public CompilationModeCapabilities(bool canUseModuleDirectCall)
         {
             CanUseModuleDirectCall = canUseModuleDirectCall;
-            CanInferAutoModuleDirectCall = canInferAutoModuleDirectCall;
         }
 
         public bool CanUseModuleDirectCall { get; }
-        public bool CanInferAutoModuleDirectCall { get; }
 
         public static CompilationModeCapabilities FromOptions(EngineOptions options)
         {
@@ -28,17 +24,13 @@ namespace AuroraScript.Compiler.Backend
                     "Unsupported compilation mode.")
             };
 
-            return new CompilationModeCapabilities(
-                canUseModuleDirectCall: true,
-                canInferAutoModuleDirectCall: options.Optimization.EnableAutoModuleDirectCall);
+            return new CompilationModeCapabilities(canUseModuleDirectCall: true);
         }
 
         public CompilationModeCapabilities WithoutModuleDirectCall()
         {
             return CanUseModuleDirectCall
-                ? new CompilationModeCapabilities(
-                    canUseModuleDirectCall: false,
-                    canInferAutoModuleDirectCall: false)
+                ? new CompilationModeCapabilities(canUseModuleDirectCall: false)
                 : this;
         }
     }

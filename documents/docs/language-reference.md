@@ -99,6 +99,10 @@ func sum(first, ...rest) {
 func add(Number left, Number right) Number {
     return left + right;
 }
+
+export native func distance(Number dx, Number dy) Number {
+    return Math.sqrt(dx * dx + dy * dy);
+}
 ```
 
 Default parameters are written `name = expression`; a rest parameter starts with `...`, must be last, and cannot have a default. Functions are values. An object “method” is a function-valued property, not a separate declaration form:
@@ -112,6 +116,23 @@ return operations.format(operations.add(20, 22));
 ```
 
 Lambdas can have an expression body or a block body and can capture outer bindings. The compiler-provided `$args` value contains the current function's arguments.
+
+`native func` is an explicit module-scope ABI contract. It emits a
+`ScriptContext`-aware CLR-native entry for declared numeric, boolean, array,
+and packed-array parameters while retaining `ScriptDatum` for dynamic slots.
+Dynamic expressions inside the body remain valid and cross a Datum boundary
+locally; they do not disable native storage in the rest of the function.
+Exported functions and private functions used as values also receive a
+Datum-compatible closure shell. A qualified call to an imported exported
+native function calls its native entry directly when every native argument is
+proven compatible; otherwise it uses that shell. Native functions require a return contract,
+cannot use default/rest parameters or `$args`, and cannot be assigned. Apply
+them only through a normal build: neither incremental nor replacement hot
+patches may add, replace, or redefine a native function. The emitted native
+method contains the function body directly; it does not enter a script frame
+or add an exception wrapper. Runtime error conversion derives native function
+names from the CLR exception stack and combines them with recorded source
+locations.
 
 ### 5. Choose a value type
 
@@ -223,9 +244,9 @@ This path exists for three practical reasons:
 
 1. Native locals avoid temporary `ScriptDatum` construction and boxing in numeric loops.
 2. Packed arrays use contiguous primitive storage instead of one dynamic slot per element.
-3. Stable same-module calls and operations can avoid generic property lookup and dynamic dispatch.
+3. Explicit `native func` calls can avoid generic property lookup and dynamic dispatch.
 
-It is therefore an optimization and a semantic boundary, not a second statically typed source language. Dynamic scripts remain valid, and unsupported flow safely falls back to the dynamic path. To help inference, keep hot locals single-kind, cache `length`, keep packed arrays in locals, and avoid unknown callbacks in the inner loop. `@directCall`, `@directCall(true)`, and `@directCall(false)` are optional function-call hints; they are not type declarations.
+It is therefore an optimization and a semantic boundary, not a second statically typed source language. Dynamic scripts remain valid, and unsupported local flow safely falls back to the dynamic path. To help inference, keep hot locals single-kind, cache `length`, keep packed arrays in locals, and avoid unknown callbacks in the inner loop. Function-call ABI optimization is explicit: use `native func` when a callable native ABI is required.
 
 ### 8. Handle host globals and compile blocks
 
@@ -262,6 +283,7 @@ import UTIL from "util";
 export const VALUE = 42;
 export var mutable = 0;
 export func run() { return VALUE; }
+export native func add(Number left, Number right) Number { return left + right; }
 ```
 
 Rules:
@@ -274,28 +296,10 @@ Rules:
 - `include` and `import` must be at the top of the module.
 - A host-enabled native module is imported by its bare module path. Native modules do not become globals, and relative paths continue to resolve as project sources.
 - `export` may only appear at module scope.
+- `native` is contextual: it modifies a module-scope `func`/`function`
+  declaration and remains a valid identifier elsewhere.
 - `declare` is not valid in modules. Use a separate `@global()` declaration file for host globals.
 - Duplicate module-scope names are rejected.
-
-## Function Annotations
-
-Function annotations use `@name` before a function declaration.
-
-```as
-@directCall
-func helper(value) { return value + 1; }
-
-@directCall(false)
-func dynamicHelper(value) { return value + 1; }
-```
-
-Supported annotations:
-
-- `@directCall`
-- `@directCall(true)`
-- `@directCall(false)`
-
-Unsupported annotations are rejected during backend binding.
 
 ## Declarations
 

@@ -12,7 +12,7 @@ internal static class AnnotationDocumentation
     private const string MarkdownLanguageId = "aurorascript";
 
     private static readonly Regex AnnotationPattern = new(
-        @"(?<![$_\p{L}\p{Nd}])@(?<name>module|directCall)\b",
+        @"(?<![$_\p{L}\p{Nd}])@(?<name>module)\b",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     public static bool TryGetHover(string sourceText, TextPosition position, string? locale, out HoverResult hover)
@@ -39,19 +39,10 @@ internal static class AnnotationDocumentation
     private static string Format(string name, string? locale)
     {
         var builder = new StringBuilder();
-        if (string.Equals(name, "module", StringComparison.Ordinal))
-        {
-            builder.Append("```").Append(MarkdownLanguageId).Append("\n@module(NAME);\n```");
-            AppendNotes(builder, locale,
-                "Declares the optional explicit lookup name used by host module APIs and global.getModule. It must be the first effective statement; omitting it leaves the module anonymous without affecting path-based imports.",
-                "声明供宿主模块 API 和 global.getModule 使用的可选显式查询名称。它必须是第一个有效语句；省略时模块保持匿名，但不影响基于路径的导入。");
-            return builder.ToString();
-        }
-
-        builder.Append("```").Append(MarkdownLanguageId).Append("\n@directCall\n@directCall(true)\n@directCall(false)\n```");
+        builder.Append("```").Append(MarkdownLanguageId).Append("\n@module(NAME);\n```");
         AppendNotes(builder, locale,
-            "Marks a function as a direct-call candidate, or disables the directive with false.",
-            "将函数标记为直接调用候选；传入 false 可禁用该指令。");
+            "Declares the optional explicit lookup name used by host module APIs and global.getModule. It must be the first effective statement; omitting it leaves the module anonymous without affecting path-based imports.",
+            "声明供宿主模块 API 和 global.getModule 使用的可选显式查询名称。它必须是第一个有效语句；省略时模块保持匿名，但不影响基于路径的导入。");
         return builder.ToString();
     }
 

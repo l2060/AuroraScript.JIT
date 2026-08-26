@@ -14,18 +14,15 @@ public sealed class BooleanSpecializationTests
     private const string Source = """
         @module(TEST);
 
-        @directCall
-        func negate(value) {
+        native func negate(Boolean value) Boolean {
             return !value;
         }
 
-        @directCall
-        func combine(first, second) {
+        native func combine(Boolean first, Boolean second) Boolean {
             return negate(first) && second;
         }
 
-        @directCall
-        func boolGate(flag, left, right) {
+        native func boolGate(Boolean flag, Number left, Number right) Boolean {
             if (flag) return left < right;
             return left > right;
         }
@@ -120,15 +117,23 @@ public sealed class BooleanSpecializationTests
         using var peReader = new PEReader(stream);
         var reader = peReader.GetMetadataReader();
 
-        Assert.Equal(
-            [0x00, 0x01, 0x02, 0x02],
-            reader.GetBlobBytes(FindMethod(reader, "negate$native").Signature));
-        Assert.Equal(
-            [0x00, 0x02, 0x02, 0x02, 0x02],
-            reader.GetBlobBytes(FindMethod(reader, "combine$native").Signature));
-        Assert.Equal(
-            [0x00, 0x03, 0x02, 0x02, 0x08, 0x08],
-            reader.GetBlobBytes(FindMethod(reader, "boolGate$native").Signature));
+        AssertNativeSignature(reader, "negate$native", 2, [0x02]);
+        AssertNativeSignature(reader, "combine$native", 3, [0x02, 0x02]);
+        AssertNativeSignature(reader, "boolGate$native", 4, [0x02, 0x0d, 0x0d]);
+    }
+
+    private static void AssertNativeSignature(
+        MetadataReader reader,
+        string name,
+        byte parameterCount,
+        byte[] nativeParameters)
+    {
+        var signature = reader.GetBlobBytes(FindMethod(reader, name).Signature);
+        Assert.Equal(0x00, signature[0]);
+        Assert.Equal(parameterCount, signature[1]);
+        Assert.Equal(0x02, signature[2]);
+        Assert.Equal(0x12, signature[3]); // ScriptContext class marker.
+        Assert.Equal(nativeParameters, signature[^nativeParameters.Length..]);
     }
 
     private static MethodDefinition FindMethod(MetadataReader reader, string name)

@@ -292,7 +292,7 @@ import http from "http";
 - Use normal template strings for small or medium formatting; the compiler already selects concat or builder paths.
 - Use `StringBuffer` for long loops or many incremental appends.
 - Use `typeof value == "Int8Array"` (or the matching constructor name) to distinguish packed arrays; they are not `"object"`.
-- Use `@directCall` on helper functions that should remain directly callable when the compiler cannot infer it.
+- Use `native func` only when a stable native ABI and direct-call behavior are required.
 - Avoid `console.log` in hot paths.
 - Avoid unnecessary closure captures in loops.
 - Cache repeated dynamic property lookups in local variables when the same property is used many times.

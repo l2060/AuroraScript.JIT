@@ -22,7 +22,13 @@ namespace AuroraScript.Compiler.Ast
         /// <summary>
         /// 仅声明
         /// </summary>
-        Declare = 2
+        Declare = 2,
+
+        /// <summary>
+        /// Uses an explicit CLR-native call signature. A Datum-compatible
+        /// closure entry is emitted whenever the function can escape.
+        /// </summary>
+        Native = 4
     }
 
 
@@ -41,7 +47,6 @@ namespace AuroraScript.Compiler.Ast
             IReadOnlyList<ParameterDeclaration> parameters,
             Statement body,
             FunctionFlags flags,
-            IReadOnlyList<FunctionAnnotation> annotations = null,
             TypeReference returnType = null)
         {
             Access = access;
@@ -49,14 +54,12 @@ namespace AuroraScript.Compiler.Ast
             Parameters = parameters ?? Array.Empty<ParameterDeclaration>();
             Body = body;
             Flags = flags;
-            Annotations = annotations ?? Array.Empty<FunctionAnnotation>();
             ReturnType = returnType;
             if (Parameters.Count > 0)
             {
                 for (int i = 0; i < Parameters.Count; i++) Parameters[i].Parent = this;
             }
             if (body != null) body.Parent = this;
-            for (var i = 0; i < Annotations.Count; i++) Annotations[i].Parent = this;
         }
 
 
@@ -84,7 +87,9 @@ namespace AuroraScript.Compiler.Ast
 
         public FunctionFlags Flags { get; private set; }
 
-        public IReadOnlyList<FunctionAnnotation> Annotations { get; private set; }
+        public bool IsNative => (Flags & FunctionFlags.Native) != 0;
+
+        public Token NativeToken { get; internal set; }
 
         /// <summary>
         /// Optional source-level return contract. A missing contract preserves

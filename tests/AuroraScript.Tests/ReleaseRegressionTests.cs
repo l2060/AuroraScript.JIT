@@ -273,7 +273,6 @@ public sealed class ReleaseRegressionTests
         var (_, domain) = await workspace.CompileModuleAsync(
             """
             @module(TEST);
-            @directCall
             func join(left, right) { return left + "-" + right; }
             export func run() { return join(...["Aurora", "Script"]); }
             """,
@@ -289,7 +288,6 @@ public sealed class ReleaseRegressionTests
         var (_, domain) = await workspace.CompileModuleAsync(
             """
             @module(TEST);
-            @directCall
             func add(left, right = 5) { return left + right; }
             export func run() { return [add(2), add(2, 3)]; }
             """,
@@ -305,8 +303,7 @@ public sealed class ReleaseRegressionTests
         var (_, domain) = await workspace.CompileModuleAsync(
             """
             @module(TEST);
-            @directCall
-            func sum(value, total) {
+            native func sum(Number value, Number total) Number {
                 if (value <= 0) return total;
                 return sum(value - 1, total + value);
             }
@@ -324,10 +321,9 @@ public sealed class ReleaseRegressionTests
         var (_, domain) = await workspace.CompileModuleAsync(
             """
             @module(TEST);
-            @directCall
-            func identity(value) { return value; }
-            @directCall
-            export func relay(value) { return identity(value); }
+            type Datum {}
+            native func identity(Datum value) Datum { return value; }
+            export native func relay(Datum value) Datum { return identity(value); }
             export func warmup() { return relay(41) + 1; }
             """,
             enableHotReload: false);
@@ -373,14 +369,13 @@ public sealed class ReleaseRegressionTests
     }
 
     [Fact]
-    public async Task ModuleInitializerDirectCallUsesALightweightFunctionFrame()
+    public async Task NativeCallDoesNotEnterALightweightFunctionFrame()
     {
         using var workspace = new TestWorkspace();
         var (_, domain) = await workspace.CompileModuleAsync(
             """
             @module(TEST);
-            @directCall
-            func captureFrame() { return HOST_FRAME(); }
+            native func captureFrame() String { return HOST_FRAME(); }
             export var capturedFrame = captureFrame();
             export func run() { return capturedFrame; }
             """,
@@ -398,7 +393,7 @@ public sealed class ReleaseRegressionTests
             },
             enableHotReload: false);
 
-        ScriptAssert.Equal("captureFrame", TestWorkspace.Execute(domain, "run"));
+        ScriptAssert.Equal(string.Empty, TestWorkspace.Execute(domain, "run"));
     }
 
     [Fact]

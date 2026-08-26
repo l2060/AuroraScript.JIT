@@ -9,13 +9,6 @@ namespace AuroraScript.Runtime
     [EditorBrowsable(EditorBrowsableState.Never)]
     public static class CallFrameOps
     {
-        /// <summary>Enters a statically bound script function without allocating a child context.</summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int EnterDirect(ScriptContext context, string functionName)
-        {
-            return context.EnterDirect(functionName);
-        }
-
         /// <summary>Temporarily switches the active module without allocating a child context.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int EnterModule(ScriptContext context, ScriptModule module)
@@ -28,13 +21,6 @@ namespace AuroraScript.Runtime
         public static void Leave(ScriptContext context, int restoreDepth)
         {
             context.LeaveFrame(restoreDepth);
-        }
-
-        /// <summary>Snapshots the script stack only on an exceptional path.</summary>
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void CaptureException(ScriptContext context)
-        {
-            context.CaptureExceptionStack();
         }
 
         /// <summary>Gets an argument or the script null value when it is absent.</summary>

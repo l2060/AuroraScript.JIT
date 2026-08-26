@@ -648,6 +648,13 @@ internal static class SemanticTokenScanner
 
         protected override void VisitFunction(FunctionDeclaration node)
         {
+            if (node.NativeToken != null)
+            {
+                _builder.AddToken(
+                    node.NativeToken,
+                    AuroraSemanticTokenTypes.Keyword,
+                    SemanticTokenPriority.Ast);
+            }
             if (node.Name != null)
             {
                 var type = IsDeclareFunction(node)

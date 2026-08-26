@@ -562,13 +562,6 @@ namespace AuroraScript
         public OptimizeOptions Level { get; init; } = OptimizeOptions.Release;
 
         /// <summary>
-        /// Gets a value indicating whether the compiler may automatically infer direct calls
-        /// for proven same-module internal functions without an explicit script annotation.
-        /// Explicit @directCall annotations are not controlled by this option.
-        /// </summary>
-        public bool EnableAutoModuleDirectCall { get; init; }
-
-        /// <summary>
         /// Gets a value indicating whether the compiler may inline proven module-level
         /// const values at same-module use sites. Only side-effect-free literal expressions are eligible.
         /// </summary>
@@ -595,7 +588,6 @@ namespace AuroraScript
             if (options == null) throw new ArgumentNullException(nameof(options));
 
             Level = options.Level;
-            AutoModuleDirectCall = options.EnableAutoModuleDirectCall;
             ModuleConstInlining = options.EnableModuleConstInlining;
             StackTrace = options.StackTrace;
         }
@@ -604,11 +596,6 @@ namespace AuroraScript
         /// Gets or sets the optimization level used during code generation.
         /// </summary>
         public OptimizeOptions Level { get; set; }
-
-        /// <summary>
-        /// Gets or sets whether same-module direct-call inference is enabled.
-        /// </summary>
-        public bool AutoModuleDirectCall { get; set; }
 
         /// <summary>
         /// Gets or sets whether eligible module-level const reads may be inlined.
@@ -627,15 +614,6 @@ namespace AuroraScript
         public OptimizationOptionsBuilder WithLevel(OptimizeOptions value)
         {
             Level = value;
-            return this;
-        }
-
-        /// <summary>
-        /// Sets whether same-module direct-call inference is enabled.
-        /// </summary>
-        public OptimizationOptionsBuilder WithAutoModuleDirectCall(bool value)
-        {
-            AutoModuleDirectCall = value;
             return this;
         }
 
@@ -662,7 +640,6 @@ namespace AuroraScript
             return new OptimizationOptions
             {
                 Level = Level,
-                EnableAutoModuleDirectCall = AutoModuleDirectCall,
                 EnableModuleConstInlining = ModuleConstInlining,
                 StackTrace = StackTrace
             };

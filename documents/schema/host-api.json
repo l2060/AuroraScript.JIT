@@ -370,10 +370,6 @@
           "kind": "property",
           "signature": "OptimizeOptions Level"
         },
-        "EnableAutoModuleDirectCall": {
-          "kind": "property",
-          "signature": "bool EnableAutoModuleDirectCall"
-        },
         "EnableModuleConstInlining": {
           "kind": "property",
           "signature": "bool EnableModuleConstInlining"
@@ -397,10 +393,6 @@
           "kind": "property",
           "signature": "OptimizeOptions Level"
         },
-        "AutoModuleDirectCall": {
-          "kind": "property",
-          "signature": "bool AutoModuleDirectCall"
-        },
         "ModuleConstInlining": {
           "kind": "property",
           "signature": "bool ModuleConstInlining"
@@ -413,7 +405,6 @@
           "kind": "method",
           "overloads": [
             "OptimizationOptionsBuilder WithLevel(OptimizeOptions value)",
-            "OptimizationOptionsBuilder WithAutoModuleDirectCall(bool value)",
             "OptimizationOptionsBuilder WithModuleConstInlining(bool value)",
             "OptimizationOptionsBuilder WithStackTrace(bool value)"
           ]

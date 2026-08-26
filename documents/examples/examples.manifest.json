@@ -20,7 +20,7 @@
       "path": "valid/functions-and-lambdas.as",
       "entry": "run",
       "expected": [2, 3, 7],
-      "features": ["function.declaration", "function.annotation.directCall", "lambda"]
+      "features": ["function.declaration", "lambda"]
     },
     {
       "path": "valid/destructuring-and-loops.as",

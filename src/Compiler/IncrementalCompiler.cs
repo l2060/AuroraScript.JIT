@@ -43,6 +43,7 @@ namespace AuroraScript.Compiler
                     !ReferenceEquals(module, mainModule) &&
                     Domain.Global.TryGetModuleByPath(module.Source.FullPath, out _));
             }
+            ValidateNoNativeHotPatch(moduleSyntaxTrees);
 
             ValidateExplicitModuleNames(moduleSyntaxTrees);
 
@@ -62,6 +63,35 @@ namespace AuroraScript.Compiler
                 patchType);
             return emitter.Emit(mainModulePlan);
         }
+
+        private void ValidateNoNativeHotPatch(
+            IReadOnlyList<ModuleDeclaration> modules)
+        {
+            for (var moduleIndex = 0; moduleIndex < modules.Count; moduleIndex++)
+            {
+                var module = modules[moduleIndex];
+                Domain.Global.TryGetModuleByPath(
+                    module.Source.FullPath,
+                    out var existing);
+                for (var functionIndex = 0;
+                    functionIndex < module.Functions.Count;
+                    functionIndex++)
+                {
+                    var function = module.Functions[functionIndex];
+                    if (!function.IsNative &&
+                        existing?.IsNativeFunction(function.Name.Value) != true)
+                    {
+                        continue;
+                    }
+
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Binding,
+                        function,
+                        $"Native function '{function.Name.Value}' cannot be hot updated.");
+                }
+            }
+        }
+
         private static void LinkModules(IReadOnlyList<ModuleDeclaration> modules)
         {
             var modulesByPath = new Dictionary<string, ModuleDeclaration>(modules.Count, ScriptPath.Comparer);

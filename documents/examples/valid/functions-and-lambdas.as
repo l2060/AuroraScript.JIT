@@ -1,6 +1,5 @@
 @module(FUNCTIONS_AND_LAMBDAS);
 
-@directCall
 func add(a, b = 1) {
     return a + b;
 }

@@ -53,7 +53,6 @@ namespace Examples
         {
             optimization.StackTrace = false;
             optimization.ModuleConstInlining = true;
-            optimization.AutoModuleDirectCall = true;
             optimization.Level = OptimizeOptions.Release;
         });
 

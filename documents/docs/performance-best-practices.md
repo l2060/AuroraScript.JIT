@@ -49,21 +49,46 @@ Use `stringAndRelease()` when the buffer will not be used again. It returns the 
 
 ## Direct Calls
 
-For stable same-module helper functions, let the compiler infer direct calls.
-If a helper must remain directly callable through conservative cases, use:
+Direct-call ABI optimization is explicit. Declare hot helpers with stable
+parameter and return contracts as native functions:
 
 ```as
-@directCall
-func helper(value) {
+native func helper(Number value) Number {
     return value + 1;
 }
 ```
 
-Use `@directCall(false)` to disable the directive for a function.
-
-When the compiler proves a native call graph, integer and numeric parameters, locals, arithmetic, comparisons, and returns stay as CIL `int`, `double`, and `bool` values. Conversion to `ScriptDatum` happens only at a dynamic boundary. The generic direct adapter and automatic inference currently cover up to seven parameters; an explicit `@directCall` may exceed that limit when its call graph can be specialized, with the ordinary closure/span path retained as the semantic fallback.
+Native parameters, locals, arithmetic, comparisons, and returns stay as CLR
+values whenever their declared and inferred types permit it. Conversion to
+`ScriptDatum` happens only at a dynamic boundary. Ordinary functions retain
+their flexible Datum calling convention and remain hot-patchable.
 
 Keep hot helper arguments type-stable. Reassigning a parameter is fine when every assignment preserves its proven native type; assigning unrelated dynamic values forces that parameter back to the dynamic path.
+
+Use `native func` when the ABI itself must be explicit:
+
+```as
+export native func weighted(Number value, Object options) Number {
+    // value remains a CLR double. The dynamic property read crosses a
+    // ScriptDatum boundary only for this expression.
+    return value * options.factor;
+}
+```
+
+The native entry receives `ScriptContext`, so dynamic calls and module access
+still work. Its body is emitted directly without per-call frame management or
+an exception wrapper. On failure, runtime error conversion analyzes the CLR
+exception stack and combines native method names with recorded script source
+locations. Exported or escaped native functions have
+a Datum-compatible closure shell for script callers. Private same-module
+calls use the native entry whenever their arguments are proven compatible;
+unproven calls use the shell and preserve exact parameter checks. Qualified
+cross-module calls also use the imported native entry directly when its
+native arguments are proven; dynamic arguments keep the exported shell path.
+Native
+functions require a declared return type and reject defaults, rest parameters,
+`$args`, assignment, and all hot patches. Rebuild the module normally when
+changing one.
 
 ## Loops And Closures
 
@@ -129,7 +154,7 @@ These arrays have primitive CLR backing storage and rely on CLR zero initializat
 
 Within a specialized direct-call graph, packed-array parameters and locals are passed as raw `int[]`, `double[]`, `sbyte[]`, or `bool[]` storage. Native helper-to-helper calls therefore do not reload wrapper fields or allocate replacement wrappers.
 
-Keep the array in an exact local or pass it directly to an `@directCall` helper. Storing it in an ordinary object and reading it back erases the compile-time element type; access remains allocation-free apart from the array itself, but it uses the dynamic helper path and is measurably slower. This explicit boundary keeps the runtime small and predictable without speculative object-shape optimization.
+Keep the array in an exact local or pass it directly to a `native func` helper. Storing it in an ordinary object and reading it back erases the compile-time element type; access remains allocation-free apart from the array itself, but it uses the dynamic helper path and is measurably slower. This explicit boundary keeps the runtime small and predictable without speculative object-shape optimization.
 
 Choose the narrowest type that matches the required semantics:
 

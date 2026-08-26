@@ -589,19 +589,7 @@ internal static class ScriptDocumentationQuery
 
     private static int GetDocumentationAnchorLine(FunctionDeclaration function)
     {
-        var line = function.Range.StartLine;
-        for (var i = 0; i < function.Annotations.Count; i++)
-        {
-            var annotationLine = function.Annotations[i].Range.StartLine > 0
-                ? function.Annotations[i].Range.StartLine
-                : function.Annotations[i].Name.Range.StartLine;
-            if (annotationLine > 0 && annotationLine < line)
-            {
-                line = annotationLine;
-            }
-        }
-
-        return line;
+        return function.Range.StartLine;
     }
 
     private static IReadOnlyList<string> ReadLeadingComments(string sourceText, int declarationStartLine)

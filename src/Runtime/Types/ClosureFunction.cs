@@ -356,7 +356,9 @@ namespace AuroraScript.Runtime.Types
             }
             catch (Exception ex)
             {
-                var stackTrace = ctx.TakeExceptionStack();
+                var stackTrace = RuntimeExceptionStackAnalyzer.MergeNativeFrames(
+                    ex,
+                    ctx.TakeExceptionStack());
                 if (ctx.Next != null)
                 {
                     ctx.Next.ReleaseLinked();

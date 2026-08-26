@@ -73,8 +73,7 @@ public sealed class CompilationModeTests
         var (engine, domain) = await workspace.CompileModuleAsync(
             """
             @module(TEST);
-            @directCall
-            func sum(value, total) {
+            native func sum(Number value, Number total) Number {
                 if (value <= 0) return total;
                 return sum(value - 1, total + value);
             }
@@ -97,8 +96,7 @@ public sealed class CompilationModeTests
         await workspace.CompileModuleAsync(
             """
             @module(TEST);
-            @directCall
-            func sum(value, total) {
+            native func sum(Number value, Number total) Number {
                 if (value <= 0) return total;
                 return sum(value - 1, total + value);
             }
@@ -511,8 +509,13 @@ public sealed class CompilationModeTests
                 continue;
             }
 
-            // DEFAULT, parameter count 2, return R8, parameter R8, parameter R8.
-            Assert.Equal([0x00, 0x02, 0x0d, 0x0d, 0x0d], reader.GetBlobBytes(method.Signature));
+            // DEFAULT, ScriptContext plus two R8 parameters, return R8.
+            var signature = reader.GetBlobBytes(method.Signature);
+            Assert.Equal(0x00, signature[0]);
+            Assert.Equal(3, signature[1]);
+            Assert.Equal(0x0d, signature[2]);
+            Assert.Equal(0x12, signature[3]); // ScriptContext class marker.
+            Assert.Equal(new byte[] { 0x0d, 0x0d }, signature[^2..]);
             Assert.True(
                 (method.ImplAttributes & MethodImplAttributes.AggressiveInlining) != 0,
                 "Native direct-call methods should carry the general-purpose JIT inlining hint.");

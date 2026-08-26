@@ -37,8 +37,7 @@ public sealed class CompilerBackendPlanTests
         var module = Parse(
             """
             @module(TEST);
-            @directCall
-            func sum(value, total) {
+            native func sum(Number value, Number total) Number {
                 if (value <= 0) return total;
                 return sum(value - 1, total + value);
             }
@@ -254,8 +253,7 @@ public sealed class CompilerBackendPlanTests
         var module = Parse(
             """
             @module(TEST);
-            @directCall
-            func bump(value) {
+            native func bump(Number value) Number {
                 value++;
                 return value;
             }
@@ -289,12 +287,10 @@ public sealed class CompilerBackendPlanTests
         var module = Parse(
             """
             @module(TEST);
-            @directCall
-            func numeric(value) {
+            native func numeric(Number value) Number {
                 return value - 1;
             }
-            @directCall
-            func relay(value) {
+            native func relay(Number value) Number {
                 return numeric(value);
             }
             export func run() {
@@ -310,7 +306,7 @@ public sealed class CompilerBackendPlanTests
         var parameter = Assert.Single(code.GetDirectParameters(numeric.Id));
 
         Assert.Equal(FlowValueType.Number, parameter.Type);
-        Assert.Equal(NativeCoercionKind.ArithmeticNumber, parameter.Coercion);
+        Assert.Equal(NativeCoercionKind.None, parameter.Coercion);
     }
 
     [Fact]
@@ -321,12 +317,12 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var module = Parse(
             """
             @module(TEST);
             const secret = 40;
-            func helper(value) { return value + secret; }
+            native func helper(Number value) Number { return value + secret; }
             export func run() { return helper(2); }
             """,
             root);
@@ -339,7 +335,7 @@ public sealed class CompilerBackendPlanTests
         Assert.Equal("TEST", modulePlan.Name);
         Assert.True(modulePlan.ModuleScope.IsValid);
         Assert.Equal(2, modulePlan.Functions.Count);
-        Assert.Contains(modulePlan.Functions, function => function.Name == "helper" && function.IsModuleFunction && function.Visibility == FunctionVisibility.InternalOnly && function.IsDirectCallCandidate);
+        Assert.Contains(modulePlan.Functions, function => function.Name == "helper" && function.IsModuleFunction && function.Visibility == FunctionVisibility.ModuleVisible && function.IsDirectCallCandidate);
         Assert.Contains(modulePlan.Functions, function => function.Name == "run" && function.IsModuleFunction && function.Visibility == FunctionVisibility.Exported);
         Assert.Equal(3, session.Scopes[modulePlan.ModuleScope].SymbolCount);
         Assert.Equal(2, modulePlan.Functions.Select(function => function.Id.Value).Distinct().Count());
@@ -351,12 +347,11 @@ public sealed class CompilerBackendPlanTests
         var options = EngineOptions.Default
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = true)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
 
         var capabilities = CompilationModeCapabilities.FromOptions(options);
 
         Assert.True(capabilities.CanUseModuleDirectCall);
-        Assert.True(capabilities.CanInferAutoModuleDirectCall);
     }
 
     [Fact]
@@ -686,7 +681,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = false);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
 
         var session = backend.CreateModulePlans([module]);
@@ -694,204 +689,6 @@ public sealed class CompilerBackendPlanTests
 
         Assert.Equal(FunctionVisibility.ModuleVisible, helper.Visibility);
         Assert.False(helper.IsDirectCallCandidate);
-    }
-
-    [Fact]
-    public void FunctionAnnotationDirectCallPreservesModuleFunctionObject()
-    {
-        var root = Path.GetTempPath();
-        var module = Parse(
-            """
-            @module(TEST);
-            @directCall
-            func helper(value) { return value + 1; }
-            export const exposed = helper;
-            export func run(value) { return helper(value); }
-            """,
-            root);
-        var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
-            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
-            .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = false);
-        var builder = new DynamicBuilder(options);
-        var backend = new BackendCompiler(builder, options);
-
-        var session = backend.CreateModulePlans([module]);
-        var modulePlan = Assert.Single(session.Modules);
-        var helper = Assert.Single(modulePlan.Functions, function => function.Name == "helper");
-        var runPlan = Assert.Single(modulePlan.Functions, function => function.Name == "run");
-        var call = Assert.IsType<FunctionCallExpression>(GetSingleReturnExpression(modulePlan, "run"));
-        var callTarget = Assert.IsType<NameExpression>(call.Target);
-        var callBinding = TypedFunctionBuilder.Build(modulePlan, runPlan).GetName(callTarget);
-        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
-        var moduleResult = Assert.Single(report.Modules);
-        var initialize = (ModuleInitializerDelegate)moduleResult.Initializer.CreateDelegate(typeof(ModuleInitializerDelegate));
-        var run = Assert.Single(moduleResult.Functions, function => function.Name == "run");
-        var engine = new AuroraEngine(options);
-        var domain = engine.CreateEmptyDomain(null);
-        var runtimeModule = CreateRuntimeModule(root);
-        var ctx = new ScriptContext(domain) { Module = runtimeModule };
-
-        Assert.Equal(DirectCallDirective.PreserveClosure, helper.DirectCallDirective);
-        Assert.True(helper.IsDirectCallCandidate);
-        Assert.True(helper.RequiresClosureObject);
-        Assert.True(callBinding.DirectFunction.Equals(helper.Id));
-
-        initialize(ctx, Span<ScriptDatum>.Empty);
-        Assert.IsType<ClosureFunction>(runtimeModule.GetPropertyValue("helper"));
-
-        var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = runDel(ctx, new[] { ScriptDatum.FromNumber(41) });
-        Assert.Equal(42, result.Number);
-    }
-
-    [Fact]
-    public void FunctionAnnotationDirectCallFalseDisablesModuleDirectCall()
-    {
-        var root = Path.GetTempPath();
-        var module = Parse(
-            """
-            @module(TEST);
-            @directCall(false)
-            func helper(value) { return value + 1; }
-            export func run(value) { return helper(value); }
-            """,
-            root);
-        var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
-            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
-            .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
-        var backend = new BackendCompiler(new DynamicBuilder(options), options);
-
-        var session = backend.CreateModulePlans([module]);
-        var helper = Assert.Single(Assert.Single(session.Modules).Functions, function => function.Name == "helper");
-
-        Assert.Equal(DirectCallDirective.Disabled, helper.DirectCallDirective);
-        Assert.False(helper.IsDirectCallCandidate);
-        Assert.True(helper.RequiresClosureObject);
-    }
-
-    [Fact]
-    public void FunctionAnnotationDirectCallCanTargetExportedFunction()
-    {
-        var root = Path.GetTempPath();
-        var module = Parse(
-            """
-            @module(TEST);
-            @directCall
-            export func helper(value) { return value + 1; }
-            export func run(value) { return helper(value); }
-            """,
-            root);
-        var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
-            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
-            .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
-        var backend = new BackendCompiler(new DynamicBuilder(options), options);
-
-        var session = backend.CreateModulePlans([module]);
-        var modulePlan = Assert.Single(session.Modules);
-        var helper = Assert.Single(modulePlan.Functions, function => function.Name == "helper");
-        var run = Assert.Single(modulePlan.Functions, function => function.Name == "run");
-        var call = Assert.IsType<FunctionCallExpression>(GetSingleReturnExpression(modulePlan, "run"));
-        var callTarget = Assert.IsType<NameExpression>(call.Target);
-        var callBinding = TypedFunctionBuilder.Build(modulePlan, run).GetName(callTarget);
-
-        Assert.Equal(FunctionVisibility.Exported, helper.Visibility);
-        Assert.True(helper.IsDirectCallCandidate);
-        Assert.True(helper.RequiresClosureObject);
-        Assert.True(callBinding.DirectFunction.Equals(helper.Id));
-    }
-
-    [Fact]
-    public void FunctionAnnotationKeepsHighArityNativeSpecializationEligible()
-    {
-        var root = Path.GetTempPath();
-        var module = Parse(
-            """
-            @module(TEST);
-            @directCall
-            func mix(a, b, c, d, e, f, g, h) {
-                a = a ^ b;
-                return a ^ c ^ d ^ e ^ f ^ g ^ h;
-            }
-            export func run() { return mix(1, 2, 3, 4, 5, 6, 7, 8); }
-            """,
-            root);
-        var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
-            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
-            .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = false);
-        var backend = new BackendCompiler(new DynamicBuilder(options), options);
-
-        var session = backend.CreateModulePlans([module]);
-        var modulePlan = Assert.Single(session.Modules);
-        var mix = Assert.Single(modulePlan.Functions, function => function.Name == "mix");
-        var run = Assert.Single(modulePlan.Functions, function => function.Name == "run");
-        var call = Assert.IsType<FunctionCallExpression>(GetSingleReturnExpression(modulePlan, "run"));
-        var target = Assert.IsType<NameExpression>(call.Target);
-        var binding = TypedFunctionBuilder.Build(modulePlan, run).GetName(target);
-
-        Assert.True(mix.IsDirectCallCandidate);
-        Assert.True(mix.RequiresClosureObject);
-        Assert.True(binding.DirectFunction.Equals(mix.Id));
-    }
-
-    [Fact]
-    public void FunctionAnnotationDirectCallWorksWhenHotReloadIsEnabled()
-    {
-        var root = Path.GetTempPath();
-        var module = Parse(
-            """
-            @module(TEST);
-            @directCall
-            func helper(value) { return value + 1; }
-            export func run(value) { return helper(value); }
-            """,
-            root);
-        var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
-            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
-            .WithRuntime(runtime => runtime.HotReload = true)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = false);
-        var backend = new BackendCompiler(new DynamicBuilder(options), options);
-
-        var session = backend.CreateModulePlans([module]);
-        var modulePlan = Assert.Single(session.Modules);
-        var helper = Assert.Single(modulePlan.Functions, function => function.Name == "helper");
-        var run = Assert.Single(modulePlan.Functions, function => function.Name == "run");
-        var call = Assert.IsType<FunctionCallExpression>(GetSingleReturnExpression(modulePlan, "run"));
-        var callTarget = Assert.IsType<NameExpression>(call.Target);
-        var callBinding = TypedFunctionBuilder.Build(modulePlan, run).GetName(callTarget);
-
-        Assert.True(session.Capabilities.CanUseModuleDirectCall);
-        Assert.True(helper.IsDirectCallCandidate);
-        Assert.True(callBinding.DirectFunction.Equals(helper.Id));
-    }
-
-    [Fact]
-    public void UnsupportedFunctionAnnotationIsRejectedByBackendBinding()
-    {
-        var root = Path.GetTempPath();
-        var module = Parse(
-            """
-            @module(TEST);
-            @unknown(false)
-            func helper() { return 1; }
-            """,
-            root);
-        var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
-            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
-        var backend = new BackendCompiler(new DynamicBuilder(options), options);
-
-        var error = Assert.Throws<AuroraCompilationException>(() => backend.CreateModulePlans([module]));
-
-        Assert.Contains("Unsupported function annotation '@unknown'", error.Message);
     }
 
     [Fact]
@@ -916,14 +713,14 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
 
         var session = backend.CreateModulePlans([first, second]);
 
         Assert.Equal(2, session.Modules.Length);
-        Assert.Contains(session.Modules[0].Functions, function => function.Name == "helperA" && function.IsDirectCallCandidate);
-        Assert.Contains(session.Modules[1].Functions, function => function.Name == "helperB" && function.IsDirectCallCandidate);
+        Assert.Contains(session.Modules[0].Functions, function => function.Name == "helperA" && !function.IsDirectCallCandidate);
+        Assert.Contains(session.Modules[1].Functions, function => function.Name == "helperB" && !function.IsDirectCallCandidate);
         Assert.Equal(4, session.Modules.SelectMany(module => module.Functions).Select(function => function.Id.Value).Distinct().Count());
     }
 
@@ -1531,7 +1328,7 @@ public sealed class CompilerBackendPlanTests
         var module = Parse(
             """
             @module(TEST);
-            func helper(value) { return value + 1; }
+            native func helper(Number value) Number { return value + 1; }
             export func run(value) { return helper(value); }
             """,
             root);
@@ -1539,7 +1336,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
 
         var session = backend.CreateModulePlans([module]);
@@ -1551,7 +1348,7 @@ public sealed class CompilerBackendPlanTests
         var binding = TypedFunctionBuilder.Build(modulePlan, run).GetName(target);
 
         Assert.True(helper.IsDirectCallCandidate);
-        Assert.Equal(FunctionVisibility.InternalOnly, helper.Visibility);
+        Assert.Equal(FunctionVisibility.ModuleVisible, helper.Visibility);
         Assert.Equal(helper.Id, binding.DirectFunction);
     }
 
@@ -1812,7 +1609,7 @@ public sealed class CompilerBackendPlanTests
         var module = Parse(
             """
             @module(TEST);
-            func helper(value) { return value + 1; }
+            native func helper(Number value) Number { return value + 1; }
             export func run(items, obj) {
                 for (var item in items) {
                     if (item > 0) {
@@ -1834,7 +1631,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -2118,7 +1915,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -2154,7 +1951,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -2366,7 +2163,7 @@ public sealed class CompilerBackendPlanTests
             export func run(value) {
                 return helper(value, 2) + helper(1, 3);
             }
-            func helper(left, right) {
+            native func helper(Number left, Number right) Number {
                 return left + right;
             }
             """,
@@ -2375,7 +2172,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -2389,16 +2186,22 @@ public sealed class CompilerBackendPlanTests
 
         Assert.True(run.HasExecutableCode);
         Assert.True(helper.HasExecutableCode);
-        Assert.Equal(FunctionCallConvention.Fast2, helperPlan.CallConvention);
+        Assert.Equal(FunctionCallConvention.Span, helperPlan.CallConvention);
         var engine = new AuroraEngine(options);
         var domain = engine.CreateEmptyDomain(null);
-        var ctx = new ScriptContext(domain) { Module = CreateRuntimeModule(root) };
+        var runtimeModule = CreateRuntimeModule(root);
+        var ctx = new ScriptContext(domain) { Module = runtimeModule };
+        var initialize = (ModuleInitializerDelegate)moduleResult.Initializer.CreateDelegate(
+            typeof(ModuleInitializerDelegate));
+        initialize(ctx, Span<ScriptDatum>.Empty);
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var runResult = runDel(ctx, new[] { ScriptDatum.FromNumber(5) });
         Assert.Equal(11, runResult.Number);
 
-        var helperDel = (ScriptFunctionDelegate2)helper.Method.CreateDelegate(typeof(ScriptFunctionDelegate2));
-        var helperResult = helperDel(CreateTestContext(), ScriptDatum.FromNumber(6), ScriptDatum.FromNumber(7));
+        var helperDel = (ScriptFunctionDelegate)helper.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
+        var helperResult = helperDel(
+            CreateTestContext(),
+            new[] { ScriptDatum.FromNumber(6), ScriptDatum.FromNumber(7) });
         Assert.Equal(13, helperResult.Number);
     }
 
@@ -2410,7 +2213,7 @@ public sealed class CompilerBackendPlanTests
             """
             @module(TEST);
             var total = helper(40);
-            func helper(value) {
+            native func helper(Number value) Number {
                 return value + 2;
             }
             export func run() {
@@ -2422,7 +2225,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -2439,9 +2242,9 @@ public sealed class CompilerBackendPlanTests
         var ctx = new ScriptContext(domain) { Module = runtimeModule };
 
         Assert.True(helperPlan.IsDirectCallCandidate);
-        Assert.False(helperPlan.RequiresClosureObject);
+        Assert.True(helperPlan.RequiresClosureObject);
         initialize(ctx, Span<ScriptDatum>.Empty);
-        Assert.Same(ScriptObject.Null, runtimeModule.GetPropertyValue("helper"));
+        Assert.IsType<ClosureFunction>(runtimeModule.GetPropertyValue("helper"));
 
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = runDel(ctx, Span<ScriptDatum>.Empty);
@@ -2468,7 +2271,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -2502,7 +2305,7 @@ public sealed class CompilerBackendPlanTests
                 helper(value = value + 1, value = value + 2);
                 return value;
             }
-            func helper(value) {
+            native func helper(Number value) Number {
                 return value;
             }
             """,
@@ -2511,7 +2314,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -2545,7 +2348,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -2586,7 +2389,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -2619,7 +2422,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -2650,7 +2453,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -2692,7 +2495,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -2741,7 +2544,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -2779,7 +2582,7 @@ public sealed class CompilerBackendPlanTests
         var module = Parse(
             """
             @module(TEST);
-            func helper(a, b, c, d, e, f, g, h, i) { return a + i; }
+            native func helper(Number a, Number b, Number c, Number d, Number e, Number f, Number g, Number h, Number i) Number { return a + i; }
             export func run() { return helper(1, 2, 3, 4, 5, 6, 7, 8, 9); }
             """,
             root);
@@ -2787,7 +2590,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -2837,7 +2640,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -2853,7 +2656,7 @@ public sealed class CompilerBackendPlanTests
         var runtimeModule = CreateRuntimeModule(root);
         var ctx = new ScriptContext(domain) { Module = runtimeModule };
 
-        Assert.True(helperPlan.IsDirectCallCandidate);
+        Assert.False(helperPlan.IsDirectCallCandidate);
         Assert.Equal(FunctionVisibility.ModuleVisible, helperPlan.Visibility);
         Assert.True(helperPlan.RequiresClosureObject);
         Assert.Equal(FunctionCallConvention.Span, helperPlan.CallConvention);
@@ -2884,7 +2687,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
         var receiver = new ScriptObject();
@@ -2916,7 +2719,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -2947,7 +2750,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
         var receiver = new ScriptObject();
@@ -2981,7 +2784,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -3015,7 +2818,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -3047,7 +2850,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -3080,7 +2883,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -3112,7 +2915,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -3142,7 +2945,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -3173,7 +2976,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -3205,7 +3008,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -3236,7 +3039,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -3269,7 +3072,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -3302,7 +3105,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -3341,7 +3144,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -3377,7 +3180,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -3414,7 +3217,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -3445,7 +3248,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -3534,7 +3337,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = false);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var builder = new DynamicBuilder(options);
         var backend = new BackendCompiler(builder, options);
 
@@ -3587,7 +3390,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
 
         var session = backend.CreateModulePlans([module]);
@@ -3613,7 +3416,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
 
         var session = backend.CreateModulePlans([module]);
@@ -3639,7 +3442,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
 
         var session = backend.CreateModulePlans([module]);
@@ -3664,7 +3467,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
 
         var session = backend.CreateModulePlans([module]);
@@ -3692,7 +3495,7 @@ public sealed class CompilerBackendPlanTests
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
             .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
             .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.AutoModuleDirectCall = true);
+            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
         var backend = new BackendCompiler(new DynamicBuilder(options), options);
 
         var session = backend.CreateModulePlans([module]);
