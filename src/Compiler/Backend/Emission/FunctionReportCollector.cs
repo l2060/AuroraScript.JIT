@@ -12,13 +12,17 @@ namespace AuroraScript.Compiler.Backend.Emission
     internal sealed class FunctionReportCollector
     {
         private readonly ModulePlan _module;
+        private readonly HostExportCatalog _hostExports;
         private readonly Dictionary<FunctionDeclaration, FunctionPlan> _functions;
         private FunctionEmissionContext _context;
         private TypedFunctionCode _code;
 
-        public FunctionReportCollector(ModulePlan module)
+        public FunctionReportCollector(
+            ModulePlan module,
+            HostExportCatalog hostExports)
         {
             _module = module ?? throw new ArgumentNullException(nameof(module));
+            _hostExports = hostExports ?? throw new ArgumentNullException(nameof(hostExports));
             _functions = new Dictionary<FunctionDeclaration, FunctionPlan>(ReferenceEqualityComparer.Instance);
             for (var i = 0; i < module.Functions.Count; i++)
             {
@@ -30,7 +34,10 @@ namespace AuroraScript.Compiler.Backend.Emission
         public void Collect(FunctionEmissionContext context)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
-            _code = TypedFunctionBuilder.Build(_module, context.Function);
+            _code = TypedFunctionBuilder.Build(
+                _module,
+                context.Function,
+                _hostExports);
             try
             {
                 VisitStatement(context.Function.Declaration?.Body as Statement);

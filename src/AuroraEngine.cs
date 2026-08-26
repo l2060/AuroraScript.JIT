@@ -115,6 +115,7 @@ namespace AuroraScript
             Global.Define("JSON", new JsonSupport(), writeable: false, enumerable: false);
             Global.Define("TDoc", new TDocSupport(), writeable: false, enumerable: false);
             Global.Define("Math", new MathSupport(), writeable: false, enumerable: false);
+            Global.Define("Stats", new StatsSupport(), writeable: false, enumerable: false);
 
             // Hot patch support
             Global.Define("HotPatch", HotPatchSupport.INSTANCE, writeable: false, enumerable: false);

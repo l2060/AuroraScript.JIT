@@ -3,6 +3,8 @@ using AuroraScript.Runtime.Package;
 using AuroraScript.Source;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Reflection;
 using System.IO;
 
 namespace AuroraScript
@@ -77,6 +79,7 @@ namespace AuroraScript
         private OptimizationOptions _optimization = OptimizationOptions.Default;
         private OutputOptions _output = OutputOptions.Default;
         private IReadOnlyList<BuiltInModuleDefinition> _builtIns = Array.Empty<BuiltInModuleDefinition>();
+        private IReadOnlyList<Assembly> _hostExportAssemblies = Array.Empty<Assembly>();
 
         /// <summary>
         /// Provides a default set of options for the engine.
@@ -127,6 +130,28 @@ namespace AuroraScript
         {
             get => _builtIns;
             init => _builtIns = BuiltInModulesBuilder.CreateSnapshot(value);
+        }
+
+        /// <summary>
+        /// Gets assemblies whose source-generated host exports may be called directly
+        /// by compiled scripts. Runtime globals must still be registered separately.
+        /// </summary>
+        public IReadOnlyList<Assembly> HostExportAssemblies
+        {
+            get => _hostExportAssemblies;
+            init
+            {
+                ArgumentNullException.ThrowIfNull(value);
+                var copy = new Assembly[value.Count];
+                for (var i = 0; i < copy.Length; i++)
+                {
+                    copy[i] = value[i] ??
+                        throw new ArgumentException(
+                            "Host export assemblies cannot contain null.",
+                            nameof(value));
+                }
+                _hostExportAssemblies = new ReadOnlyCollection<Assembly>(copy);
+            }
         }
 
 

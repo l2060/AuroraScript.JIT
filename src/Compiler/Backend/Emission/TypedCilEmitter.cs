@@ -5,6 +5,7 @@ using AuroraScript.Compiler.Backend.Code;
 using AuroraScript.Compiler.Backend.Binding;
 using AuroraScript.Compiler.Backend.Plans;
 using AuroraScript.Compiler.Backend.Traversal;
+using AuroraScript.Hosting;
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Interop;
 using AuroraScript.Runtime.Serialization;
@@ -102,7 +103,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return;
             }
 
-            _moduleCode = TypedModuleCode.Build(_module);
+            _moduleCode = TypedModuleCode.Build(
+                _module,
+                _session.CompileSession.HostExports);
             PrepareDirectMethods();
             var genericCandidates = BuildGenericCandidates();
             for (var i = 0; i < _module.Functions.Count; i++)
@@ -2927,6 +2930,15 @@ namespace AuroraScript.Compiler.Backend.Emission
             Expression receiver,
             string name)
         {
+            if (TryGetHostExportCall(
+                    call,
+                    receiver,
+                    name,
+                    out var hostExport))
+            {
+                return EmitHostExportCall(call, hostExport);
+            }
+
             if (_code.GetExpressionType(receiver) == FlowValueType.Array &&
                 StringComparer.Ordinal.Equals(name, "push") &&
                 !HasSpread(call.Arguments) &&
@@ -2964,6 +2976,127 @@ namespace AuroraScript.Compiler.Backend.Emission
             ReleaseArgumentBuffer(arguments, count);
             _il.Emit(OpCodes.Ldloc, result);
             return StackValueKind.Datum;
+        }
+
+        private bool TryGetHostExportCall(
+            FunctionCallExpression call,
+            Expression receiver,
+            string memberName,
+            out HostExportDescriptor descriptor)
+        {
+            descriptor = null;
+            var binding = receiver is NameExpression global
+                ? _code.GetName(global)
+                : BoundName.Unbound;
+            if (HasSpread(call.Arguments) ||
+                receiver is not NameExpression ||
+                !binding.IsUnshadowedGlobal ||
+                !_session.CompileSession.HostExports.TryGetGlobal(
+                    binding.Name,
+                    memberName,
+                    out descriptor) ||
+                call.Arguments.Count < descriptor.ParameterKinds.Length)
+            {
+                descriptor = null;
+                return false;
+            }
+
+            for (var i = 0; i < descriptor.ParameterKinds.Length; i++)
+            {
+                if (!CanPassHostExportArgument(
+                        descriptor.ParameterKinds[i],
+                        _code.GetExpressionType(call.Arguments[i])))
+                {
+                    descriptor = null;
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private static bool CanPassHostExportArgument(
+            AuroraExportValueKind parameterKind,
+            FlowValueType argumentType)
+        {
+            return parameterKind switch
+            {
+                AuroraExportValueKind.Number =>
+                    argumentType is FlowValueType.Number or FlowValueType.Int32,
+                AuroraExportValueKind.Int32 =>
+                    argumentType == FlowValueType.Int32,
+                AuroraExportValueKind.Boolean =>
+                    argumentType == FlowValueType.Boolean,
+                AuroraExportValueKind.String =>
+                    argumentType == FlowValueType.String,
+                AuroraExportValueKind.Object =>
+                    argumentType == FlowValueType.Object,
+                _ => false
+            };
+        }
+
+        private StackValueKind EmitHostExportCall(
+            FunctionCallExpression call,
+            HostExportDescriptor descriptor)
+        {
+            for (var i = 0; i < descriptor.ParameterKinds.Length; i++)
+            {
+                EmitHostExportArgument(
+                    call.Arguments[i],
+                    descriptor.ParameterKinds[i]);
+            }
+
+            // Script calls evaluate surplus arguments before invoking the target.
+            for (var i = descriptor.ParameterKinds.Length;
+                i < call.Arguments.Count;
+                i++)
+            {
+                EmitExpression(call.Arguments[i]);
+                _il.Emit(OpCodes.Pop);
+            }
+
+            _il.Emit(OpCodes.Call, descriptor.Method);
+            if (descriptor.ReturnKind == AuroraExportValueKind.Void)
+            {
+                EmitNull();
+                return StackValueKind.Datum;
+            }
+            return descriptor.ReturnKind switch
+            {
+                AuroraExportValueKind.Number => StackValueKind.Number,
+                AuroraExportValueKind.Int32 => StackValueKind.Int32,
+                AuroraExportValueKind.Boolean => StackValueKind.Boolean,
+                AuroraExportValueKind.String => StackValueKind.String,
+                AuroraExportValueKind.Object => StackValueKind.Object,
+                _ => throw new NotSupportedException(
+                    "Unsupported generated host export return type.")
+            };
+        }
+
+        private void EmitHostExportArgument(
+            Expression argument,
+            AuroraExportValueKind parameterKind)
+        {
+            switch (parameterKind)
+            {
+                case AuroraExportValueKind.Number:
+                    EmitNumber(argument);
+                    return;
+                case AuroraExportValueKind.Int32:
+                    EmitInt32Value(argument);
+                    return;
+                case AuroraExportValueKind.Boolean:
+                    EmitCondition(argument);
+                    return;
+                case AuroraExportValueKind.String:
+                    EmitString(argument);
+                    return;
+                case AuroraExportValueKind.Object:
+                    EmitObjectReference(argument);
+                    return;
+                default:
+                    throw new NotSupportedException(
+                        "Unsupported generated host export parameter type.");
+            }
         }
 
         private StackValueKind EmitArrayPushCall(
@@ -4724,6 +4857,21 @@ namespace AuroraScript.Compiler.Backend.Emission
                 _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumToObject);
             }
             _il.Emit(OpCodes.Castclass, typeof(ScriptArray));
+        }
+
+        private void EmitObjectReference(Expression expression)
+        {
+            var kind = EmitExpression(expression);
+            if (kind == StackValueKind.Object)
+            {
+                return;
+            }
+            if (kind != StackValueKind.Datum)
+            {
+                ConvertToDatum(kind);
+            }
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumToObject);
+            _il.Emit(OpCodes.Castclass, typeof(ScriptObject));
         }
 
         private void EmitPackedArrayStorage(Expression expression, FlowValueType expectedType)

@@ -23,7 +23,9 @@ namespace AuroraScript.Compiler.Backend.Emission
             _typed = typed;
             if (session.CollectDiagnostics)
             {
-                _reportCollector = new FunctionReportCollector(module);
+                _reportCollector = new FunctionReportCollector(
+                    module,
+                    session.CompileSession.HostExports);
             }
 
             _directCallCandidateSymbols = session.CollectDiagnostics

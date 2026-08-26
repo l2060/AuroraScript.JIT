@@ -24,9 +24,12 @@ namespace AuroraScript.Compiler.Backend.Code
             _directParameters = directParameters;
         }
 
-        public static TypedModuleCode Build(ModulePlan module)
+        public static TypedModuleCode Build(
+            ModulePlan module,
+            HostExportCatalog hostExports)
         {
             ArgumentNullException.ThrowIfNull(module);
+            ArgumentNullException.ThrowIfNull(hostExports);
             var maxId = -1;
             var functions = new Dictionary<FunctionId, FunctionPlan>();
             for (var i = 0; i < module.Functions.Count; i++)
@@ -52,6 +55,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 generic[function.Id.Value] = TypedFunctionBuilder.Build(
                     module,
                     function,
+                    hostExports,
                     directReturnTypes: returns,
                     directParameterTypes: directParameters);
             }
@@ -96,6 +100,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     var code = TypedFunctionBuilder.Build(
                         module,
                         function,
+                        hostExports,
                         parameterTypes,
                         returns,
                         directParameters,
@@ -108,6 +113,7 @@ namespace AuroraScript.Compiler.Backend.Code
                         code = TypedFunctionBuilder.Build(
                             module,
                             function,
+                            hostExports,
                             parameterTypes,
                             returns,
                             directParameters,
@@ -134,6 +140,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     generic[function.Id.Value] = TypedFunctionBuilder.Build(
                         module,
                         function,
+                        hostExports,
                         directReturnTypes: returns,
                         directParameterTypes: directParameters,
                         universalReturnTypes: universalReturns);
@@ -171,6 +178,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     direct[function.Id.Value] = TypedFunctionBuilder.Build(
                         module,
                         function,
+                        hostExports,
                         directParameters[function.Id.Value],
                         conservativeReturns,
                         directParameters,
@@ -178,6 +186,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     generic[function.Id.Value] = TypedFunctionBuilder.Build(
                         module,
                         function,
+                        hostExports,
                         directReturnTypes: conservativeReturns,
                         directParameterTypes: directParameters,
                         universalReturnTypes: universalReturns);

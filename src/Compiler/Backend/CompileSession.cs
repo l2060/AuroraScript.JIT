@@ -19,6 +19,7 @@ namespace AuroraScript.Compiler.Backend
             Options = options ?? throw new ArgumentNullException(nameof(options));
             CancellationToken = cancellationToken;
             Capabilities = capabilities;
+            HostExports = new HostExportCatalog(options.HostExportAssemblies);
             Scopes = new ScopeTable();
             Symbols = new SymbolTable();
             Modules = Array.Empty<ModulePlan>();
@@ -27,6 +28,7 @@ namespace AuroraScript.Compiler.Backend
         public EngineOptions Options { get; }
         public CancellationToken CancellationToken { get; }
         public CompilationModeCapabilities Capabilities { get; }
+        public HostExportCatalog HostExports { get; }
         public ScopeTable Scopes { get; }
         public SymbolTable Symbols { get; }
         public ModulePlan[] Modules { get; set; }

@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<OutputType>Library</OutputType>
@@ -80,10 +80,25 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<Compile Remove="AuroraScript.Hosting/**" />
+		<Compile Remove="AuroraScript.Hosting.Generators/**/*.cs" />
+		<None Remove="AuroraScript.Hosting/**" />
+		<None Remove="AuroraScript.Hosting.Generators/**" />
 		<Content Include="icon.ico" />
 		<InternalsVisibleTo Include="AuroraScript.LanguageServices" />
 		<InternalsVisibleTo Include="AuroraScript.LanguageServices.Tests" />
 	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="AuroraScript.Hosting.Generators\AuroraScript.Hosting.Generators.csproj"
+		                  OutputItemType="Analyzer"
+		                  ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+	<PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+		<EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+		<CompilerGeneratedFilesOutputPath>$(BaseIntermediateOutputPath)generated</CompilerGeneratedFilesOutputPath>
+	</PropertyGroup>
 
 	<ItemGroup>
 		<None Include="..\icon.png">

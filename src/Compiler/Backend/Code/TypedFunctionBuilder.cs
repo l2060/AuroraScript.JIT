@@ -3,6 +3,7 @@ using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Compiler.Backend.Plans;
 using AuroraScript.Compiler.Backend.Traversal;
+using AuroraScript.Hosting;
 using AuroraScript.Runtime;
 using AuroraScript.Tokens;
 using System;
@@ -15,6 +16,7 @@ namespace AuroraScript.Compiler.Backend.Code
         public static TypedFunctionCode Build(
             ModulePlan module,
             FunctionPlan function,
+            HostExportCatalog hostExports,
             DirectParameterType[] parameterTypes = null,
             IReadOnlyDictionary<FunctionId, FlowValueType> directReturnTypes = null,
             DirectParameterType[][] directParameterTypes = null,
@@ -22,6 +24,7 @@ namespace AuroraScript.Compiler.Backend.Code
         {
             ArgumentNullException.ThrowIfNull(module);
             ArgumentNullException.ThrowIfNull(function);
+            ArgumentNullException.ThrowIfNull(hostExports);
 
             var binder = new NameBinder(module, function);
             binder.Bind();
@@ -30,6 +33,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 function,
                 binder.Names,
                 binder.Declarations,
+                hostExports,
                 parameterTypes,
                 directReturnTypes,
                 directParameterTypes,
@@ -367,6 +371,7 @@ namespace AuroraScript.Compiler.Backend.Code
             private readonly FunctionPlan _function;
             private readonly Dictionary<NameExpression, BoundName> _names;
             private readonly Dictionary<VariableDeclaration, LocalSlotId> _declarations;
+            private readonly HostExportCatalog _hostExports;
             private readonly Dictionary<Expression, FlowValueType> _expressionTypes;
             private readonly Dictionary<Expression, TypeDeclaration> _structuralTypes;
             private readonly FlowValueType[] _locals;
@@ -392,6 +397,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 FunctionPlan function,
                 Dictionary<NameExpression, BoundName> names,
                 Dictionary<VariableDeclaration, LocalSlotId> declarations,
+                HostExportCatalog hostExports,
                 DirectParameterType[] parameterTypes,
                 IReadOnlyDictionary<FunctionId, FlowValueType> directReturnTypes,
                 DirectParameterType[][] directParameterTypes,
@@ -401,6 +407,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 _function = function;
                 _names = names;
                 _declarations = declarations;
+                _hostExports = hostExports;
                 _expressionTypes = new Dictionary<Expression, FlowValueType>(ReferenceEqualityComparer.Instance);
                 _structuralTypes = new Dictionary<Expression, TypeDeclaration>(ReferenceEqualityComparer.Instance);
                 _locals = new FlowValueType[function.LocalSlots.Length];
@@ -827,6 +834,19 @@ namespace AuroraScript.Compiler.Backend.Code
                             {
                                 type = FlowValueType.Dynamic;
                             }
+                        }
+                        else if (TryGetHostExport(call, out var hostExport))
+                        {
+                            type = hostExport.ReturnKind switch
+                            {
+                                AuroraExportValueKind.Void => FlowValueType.Null,
+                                AuroraExportValueKind.Number => FlowValueType.Number,
+                                AuroraExportValueKind.Int32 => FlowValueType.Int32,
+                                AuroraExportValueKind.Boolean => FlowValueType.Boolean,
+                                AuroraExportValueKind.String => FlowValueType.String,
+                                AuroraExportValueKind.Object => FlowValueType.Object,
+                                _ => FlowValueType.Dynamic
+                            };
                         }
                         else
                         {
@@ -1375,6 +1395,26 @@ namespace AuroraScript.Compiler.Backend.Code
                 }
                 return binding.IsUnshadowedGlobal &&
                     StringComparer.Ordinal.Equals(binding.Name, "Array");
+            }
+
+            private bool TryGetHostExport(
+                FunctionCallExpression call,
+                out HostExportDescriptor descriptor)
+            {
+                descriptor = null;
+                if (call?.Target is not GetPropertyExpression property ||
+                    !TryGetStaticPropertyName(property.Property, out var memberName) ||
+                    property.Object is not NameExpression receiver ||
+                    !_names.TryGetValue(receiver, out var binding) ||
+                    !binding.IsUnshadowedGlobal)
+                {
+                    return false;
+                }
+
+                return _hostExports.TryGetGlobal(
+                    binding.Name,
+                    memberName,
+                    out descriptor);
             }
 
             private static bool IsStaticProperty(Expression property, string expected)
