@@ -1,5 +1,6 @@
 using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
+using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Compiler.Backend.Plans;
 using AuroraScript.Runtime;
 using System;
@@ -28,6 +29,7 @@ namespace AuroraScript.Compiler.Backend.Code
         UInt32Array = 1 << 16,
         Int64Array = 1 << 17,
         UInt64Array = 1 << 18,
+        Int64 = 1 << 19,
         Dynamic = Null | Boolean | Number | String | Object |
             Int32Array | Int8Array | BooleanArray | Float64Array |
             UInt8Array | Int16Array | UInt16Array | UInt32Array | Int64Array | UInt64Array | Array
@@ -195,7 +197,7 @@ namespace AuroraScript.Compiler.Backend.Code
 
         public static bool IsNumeric(FlowValueType type)
         {
-            return type is FlowValueType.Int32 or FlowValueType.Number;
+            return type is FlowValueType.Int32 or FlowValueType.Int64 or FlowValueType.Number;
         }
 
         public static bool CanPassNativeArgument(
@@ -210,7 +212,7 @@ namespace AuroraScript.Compiler.Backend.Code
             }
             return parameterType == argumentType ||
                 (parameterType == FlowValueType.Number &&
-                    argumentType == FlowValueType.Int32) ||
+                    argumentType is FlowValueType.Int32 or FlowValueType.Int64) ||
                 (parameter.IsInt32Coercion && IsNumeric(argumentType));
         }
 
@@ -219,10 +221,13 @@ namespace AuroraScript.Compiler.Backend.Code
             if (left == FlowValueType.None) return right;
             if (right == FlowValueType.None) return left;
             var merged = left | right;
-            // Number is the semantic widening of the internal Int32 representation.
-            // Keeping both bits would create a union that has no single native CIL
-            // representation and would unnecessarily fall back to ScriptDatum.
+            // Number is the semantic widening of both internal integer
+            // representations. Int64 similarly widens Int32.
             if ((merged & FlowValueType.Number) != 0)
+            {
+                merged &= ~(FlowValueType.Int32 | FlowValueType.Int64);
+            }
+            else if ((merged & FlowValueType.Int64) != 0)
             {
                 merged &= ~FlowValueType.Int32;
             }
@@ -308,12 +313,29 @@ namespace AuroraScript.Compiler.Backend.Code
             !HasConstant;
     }
 
+    /// <summary>
+    /// An ascending <c>for</c> loop whose counter was proven to hold exact
+    /// integers, so the emitter can hoist the bound and drive it natively.
+    /// </summary>
+    internal readonly struct CountedLoop
+    {
+        public CountedLoop(LocalSlotId counter, Expression bound)
+        {
+            Counter = counter;
+            Bound = bound;
+        }
+
+        public LocalSlotId Counter { get; }
+        public Expression Bound { get; }
+    }
+
     internal sealed class TypedFunctionCode
     {
         private readonly Dictionary<NameExpression, BoundName> _names;
         private readonly Dictionary<VariableDeclaration, LocalSlotId> _declarations;
         private readonly Dictionary<Expression, FlowValueType> _expressionTypes;
         private readonly Dictionary<Expression, TypeDeclaration> _structuralTypes;
+        private readonly Dictionary<ForStatement, CountedLoop> _countedLoops;
 
         public TypedFunctionCode(
             FunctionPlan function,
@@ -324,7 +346,8 @@ namespace AuroraScript.Compiler.Backend.Code
             FlowValueType[] localTypes,
             TypeDeclaration[] localStructuralTypes,
             bool[] writtenLocals,
-            FlowValueType returnType)
+            FlowValueType returnType,
+            Dictionary<ForStatement, CountedLoop> countedLoops = null)
         {
             Function = function ?? throw new ArgumentNullException(nameof(function));
             _names = names ?? throw new ArgumentNullException(nameof(names));
@@ -335,6 +358,17 @@ namespace AuroraScript.Compiler.Backend.Code
             LocalStructuralTypes = localStructuralTypes ?? throw new ArgumentNullException(nameof(localStructuralTypes));
             WrittenLocals = writtenLocals ?? throw new ArgumentNullException(nameof(writtenLocals));
             ReturnType = returnType;
+            _countedLoops = countedLoops;
+        }
+
+        public bool TryGetCountedLoop(ForStatement statement, out CountedLoop loop)
+        {
+            if (_countedLoops == null || statement == null)
+            {
+                loop = default;
+                return false;
+            }
+            return _countedLoops.TryGetValue(statement, out loop);
         }
 
         public FunctionPlan Function { get; }

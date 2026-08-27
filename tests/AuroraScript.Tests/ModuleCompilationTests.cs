@@ -209,6 +209,9 @@ public sealed class ModuleCompilationTests
 
         ScriptAssert.Equal(2, TestWorkspace.Execute(domain, "visible"));
         ScriptAssert.Equal(null, TestWorkspace.Execute(domain, "hidden"));
+        var keys = domain.GetModule("TEST").EnumerationKeys();
+        Assert.Contains("INCLUDED", keys);
+        Assert.DoesNotContain("HIDDEN", keys);
     }
 
     [Fact]

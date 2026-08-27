@@ -533,7 +533,7 @@ public sealed class PackedArrayTests
         var consume = reader.GetMethodDefinition(consumeHandle);
         var consumeSignature = reader.GetBlobBytes(consume.Signature);
         Assert.Equal(2, consumeSignature[1]); // ScriptContext plus int[].
-        Assert.Equal(0x0d, consumeSignature[2]);
+        Assert.Equal(0x08, consumeSignature[2]); // Inferred native Int32 return.
         Assert.Contains((byte)0x1d, consumeSignature);
         var consumeOpcodes = ReadOpCodes(
             peReader.GetMethodBody(consume.RelativeVirtualAddress).GetILBytes().AsSpan());

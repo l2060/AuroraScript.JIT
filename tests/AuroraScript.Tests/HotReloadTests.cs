@@ -44,6 +44,24 @@ public sealed class HotReloadTests
     }
 
     [Fact]
+    public async Task IncrementalPatchCanReferenceExistingInternalMember()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            "@module(TEST); const state = 41; export func value() { return state; }",
+            enableHotReload: true);
+
+        domain.DynamicPatch(
+            workspace.MemorySource(
+                "main.as",
+                "@module(TEST); export func value() { return state + 1; }"),
+            HotPatchType.Incremental);
+
+        ScriptAssert.Equal(42, TestWorkspace.Execute(domain, "value"));
+        Assert.DoesNotContain("state", domain.GetModule("TEST").EnumerationKeys());
+    }
+
+    [Fact]
     public async Task NativeFunctionCannotBeHotUpdated()
     {
         using var workspace = new TestWorkspace();
@@ -94,6 +112,32 @@ public sealed class HotReloadTests
             error.Message,
             StringComparison.Ordinal);
         ScriptAssert.Equal(1, TestWorkspace.Execute(domain, "version"));
+    }
+
+    [Fact]
+    public async Task HostWriteDoesNotEraseNativeFunctionMetadata()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            "@module(TEST); export native func version() Number { return 1; }",
+            enableHotReload: true);
+        domain.GetModule("TEST").Define(
+            "version",
+            ScriptDatum.FromNumber(10),
+            writeable: true,
+            enumerable: true);
+
+        var error = Assert.Throws<AuroraCompilationException>(() =>
+            domain.DynamicPatch(
+                workspace.MemorySource(
+                    "main.as",
+                    "@module(TEST); export func version() { return 2; }"),
+                HotPatchType.Replace));
+
+        Assert.Contains(
+            "cannot be hot updated",
+            error.Message,
+            StringComparison.Ordinal);
     }
 
     [Fact]

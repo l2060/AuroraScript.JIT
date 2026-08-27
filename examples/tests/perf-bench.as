@@ -10,38 +10,38 @@ native func ticksToMs(Number ticks) Number {
 	return ticks / TICKS_PER_MS;
 }
 
-func copyArray(a) {
+func copyArray(Int64Array a) {
 	var n = a.length;
 	var b = new Int64Array(n);
 
 	for (var i = 0; i < n; i++) {
-		b[i]= a[i];
+		b[i] = a[i];
 	}
 
 	return b;
 }
 
-func percentile(sorted, p) {
-    var n = sorted.length;
-    if (n == 0) {
-        return 0;
-    }
-    if (p <= 0) {
-        return sorted[0];
-    }
-    if (p >= 1) {
-        return sorted[n - 1];
-    }
-    var idx = Math.ceil(p * n) - 1;
-    if (idx < 0) {
-        idx = 0;
-    }
-    if (idx >= n) {
-        idx = n - 1;
-    }
-    return sorted[idx];
+func percentile(Int64Array sorted, Number p) Number {
+	var n = sorted.length;
+	if (n == 0) {
+		return 0;
+	}
+	if (p <= 0) {
+		return sorted[0];
+	}
+	if (p >= 1) {
+		return sorted[n - 1];
+	}
+	var idx = Math.ceil(p * n) - 1;
+	if (idx < 0) {
+		idx = 0;
+	}
+	if (idx >= n) {
+		idx = n - 1;
+	}
+	return sorted[idx];
 }
-export func calcStats(samples) {
+export func calcStats(Int64Array samples) Object {
 	var n = samples.length;
 
 	if (n == 0) {
@@ -99,7 +99,7 @@ export func calcStats(samples) {
 	};
 }
 
-func runLoops(loopCount, work) {
+func runLoops(Number loopCount, work) Number {
 	var guard = 0;
 
 	for (var i = 0; i < loopCount; i++) {
@@ -113,7 +113,7 @@ func runLoops(loopCount, work) {
 	return guard;
 }
 
-export func benchmark(name, warmups, samples, innerLoops, work) {
+export func benchmark(String name, Number warmups, Number samples, Number innerLoops, work) Object {
 	for (var w = 0; w < warmups; w++) {
 		runLoops(innerLoops, work);
 	}
@@ -129,7 +129,7 @@ export func benchmark(name, warmups, samples, innerLoops, work) {
 		var t1 = nowTicks();
 
 		var elapsedMs = ticksToMs(t1 - t0);
-		times[s]=(elapsedMs / innerLoops);
+		times[s] = (elapsedMs / innerLoops);
 	}
 
 	var stat = calcStats(times);
@@ -146,7 +146,7 @@ export func benchmark(name, warmups, samples, innerLoops, work) {
 	};
 }
 
-export func autoBenchmark(name, work, warmups, samples, minSampleMs, maxInnerLoops) {
+export func autoBenchmark(String name, work, Number warmups, Number samples, Number minSampleMs, Number maxInnerLoops) Object {
 	// 先预热几次，避免首次运行冷启动影响自动校准
 	for (var w = 0; w < warmups; w++) {
 		runLoops(1, work);
@@ -179,7 +179,7 @@ export func run() {
 	var data = new Int64Array(10000);
 
 	for (var i = 0; i < 10000; i++) {
-		data[i]=i;
+		data[i] = i;
 	}
 
 	var work = () => {
@@ -189,7 +189,6 @@ export func run() {
 		for (var i = 0; i < n; i++) {
 			s = s + data[i];
 		}
-
 		return s;
 	};
 

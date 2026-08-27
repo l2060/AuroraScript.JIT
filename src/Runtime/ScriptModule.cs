@@ -1,6 +1,6 @@
 ﻿using AuroraScript.Runtime.Types;
+using AuroraScript.Runtime.Property;
 using AuroraScript.Core;
-using System.Collections.Generic;
 using System.ComponentModel;
 
 namespace AuroraScript.Runtime
@@ -15,8 +15,6 @@ namespace AuroraScript.Runtime
     /// </remarks>
     public sealed class ScriptModule : ScriptObject
     {
-        private HashSet<string> _nativeFunctions;
-
         /// <summary> Gets the explicit lookup name, or null when the module is anonymous. </summary>
         public readonly string Name;
 
@@ -35,16 +33,31 @@ namespace AuroraScript.Runtime
         }
 
         /// <summary>
-        /// Records a compiler-emitted native function that cannot be hot updated.
+        /// Defines a compiler-emitted exported module member.
         /// </summary>
         [EditorBrowsable(EditorBrowsableState.Never)]
-        public void RegisterNativeFunction(string name)
+        public void DefineExport(
+            string name,
+            ScriptDatum value,
+            bool writable,
+            bool nativeFunction,
+            bool force)
         {
-            if (!string.IsNullOrEmpty(name))
-            {
-                (_nativeFunctions ??= new HashSet<string>(
-                    System.StringComparer.Ordinal)).Add(name);
-            }
+            DefineMember(name, value, exported: true, writable, nativeFunction, force);
+        }
+
+        /// <summary>
+        /// Defines a compiler-emitted internal module member.
+        /// </summary>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public void DefineInternal(
+            string name,
+            ScriptDatum value,
+            bool writable,
+            bool nativeFunction,
+            bool force)
+        {
+            DefineMember(name, value, exported: false, writable, nativeFunction, force);
         }
 
         /// <summary>
@@ -54,7 +67,36 @@ namespace AuroraScript.Runtime
         public bool IsNativeFunction(string name)
         {
             return !string.IsNullOrEmpty(name) &&
-                _nativeFunctions?.Contains(name) == true;
+                hiddenClass.TryGet(name, out var meta) &&
+                meta.NativeFunction;
+        }
+
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        internal string[] GetOwnMemberNames()
+        {
+            var properties = OwnProperties;
+            var names = new string[properties.Length];
+            for (var i = 0; i < properties.Length; i++)
+            {
+                names[i] = properties[i].Name;
+            }
+            return names;
+        }
+
+        private void DefineMember(
+            string name,
+            ScriptDatum value,
+            bool exported,
+            bool writable,
+            bool nativeFunction,
+            bool force)
+        {
+            var propertyFlags = (writable ? PropertyFlags.Writable : 0)
+                | (exported
+                    ? PropertyFlags.Enumerable | PropertyFlags.ModuleExport
+                    : 0)
+                | (nativeFunction ? PropertyFlags.NativeFunction : 0);
+            InternalDefine(name, value, propertyFlags, force);
         }
 
         /// <summary>

@@ -1,6 +1,6 @@
 # Next: keep inference simple, keep codegen native
 
-Goal: more scripts stay on the existing typed CIL path (`int`/`double` locals, `ldelem`/`stelem`, `@directCall $native`) without a new IR, hidden-class runtime, or per-call type guards.
+Goal: more scripts stay on the existing typed CIL path (`int`/`double` locals, `ldelem`/`stelem`, explicit `native func`) without a new IR, hidden-class runtime, or per-call type guards.
 
 Rules:
 
@@ -136,7 +136,7 @@ Until Phase 2 lands, hot code should:
 
 - keep buffers as packed arrays
 - extract `tdoc Type $(obj.field)` once per call, not per element
-- pass buffers into `@directCall` helpers instead of the whole object
+- pass buffers into explicit `native func` helpers instead of the whole object
 - keep open-sets that may grow as `Array` (fixed packed heaps can throw)
 
 This matches the engine: typed locals are free; object property hits are not.
@@ -147,7 +147,7 @@ Add focused compiler tests, not a new framework:
 
 1. `tdoc Int8Array $(x)` element load is packed.
 2. Object-literal field load is packed; escape kills it.
-3. Same-module `@directCall` packed argument still uses `$native`.
+3. Same-module `native func` packed arguments use the native entry directly.
 4. Wrong `tdoc` type still throws; no silent fallback.
 5. Existing packed/integer/direct-call suites stay green.
 6. Optional: one 1000×1000 A* run as a regression number, same path length and expanded count.

@@ -13,6 +13,8 @@ namespace AuroraScript.Compiler.Backend.Code
     internal static class TypedRuntimeMetadata
     {
         public static readonly MethodInfo DatumFromNumber = Method(typeof(ScriptDatum), nameof(ScriptDatum.FromNumber), typeof(double));
+        public static readonly MethodInfo DatumFromInt32 = Method(typeof(ScriptDatum), nameof(ScriptDatum.FromNumber), typeof(int));
+        public static readonly MethodInfo DatumFromInt64 = Method(typeof(ScriptDatum), nameof(ScriptDatum.FromNumber), typeof(long));
         public static readonly MethodInfo DatumFromBoolean = Method(typeof(ScriptDatum), nameof(ScriptDatum.FromBoolean), typeof(bool));
         public static readonly MethodInfo DatumFromString = Method(typeof(ScriptDatum), nameof(ScriptDatum.FromString), typeof(string));
         public static readonly MethodInfo DatumFromObject = Method(typeof(ScriptDatum), nameof(ScriptDatum.FromObject), typeof(ScriptObject));
@@ -96,6 +98,10 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo CompoundAddElementNumber = Method(typeof(ObjectOps), nameof(ObjectOps.CompoundAddElementNumber), typeof(ScriptDatum), typeof(double), typeof(ScriptDatum));
         public static readonly MethodInfo ChangeElement = Method(typeof(ObjectOps), nameof(ObjectOps.ChangeElement), typeof(ScriptDatum), typeof(ScriptDatum), typeof(double), typeof(bool));
         public static readonly MethodInfo ChangeElementNumber = Method(typeof(ObjectOps), nameof(ObjectOps.ChangeElementNumber), typeof(ScriptDatum), typeof(double), typeof(double), typeof(bool));
+        public static readonly MethodInfo GetElementIndex = Method(typeof(ObjectOps), nameof(ObjectOps.GetElementIndex), typeof(ScriptDatum), typeof(int));
+        public static readonly MethodInfo SetElementIndex = Method(typeof(ObjectOps), nameof(ObjectOps.SetElementIndex), typeof(ScriptDatum), typeof(int), typeof(ScriptDatum));
+        public static readonly MethodInfo CompoundAddElementIndex = Method(typeof(ObjectOps), nameof(ObjectOps.CompoundAddElementIndex), typeof(ScriptDatum), typeof(int), typeof(ScriptDatum));
+        public static readonly MethodInfo ChangeElementIndex = Method(typeof(ObjectOps), nameof(ObjectOps.ChangeElementIndex), typeof(ScriptDatum), typeof(int), typeof(double), typeof(bool));
         public static readonly MethodInfo ChangeDatumProperty = Method(typeof(ObjectOps), nameof(ObjectOps.ChangeProperty), typeof(ScriptDatum), typeof(ScriptContext), typeof(string), typeof(double), typeof(bool));
         public static readonly MethodInfo ChangeObjectProperty = Method(typeof(ObjectOps), nameof(ObjectOps.ChangeProperty), typeof(ScriptObject), typeof(ScriptContext), typeof(string), typeof(double), typeof(bool));
         public static readonly MethodInfo CreateObject3 = Method(typeof(ObjectOps), nameof(ObjectOps.CreateObject3), typeof(string), typeof(ScriptDatum), typeof(string), typeof(ScriptDatum), typeof(string), typeof(ScriptDatum));
@@ -159,21 +165,31 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo ScriptObjectSetProperty = InstanceMethod(typeof(ScriptObject), nameof(ScriptObject.SetPropertyDatum), typeof(ScriptContext), typeof(string), typeof(ScriptDatum));
         public static readonly MethodInfo ScriptObjectGetProperty = InstanceMethod(typeof(ScriptObject), nameof(ScriptObject.GetPropertyDatum), typeof(ScriptContext), typeof(string));
         public static readonly MethodInfo ScriptObjectDefineDatum = InstanceMethod(typeof(ScriptObject), nameof(ScriptObject.Define), typeof(string), typeof(ScriptDatum), typeof(bool), typeof(bool));
-        public static readonly MethodInfo ScriptObjectDefineObject = InstanceMethod(typeof(ScriptObject), nameof(ScriptObject.Define), typeof(string), typeof(ScriptObject), typeof(bool), typeof(bool));
-        public static readonly MethodInfo ScriptObjectPatchObject = InstanceMethod(typeof(ScriptObject), nameof(ScriptObject.Patch), typeof(string), typeof(ScriptObject), typeof(bool), typeof(bool));
-        public static readonly MethodInfo ScriptObjectInternalDefineDatum = InstanceMethod(typeof(ScriptObject), nameof(ScriptObject.InternalDefine), typeof(string), typeof(ScriptDatum), typeof(bool), typeof(bool), typeof(bool));
         public static readonly MethodInfo ScriptObjectCopyProperties = InstanceMethod(typeof(ScriptObject), nameof(ScriptObject.CopyPropertysFrom), typeof(ScriptObject), typeof(bool));
-        public static readonly MethodInfo ScriptObjectCopyEnumerableProperties = InstanceMethod(typeof(ScriptObject), nameof(ScriptObject.CopyEnumerablePropertysFrom), typeof(ScriptObject), typeof(bool));
+        public static readonly MethodInfo ScriptObjectCopyModuleExports = InstanceMethod(typeof(ScriptObject), nameof(ScriptObject.CopyModuleExportsFrom), typeof(ScriptObject), typeof(bool));
         public static readonly MethodInfo ScriptGlobalGetModuleByPath = InstanceMethod(typeof(ScriptGlobal), nameof(ScriptGlobal.GetModuleByPath), typeof(string));
         public static readonly MethodInfo ScriptGlobalEnsureModule = InstanceMethod(typeof(ScriptGlobal), nameof(ScriptGlobal.EnsureModule), typeof(string), typeof(ScriptSourceReference));
         public static readonly MethodInfo ScriptGlobalRegisterModule = InstanceMethod(typeof(ScriptGlobal), nameof(ScriptGlobal.RegisterModule), typeof(int), typeof(ScriptModule));
         public static readonly ConstructorInfo ScriptSourceReferenceConstructor = Constructor(typeof(ScriptSourceReference), typeof(string), typeof(string), typeof(string));
         public static readonly ConstructorInfo ScriptModuleConstructor = Constructor(typeof(ScriptModule), typeof(string), typeof(ScriptSourceReference));
-        public static readonly MethodInfo ScriptModuleRegisterNativeFunction =
+        public static readonly MethodInfo ScriptModuleDefineExport =
             InstanceMethod(
                 typeof(ScriptModule),
-                nameof(ScriptModule.RegisterNativeFunction),
-                typeof(string));
+                nameof(ScriptModule.DefineExport),
+                typeof(string),
+                typeof(ScriptDatum),
+                typeof(bool),
+                typeof(bool),
+                typeof(bool));
+        public static readonly MethodInfo ScriptModuleDefineInternal =
+            InstanceMethod(
+                typeof(ScriptModule),
+                nameof(ScriptModule.DefineInternal),
+                typeof(string),
+                typeof(ScriptDatum),
+                typeof(bool),
+                typeof(bool),
+                typeof(bool));
         public static readonly MethodInfo ScriptObjectClearProperties = InstanceMethod(typeof(ScriptObject), nameof(ScriptObject.ClearProperties));
 
         public static readonly MethodInfo ValidatePackedArrayLength = Method(typeof(ScriptPackedArray), nameof(ScriptPackedArray.ValidateLength), typeof(double));
@@ -212,6 +228,9 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo StringConcat3 = Method(typeof(string), nameof(string.Concat), typeof(string), typeof(string), typeof(string));
         public static readonly MethodInfo StringConcat4 = Method(typeof(string), nameof(string.Concat), typeof(string), typeof(string), typeof(string), typeof(string));
         public static readonly MethodInfo StringLength = Method(typeof(ValueOps), nameof(ValueOps.GetStringLength), typeof(string));
+        public static readonly MethodInfo StringCharCodeAt = Method(typeof(ValueOps), nameof(ValueOps.GetStringCharCodeAt), typeof(string), typeof(int));
+        public static readonly MethodInfo StringCharCodeAtInt32 = Method(typeof(ValueOps), nameof(ValueOps.GetStringCharCodeAtInt32), typeof(string), typeof(int));
+        public static readonly MethodInfo AscendingLoopBound = Method(typeof(ValueOps), nameof(ValueOps.ToAscendingLoopBound), typeof(double));
         public static readonly ConstructorInfo StringBuilderCapacity = Constructor(typeof(StringBuilder), typeof(int));
         public static readonly MethodInfo StringBuilderAppend = InstanceMethod(typeof(StringBuilder), nameof(StringBuilder.Append), typeof(string));
         public static readonly MethodInfo StringBuilderToString = typeof(StringBuilder).GetMethod(nameof(StringBuilder.ToString), Type.EmptyTypes);

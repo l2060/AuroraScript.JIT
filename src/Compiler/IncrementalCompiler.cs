@@ -53,7 +53,7 @@ namespace AuroraScript.Compiler
             var keys = Array.Empty<string>();
             if (Domain.Global.TryGetModuleByPath(mainModule.Source.FullPath, out var existingModule))
             {
-                keys = existingModule.EnumerationKeys().ToArray();
+                keys = existingModule.GetOwnMemberNames();
             }
 
             var backend = new BackendCompiler(Builder, Options, globalDeclarations);

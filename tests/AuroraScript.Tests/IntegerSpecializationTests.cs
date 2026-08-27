@@ -34,6 +34,10 @@ public sealed class IntegerSpecializationTests
             return value ^ (value << 5);
         }
 
+        native func addUnsigned(Number left, Number right) Number {
+            return (left + right) | 0;
+        }
+
         native func fillAndHash(Int32Array values, Number count, Number seed) Number {
             var state = seed;
             for (var i = 0; i < count; i++) {
@@ -62,7 +66,8 @@ public sealed class IntegerSpecializationTests
             var values = new Int32Array(256);
             var hash = fillAndHash(values, values.length, 123456789);
             var mixed = mix12(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12);
-            return [hash, values.length, values[0], values[255], mixed];
+            var wrapped = addUnsigned(2147483647, 1);
+            return [hash, values.length, values[0], values[255], mixed, wrapped];
         }
         """;
 
@@ -139,6 +144,161 @@ public sealed class IntegerSpecializationTests
             TestWorkspace.Execute(domain, "run", arguments: ScriptDatum.FromBoolean(true)));
     }
 
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+    [InlineData(CompilationMode.OnlyRun)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
+    public async Task ExactLargeIntegersUseInt64WhileFractionsUseDouble(CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        var (engine, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+
+            native func largeValue() Number {
+                var value = 3000000000;
+                return value;
+            }
+
+            native func fractionalValue() Number {
+                var value = 1;
+                value = 1.25;
+                return value;
+            }
+
+            export func run() {
+                return [largeValue(), fractionalValue()];
+            }
+            """,
+            mode);
+
+        ScriptAssert.Equal(
+            new object?[] { 3000000000d, 1.25d },
+            TestWorkspace.Execute(domain, "run"));
+        if (mode == CompilationMode.Persistence)
+        {
+            ScriptAssert.Equal(
+                new object?[] { 3000000000d, 1.25d },
+                TestWorkspace.Execute(engine.CreateDomain(), "run"));
+        }
+    }
+
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+    [InlineData(CompilationMode.OnlyRun)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
+    public async Task TruncatedIntegerStorageAndStringLengthKeepScriptSemantics(
+        CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+
+            native func truncate(Number value) Number {
+                return value | 0;
+            }
+
+            export native func run(String text) Array {
+                var wide = 4023233417;
+                var copy = wide;
+                var visible = 4023233417;
+                var visits = 0;
+                for (var i = 0; i < text.length; i++) {
+                    if (i + 1 < text.length) i++;
+                    visits++;
+                }
+                var values = new Int32Array(32);
+                for (var k = 0; k < values.length; k += 16) {
+                    values[k + 15] = k + 15;
+                }
+                var invalidCode = text.charCodeAt(-1);
+                return [
+                    truncate(wide),
+                    truncate(copy),
+                    visible,
+                    text.length,
+                    "".length,
+                    visits,
+                    values[15],
+                    values[31],
+                    text.charCodeAt(0),
+                    invalidCode != invalidCode
+                ];
+            }
+            """,
+            mode);
+
+        ScriptAssert.Equal(
+            new object?[]
+            {
+                -271733879, -271733879, 4023233417d, 3, 0, 2, 15, 31,
+                97, true
+            },
+            TestWorkspace.Execute(domain, "run", arguments: ScriptDatum.FromString("a\u00e9\ud83d")));
+    }
+
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+    [InlineData(CompilationMode.OnlyRun)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
+    public async Task CountedLoopsOverNumberBoundsKeepDoubleComparisonSemantics(
+        CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+
+            export native func run(Number limit) Array {
+                var visits = 0;
+                var last = -1;
+                for (var i = 0; i < limit; i++) {
+                    visits++;
+                    last = i;
+                }
+                var stepped = 0;
+                for (var k = 0; k < limit; k += 3) {
+                    stepped = stepped + k;
+                }
+                var cells = new Int32Array(8);
+                var stored = 0;
+                for (var c = 0; c < limit; c++) {
+                    if (c < 8) {
+                        cells[c] = c * 2;
+                        stored++;
+                    }
+                }
+                return [visits, last, stepped, stored, cells[0], cells[3]];
+            }
+            """,
+            mode);
+
+        // An integral bound behaves exactly like the double comparison.
+        ScriptAssert.Equal(
+            new object?[] { 5, 4, 3, 5, 0, 6 },
+            TestWorkspace.Execute(domain, "run", arguments: ScriptDatum.FromNumber(5)));
+
+        // A fractional bound still admits every integer below it.
+        ScriptAssert.Equal(
+            new object?[] { 4, 3, 3, 4, 0, 6 },
+            TestWorkspace.Execute(domain, "run", arguments: ScriptDatum.FromNumber(3.5)));
+
+        // NaN and non-positive bounds skip the loop like `i < NaN` would.
+        ScriptAssert.Equal(
+            new object?[] { 0, -1, 0, 0, 0, 0 },
+            TestWorkspace.Execute(domain, "run", arguments: ScriptDatum.FromNumber(double.NaN)));
+        ScriptAssert.Equal(
+            new object?[] { 0, -1, 0, 0, 0, 0 },
+            TestWorkspace.Execute(domain, "run", arguments: ScriptDatum.FromNumber(0)));
+    }
+
 #if NET9_0_OR_GREATER
     [Fact]
     public async Task PersistenceEmitsExplicitNativeRawArraySignatures()
@@ -154,7 +314,7 @@ public sealed class IntegerSpecializationTests
         var fill = FindMethod(reader, "fillAndHash$native");
         var fillSignature = reader.GetBlobBytes(fill.Signature);
         Assert.Equal(4, fillSignature[1]); // ScriptContext plus three parameters.
-        Assert.Equal(0x0d, fillSignature[2]); // Number return.
+        Assert.Equal(0x08, fillSignature[2]); // Inferred native Int32 return.
         Assert.Contains((byte)0x1d, fillSignature); // Raw int[] parameter.
         var fillOpcodes = ReadOpCodes(
             peReader.GetMethodBody(fill.RelativeVirtualAddress).GetILBytes().AsSpan());
@@ -166,7 +326,42 @@ public sealed class IntegerSpecializationTests
         var mix = FindMethod(reader, "mix12$native");
         var mixSignature = reader.GetBlobBytes(mix.Signature);
         Assert.Equal(13, mixSignature[1]); // ScriptContext plus twelve parameters.
-        Assert.Equal(0x0d, mixSignature[2]);
+        Assert.Equal(0x08, mixSignature[2]);
+
+        var hashStep = FindMethod(reader, "hashStep$native");
+        var hashStepSignature = reader.GetBlobBytes(hashStep.Signature);
+        Assert.Equal(0x08, hashStepSignature[2]);
+
+        var hashStepOpcodes = ReadOpCodes(
+            peReader.GetMethodBody(hashStep.RelativeVirtualAddress).GetILBytes().AsSpan());
+        Assert.DoesNotContain(OpCodes.Conv_R8, hashStepOpcodes);
+
+        var addUnsigned = FindMethod(reader, "addUnsigned$native");
+        var addUnsignedOpcodes = ReadOpCodes(
+            peReader.GetMethodBody(addUnsigned.RelativeVirtualAddress).GetILBytes().AsSpan());
+        Assert.Contains(OpCodes.Add, addUnsignedOpcodes);
+        Assert.Contains(OpCodes.Or, addUnsignedOpcodes);
+        Assert.DoesNotContain(OpCodes.Conv_R8, addUnsignedOpcodes);
+    }
+
+    [Fact]
+    public async Task PersistenceUsesInt64ForExactLargeIntegerAndDoubleForFraction()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            native func largeValue() Number { return 3000000000; }
+            native func fractionalValue() Number { return 1.25; }
+            export func run() { return [largeValue(), fractionalValue()]; }
+            """,
+            CompilationMode.Persistence);
+
+        using var stream = File.OpenRead(Path.Combine(workspace.Root, "test-output.dll"));
+        using var peReader = new PEReader(stream);
+        var reader = peReader.GetMetadataReader();
+        Assert.Equal(0x0a, reader.GetBlobBytes(FindMethod(reader, "largeValue$native").Signature)[2]);
+        Assert.Equal(0x0d, reader.GetBlobBytes(FindMethod(reader, "fractionalValue$native").Signature)[2]);
     }
 
     private static MethodDefinition FindMethod(MetadataReader reader, string name)
@@ -242,6 +437,6 @@ public sealed class IntegerSpecializationTests
             (7 ^ (8 << 4)) ^
             (9 ^ (10 << 5)) ^
             (11 ^ (12 << 6));
-        return [hash, values.Length, values[0], values[^1], mixed];
+        return [hash, values.Length, values[0], values[^1], mixed, int.MinValue];
     }
 }

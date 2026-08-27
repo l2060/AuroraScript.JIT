@@ -10,6 +10,8 @@ namespace AuroraScript.Runtime.Property
         Writable = 1 << 0,
         Enumerable = 1 << 1,
         Configurable = 1 << 2,
+        ModuleExport = 1 << 3,
+        NativeFunction = 1 << 4,
         FullAccess = Writable | Enumerable | Configurable
     }
 
@@ -107,7 +109,11 @@ namespace AuroraScript.Runtime.Property
             var flags = (writable ? PropertyFlags.Writable : 0)
                 | (enumerable ? PropertyFlags.Enumerable : 0)
                 | (configurable ? PropertyFlags.Configurable : 0);
+            return AddProperty(name, flags, out meta);
+        }
 
+        public HiddenClass AddProperty(string name, PropertyFlags flags, out PropertyMeta meta)
+        {
             var index = IndexOf(name);
             if (index >= 0)
             {

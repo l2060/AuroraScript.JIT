@@ -50,6 +50,18 @@ public sealed class ScriptDatumTests
     }
 
     [Fact]
+    public void IntegerNumberFactoriesPreserveNumericPayloads()
+    {
+        var int32 = ScriptDatum.FromNumber(int.MinValue);
+        var int64 = ScriptDatum.FromNumber(9_007_199_254_740_991L);
+
+        Assert.Equal(ValueKind.Number, int32.Kind);
+        Assert.Equal((double)int.MinValue, int32.Number);
+        Assert.Equal(ValueKind.Number, int64.Kind);
+        Assert.Equal(9_007_199_254_740_991d, int64.Number);
+    }
+
+    [Fact]
     public void FactoryMethodsPreserveKindAndPayload()
     {
         var nullValue = ScriptDatum.Null;

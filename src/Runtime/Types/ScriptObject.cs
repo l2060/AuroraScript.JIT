@@ -402,6 +402,22 @@ namespace AuroraScript.Runtime.Types
 
         internal void InternalDefine(string key, ScriptDatum value, bool writeable = true, bool enumerable = true, bool force = false)
         {
+            var propertyFlags = (writeable ? PropertyFlags.Writable : 0)
+                | (enumerable ? PropertyFlags.Enumerable : 0);
+            if (hiddenClass.TryGet(key, out var existing))
+            {
+                propertyFlags |= existing.Flags &
+                    (PropertyFlags.ModuleExport | PropertyFlags.NativeFunction);
+            }
+            InternalDefine(key, value, propertyFlags, force);
+        }
+
+        internal void InternalDefine(
+            string key,
+            ScriptDatum value,
+            PropertyFlags propertyFlags,
+            bool force = false)
+        {
             if (Immutable) return;
             if (IsFrozen) ThrowHelper.ThrowFrozen();
 
@@ -411,7 +427,7 @@ namespace AuroraScript.Runtime.Types
                 if (!force && !meta.Writable) ThrowHelper.ThrowDisableWritable();
             }
 
-            hiddenClass = hiddenClass.AddProperty(key, writeable, enumerable, false, out meta);
+            hiddenClass = hiddenClass.AddProperty(key, propertyFlags, out meta);
 
             if (meta.Slot >= propertyValues.Length) Resize();
 
@@ -642,12 +658,27 @@ namespace AuroraScript.Runtime.Types
         /// <param name="enumerableOnly">If true, copies only enumerable properties.</param>
         public void CopyProperties(ScriptObject target, bool force = false, bool enumerableOnly = false)
         {
+            CopyProperties(target, force, enumerableOnly, moduleExportsOnly: false);
+        }
+
+        internal void CopyModuleExportsFrom(ScriptObject source, bool force = false)
+        {
+            source.CopyProperties(this, force, enumerableOnly: false, moduleExportsOnly: true);
+        }
+
+        private void CopyProperties(
+            ScriptObject target,
+            bool force,
+            bool enumerableOnly,
+            bool moduleExportsOnly)
+        {
             if (Immutable) return;
             foreach (var item in hiddenClass.Properties)
             {
                 var key = item.Name;
                 var meta = item.Meta;
-                if (enumerableOnly && !meta.Enumerable)
+                if (enumerableOnly && !meta.Enumerable ||
+                    moduleExportsOnly && !meta.ModuleExport)
                 {
                     continue;
                 }
@@ -657,13 +688,13 @@ namespace AuroraScript.Runtime.Types
                 {
                     if (targetMeta.Writable || force)
                     {
-                        target.InternalDefine(key, property, meta.Writable, meta.Enumerable, force);
+                        target.InternalDefine(key, property, meta.Flags, force);
                         target.SetPropertyAccessors(targetMeta.Slot, descriptor.Getter, descriptor.Setter);
                     }
                 }
                 else
                 {
-                    target.InternalDefine(key, property, meta.Writable, meta.Enumerable, force);
+                    target.InternalDefine(key, property, meta.Flags, force);
                     if (target.hiddenClass.TryGet(key, out targetMeta))
                     {
                         target.SetPropertyAccessors(targetMeta.Slot, descriptor.Getter, descriptor.Setter);

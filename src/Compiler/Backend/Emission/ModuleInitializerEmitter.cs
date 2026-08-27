@@ -81,19 +81,6 @@ namespace AuroraScript.Compiler.Backend.Emission
             for (var i = 0; i < _module.Functions.Count; i++)
             {
                 var function = _module.Functions[i];
-                if (function.IsNativeDeclared)
-                {
-                    _il.Emit(OpCodes.Ldarg_0);
-                    _il.Emit(
-                        OpCodes.Ldfld,
-                        TypedRuntimeMetadata.ContextModule);
-                    _session.Builder.LoadStringConstant(
-                        _il,
-                        function.Name);
-                    _il.Emit(
-                        OpCodes.Callvirt,
-                        TypedRuntimeMetadata.ScriptModuleRegisterNativeFunction);
-                }
                 if (!CanMaterialize(function))
                 {
                     continue;
@@ -148,11 +135,14 @@ namespace AuroraScript.Compiler.Backend.Emission
             il.Emit(OpCodes.Ldfld, TypedRuntimeMetadata.ContextModule);
             _session.Builder.LoadStringConstant(il, function.Name);
             ClosureMaterializer.EmitClosure(_session, il, function);
+            il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
             il.Emit(OpCodes.Ldc_I4_1);
-            il.Emit(OpCodes.Ldc_I4_1);
-            il.Emit(OpCodes.Callvirt, _session.ForceModuleDefinitions
-                ? TypedRuntimeMetadata.ScriptObjectPatchObject
-                : TypedRuntimeMetadata.ScriptObjectDefineObject);
+            il.Emit(function.IsNativeDeclared ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
+            il.Emit(_session.ForceModuleDefinitions ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
+            il.Emit(
+                OpCodes.Callvirt,
+                GetModuleDefineMethod(
+                    function.Visibility == FunctionVisibility.Exported));
         }
 
         private void EmitImportAlias(ImportDeclaration import)
@@ -169,9 +159,13 @@ namespace AuroraScript.Compiler.Backend.Emission
             _il.Emit(OpCodes.Ldfld, TypedRuntimeMetadata.ContextGlobal);
             _session.Builder.LoadStringConstant(_il, import.Reference.FullPath);
             _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptGlobalGetModuleByPath);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
             _il.Emit(OpCodes.Ldc_I4_0);
-            _il.Emit(OpCodes.Ldc_I4_1);
-            _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptObjectDefineObject);
+            _il.Emit(OpCodes.Ldc_I4_0);
+            _il.Emit(_session.ForceModuleDefinitions ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
+            _il.Emit(
+                OpCodes.Callvirt,
+                TypedRuntimeMetadata.ScriptModuleDefineInternal);
         }
 
         private void EmitInclude(ImportDeclaration import)
@@ -182,8 +176,8 @@ namespace AuroraScript.Compiler.Backend.Emission
             _il.Emit(OpCodes.Ldfld, TypedRuntimeMetadata.ContextGlobal);
             _session.Builder.LoadStringConstant(_il, import.Reference.FullPath);
             _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptGlobalGetModuleByPath);
-            _il.Emit(OpCodes.Ldc_I4_0);
-            _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptObjectCopyEnumerableProperties);
+            _il.Emit(_session.ForceModuleDefinitions ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
+            _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptObjectCopyModuleExports);
         }
 
         private void EmitModuleStatement(AstNode node)
@@ -230,14 +224,24 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             if (variable.Name != null)
             {
-                EmitDefineDatum(variable, variable.Name.Value, variable.Initializer, writable: !variable.IsConst);
+                EmitDefineDatum(
+                    variable,
+                    variable.Name.Value,
+                    variable.Initializer,
+                    exported: variable.Access == MemberAccess.Export,
+                    writable: !variable.IsConst);
                 return;
             }
 
             throw new NotSupportedException("Module destructuring declaration");
         }
 
-        private void EmitDefineDatum(VariableDeclaration declaration, string name, Expression initializer, bool writable)
+        private void EmitDefineDatum(
+            VariableDeclaration declaration,
+            string name,
+            Expression initializer,
+            bool exported,
+            bool writable)
         {
             _il.Emit(OpCodes.Ldarg_0);
             _il.Emit(OpCodes.Ldfld, TypedRuntimeMetadata.ContextModule);
@@ -253,9 +257,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                 EmitExpressionOrNull(initializer);
             }
             _il.Emit(writable ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
-            _il.Emit(OpCodes.Ldc_I4_1);
+            _il.Emit(OpCodes.Ldc_I4_0);
             _il.Emit(_session.ForceModuleDefinitions ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
-            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ScriptObjectInternalDefineDatum);
+            _il.Emit(OpCodes.Callvirt, GetModuleDefineMethod(exported));
         }
 
         private void EmitEnum(EnumDeclaration enumDeclaration)
@@ -275,8 +279,8 @@ namespace AuroraScript.Compiler.Backend.Emission
                 var element = enumDeclaration.Elements[i];
                 _il.Emit(OpCodes.Ldloc, enumLocal);
                 _session.Builder.LoadStringConstant(_il, element.Name.Value);
-                _il.Emit(OpCodes.Ldc_R8, (double)element.Value);
-                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromNumber);
+                _il.Emit(OpCodes.Ldc_I4, element.Value);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromInt32);
                 _il.Emit(OpCodes.Ldc_I4_0);
                 _il.Emit(OpCodes.Ldc_I4_1);
                 _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptObjectDefineDatum);
@@ -288,9 +292,19 @@ namespace AuroraScript.Compiler.Backend.Emission
             _il.Emit(OpCodes.Ldloc, enumLocal);
             _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
             _il.Emit(OpCodes.Ldc_I4_0);
-            _il.Emit(OpCodes.Ldc_I4_1);
+            _il.Emit(OpCodes.Ldc_I4_0);
             _il.Emit(_session.ForceModuleDefinitions ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
-            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ScriptObjectInternalDefineDatum);
+            _il.Emit(
+                OpCodes.Callvirt,
+                GetModuleDefineMethod(
+                    enumDeclaration.Access == MemberAccess.Export));
+        }
+
+        private static MethodInfo GetModuleDefineMethod(bool exported)
+        {
+            return exported
+                ? TypedRuntimeMetadata.ScriptModuleDefineExport
+                : TypedRuntimeMetadata.ScriptModuleDefineInternal;
         }
 
         private void EmitExpressionOrNull(Expression expression)
@@ -447,9 +461,29 @@ namespace AuroraScript.Compiler.Backend.Emission
             switch (expression.Token)
             {
                 case NumberToken number:
-                    if (_session.Builder.LoadNumber(_il, number.NumberValue) == LoadState.Constant)
+                    if (number.NumberValue >= int.MinValue &&
+                        number.NumberValue <= int.MaxValue &&
+                        Math.Truncate(number.NumberValue) == number.NumberValue &&
+                        (number.NumberValue != 0d ||
+                            BitConverter.DoubleToInt64Bits(number.NumberValue) >= 0))
                     {
-                        _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromNumber);
+                        _il.Emit(OpCodes.Ldc_I4, (int)number.NumberValue);
+                        _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromInt32);
+                    }
+                    else if (number.NumberValue >= -9_007_199_254_740_991d &&
+                        number.NumberValue <= 9_007_199_254_740_991d &&
+                        Math.Truncate(number.NumberValue) == number.NumberValue)
+                    {
+                        _il.Emit(OpCodes.Ldc_I8, (long)number.NumberValue);
+                        _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromInt64);
+                    }
+                    else if (_session.Builder.LoadNumber(
+                        _il,
+                        number.NumberValue) == LoadState.Constant)
+                    {
+                        _il.Emit(
+                            OpCodes.Call,
+                            TypedRuntimeMetadata.DatumFromNumber);
                     }
                     return;
                 case StringToken stringToken:

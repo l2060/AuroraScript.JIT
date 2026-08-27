@@ -24,6 +24,13 @@ namespace AuroraScript.Compiler.Backend.Code
             _directParameters = directParameters;
         }
 
+        public static TypedModuleCode Build(ModulePlan module)
+        {
+            return Build(
+                module,
+                new HostExportCatalog(Array.Empty<System.Reflection.Assembly>()));
+        }
+
         public static TypedModuleCode Build(
             ModulePlan module,
             HostExportCatalog hostExports)
@@ -66,6 +73,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 universalReturns[function.Id] = generic[function.Id.Value].ReturnType;
             }
 
+            var upvalueTypes = CapturedCellTypes.Analyze(module, generic);
             var converged = false;
             var passLimit = Math.Min(64, Math.Max(6, module.Functions.Count + 2));
             var evidence = new Dictionary<FunctionId, ParameterEvidence>();
@@ -104,7 +112,8 @@ namespace AuroraScript.Compiler.Backend.Code
                         parameterTypes,
                         returns,
                         directParameters,
-                        universalReturns);
+                        universalReturns,
+                        upvalueTypes);
                     var validatedParameterTypes = ValidateParameterTypes(function, code, parameterTypes);
                     if (!SameTypes(parameterTypes, validatedParameterTypes))
                     {
@@ -117,7 +126,8 @@ namespace AuroraScript.Compiler.Backend.Code
                             parameterTypes,
                             returns,
                             directParameters,
-                            universalReturns);
+                            universalReturns,
+                            upvalueTypes);
                     }
                     direct[function.Id.Value] = code;
                     nextReturns[function.Id] = code.ReturnType;
@@ -143,7 +153,8 @@ namespace AuroraScript.Compiler.Backend.Code
                         hostExports,
                         directReturnTypes: returns,
                         directParameterTypes: directParameters,
-                        universalReturnTypes: universalReturns);
+                        universalReturnTypes: universalReturns,
+                        upvalueTypes: upvalueTypes);
                     var universalReturn = generic[function.Id.Value].ReturnType;
                     nextUniversalReturns[function.Id] = universalReturn;
                     if (!universalReturns.TryGetValue(function.Id, out var oldUniversal) ||
@@ -153,6 +164,16 @@ namespace AuroraScript.Compiler.Backend.Code
                     }
                 }
                 universalReturns = nextUniversalReturns;
+
+                // A closure cell is typed from the declaring function's freshly
+                // rebuilt code, so the fact only reaches the closure body on the
+                // next pass.
+                var nextUpvalueTypes = CapturedCellTypes.Analyze(module, generic);
+                if (!CapturedCellTypes.SameTypes(upvalueTypes, nextUpvalueTypes))
+                {
+                    changed = true;
+                }
+                upvalueTypes = nextUpvalueTypes;
 
                 if (!changed && pass > 0)
                 {
@@ -182,14 +203,16 @@ namespace AuroraScript.Compiler.Backend.Code
                         directParameters[function.Id.Value],
                         conservativeReturns,
                         directParameters,
-                        universalReturns);
+                        universalReturns,
+                        upvalueTypes);
                     generic[function.Id.Value] = TypedFunctionBuilder.Build(
                         module,
                         function,
                         hostExports,
                         directReturnTypes: conservativeReturns,
                         directParameterTypes: directParameters,
-                        universalReturnTypes: universalReturns);
+                        universalReturnTypes: universalReturns,
+                        upvalueTypes: upvalueTypes);
                 }
             }
 
@@ -294,19 +317,21 @@ namespace AuroraScript.Compiler.Backend.Code
                             module.Declaration,
                             parameter.DeclaredType)
                         : FlowValueType.None;
+                var demand = parameterDemands != null &&
+                    parameterIndex < parameterDemands.Length
+                        ? parameterDemands[parameterIndex]
+                        : NativeCoercionKind.None;
                 if (checkedType != FlowValueType.None)
                 {
-                    result[parameterIndex++] =
-                        new DirectParameterType(checkedType);
+                    result[parameterIndex++] = checkedType == FlowValueType.Number &&
+                        demand is NativeCoercionKind.Int32Bitwise or NativeCoercionKind.Int32Shift
+                            ? DirectParameterType.FromCoercion(demand)
+                            : new DirectParameterType(checkedType);
                     continue;
                 }
                 var type = observed != null && parameterIndex < observed.Types.Length
                     ? observed.Types[parameterIndex]
                     : FlowValueType.None;
-                var demand = parameterDemands != null &&
-                    parameterIndex < parameterDemands.Length
-                        ? parameterDemands[parameterIndex]
-                        : NativeCoercionKind.None;
                 var sawNonNative = observed != null &&
                     parameterIndex < observed.SawNonNative.Length &&
                     observed.SawNonNative[parameterIndex];
@@ -352,7 +377,10 @@ namespace AuroraScript.Compiler.Backend.Code
                     code.LocalTypes[i] != FlowValueTypeFacts.GetDirectLocalType(parameterType))
                 {
                     result ??= (DirectParameterType[])parameterTypes.Clone();
-                    result[parameterIndex] = new DirectParameterType(FlowValueType.Dynamic);
+                    result[parameterIndex] = parameterType.IsInt32Coercion &&
+                        code.LocalTypes[i] == FlowValueType.Number
+                            ? new DirectParameterType(FlowValueType.Number)
+                            : new DirectParameterType(FlowValueType.Dynamic);
                 }
                 parameterIndex++;
             }
@@ -438,6 +466,11 @@ namespace AuroraScript.Compiler.Backend.Code
 
             private void RecordUse(NameExpression name)
             {
+                if (name.Parent is AssignmentExpression assignment &&
+                    ReferenceEquals(assignment.Left, name))
+                {
+                    return;
+                }
                 var binding = _code.GetName(name);
                 if (!binding.IsLocal ||
                     (uint)binding.Local.Value >= (uint)_parameterByLocal.Length)
@@ -463,6 +496,11 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     _demands[parameterIndex] = demand;
                 }
+                else if (current is NativeCoercionKind.Int32Bitwise or NativeCoercionKind.Int32Shift &&
+                    demand is NativeCoercionKind.Int32Bitwise or NativeCoercionKind.Int32Shift)
+                {
+                    _demands[parameterIndex] = NativeCoercionKind.Int32Bitwise;
+                }
                 else if (current != demand)
                 {
                     _invalid[parameterIndex] = true;
@@ -483,11 +521,17 @@ namespace AuroraScript.Compiler.Backend.Code
                     (ReferenceEquals(binary.Left, current) ||
                         ReferenceEquals(binary.Right, current)))
                 {
-                    if (binary.Operator == Operator.Subtract ||
+                    if (binary.Operator == Operator.Add ||
+                        binary.Operator == Operator.Subtract ||
                         binary.Operator == Operator.Multiply ||
                         binary.Operator == Operator.Divide ||
                         binary.Operator == Operator.Modulo)
                     {
+                        var coercion = GetContainingInt32Coercion(binary);
+                        if (coercion != NativeCoercionKind.None)
+                        {
+                            return coercion;
+                        }
                         return NativeCoercionKind.ArithmeticNumber;
                     }
                     if (binary.Operator == Operator.BitwiseAnd ||
@@ -571,6 +615,36 @@ namespace AuroraScript.Compiler.Backend.Code
                 return NativeCoercionKind.None;
             }
 
+            private static NativeCoercionKind GetContainingInt32Coercion(
+                Expression expression)
+            {
+                AstNode current = expression;
+                while (current.Parent is GroupExpression group &&
+                    group.Expressions.Count == 1 &&
+                    ReferenceEquals(group.Expression, current))
+                {
+                    current = group;
+                }
+                if (current.Parent is not BinaryExpression binary ||
+                    (!ReferenceEquals(binary.Left, current) &&
+                        !ReferenceEquals(binary.Right, current)))
+                {
+                    return NativeCoercionKind.None;
+                }
+                var op = binary.Operator;
+                if (op == Operator.BitwiseAnd ||
+                    op == Operator.BitwiseOr ||
+                    op == Operator.BitwiseXor)
+                {
+                    return NativeCoercionKind.Int32Bitwise;
+                }
+                return op == Operator.LeftShift ||
+                    op == Operator.SignedRightShift ||
+                    op == Operator.UnSignedRightShift
+                        ? NativeCoercionKind.Int32Shift
+                        : NativeCoercionKind.None;
+            }
+
             private readonly struct DemandChildVisitor : IAstChildVisitor
             {
                 private readonly NativeParameterDemandAnalyzer _owner;
@@ -650,7 +724,9 @@ namespace AuroraScript.Compiler.Backend.Code
                             if (FlowValueTypeFacts.IsNumeric(current) &&
                                 FlowValueTypeFacts.IsNumeric(argumentType))
                             {
-                                evidence.Types[i] = FlowValueType.Number;
+                                evidence.Types[i] = FlowValueTypeFacts.Merge(
+                                    current,
+                                    argumentType);
                             }
                             else
                             {

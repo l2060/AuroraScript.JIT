@@ -310,6 +310,146 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
+    public void TypedModuleCodeWidensFractionallyAssignedBitwiseParameter()
+    {
+        var root = Path.GetTempPath();
+        var options = EngineOptions.Default
+            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var module = Parse(
+            """
+            @module(TEST);
+            native func narrow(Number value) Number {
+                value = value ^ 1;
+                return value ^ 0;
+            }
+            native func widen(Number value, Boolean useFraction) Number {
+                if (useFraction) value = 0.5;
+                return value ^ 1;
+            }
+            export func run() {
+                return narrow(widen(4, false));
+            }
+            """,
+            root);
+        var session = new BackendCompiler(new DynamicBuilder(options), options)
+            .CreateModulePlans([module]);
+        var modulePlan = Assert.Single(session.Modules);
+        var narrow = Assert.Single(modulePlan.Functions, function => function.Name == "narrow");
+        var widen = Assert.Single(modulePlan.Functions, function => function.Name == "widen");
+
+        var code = TypedModuleCode.Build(modulePlan);
+        var narrowParameter = Assert.Single(code.GetDirectParameters(narrow.Id));
+        var widenParameter = code.GetDirectParameters(widen.Id)[0];
+
+        Assert.True(narrowParameter.IsInt32Coercion);
+        Assert.Equal(
+            FlowValueType.Int32,
+            code.GetDirect(narrow.Id).GetLocalType(
+                narrow.LocalSlots.Single(slot => slot.Name == "value").Id));
+        Assert.Equal(FlowValueType.Number, widenParameter.Type);
+        Assert.Equal(NativeCoercionKind.None, widenParameter.Coercion);
+        Assert.Equal(
+            FlowValueType.Number,
+            code.GetDirect(widen.Id).GetLocalType(
+                widen.LocalSlots.Single(slot => slot.Name == "value").Id));
+    }
+
+    [Fact]
+    public void TypedModuleCodeKeepsIntegerLocalsFeedingTruncatingCalls()
+    {
+        var root = Path.GetTempPath();
+        var options = EngineOptions.Default
+            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var module = Parse(
+            """
+            @module(TEST);
+            native func mix(Number left, Number right) Number {
+                return (left + right) | 0;
+            }
+            export native func run(String text) Number {
+                var seed = 0x9E3779B9;
+                var shift = 7;
+                var copy = seed;
+                var total = text.length;
+                var values = new Int32Array(32);
+                for (var i = 0; i < total; i++) {
+                    if (i + 1 < total) i++;
+                }
+                for (var k = 0; k < values.length; k += 16) {
+                    values[k + 15] = k;
+                }
+                seed = mix(seed, shift);
+                return mix(seed, copy) + total;
+            }
+            """,
+            root);
+        var session = new BackendCompiler(new DynamicBuilder(options), options)
+            .CreateModulePlans([module]);
+        var modulePlan = Assert.Single(session.Modules);
+        var run = Assert.Single(modulePlan.Functions, function => function.Name == "run");
+        var code = TypedModuleCode.Build(modulePlan).GetDirect(run.Id);
+
+        FlowValueType LocalType(string name)
+        {
+            return code.GetLocalType(
+                run.LocalSlots.Single(slot => slot.Name == name).Id);
+        }
+
+        // A literal wider than Int32 still narrows when every use truncates,
+        // and the plain copy inherits that instead of pinning a wider storage.
+        Assert.Equal(FlowValueType.Int32, LocalType("seed"));
+        Assert.Equal(FlowValueType.Int32, LocalType("copy"));
+        Assert.Equal(FlowValueType.Int32, LocalType("shift"));
+        Assert.Equal(FlowValueType.Int32, LocalType("total"));
+        Assert.Equal(FlowValueType.Int32, LocalType("i"));
+        Assert.Equal(FlowValueType.Int32, LocalType("k"));
+    }
+
+    [Fact]
+    public void TypedModuleCodeKeepsGuardedStringCodesAndWhileCountersAsInt32()
+    {
+        var root = Path.GetTempPath();
+        var options = EngineOptions.Default
+            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var module = Parse(
+            """
+            @module(TEST);
+            export native func run(String text) Number {
+                var total = 0;
+                for (var i = 0; i < text.length; i++) {
+                    var code = text.charCodeAt(i);
+                    total = (total + code) | 0;
+                }
+                var left = 0;
+                var right = 10;
+                while (left < right) {
+                    left++;
+                    right--;
+                }
+                var invalid = text.charCodeAt(-1);
+                return total + left + right + (invalid != invalid);
+            }
+            """,
+            root);
+        var session = new BackendCompiler(new DynamicBuilder(options), options)
+            .CreateModulePlans([module]);
+        var modulePlan = Assert.Single(session.Modules);
+        var run = Assert.Single(modulePlan.Functions, function => function.Name == "run");
+        var code = TypedModuleCode.Build(modulePlan).GetDirect(run.Id);
+
+        FlowValueType LocalType(string name)
+        {
+            return code.GetLocalType(
+                run.LocalSlots.Single(slot => slot.Name == name).Id);
+        }
+
+        Assert.Equal(FlowValueType.Int32, LocalType("code"));
+        Assert.Equal(FlowValueType.Int32, LocalType("left"));
+        Assert.Equal(FlowValueType.Int32, LocalType("right"));
+        Assert.Equal(FlowValueType.Number, LocalType("invalid"));
+    }
+
+    [Fact]
     public void GlobalPredefineCreatesModuleAndFunctionPlans()
     {
         var root = Path.GetTempPath();

@@ -93,6 +93,26 @@ namespace AuroraScript.Runtime
             return GetElement(receiver, ScriptDatum.FromNumber(index));
         }
 
+        /// <summary>
+        /// Reads an element with an index the compiler already proved to be a
+        /// native <c>int</c>, so no double round trip is needed.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum GetElementIndex(ScriptDatum receiver, int index)
+        {
+            if (receiver.Kind == ValueKind.Array && receiver.Object is ScriptArray array)
+            {
+                var value = default(ScriptDatum);
+                array.GetElement(index, ref value);
+                return value;
+            }
+            if (receiver.Reference is ScriptPackedArray packedArray)
+            {
+                return packedArray.GetElementDatum(index);
+            }
+            return GetElement(receiver, ScriptDatum.FromNumber(index));
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum SetElement(ScriptDatum receiver, ScriptDatum index, ScriptDatum value)
         {
@@ -129,6 +149,26 @@ namespace AuroraScript.Runtime
             return SetElement(receiver, ScriptDatum.FromNumber(index), value);
         }
 
+        /// <summary>
+        /// Writes an element with an index the compiler already proved to be a
+        /// native <c>int</c>, so no double round trip is needed.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum SetElementIndex(ScriptDatum receiver, int index, ScriptDatum value)
+        {
+            if (receiver.Kind == ValueKind.Array && receiver.Object is ScriptArray array)
+            {
+                array.SetElement(index, in value);
+                return value;
+            }
+            if (receiver.Reference is ScriptPackedArray packedArray)
+            {
+                packedArray.SetElementDatum(index, value);
+                return value;
+            }
+            return SetElement(receiver, ScriptDatum.FromNumber(index), value);
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum CompoundAddElement(
             ScriptDatum receiver,
@@ -148,6 +188,17 @@ namespace AuroraScript.Runtime
         {
             var result = ValueOps.Add(GetElementNumber(receiver, index), value);
             SetElementNumber(receiver, index, result);
+            return result;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum CompoundAddElementIndex(
+            ScriptDatum receiver,
+            int index,
+            ScriptDatum value)
+        {
+            var result = ValueOps.Add(GetElementIndex(receiver, index), value);
+            SetElementIndex(receiver, index, result);
             return result;
         }
 
@@ -174,6 +225,19 @@ namespace AuroraScript.Runtime
             var previous = GetElementNumber(receiver, index);
             var current = ValueOps.ChangeByOne(previous, delta);
             SetElementNumber(receiver, index, current);
+            return postfix ? previous : current;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum ChangeElementIndex(
+            ScriptDatum receiver,
+            int index,
+            double delta,
+            bool postfix)
+        {
+            var previous = GetElementIndex(receiver, index);
+            var current = ValueOps.ChangeByOne(previous, delta);
+            SetElementIndex(receiver, index, current);
             return postfix ? previous : current;
         }
 

@@ -162,6 +162,18 @@ namespace AuroraScript.Runtime
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ScriptDatum CreateNumber(int value)
+        {
+            return new ScriptDatum(null, EncodeNumber(value));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ScriptDatum CreateNumber(long value)
+        {
+            return new ScriptDatum(null, EncodeNumber(value));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ScriptDatum CreateString(string value)
         {
             return new ScriptDatum(value ?? string.Empty, (ulong)(short)ValueKind.String);
@@ -281,6 +293,18 @@ namespace AuroraScript.Runtime
                 TruePayload => EncodedSubnormalTwo,
                 _ => bits,
             };
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong EncodeNumber(int value)
+        {
+            return EncodeNumber((double)value);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong EncodeNumber(long value)
+        {
+            return EncodeNumber((double)value);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
