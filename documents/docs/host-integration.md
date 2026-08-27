@@ -506,6 +506,79 @@ declare var ONLINE_TOTAL;
 
 Use `ScriptDatum` when you need exact runtime values and minimum conversion overhead. `ValueKind` is the storage tag: packed arrays, `StringBuffer`, `Path`, and `HashMap` stay `ValueKind.Object`. Call `ScriptDatum.TypeOf` or `GetTypeName` for the script `typeof` string (`"Int8Array"`, `"StringBuffer"`, and so on).
 
+## Native Host Exports
+
+Use generated native exports when a host global should be a `ScriptObject` with typed Core methods instead of `BondingFunction` or a CLR delegate. The `AuroraScript.Hosting.Generators` analyzer turns `[AuroraExport]` members into Datum adapters and compiler catalog metadata.
+
+This is distinct from script `native func` (a module ABI) and from opt-in `BuiltInModules` such as `fs` and `http`.
+
+Declare a public sealed partial class that derives from `ScriptObject`:
+
+```csharp
+using AuroraScript.Hosting;
+using AuroraScript.Runtime;
+using AuroraScript.Runtime.Types;
+
+[AuroraBuiltinGlobal("Stats")]
+public sealed partial class StatsSupport : ScriptObject
+{
+    [AuroraExport("mean", MatchFailure.ReturnNaN)]
+    public static double MeanCore(double a, double b) => (a + b) / 2D;
+
+    [AuroraExport("echo", MatchFailure.Throw)]
+    public static ScriptDatum EchoCore(ScriptDatum value) => value;
+}
+```
+
+Register the instance on a domain or engine global. Runtime visibility still comes from `Define`; the generator only emits adapters, constructors, and assembly catalog attributes.
+
+```csharp
+global.Define("Stats", new StatsSupport(), writeable: false, enumerable: false);
+```
+
+The engine already defines `Math`, `TDoc`, and the experimental `Stats` global this way. `JSON`, `console`, `HotPatch`, and prototype methods remain Bonding-style implementations.
+
+### Core signatures
+
+Supported Core parameter and return types:
+
+- `double`, `int`, `bool`, `string`
+- `ScriptDatum`
+- any `ScriptObject` subclass (`ScriptArray`, packed arrays, `Path`, `Proxy`, `Regex`, `Date`, `HashMap`, `Error`, `ClosureFunction`, wrappers)
+
+Optional implicit prefixes, in this order only:
+
+1. `ScriptContext ctx` — not a script argument.
+2. `ScriptObject thisObject` — the receiver; the parameter name must be `thisObject`.
+
+Trailing C# default values are allowed. `params double[]` and `params ScriptDatum[]` are allowed on Datum adapters only.
+
+Public static `readonly double` fields marked `[AuroraExport("PI")]` become script constants. Unshadowed reads emit `ldsfld`, not a boxed `ldc.r8`.
+
+`[AuroraParam(MatchLevel.Exact)]` or `Strict` tightens adapter coercion. `MatchFailure` controls adapter mismatch: `Default` infers NaN for numeric returns and null otherwise; `Throw` raises `AuroraRuntimeException`.
+
+Object returns keep the original `ValueKind` through `ScriptDatum.WriteObject` / `FromObject`, so `Array`, `Date`, and `Error` are not collapsed to a generic object.
+
+### Direct calls
+
+When argument types are proven, the compiler calls the Core method directly. Requirements:
+
+- Unshadowed global receiver (`Math.abs(x)`, not `var m = Math; m.abs(x)`).
+- Public Core method without `params`.
+- Compatible proven argument types, including optional trailing defaults.
+- Catalog metadata present. The engine assembly is always scanned. Additional host assemblies must be listed on `EngineOptions.HostExportAssemblies`.
+
+`params` exports, spread arguments, shadowed globals, and unproven argument types stay on the generated Datum adapter.
+
+### Type and generator rules
+
+- The class must be a non-abstract, non-generic, top-level `partial` class in a namespace.
+- If you write an instance constructor, call `RegisterAuroraExports()` from it; otherwise the generator emits a constructor. Missing that call is `AURORAEXP004`.
+- Invalid globals are `AURORAEXP001`; unsupported members/signatures are `AURORAEXP002`; duplicate script names are `AURORAEXP003`.
+- Unsupported: `async`, `Span`/`ref`/`out`/`in`, generic methods, nested types, records, empty export names, `params` with `[AuroraParam]`, `ctx`/`thisObject` after script parameters.
+
+Reference `AuroraScript.Hosting.Generators` as an analyzer in the project that declares `[AuroraBuiltinGlobal]` types. Do not apply `AuroraGeneratedExportAttribute` or `AuroraGeneratedConstantAttribute` by hand.
+
 ## Domains And State
 
 An engine owns compiled code and shared prototypes. A `ScriptDomain` owns one isolated global/module registry.
@@ -555,8 +628,8 @@ Patch types:
 
 For AI-assisted development:
 
-1. Read `host-integration` for .NET host usage.
-2. Read `host-api` for a structured API index.
+1. Read `host-integration` for .NET host usage, including native host exports.
+2. Read `host-api` for a structured API index (`AuroraBuiltinGlobal`, `AuroraExport`, `EngineOptions.HostExportAssemblies`).
 3. Use `aurora_search_runtime_api` or `aurora_get_runtime_api` before using runtime APIs that look like JavaScript built-ins.
 4. Use `aurora_check_script` to validate generated in-memory script text.
 5. Use `aurora_run_script` to execute a small module or block and inspect `stdout`, `stderr`, and `result`.

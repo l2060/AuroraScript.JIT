@@ -313,7 +313,7 @@ public sealed class AuroraLanguageServerTests
         var signatureNode = Assert.Single(signatureHelp["signatures"]!.AsArray());
         Assert.NotNull(signatureNode);
         var signature = signatureNode!.AsObject();
-        Assert.Equal("Math.pow(x: number, y: number): number", signature["label"]!.GetValue<string>());
+        Assert.Equal("Math.pow(x: Number, y: Number): Number", signature["label"]!.GetValue<string>());
     }
 
     [Fact]

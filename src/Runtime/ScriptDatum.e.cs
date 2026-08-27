@@ -20,6 +20,35 @@ namespace AuroraScript.Runtime
         /// <summary> A reference to a false script datum. </summary>
         public static readonly ScriptDatum False = ScriptDatum.FromBoolean(false);
 
+        /// <summary>
+        /// Gets the CLR <see cref="ScriptObject"/> representation of any script value,
+        /// materializing immutable primitive wrappers when necessary.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryGetScriptObject(
+            in ScriptDatum value,
+            out ScriptObject result)
+        {
+            switch (value.Kind)
+            {
+                case ValueKind.Null:
+                    result = NullValue.Instance;
+                    return true;
+                case ValueKind.Boolean:
+                    result = BooleanValue.Of(value.Boolean);
+                    return true;
+                case ValueKind.Number:
+                    result = NumberValue.Of(value.Number);
+                    return true;
+                case ValueKind.String:
+                    result = StringValue.Of(value.StringText);
+                    return true;
+                default:
+                    result = value.Object;
+                    return result != null;
+            }
+        }
+
 
         /// <summary>
         /// Marks the given datum as Null.
@@ -367,6 +396,9 @@ namespace AuroraScript.Runtime
 
                 case ClosureFunction closureFunction:
                     return FromFunction(closureFunction);
+
+                case ScriptError scriptError:
+                    return FromError(scriptError);
 
                 case ClrMethodBinding clrMethodBinding:
                     return FromClrFunction(clrMethodBinding);

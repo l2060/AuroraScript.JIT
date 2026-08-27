@@ -30,12 +30,40 @@ namespace AuroraScript.Hosting.Generators
         private const string BuiltinGlobalAttribute = "AuroraScript.Hosting.AuroraBuiltinGlobalAttribute";
         private const string ExportAttribute = "AuroraScript.Hosting.AuroraExportAttribute";
         private const string ParamAttribute = "AuroraScript.Hosting.AuroraParamAttribute";
+        private static readonly DiagnosticDescriptor InvalidGlobal = new(
+            "AURORAEXP001",
+            "Invalid Aurora builtin global",
+            "{0}",
+            "AuroraScript.Hosting",
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
+        private static readonly DiagnosticDescriptor InvalidExport = new(
+            "AURORAEXP002",
+            "Invalid Aurora export",
+            "{0}",
+            "AuroraScript.Hosting",
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
+        private static readonly DiagnosticDescriptor DuplicateExport = new(
+            "AURORAEXP003",
+            "Duplicate Aurora export",
+            "Global '{0}' exports script member '{1}' more than once",
+            "AuroraScript.Hosting",
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
+        private static readonly DiagnosticDescriptor ManualRegistration = new(
+            "AURORAEXP004",
+            "Aurora exports require manual registration",
+            "{0}",
+            "AuroraScript.Hosting",
+            DiagnosticSeverity.Warning,
+            isEnabledByDefault: true);
 
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
             var candidates = context.SyntaxProvider.ForAttributeWithMetadataName(
                 BuiltinGlobalAttribute,
-                static (node, _) => node is ClassDeclarationSyntax,
+                static (node, _) => node is TypeDeclarationSyntax,
                 static (context, cancellationToken) => ParseBuiltinGlobal(context, cancellationToken));
 
             context.RegisterSourceOutput(
@@ -53,8 +81,7 @@ namespace AuroraScript.Hosting.Generators
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (context.TargetSymbol is not INamedTypeSymbol typeSymbol ||
-                !IsPartialClass(typeSymbol))
+            if (context.TargetSymbol is not INamedTypeSymbol typeSymbol)
             {
                 return null;
             }
@@ -66,57 +93,173 @@ namespace AuroraScript.Hosting.Generators
                 return null;
             }
 
+            var diagnostics = new List<Diagnostic>();
+            if (typeSymbol.IsRecord || typeSymbol.IsAbstract)
+            {
+                diagnostics.Add(Diagnostic.Create(
+                    InvalidGlobal,
+                    GetLocation(typeSymbol),
+                    $"Type '{typeSymbol.ToDisplayString()}' must be a non-abstract class."));
+            }
+            if (!IsPartialClass(typeSymbol))
+            {
+                diagnostics.Add(Diagnostic.Create(
+                    InvalidGlobal,
+                    GetLocation(typeSymbol),
+                    $"Type '{typeSymbol.ToDisplayString()}' must be partial to use AuroraBuiltinGlobal."));
+            }
+            if (typeSymbol.ContainingType != null || typeSymbol.TypeParameters.Length != 0)
+            {
+                diagnostics.Add(Diagnostic.Create(
+                    InvalidGlobal,
+                    GetLocation(typeSymbol),
+                    $"Type '{typeSymbol.ToDisplayString()}' must be a non-generic top-level class."));
+            }
+            if (typeSymbol.ContainingNamespace.IsGlobalNamespace)
+            {
+                diagnostics.Add(Diagnostic.Create(
+                    InvalidGlobal,
+                    GetLocation(typeSymbol),
+                    $"Type '{typeSymbol.ToDisplayString()}' must be declared in a namespace."));
+            }
+            if (!DerivesFromScriptObject(typeSymbol))
+            {
+                diagnostics.Add(Diagnostic.Create(
+                    InvalidGlobal,
+                    GetLocation(typeSymbol),
+                    $"Type '{typeSymbol.ToDisplayString()}' must derive from ScriptObject."));
+            }
+            if (typeSymbol.InstanceConstructors.Any(
+                    static constructor => !constructor.IsImplicitlyDeclared))
+            {
+                diagnostics.Add(Diagnostic.Create(
+                    ManualRegistration,
+                    GetLocation(typeSymbol),
+                    $"Type '{typeSymbol.ToDisplayString()}' declares an instance constructor and must call RegisterAuroraExports()."));
+            }
+
             var globalName = globalAttribute.ConstructorArguments.Length > 0
                 ? globalAttribute.ConstructorArguments[0].Value as string
                 : null;
             if (string.IsNullOrWhiteSpace(globalName))
             {
-                return null;
+                diagnostics.Add(Diagnostic.Create(
+                    InvalidGlobal,
+                    GetLocation(typeSymbol),
+                    "AuroraBuiltinGlobal requires a non-empty global name."));
+                globalName = typeSymbol.Name;
             }
 
             var writable = GetNamedBool(globalAttribute, "Writable");
             var enumerable = GetNamedBool(globalAttribute, "Enumerable");
 
             var exports = new List<ExportModel>();
+            var constants = new List<ConstantModel>();
+            var exportedNames = new HashSet<string>(StringComparer.Ordinal);
+            var adapterNames = new HashSet<string>(StringComparer.Ordinal);
             foreach (var member in typeSymbol.GetMembers())
             {
-                if (member is not IMethodSymbol methodSymbol ||
-                    methodSymbol.MethodKind != MethodKind.Ordinary ||
-                    !methodSymbol.IsStatic ||
-                    methodSymbol.IsImplicitlyDeclared)
-                {
-                    continue;
-                }
-
-                var exportAttribute = methodSymbol.GetAttributes()
+                var exportAttribute = member.GetAttributes()
                     .FirstOrDefault(attribute => attribute.AttributeClass?.ToDisplayString() == ExportAttribute);
                 if (exportAttribute == null)
                 {
                     continue;
                 }
 
-                var export = ParseExport(typeSymbol, methodSymbol, exportAttribute);
-                if (export != null)
+                if (member is IMethodSymbol methodSymbol &&
+                    methodSymbol.MethodKind == MethodKind.Ordinary &&
+                    methodSymbol.IsStatic &&
+                    !methodSymbol.IsImplicitlyDeclared)
                 {
-                    exports.Add(export);
+                    var export = ParseExport(typeSymbol, methodSymbol, exportAttribute);
+                    if (export != null)
+                    {
+                        if (exportedNames.Add(export.ScriptName))
+                        {
+                            if (adapterNames.Add(export.AdapterMethodName))
+                            {
+                                exports.Add(export);
+                            }
+                            else
+                            {
+                                diagnostics.Add(Diagnostic.Create(
+                                    DuplicateExport,
+                                    GetLocation(member),
+                                    globalName,
+                                    export.ScriptName));
+                            }
+                        }
+                        else
+                        {
+                            diagnostics.Add(Diagnostic.Create(
+                                DuplicateExport,
+                                GetLocation(member),
+                                globalName,
+                                export.ScriptName));
+                        }
+                    }
+                    else
+                    {
+                        diagnostics.Add(Diagnostic.Create(
+                            InvalidExport,
+                            GetLocation(member),
+                            $"Method '{member.ToDisplayString()}' has an unsupported Aurora export signature."));
+                    }
+                }
+                else if (member is IFieldSymbol fieldSymbol &&
+                    fieldSymbol.IsStatic &&
+                    !fieldSymbol.IsImplicitlyDeclared)
+                {
+                    var constant = ParseConstant(fieldSymbol, exportAttribute);
+                    if (constant != null)
+                    {
+                        if (exportedNames.Add(constant.ScriptName))
+                        {
+                            constants.Add(constant);
+                        }
+                        else
+                        {
+                            diagnostics.Add(Diagnostic.Create(
+                                DuplicateExport,
+                                GetLocation(member),
+                                globalName,
+                                constant.ScriptName));
+                        }
+                    }
+                    else
+                    {
+                        diagnostics.Add(Diagnostic.Create(
+                            InvalidExport,
+                            GetLocation(member),
+                            $"Field '{member.ToDisplayString()}' must be a public static readonly double."));
+                    }
+                }
+                else
+                {
+                    diagnostics.Add(Diagnostic.Create(
+                        InvalidExport,
+                        GetLocation(member),
+                        $"Member '{member.ToDisplayString()}' must be a static method or static readonly field."));
                 }
             }
 
-            if (exports.Count == 0)
-            {
-                return null;
-            }
-
             exports.Sort(static (left, right) =>
+                string.Compare(left.ScriptName, right.ScriptName, StringComparison.Ordinal));
+            constants.Sort(static (left, right) =>
                 string.Compare(left.ScriptName, right.ScriptName, StringComparison.Ordinal));
 
             return new BuiltinGlobalModel(
                 typeSymbol.ContainingNamespace.ToDisplayString(),
                 typeSymbol.Name,
+                GetConstructorAccessibility(typeSymbol),
+                !typeSymbol.InstanceConstructors.Any(
+                    constructor => !constructor.IsImplicitlyDeclared),
                 globalName!,
                 writable,
                 enumerable,
-                exports);
+                exports,
+                constants,
+                diagnostics);
         }
 
         private static ExportModel? ParseExport(
@@ -124,6 +267,17 @@ namespace AuroraScript.Hosting.Generators
             IMethodSymbol methodSymbol,
             AttributeData exportAttribute)
         {
+            if (methodSymbol.TypeParameters.Length != 0 ||
+                methodSymbol.ReturnsByRef ||
+                methodSymbol.ReturnsByRefReadonly ||
+                !HasValidEnumArgument<HostExportFailure>(
+                    exportAttribute,
+                    constructorIndex: 1,
+                    namedArgument: "Failure"))
+            {
+                return null;
+            }
+
             var scriptName = exportAttribute.ConstructorArguments.Length > 0
                 ? exportAttribute.ConstructorArguments[0].Value as string
                 : null;
@@ -133,22 +287,70 @@ namespace AuroraScript.Hosting.Generators
             }
 
             var failure = ParseFailure(exportAttribute, methodSymbol.ReturnType);
+            var start = 0;
+            var takesContext = false;
+            var takesThisObject = false;
+            if (methodSymbol.Parameters.Length > 0 &&
+                IsScriptContext(methodSymbol.Parameters[0].Type))
+            {
+                takesContext = true;
+                start = 1;
+            }
+            if (start < methodSymbol.Parameters.Length &&
+                IsThisObjectParameter(methodSymbol.Parameters[start]))
+            {
+                takesThisObject = true;
+                start++;
+            }
+
             var parameters = new List<ParameterModel>();
-            for (var index = 0; index < methodSymbol.Parameters.Length; index++)
+            for (var index = start; index < methodSymbol.Parameters.Length; index++)
             {
                 var parameter = methodSymbol.Parameters[index];
-                var parameterKind = ResolveParameterKind(parameter.Type);
+                if (IsScriptContext(parameter.Type) ||
+                    IsThisObjectParameter(parameter) ||
+                    parameter.RefKind != RefKind.None)
+                {
+                    return null;
+                }
+
+                var parameterKind = ResolveParameterKind(parameter);
                 if (parameterKind == ParameterKind.Unsupported)
                 {
                     return null;
                 }
 
                 var coercion = ParseCoercion(parameter);
+                var parameterAttribute = parameter.GetAttributes()
+                    .FirstOrDefault(data =>
+                        data.AttributeClass?.ToDisplayString() == ParamAttribute);
+                if ((parameter.IsParams && parameterAttribute != null) ||
+                    (parameterAttribute != null &&
+                        !HasValidEnumArgument<HostParamCoercion>(
+                            parameterAttribute,
+                            constructorIndex: 0,
+                            namedArgument: "Coercion")))
+                {
+                    return null;
+                }
+                var scriptIndex = index - start;
+                string? defaultLiteral = null;
+                if (parameter.HasExplicitDefaultValue)
+                {
+                    defaultLiteral = FormatDefaultLiteral(parameter);
+                    if (defaultLiteral == null)
+                    {
+                        return null;
+                    }
+                }
                 parameters.Add(new ParameterModel(
-                    index,
-                    $"arg{index}",
+                    scriptIndex,
+                    $"arg{scriptIndex}",
                     parameterKind,
-                    coercion));
+                    coercion,
+                    defaultLiteral,
+                    parameter.Type.ToDisplayString(
+                        SymbolDisplayFormat.FullyQualifiedFormat)));
             }
 
             var returnKind = ResolveReturnKind(methodSymbol.ReturnType);
@@ -157,31 +359,84 @@ namespace AuroraScript.Hosting.Generators
                 return null;
             }
 
+            var hasParams = parameters.Count != 0 &&
+                parameters[parameters.Count - 1].Kind is
+                    ParameterKind.NumberParams or ParameterKind.DatumParams;
+            var canDirectCall = containingType.DeclaredAccessibility == Accessibility.Public &&
+                methodSymbol.DeclaredAccessibility == Accessibility.Public &&
+                !hasParams;
+
             return new ExportModel(
                 scriptName!,
                 methodSymbol.Name,
                 BuildAdapterName(scriptName!),
                 containingType.ToDisplayString(),
-                containingType.DeclaredAccessibility == Accessibility.Public &&
-                    methodSymbol.DeclaredAccessibility == Accessibility.Public,
+                canDirectCall,
                 failure,
                 returnKind,
-                parameters);
+                parameters,
+                takesContext,
+                takesThisObject);
+        }
+
+        private static ConstantModel? ParseConstant(
+            IFieldSymbol fieldSymbol,
+            AttributeData exportAttribute)
+        {
+            if (fieldSymbol.Type.SpecialType != SpecialType.System_Double ||
+                fieldSymbol.DeclaredAccessibility != Accessibility.Public ||
+                !fieldSymbol.IsReadOnly)
+            {
+                return null;
+            }
+
+            var scriptName = exportAttribute.ConstructorArguments.Length > 0
+                ? exportAttribute.ConstructorArguments[0].Value as string
+                : null;
+            if (string.IsNullOrWhiteSpace(scriptName))
+            {
+                scriptName = fieldSymbol.Name;
+            }
+
+            return new ConstantModel(
+                scriptName!,
+                fieldSymbol.Name,
+                fieldSymbol.ContainingType.ToDisplayString());
         }
 
         private static void Execute(
             SourceProductionContext context,
             ImmutableArray<BuiltinGlobalModel?> models)
         {
+            var globalNames = new HashSet<string>(StringComparer.Ordinal);
             foreach (var model in models)
             {
                 if (model == null)
                 {
                     continue;
                 }
+                foreach (var diagnostic in model.Diagnostics)
+                {
+                    context.ReportDiagnostic(diagnostic);
+                }
+                if (model.Diagnostics.Any(static diagnostic =>
+                        diagnostic.Severity == DiagnosticSeverity.Error))
+                {
+                    continue;
+                }
+                if (!globalNames.Add(model.GlobalName))
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        InvalidGlobal,
+                        Location.None,
+                        $"Global '{model.GlobalName}' is declared by more than one AuroraBuiltinGlobal type."));
+                    continue;
+                }
 
                 var source = SourceText.From(GenerateSource(model), Encoding.UTF8);
-                context.AddSource($"{model.ClassName}.AuroraExports.g.cs", source);
+                context.AddSource(
+                    $"{model.Namespace.Replace('.', '_')}.{model.ClassName}.AuroraExports.g.cs",
+                    source);
             }
         }
 
@@ -195,9 +450,19 @@ namespace AuroraScript.Hosting.Generators
             builder.AppendLine("#pragma warning disable CS1591");
 
             var count = 0;
+            var globalNames = new HashSet<string>(StringComparer.Ordinal);
             foreach (var model in models)
             {
                 if (model == null)
+                {
+                    continue;
+                }
+                if (model.Diagnostics.Any(static diagnostic =>
+                        diagnostic.Severity == DiagnosticSeverity.Error))
+                {
+                    continue;
+                }
+                if (!globalNames.Add(model.GlobalName))
                 {
                     continue;
                 }
@@ -225,8 +490,24 @@ namespace AuroraScript.Hosting.Generators
                         builder.Append("global::AuroraScript.Hosting.AuroraExportValueKind.")
                             .Append(GetCatalogKind(export.Parameters[i].Kind));
                     }
-                    builder.AppendLine(" })]");
+                    builder.Append(" }, ");
+                    builder.Append(export.TakesContext ? "true" : "false").Append(", ");
+                    builder.Append(export.TakesThisObject ? "true" : "false");
+                    builder.AppendLine(")]");
                     count++;
+                }
+
+                if (!model.Writable)
+                {
+                    foreach (var constant in model.Constants)
+                    {
+                        builder.Append("[assembly: global::AuroraScript.Hosting.AuroraGeneratedConstantAttribute(");
+                        builder.Append('"').Append(EscapeString(model.GlobalName)).Append("\", ");
+                        builder.Append('"').Append(EscapeString(constant.ScriptName)).Append("\", ");
+                        builder.Append("typeof(global::").Append(constant.ContainingTypeDisplayName).Append("), ");
+                        builder.Append('"').Append(EscapeString(constant.FieldName)).AppendLine("\")]");
+                        count++;
+                    }
                 }
             }
 
@@ -247,6 +528,7 @@ namespace AuroraScript.Hosting.Generators
                 ParameterKind.Boolean => "Boolean",
                 ParameterKind.String => "String",
                 ParameterKind.Object => "Object",
+                ParameterKind.Datum => "Datum",
                 _ => throw new ArgumentOutOfRangeException(nameof(kind))
             };
         }
@@ -261,6 +543,7 @@ namespace AuroraScript.Hosting.Generators
                 ReturnKind.Boolean => "Boolean",
                 ReturnKind.String => "String",
                 ReturnKind.Object => "Object",
+                ReturnKind.Datum => "Datum",
                 _ => throw new ArgumentOutOfRangeException(nameof(kind))
             };
         }
@@ -282,8 +565,30 @@ namespace AuroraScript.Hosting.Generators
             builder.AppendLine($"    partial class {model.ClassName}");
             builder.AppendLine("    {");
 
+            if (model.GenerateConstructor)
+            {
+                builder.Append("        ").Append(model.ConstructorAccessibility)
+                    .Append(' ').Append(model.ClassName).AppendLine("()");
+                builder.AppendLine("        {");
+                builder.AppendLine("            RegisterAuroraExports();");
+                builder.AppendLine("        }");
+                builder.AppendLine();
+            }
+
             builder.AppendLine("        private void RegisterAuroraExports()");
             builder.AppendLine("        {");
+            foreach (var constant in model.Constants)
+            {
+                builder.Append("            Define(\"");
+                builder.Append(EscapeString(constant.ScriptName));
+                builder.Append("\", ScriptDatum.FromNumber(");
+                builder.Append(constant.FieldName);
+                builder.Append("), writeable: ");
+                builder.Append(model.Writable ? "true" : "false");
+                builder.Append(", enumerable: ");
+                builder.Append(model.Enumerable ? "true" : "false");
+                builder.AppendLine(");");
+            }
             foreach (var export in model.Exports)
             {
                 builder.Append("            Define(\"");
@@ -323,10 +628,22 @@ namespace AuroraScript.Hosting.Generators
         {
             foreach (var parameter in export.Parameters)
             {
+                if (parameter.IsOptional)
+                {
+                    AppendOptionalCoercion(builder, export, parameter);
+                    continue;
+                }
+
                 switch (parameter.Kind)
                 {
                     case ParameterKind.Number:
                         AppendNumberCoercion(builder, export, parameter);
+                        break;
+                    case ParameterKind.NumberParams:
+                        AppendNumberParamsCoercion(builder, export, parameter);
+                        break;
+                    case ParameterKind.DatumParams:
+                        AppendDatumParamsCoercion(builder, parameter);
                         break;
                     case ParameterKind.Int32:
                         AppendInt32Coercion(builder, export, parameter);
@@ -340,8 +657,68 @@ namespace AuroraScript.Hosting.Generators
                     case ParameterKind.Object:
                         AppendObjectCoercion(builder, export, parameter);
                         break;
+                    case ParameterKind.Datum:
+                        AppendDatumCoercion(builder, export, parameter);
+                        break;
                 }
             }
+        }
+
+        private static void AppendOptionalCoercion(
+            StringBuilder builder,
+            ExportModel export,
+            ParameterModel parameter)
+        {
+            builder.AppendLine(
+                "            " + parameter.ClrTypeDisplayName + " " +
+                parameter.VariableName + " = " + parameter.DefaultLiteral + ";");
+            builder.AppendLine("            if ((uint)" + parameter.Index + " < (uint)args.Length)");
+            builder.AppendLine("            {");
+            switch (parameter.Kind)
+            {
+                case ParameterKind.Number:
+                    builder.AppendLine("                if (args.TryGetNumber(" + parameter.Index + ", out var " + parameter.VariableName + "Specified))");
+                    builder.AppendLine("                {");
+                    builder.AppendLine("                    " + parameter.VariableName + " = " + parameter.VariableName + "Specified;");
+                    builder.AppendLine("                }");
+                    break;
+                case ParameterKind.Int32:
+                    builder.AppendLine("                if (args.TryGetInt32(" + parameter.Index + ", out var " + parameter.VariableName + "Specified))");
+                    builder.AppendLine("                {");
+                    builder.AppendLine("                    " + parameter.VariableName + " = " + parameter.VariableName + "Specified;");
+                    builder.AppendLine("                }");
+                    break;
+                case ParameterKind.Boolean:
+                    builder.AppendLine("                if (args.TryGetBoolean(" + parameter.Index + ", out var " + parameter.VariableName + "Specified))");
+                    builder.AppendLine("                {");
+                    builder.AppendLine("                    " + parameter.VariableName + " = " + parameter.VariableName + "Specified;");
+                    builder.AppendLine("                }");
+                    break;
+                case ParameterKind.String:
+                    builder.AppendLine("                if (args.TryGetString(" + parameter.Index + ", out var " + parameter.VariableName + "Specified))");
+                    builder.AppendLine("                {");
+                    builder.AppendLine("                    " + parameter.VariableName + " = " + parameter.VariableName + "Specified;");
+                    builder.AppendLine("                }");
+                    break;
+                case ParameterKind.Object:
+                    builder.AppendLine(
+                        "                if (ScriptDatum.TryGetScriptObject(in args[" +
+                        parameter.Index + "], out var " + parameter.VariableName +
+                        "SpecifiedObject) && " + parameter.VariableName +
+                        "SpecifiedObject is " + parameter.ClrTypeDisplayName + " " +
+                        parameter.VariableName + "Specified)");
+                    builder.AppendLine("                {");
+                    builder.AppendLine("                    " + parameter.VariableName + " = " + parameter.VariableName + "Specified;");
+                    builder.AppendLine("                }");
+                    break;
+                case ParameterKind.Datum:
+                    builder.AppendLine("                args.TryGetRef(" + parameter.Index + ", ref " + parameter.VariableName + ");");
+                    break;
+                default:
+                    AppendFailureReturn(builder, export, indent: "                ");
+                    break;
+            }
+            builder.AppendLine("            }");
         }
 
         private static void AppendNumberCoercion(
@@ -375,6 +752,42 @@ namespace AuroraScript.Hosting.Generators
                     builder.AppendLine("            }");
                     break;
             }
+        }
+
+        private static void AppendNumberParamsCoercion(
+            StringBuilder builder,
+            ExportModel export,
+            ParameterModel parameter)
+        {
+            var countName = parameter.VariableName + "Count";
+            var indexName = parameter.VariableName + "Index";
+            builder.AppendLine("            var " + countName + " = 0;");
+            builder.AppendLine("            for (var " + indexName + " = " + parameter.Index + "; " + indexName + " < args.Length; " + indexName + "++)");
+            builder.AppendLine("            {");
+            builder.AppendLine("                if (!args.TryGetNumber(" + indexName + ", out _))");
+            builder.AppendLine("                {");
+            builder.AppendLine("                    break;");
+            builder.AppendLine("                }");
+            builder.AppendLine("                " + countName + "++;");
+            builder.AppendLine("            }");
+            builder.AppendLine("            if (" + countName + " == 0)");
+            builder.AppendLine("            {");
+            AppendFailureReturn(builder, export, indent: "                ");
+            builder.AppendLine("            }");
+            builder.AppendLine("            var " + parameter.VariableName + " = new double[" + countName + "];");
+            builder.AppendLine("            for (var " + indexName + " = 0; " + indexName + " < " + countName + "; " + indexName + "++)");
+            builder.AppendLine("            {");
+            builder.AppendLine("                args.TryGetNumber(" + parameter.Index + " + " + indexName + ", out " + parameter.VariableName + "[" + indexName + "]);");
+            builder.AppendLine("            }");
+        }
+
+        private static void AppendDatumParamsCoercion(
+            StringBuilder builder,
+            ParameterModel parameter)
+        {
+            builder.AppendLine(
+                "            var " + parameter.VariableName +
+                " = args.Slice(" + parameter.Index + ").ToArray();");
         }
 
         private static void AppendBooleanCoercion(
@@ -451,19 +864,24 @@ namespace AuroraScript.Hosting.Generators
             ExportModel export,
             ParameterModel parameter)
         {
-            if (parameter.Coercion == HostParamCoercion.Exact)
-            {
-                builder.AppendLine("            if ((uint)" + parameter.Index + " >= (uint)args.Length)");
-                builder.AppendLine("            {");
-                AppendFailureReturn(builder, export, indent: "                ");
-                builder.AppendLine("            }");
-                builder.AppendLine("            var " + parameter.VariableName + "Datum = args[" + parameter.Index + "];");
-                builder.AppendLine("            TypeCheckOps.Check(" + parameter.VariableName + "Datum, CheckedType.Object);");
-                builder.AppendLine("            var " + parameter.VariableName + " = " + parameter.VariableName + "Datum.Object;");
-                return;
-            }
+            builder.AppendLine(
+                "            if ((uint)" + parameter.Index +
+                " >= (uint)args.Length || !ScriptDatum.TryGetScriptObject(in args[" +
+                parameter.Index + "], out var " + parameter.VariableName +
+                "Object) || " + parameter.VariableName + "Object is not " +
+                parameter.ClrTypeDisplayName + " " + parameter.VariableName + ")");
+            builder.AppendLine("            {");
+            AppendFailureReturn(builder, export, indent: "                ");
+            builder.AppendLine("            }");
+        }
 
-            builder.AppendLine("            if (!args.TryGetObject(" + parameter.Index + ", out var " + parameter.VariableName + "))");
+        private static void AppendDatumCoercion(
+            StringBuilder builder,
+            ExportModel export,
+            ParameterModel parameter)
+        {
+            builder.AppendLine("            var " + parameter.VariableName + " = default(ScriptDatum);");
+            builder.AppendLine("            if (!args.TryGetRef(" + parameter.Index + ", ref " + parameter.VariableName + "))");
             builder.AppendLine("            {");
             AppendFailureReturn(builder, export, indent: "                ");
             builder.AppendLine("            }");
@@ -497,7 +915,20 @@ namespace AuroraScript.Hosting.Generators
 
         private static void AppendCoreInvocation(StringBuilder builder, ExportModel export)
         {
-            var argumentList = string.Join(", ", export.Parameters.Select(parameter => parameter.VariableName));
+            var argumentNames = new List<string>();
+            if (export.TakesContext)
+            {
+                argumentNames.Add("ctx");
+            }
+            if (export.TakesThisObject)
+            {
+                argumentNames.Add("thisObject");
+            }
+            for (var i = 0; i < export.Parameters.Count; i++)
+            {
+                argumentNames.Add(export.Parameters[i].VariableName);
+            }
+            var argumentList = string.Join(", ", argumentNames);
             if (export.ReturnKind == ReturnKind.Void)
             {
                 builder.AppendLine("            " + export.CoreMethodName + "(" + argumentList + ");");
@@ -519,14 +950,27 @@ namespace AuroraScript.Hosting.Generators
                     builder.AppendLine("            ScriptDatum.WriteAsString(ref result, coreResult);");
                     break;
                 case ReturnKind.Object:
-                    builder.AppendLine("            ScriptDatum.WriteAsObject(ref result, coreResult);");
+                    builder.AppendLine("            ScriptDatum.WriteObject(ref result, coreResult);");
+                    break;
+                case ReturnKind.Datum:
+                    builder.AppendLine("            result = coreResult;");
                     break;
             }
         }
 
         private static HostExportFailure ParseFailure(AttributeData exportAttribute, ITypeSymbol returnType)
         {
-            var failureValue = GetNamedEnum<HostExportFailure>(exportAttribute, "Failure");
+            var failureValue = GetConstructorEnum<HostExportFailure>(
+                exportAttribute,
+                argumentIndex: 1);
+            var namedFailure = GetNamedEnum<HostExportFailure>(
+                exportAttribute,
+                "Failure");
+            if (namedFailure != HostExportFailure.Default)
+            {
+                failureValue = namedFailure;
+            }
+
             if (failureValue != HostExportFailure.Default)
             {
                 return failureValue;
@@ -550,7 +994,31 @@ namespace AuroraScript.Hosting.Generators
                 return HostParamCoercion.Weak;
             }
 
-            return GetNamedEnum<HostParamCoercion>(attribute, "Coercion");
+            var coercion = GetConstructorEnum<HostParamCoercion>(
+                attribute,
+                argumentIndex: 0);
+            var namedCoercion = GetNamedEnum<HostParamCoercion>(
+                attribute,
+                "Coercion");
+            return namedCoercion != default ? namedCoercion : coercion;
+        }
+
+        private static ParameterKind ResolveParameterKind(IParameterSymbol parameter)
+        {
+            if (parameter.IsParams &&
+                parameter.Type is IArrayTypeSymbol arrayType &&
+                arrayType.ElementType.SpecialType == SpecialType.System_Double)
+            {
+                return ParameterKind.NumberParams;
+            }
+            if (parameter.IsParams &&
+                parameter.Type is IArrayTypeSymbol datumArray &&
+                IsType(datumArray.ElementType, "AuroraScript.Runtime.ScriptDatum"))
+            {
+                return ParameterKind.DatumParams;
+            }
+
+            return ResolveParameterKind(parameter.Type);
         }
 
         private static ParameterKind ResolveParameterKind(ITypeSymbol typeSymbol)
@@ -567,9 +1035,14 @@ namespace AuroraScript.Hosting.Generators
                     return ParameterKind.String;
             }
 
-            if (typeSymbol.ToDisplayString() == "AuroraScript.Runtime.Types.ScriptObject")
+            if (IsScriptObjectType(typeSymbol))
             {
                 return ParameterKind.Object;
+            }
+
+            if (typeSymbol.ToDisplayString() == "AuroraScript.Runtime.ScriptDatum")
+            {
+                return ParameterKind.Datum;
             }
 
             return ParameterKind.Unsupported;
@@ -594,17 +1067,47 @@ namespace AuroraScript.Hosting.Generators
                     return ReturnKind.String;
             }
 
-            if (typeSymbol.ToDisplayString() == "AuroraScript.Runtime.Types.ScriptObject")
+            if (IsScriptObjectType(typeSymbol))
             {
                 return ReturnKind.Object;
+            }
+
+            if (typeSymbol.ToDisplayString() == "AuroraScript.Runtime.ScriptDatum")
+            {
+                return ReturnKind.Datum;
             }
 
             return ReturnKind.Unsupported;
         }
 
+        private static bool IsScriptContext(ITypeSymbol typeSymbol)
+        {
+            return IsType(typeSymbol, "AuroraScript.Runtime.ScriptContext");
+        }
+
+        private static bool IsThisObjectParameter(IParameterSymbol parameter)
+        {
+            return string.Equals(parameter.Name, "thisObject", StringComparison.Ordinal) &&
+                IsType(parameter.Type, "AuroraScript.Runtime.Types.ScriptObject");
+        }
+
         private static bool IsType(ITypeSymbol typeSymbol, string displayName)
         {
             return string.Equals(typeSymbol.ToDisplayString(), displayName, StringComparison.Ordinal);
+        }
+
+        private static bool IsScriptObjectType(ITypeSymbol typeSymbol)
+        {
+            for (var current = typeSymbol as INamedTypeSymbol;
+                current != null;
+                current = current.BaseType)
+            {
+                if (IsType(current, "AuroraScript.Runtime.Types.ScriptObject"))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private static string InferScriptName(string methodName)
@@ -629,7 +1132,23 @@ namespace AuroraScript.Hosting.Generators
 
         private static string BuildAdapterName(string scriptName)
         {
-            return scriptName.ToUpperInvariant();
+            var builder = new StringBuilder(scriptName.Length);
+            for (var i = 0; i < scriptName.Length; i++)
+            {
+                var character = scriptName[i];
+                if (character == '_' ||
+                    char.IsLetter(character) ||
+                    (i != 0 && char.IsDigit(character)))
+                {
+                    builder.Append(char.ToUpperInvariant(character));
+                }
+                else
+                {
+                    builder.Append('_');
+                    builder.Append(((int)character).ToString("X4"));
+                }
+            }
+            return builder.ToString();
         }
 
         private static bool GetNamedBool(AttributeData attribute, string name)
@@ -670,6 +1189,69 @@ namespace AuroraScript.Hosting.Generators
             return default;
         }
 
+        private static TEnum GetConstructorEnum<TEnum>(
+            AttributeData attribute,
+            int argumentIndex)
+            where TEnum : struct
+        {
+            if ((uint)argumentIndex >=
+                (uint)attribute.ConstructorArguments.Length)
+            {
+                return default;
+            }
+
+            var value = attribute.ConstructorArguments[argumentIndex].Value;
+            if (value is TEnum typed)
+            {
+                return typed;
+            }
+
+            if (value != null)
+            {
+                var numericValue = Convert.ToInt32(value);
+                if (Enum.IsDefined(typeof(TEnum), numericValue))
+                {
+                    return (TEnum)Enum.ToObject(
+                        typeof(TEnum),
+                        numericValue);
+                }
+            }
+
+            return default;
+        }
+
+        private static bool HasValidEnumArgument<TEnum>(
+            AttributeData attribute,
+            int constructorIndex,
+            string namedArgument)
+            where TEnum : struct
+        {
+            if ((uint)constructorIndex <
+                (uint)attribute.ConstructorArguments.Length)
+            {
+                var value = attribute.ConstructorArguments[constructorIndex].Value;
+                if (value != null &&
+                    !Enum.IsDefined(typeof(TEnum), Convert.ToInt32(value)))
+                {
+                    return false;
+                }
+            }
+
+            foreach (var argument in attribute.NamedArguments)
+            {
+                if (argument.Key == namedArgument &&
+                    argument.Value.Value != null &&
+                    !Enum.IsDefined(
+                        typeof(TEnum),
+                        Convert.ToInt32(argument.Value.Value)))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         private static bool IsPartialClass(INamedTypeSymbol typeSymbol)
         {
             foreach (var syntaxReference in typeSymbol.DeclaringSyntaxReferences)
@@ -684,6 +1266,34 @@ namespace AuroraScript.Hosting.Generators
             return false;
         }
 
+        private static bool DerivesFromScriptObject(INamedTypeSymbol typeSymbol)
+        {
+            for (var current = typeSymbol; current != null; current = current.BaseType)
+            {
+                if (string.Equals(
+                        current.ToDisplayString(),
+                        "AuroraScript.Runtime.Types.ScriptObject",
+                        StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static Location GetLocation(ISymbol symbol)
+        {
+            return symbol.Locations.FirstOrDefault(static location => location.IsInSource)
+                ?? Location.None;
+        }
+
+        private static string GetConstructorAccessibility(INamedTypeSymbol typeSymbol)
+        {
+            return typeSymbol.DeclaredAccessibility == Accessibility.Public
+                ? "public"
+                : "internal";
+        }
+
         private static string EscapeString(string value)
         {
             return value
@@ -691,30 +1301,102 @@ namespace AuroraScript.Hosting.Generators
                 .Replace("\"", "\\\"");
         }
 
+        private static string? FormatDefaultLiteral(IParameterSymbol parameter)
+        {
+            var value = parameter.ExplicitDefaultValue;
+            switch (parameter.Type.SpecialType)
+            {
+                case SpecialType.System_Boolean:
+                    return value is true ? "true" : "false";
+                case SpecialType.System_Int32:
+                    return Convert.ToInt32(value).ToString(
+                        System.Globalization.CultureInfo.InvariantCulture);
+                case SpecialType.System_Double:
+                    var number = Convert.ToDouble(value);
+                    if (double.IsNaN(number))
+                    {
+                        return "double.NaN";
+                    }
+                    if (double.IsPositiveInfinity(number))
+                    {
+                        return "double.PositiveInfinity";
+                    }
+                    if (double.IsNegativeInfinity(number))
+                    {
+                        return "double.NegativeInfinity";
+                    }
+                    return number.ToString(
+                        "R",
+                        System.Globalization.CultureInfo.InvariantCulture) + "D";
+                case SpecialType.System_String:
+                    return value == null ? "null" : "\"" + EscapeString((string)value) + "\"";
+            }
+
+            if (value == null)
+            {
+                if (IsType(parameter.Type, "AuroraScript.Runtime.ScriptDatum"))
+                {
+                    return "default(global::AuroraScript.Runtime.ScriptDatum)";
+                }
+                return "null";
+            }
+
+            return null;
+        }
+
         private sealed class BuiltinGlobalModel
         {
             public BuiltinGlobalModel(
                 string namespaceName,
                 string className,
+                string constructorAccessibility,
+                bool generateConstructor,
                 string globalName,
                 bool writable,
                 bool enumerable,
-                IReadOnlyList<ExportModel> exports)
+                IReadOnlyList<ExportModel> exports,
+                IReadOnlyList<ConstantModel> constants,
+                IReadOnlyList<Diagnostic> diagnostics)
             {
                 Namespace = namespaceName;
                 ClassName = className;
+                ConstructorAccessibility = constructorAccessibility;
+                GenerateConstructor = generateConstructor;
                 GlobalName = globalName;
                 Writable = writable;
                 Enumerable = enumerable;
                 Exports = exports;
+                Constants = constants;
+                Diagnostics = diagnostics;
             }
 
             public string Namespace { get; }
             public string ClassName { get; }
+            public string ConstructorAccessibility { get; }
+            public bool GenerateConstructor { get; }
             public string GlobalName { get; }
             public bool Writable { get; }
             public bool Enumerable { get; }
             public IReadOnlyList<ExportModel> Exports { get; }
+            public IReadOnlyList<ConstantModel> Constants { get; }
+            public IReadOnlyList<Diagnostic> Diagnostics { get; }
+        }
+
+        private sealed class ConstantModel
+        {
+            public ConstantModel(
+                string scriptName,
+                string fieldName,
+                string containingTypeDisplayName)
+            {
+                ScriptName = scriptName;
+                FieldName = fieldName;
+                ContainingTypeDisplayName = containingTypeDisplayName;
+            }
+
+            public string ScriptName { get; }
+            public string FieldName { get; }
+            public string ContainingTypeDisplayName { get; }
         }
 
         private sealed class ExportModel
@@ -727,7 +1409,9 @@ namespace AuroraScript.Hosting.Generators
                 bool canDirectCall,
                 HostExportFailure failure,
                 ReturnKind returnKind,
-                IReadOnlyList<ParameterModel> parameters)
+                IReadOnlyList<ParameterModel> parameters,
+                bool takesContext,
+                bool takesThisObject)
             {
                 ScriptName = scriptName;
                 CoreMethodName = coreMethodName;
@@ -737,6 +1421,8 @@ namespace AuroraScript.Hosting.Generators
                 Failure = failure;
                 ReturnKind = returnKind;
                 Parameters = parameters;
+                TakesContext = takesContext;
+                TakesThisObject = takesThisObject;
                 EffectiveFailure = failure == HostExportFailure.Default
                     ? ResolveDefaultFailure(returnKind)
                     : failure;
@@ -751,6 +1437,8 @@ namespace AuroraScript.Hosting.Generators
             public HostExportFailure EffectiveFailure { get; }
             public ReturnKind ReturnKind { get; }
             public IReadOnlyList<ParameterModel> Parameters { get; }
+            public bool TakesContext { get; }
+            public bool TakesThisObject { get; }
 
             private static HostExportFailure ResolveDefaultFailure(ReturnKind returnKind)
             {
@@ -769,28 +1457,38 @@ namespace AuroraScript.Hosting.Generators
                 int index,
                 string variableName,
                 ParameterKind kind,
-                HostParamCoercion coercion)
+                HostParamCoercion coercion,
+                string? defaultLiteral,
+                string clrTypeDisplayName)
             {
                 Index = index;
                 VariableName = variableName;
                 Kind = kind;
                 Coercion = coercion;
+                DefaultLiteral = defaultLiteral;
+                ClrTypeDisplayName = clrTypeDisplayName;
             }
 
             public int Index { get; }
             public string VariableName { get; }
             public ParameterKind Kind { get; }
             public HostParamCoercion Coercion { get; }
+            public string? DefaultLiteral { get; }
+            public string ClrTypeDisplayName { get; }
+            public bool IsOptional => DefaultLiteral != null;
         }
 
         private enum ParameterKind
         {
             Unsupported,
             Number,
+            NumberParams,
+            DatumParams,
             Int32,
             Boolean,
             String,
-            Object
+            Object,
+            Datum
         }
 
         private enum ReturnKind
@@ -801,7 +1499,8 @@ namespace AuroraScript.Hosting.Generators
             Int32,
             Boolean,
             String,
-            Object
+            Object,
+            Datum
         }
     }
 }

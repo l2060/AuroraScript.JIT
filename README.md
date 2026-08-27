@@ -76,6 +76,7 @@ Console.WriteLine(result); // 42
 - [语言指南](https://github.com/l2060/AuroraScript.JIT/wiki/Language-Guide)
 - [Script API Reference](https://github.com/l2060/AuroraScript.JIT/wiki/API-Script-Reference)
 - [.NET Host API Reference](https://github.com/l2060/AuroraScript.JIT/wiki/API-Host-Reference)
+- [宿主原生导出](https://github.com/l2060/AuroraScript.JIT/wiki/Host-Native-Exports)
 - [MCP、LSP 与 VSIX](https://github.com/l2060/AuroraScript.JIT/wiki/Tooling)
 - [性能与 Benchmark](https://github.com/l2060/AuroraScript.JIT/wiki/Performance-and-Benchmarks)
 

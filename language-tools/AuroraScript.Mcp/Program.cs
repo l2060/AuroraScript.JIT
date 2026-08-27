@@ -1466,7 +1466,7 @@ internal sealed class AuroraMcpServer
             "docs/language-reference.md" => "Human-readable language reference.",
             "docs/performance-best-practices.md" => "Performance guidance for compiler and runtime usage.",
             "docs/compiler-runtime-map.md" => "Source map for maintainers and AI agents.",
-            "docs/host-integration.md" => "Host-side .NET API guide, including resolver, execution, CLR interop, and advanced source loading patterns.",
+            "docs/host-integration.md" => "Host-side .NET API guide, including resolver, execution, CLR interop, native host exports, and advanced source loading patterns.",
             "schema/aurora-script.ebnf" => "Documentation grammar summary.",
             "schema/language-features.json" => "Structured feature index.",
             "schema/runtime-api.json" => "Structured runtime API metadata.",

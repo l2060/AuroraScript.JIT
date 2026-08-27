@@ -935,6 +935,7 @@ namespace AuroraScript.Compiler.Backend.Code
                                 AuroraExportValueKind.Boolean => FlowValueType.Boolean,
                                 AuroraExportValueKind.String => FlowValueType.String,
                                 AuroraExportValueKind.Object => FlowValueType.Object,
+                                AuroraExportValueKind.Datum => FlowValueType.Dynamic,
                                 _ => FlowValueType.Dynamic
                             };
                         }
@@ -957,6 +958,8 @@ namespace AuroraScript.Compiler.Backend.Code
                                     ? structuralFieldType
                                 : TryGetLocalFieldType(property, out var fieldType)
                                     ? fieldType
+                                : TryGetHostExportConstant(property)
+                                    ? FlowValueType.Number
                                     : FlowValueType.Dynamic;
                         if (!TryGetStaticPropertyName(property.Property, out _))
                         {
@@ -1522,6 +1525,15 @@ namespace AuroraScript.Compiler.Backend.Code
                     binding.Name,
                     memberName,
                     out descriptor);
+            }
+
+            private bool TryGetHostExportConstant(GetPropertyExpression property)
+            {
+                return property.Object is NameExpression receiver &&
+                    TryGetStaticPropertyName(property.Property, out var memberName) &&
+                    _names.TryGetValue(receiver, out var binding) &&
+                    binding.IsUnshadowedGlobal &&
+                    _hostExports.TryGetConstant(binding.Name, memberName, out _);
             }
 
             private static bool IsStaticProperty(Expression property, string expected)

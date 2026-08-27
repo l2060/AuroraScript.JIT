@@ -23,9 +23,7 @@ func testNative() {
 	var e = {a: 1, b: 2};
 
 
-	console.log(Stats.chat(a, b));
-	console.log(Stats.chat(a, c));
-	console.log(Stats.chat(a, d));
-	console.log(Stats.chat(b, c));
-	// console.log(Stats.chat(e, e));
+	var v = Math.PI;
+	var h = Math.pow(c,d);
+	var h2 = Math.pow(c,b);
 }

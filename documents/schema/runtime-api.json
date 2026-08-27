@@ -1773,11 +1773,13 @@
       "notes": {
         "en": [
           "TDoc parsing and serialization API.",
-          "The native script literal uses the separate `tdoc [TypeName] value` expression syntax; standalone .tdoc documents omit that prefix."
+          "The native script literal uses the separate `tdoc [TypeName] value` expression syntax; standalone .tdoc documents omit that prefix.",
+          "parse/stringify are generated native host exports; optional stringify arguments default to indented=true and emitTypes=false."
         ],
         "zh-CN": [
           "TDoc 类型文档解析与序列化 API。",
-          "脚本原生字面量使用独立的 `tdoc [TypeName] value` 表达式语法；独立 .tdoc 文档省略此前缀。"
+          "脚本原生字面量使用独立的 `tdoc [TypeName] value` 表达式语法；独立 .tdoc 文档省略此前缀。",
+          "parse/stringify 由生成的宿主原生导出实现；stringify 可选参数默认 indented=true、emitTypes=false。"
         ]
       }
     },
@@ -2124,10 +2126,12 @@
       },
       "notes": {
         "en": [
-          "Math constants and numeric functions."
+          "Math constants and numeric functions.",
+          "Implemented as a generated native host export. Unshadowed constant reads and fixed-arity calls can use a direct Core path; variadic max/min use the Datum adapter."
         ],
         "zh-CN": [
-          "数学常量和数值函数。"
+          "数学常量和数值函数。",
+          "由生成的宿主原生导出实现。未遮蔽的常量读取和固定参数调用可走 Core 直调；可变参数的 max/min 走 Datum 适配器。"
         ]
       }
     },
@@ -2523,10 +2527,12 @@
       },
       "notes": {
         "en": [
-          "Experimental host-export global backed by AuroraScript source generation."
+          "Experimental host-export global backed by AuroraScript source generation.",
+          "Use it as the reference surface for [AuroraBuiltinGlobal]/[AuroraExport] Core signatures, optional parameters, params rest, ScriptObject subtypes, and MatchFailure/MatchLevel."
         ],
         "zh-CN": [
-          "由 AuroraScript 源生成器支持的实验性宿主导出 global。"
+          "由 AuroraScript 源生成器支持的实验性宿主导出 global。",
+          "作为 [AuroraBuiltinGlobal]/[AuroraExport] 的参考面：Core 签名、可选参数、params rest、ScriptObject 子类型，以及 MatchFailure/MatchLevel。"
         ]
       }
     },

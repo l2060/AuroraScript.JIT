@@ -65,6 +65,12 @@ their flexible Datum calling convention and remain hot-patchable.
 
 Keep hot helper arguments type-stable. Reassigning a parameter is fine when every assignment preserves its proven native type; assigning unrelated dynamic values forces that parameter back to the dynamic path.
 
+Host globals declared with `[AuroraBuiltinGlobal]` / `[AuroraExport]` use the same
+direct-call idea on the C# side. Unshadowed `Math.abs(x)` with a proven number
+calls `AbsCore` directly. Unshadowed `Math.PI` loads `MathSupport.PI` with
+`ldsfld`. `params` members such as `Math.max` stay on the generated adapter.
+Shadowing the global (`var Math = other`) disables both paths.
+
 Use `native func` when the ABI itself must be explicit:
 
 ```as

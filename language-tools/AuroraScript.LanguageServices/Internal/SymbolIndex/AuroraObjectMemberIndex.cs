@@ -4,14 +4,17 @@ using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.LanguageServices.Features.Definition;
 using AuroraScript.LanguageServices.Text;
+using System;
 using System.Collections.Generic;
 
 namespace AuroraScript.LanguageServices.Internal.SymbolIndex;
 
 internal sealed class AuroraObjectMemberIndex
 {
+    internal readonly record struct ObjectMemberInfo(string Name, TextRange Range, bool IsMethod);
+
     private readonly AuroraModuleIndex _module;
-    private readonly Dictionary<string, Dictionary<string, TextRange>> _membersByObject = new(System.StringComparer.Ordinal);
+    private readonly Dictionary<string, Dictionary<string, ObjectMemberInfo>> _membersByObject = new(System.StringComparer.Ordinal);
 
     private AuroraObjectMemberIndex(AuroraModuleIndex module)
     {
@@ -49,13 +52,30 @@ internal sealed class AuroraObjectMemberIndex
     public bool TryGetMember(string ownerName, string memberName, out TextRange range)
     {
         if (_membersByObject.TryGetValue(ownerName, out var members) &&
-            members.TryGetValue(memberName, out range))
+            members.TryGetValue(memberName, out var member))
         {
+            range = member.Range;
             return true;
         }
 
         range = default;
         return false;
+    }
+
+    public IReadOnlyList<ObjectMemberInfo> GetMembers(string ownerName)
+    {
+        if (!_membersByObject.TryGetValue(ownerName, out var members) || members.Count == 0)
+        {
+            return Array.Empty<ObjectMemberInfo>();
+        }
+
+        var result = new List<ObjectMemberInfo>(members.Count);
+        foreach (var pair in members)
+        {
+            result.Add(pair.Value);
+        }
+
+        return result;
     }
 
     private void VisitModule(ModuleDeclaration module)
@@ -300,7 +320,12 @@ internal sealed class AuroraObjectMemberIndex
         if (property.Object is NameExpression owner &&
             property.Property is NameExpression propertyName)
         {
-            AddMember(owner.Identifier.Value, propertyName.Identifier.Value, TextRange.FromSourceSpan(propertyName.Identifier.Range), overwrite: false);
+            AddMember(
+                owner.Identifier.Value,
+                propertyName.Identifier.Value,
+                TextRange.FromSourceSpan(propertyName.Identifier.Range),
+                overwrite: false,
+                isMethod: property.Value is LambdaExpression);
         }
 
         VisitExpression(property.Object);
@@ -313,22 +338,27 @@ internal sealed class AuroraObjectMemberIndex
             if (map.Entries[i] is MapKeyValueExpression entry &&
                 !string.IsNullOrEmpty(entry.Key?.Value))
             {
-                AddMember(ownerName, entry.Key.Value, TextRange.FromSourceSpan(entry.Key.Range), overwrite: true);
+                AddMember(
+                    ownerName,
+                    entry.Key.Value,
+                    TextRange.FromSourceSpan(entry.Key.Range),
+                    overwrite: true,
+                    isMethod: entry.Value is LambdaExpression);
             }
         }
     }
 
-    private void AddMember(string ownerName, string memberName, TextRange range, bool overwrite)
+    private void AddMember(string ownerName, string memberName, TextRange range, bool overwrite, bool isMethod)
     {
         if (!_membersByObject.TryGetValue(ownerName, out var members))
         {
-            members = new Dictionary<string, TextRange>(System.StringComparer.Ordinal);
+            members = new Dictionary<string, ObjectMemberInfo>(System.StringComparer.Ordinal);
             _membersByObject.Add(ownerName, members);
         }
 
         if (overwrite || !members.ContainsKey(memberName))
         {
-            members[memberName] = range;
+            members[memberName] = new ObjectMemberInfo(memberName, range, isMethod);
         }
     }
 }

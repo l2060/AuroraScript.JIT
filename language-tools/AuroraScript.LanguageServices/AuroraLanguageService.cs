@@ -291,26 +291,10 @@ public sealed class AuroraLanguageService
     public CompletionResult GetCompletions(string sourceName, string sourceText, TextPosition position, string? baseDirectory = null)
     {
         var completionSourceText = GetCompletionSourceText(sourceText, position);
-        if (LightweightCompletionQuery.TryGetMemberOwner(sourceText, position, out var ownerName))
-        {
-            var completionParseResult = ParseText(sourceName, completionSourceText, baseDirectory);
-            var memberCompletions = BuiltinQuery.GetMemberCompletions(
-                _builtins,
-                completionParseResult.Module,
-                ownerName,
-                DocumentationLocale);
-            var scriptMemberCompletions = GetScriptMemberCompletions(sourceName, completionSourceText, ownerName, baseDirectory);
-            var mergedMemberCompletions = MergeCompletions(memberCompletions, scriptMemberCompletions);
-            if (mergedMemberCompletions.Items.Count != 0)
-            {
-                return mergedMemberCompletions;
-            }
-        }
-
-        var parseResult = ParseText(sourceName, sourceText, baseDirectory);
+        var parseResult = ParseText(sourceName, completionSourceText, baseDirectory);
         if (parseResult.Module == null && !string.Equals(completionSourceText, sourceText, StringComparison.Ordinal))
         {
-            parseResult = ParseText(sourceName, completionSourceText, baseDirectory);
+            parseResult = ParseText(sourceName, sourceText, baseDirectory);
         }
 
         if (parseResult.Module == null)
@@ -336,31 +320,14 @@ public sealed class AuroraLanguageService
         }
 
         var completionText = GetCompletionSourceText(text, position);
-        if (LightweightCompletionQuery.TryGetMemberOwner(text, position, out var ownerName))
-        {
-            var completionParseResult = _parseService.ParseText(
-                normalizedPath,
-                completionText,
-                _workspace.BaseDirectory,
-                _workspace.CreateSnapshot());
-            var memberCompletions = BuiltinQuery.GetMemberCompletions(
-                _builtins,
-                completionParseResult.Module,
-                ownerName,
-                DocumentationLocale);
-            var index = GetWorkspaceCompletionIndex(normalizedPath, completionText);
-            var scriptMemberCompletions = AuroraCompletionResolver.GetMemberCompletions(index, normalizedPath, ownerName);
-            var mergedMemberCompletions = MergeCompletions(memberCompletions, scriptMemberCompletions);
-            if (mergedMemberCompletions.Items.Count != 0)
-            {
-                return mergedMemberCompletions;
-            }
-        }
-
-        var parseResult = _parseService.ParseText(normalizedPath, text, _workspace.BaseDirectory, _workspace.CreateSnapshot());
+        var parseResult = _parseService.ParseText(
+            normalizedPath,
+            completionText,
+            _workspace.BaseDirectory,
+            _workspace.CreateSnapshot());
         if (parseResult.Module == null && !string.Equals(completionText, text, StringComparison.Ordinal))
         {
-            parseResult = _parseService.ParseText(normalizedPath, completionText, _workspace.BaseDirectory, _workspace.CreateSnapshot());
+            parseResult = _parseService.ParseText(normalizedPath, text, _workspace.BaseDirectory, _workspace.CreateSnapshot());
         }
 
         if (parseResult.Module == null)
@@ -398,7 +365,7 @@ public sealed class AuroraLanguageService
             parseResult.Module,
             context,
             position,
-            DocumentationLocale);
+            DocumentationLocale) ?? GetScriptSignatureHelp(sourceName, sourceText, position, baseDirectory, parseResult.Module, context);
     }
 
     public SignatureHelpResult? GetSignatureHelp(string path, TextPosition position)
@@ -459,6 +426,11 @@ public sealed class AuroraLanguageService
         return ResolveBuiltinDefinition(normalizedPath, text, position, snapshot) ??
             ResolveStructuralTypeDefinition(index, normalizedPath, position) ??
             AuroraDefinitionResolver.Resolve(index, normalizedPath, position, globalIndex);
+    }
+
+    public IReadOnlyList<BuiltinDocument> GetBuiltinDocuments()
+    {
+        return _builtinDocuments.GetDocuments();
     }
 
     public BuiltinDocument? GetBuiltinDocument(string uri)
@@ -635,15 +607,17 @@ public sealed class AuroraLanguageService
         return AuroraCompletionResolver.GetCompletions(index, normalizedSource, position);
     }
 
-    private CompletionResult GetScriptMemberCompletions(
+    private SignatureHelpResult? GetScriptSignatureHelp(
         string sourceName,
         string sourceText,
-        string ownerName,
-        string? baseDirectory)
+        TextPosition position,
+        string? baseDirectory,
+        ModuleDeclaration module,
+        AstQueryContext context)
     {
         var snapshot = CreateWorkspaceSnapshot(sourceName, sourceText, null, out var normalizedSource, baseDirectory);
         var index = AuroraWorkspaceIndex.Build(_parseService, snapshot, normalizedSource);
-        return AuroraCompletionResolver.GetMemberCompletions(index, normalizedSource, ownerName);
+        return ScriptSignatureQuery.TryGetSignatureHelp(index, normalizedSource, module, sourceText, context, position);
     }
 
     private static CompletionResult MergeCompletions(params CompletionResult[] results)

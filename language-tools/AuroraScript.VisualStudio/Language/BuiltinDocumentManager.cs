@@ -1,4 +1,3 @@
-using Microsoft.VisualStudio.LanguageServer.Client;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Threading;
 using Newtonsoft.Json.Linq;
@@ -23,6 +22,7 @@ internal sealed class BuiltinDocumentManager
     private readonly Dictionary<string, string> _builtinUrisByFilePath = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _gate = new();
     private JsonRpc? _rpc;
+    private Task? _prefetch;
 
     [ImportingConstructor]
     public BuiltinDocumentManager(JoinableTaskContext joinableTaskContext)
@@ -38,6 +38,15 @@ internal sealed class BuiltinDocumentManager
         }
     }
 
+    public Task PrefetchAllAsync(CancellationToken cancellationToken)
+    {
+        lock (_gate)
+        {
+            _prefetch ??= PrefetchCoreAsync(cancellationToken);
+            return _prefetch;
+        }
+    }
+
     public async Task<string> OpenOrGetDocumentAsync(string builtinUri, CancellationToken cancellationToken)
     {
         if (!IsBuiltinUri(builtinUri))
@@ -45,26 +54,32 @@ internal sealed class BuiltinDocumentManager
             throw new ArgumentException("URI is not an AuroraScript built-in document URI.", nameof(builtinUri));
         }
 
-        lock (_gate)
+        var existing = TryGetCachedPath(builtinUri);
+        if (existing != null)
         {
-            if (_filePathsByBuiltinUri.TryGetValue(builtinUri, out var existingPath) && File.Exists(existingPath))
+            return existing;
+        }
+
+        var prefetch = Volatile.Read(ref _prefetch);
+        if (prefetch != null)
+        {
+            try
             {
-                return existingPath;
+                await prefetch.ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+            }
+
+            existing = TryGetCachedPath(builtinUri);
+            if (existing != null)
+            {
+                return existing;
             }
         }
 
         var text = await RequestBuiltinDocumentTextAsync(builtinUri, cancellationToken).ConfigureAwait(false);
-        var path = BuiltinUriToCachePath(builtinUri);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-
-        lock (_gate)
-        {
-            _filePathsByBuiltinUri[builtinUri] = path;
-            _builtinUrisByFilePath[path] = builtinUri;
-        }
-
-        return path;
+        return CacheDocument(builtinUri, text);
     }
 
     public async Task OpenDocumentAsync(string builtinUri, CancellationToken cancellationToken)
@@ -91,6 +106,81 @@ internal sealed class BuiltinDocumentManager
     public static bool IsBuiltinUri(string uri)
     {
         return uri.StartsWith(BuiltinScheme + ":", StringComparison.Ordinal);
+    }
+
+    private async Task PrefetchCoreAsync(CancellationToken cancellationToken)
+    {
+        JsonRpc? rpc;
+        lock (_gate)
+        {
+            rpc = _rpc;
+        }
+
+        if (rpc == null)
+        {
+            return;
+        }
+
+        var documents = await rpc.InvokeWithParameterObjectAsync<JArray>(
+            "aurora/builtinDocuments",
+            new JObject(),
+            cancellationToken).ConfigureAwait(false);
+        if (documents == null)
+        {
+            return;
+        }
+
+        await Task.Run(() =>
+        {
+            foreach (var item in documents)
+            {
+                if (item is not JObject document ||
+                    document["uri"]?.Value<string>() is not { } uri ||
+                    document["text"]?.Value<string>() is not { } text ||
+                    !IsBuiltinUri(uri))
+                {
+                    continue;
+                }
+
+                CacheDocument(uri, text);
+            }
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    private string? TryGetCachedPath(string builtinUri)
+    {
+        lock (_gate)
+        {
+            if (_filePathsByBuiltinUri.TryGetValue(builtinUri, out var existingPath) && File.Exists(existingPath))
+            {
+                return existingPath;
+            }
+        }
+
+        return null;
+    }
+
+    private string CacheDocument(string builtinUri, string text)
+    {
+        var path = BuiltinUriToCachePath(builtinUri);
+        var directory = Path.GetDirectoryName(path)!;
+        Directory.CreateDirectory(directory);
+        var tempPath = path + ".tmp";
+        File.WriteAllText(tempPath, text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        if (File.Exists(path))
+        {
+            File.Delete(path);
+        }
+
+        File.Move(tempPath, path);
+
+        lock (_gate)
+        {
+            _filePathsByBuiltinUri[builtinUri] = path;
+            _builtinUrisByFilePath[path] = builtinUri;
+        }
+
+        return path;
     }
 
     private async Task<string> RequestBuiltinDocumentTextAsync(string builtinUri, CancellationToken cancellationToken)

@@ -168,6 +168,17 @@ internal sealed class BuiltinDefinitionDocuments
         return uri != null && uri.StartsWith(Scheme + ":", StringComparison.Ordinal);
     }
 
+    public IReadOnlyList<BuiltinDocument> GetDocuments()
+    {
+        var documents = new List<BuiltinDocument>(_documentsByUri.Count);
+        foreach (var pair in _documentsByUri)
+        {
+            documents.Add(new BuiltinDocument(pair.Value.Uri, pair.Value.Text));
+        }
+
+        return documents;
+    }
+
     private DocumentInfo BuildDocument(
         BuiltinApiSymbol symbol,
         IReadOnlyDictionary<string, BuiltinApiMember>? prototypeMembers)
@@ -312,7 +323,7 @@ internal sealed class BuiltinDefinitionDocuments
         builder.Append("(");
         AppendParameters(builder, uri, constructor.Parameters, builtinReferences);
         builder.Append("): ");
-        AppendType(builder, uri, constructor.ReturnType, TypeUsage.Return, optional: false, variadic: false, builtinReferences);
+        AppendType(builder, uri, constructor.ReturnType, BuiltinTypeFormatter.TypeUsage.Return, optional: false, variadic: false, builtinReferences);
         builder.AppendLine(";");
     }
 
@@ -339,13 +350,13 @@ internal sealed class BuiltinDefinitionDocuments
             builder.Append("(");
             AppendParameters(builder, uri, member.Parameters, builtinReferences);
             builder.Append("): ");
-            AppendType(builder, uri, member.ReturnType, TypeUsage.Return, optional: false, variadic: false, builtinReferences);
+            AppendType(builder, uri, member.ReturnType, BuiltinTypeFormatter.TypeUsage.Return, optional: false, variadic: false, builtinReferences);
             builder.AppendLine(";");
             return;
         }
 
         builder.Append(": ");
-        AppendType(builder, uri, member.ReturnType, TypeUsage.Value, optional: false, variadic: false, builtinReferences);
+        AppendType(builder, uri, member.ReturnType, BuiltinTypeFormatter.TypeUsage.Value, optional: false, variadic: false, builtinReferences);
         builder.AppendLine(";");
     }
 
@@ -368,8 +379,8 @@ internal sealed class BuiltinDefinitionDocuments
                 builder.Append("...");
             }
 
-            builder.Append(SafeParameterName(parameter.Name, i)).Append(": ");
-            AppendType(builder, uri, parameter.Type, TypeUsage.Value, parameter.Optional, parameter.Variadic, builtinReferences);
+            builder.Append(BuiltinTypeFormatter.SafeParameterName(parameter.Name, i)).Append(": ");
+            AppendType(builder, uri, parameter.Type, BuiltinTypeFormatter.TypeUsage.Value, parameter.Optional, parameter.Variadic, builtinReferences);
         }
     }
 
@@ -399,10 +410,10 @@ internal sealed class BuiltinDefinitionDocuments
             for (var i = 0; i < parameters!.Count; i++)
             {
                 var parameter = parameters[i];
-                var type = FormatType(parameter.Type, TypeUsage.Value, parameter.Optional, parameter.Variadic);
+                var type = BuiltinTypeFormatter.FormatType(parameter.Type, BuiltinTypeFormatter.TypeUsage.Value, parameter.Optional, parameter.Variadic);
                 builder
                     .Append("* @param ")
-                    .Append(SafeParameterName(parameter.Name, i))
+                    .Append(BuiltinTypeFormatter.SafeParameterName(parameter.Name, i))
                     .Append(" ");
                 AppendFormattedType(builder, uri, type, builtinReferences);
                 builder.AppendLine(".");
@@ -411,7 +422,7 @@ internal sealed class BuiltinDefinitionDocuments
 
         if (hasReturnType)
         {
-            var type = FormatType(returnType!, TypeUsage.Return, optional: false, variadic: false);
+            var type = BuiltinTypeFormatter.FormatType(returnType!, BuiltinTypeFormatter.TypeUsage.Return, optional: false, variadic: false);
             if (!string.Equals(type, "void", StringComparison.Ordinal))
             {
                 builder.Append("* @returns ");
@@ -464,146 +475,13 @@ internal sealed class BuiltinDefinitionDocuments
         DocumentTextBuilder builder,
         string uri,
         string rawType,
-        TypeUsage usage,
+        BuiltinTypeFormatter.TypeUsage usage,
         bool optional,
         bool variadic,
         List<BuiltinReference> builtinReferences)
     {
-        var type = FormatType(rawType, usage, optional, variadic);
+        var type = BuiltinTypeFormatter.FormatType(rawType, usage, optional, variadic);
         AppendFormattedType(builder, uri, type, builtinReferences);
-    }
-
-    private static string FormatType(string rawType, TypeUsage usage, bool optional, bool variadic)
-    {
-        var type = FormatTypeCore(rawType, usage);
-        if (optional && !ContainsNullType(rawType) && !string.Equals(type, "void", StringComparison.Ordinal))
-        {
-            type += " | null";
-        }
-
-        if (!variadic)
-        {
-            return type;
-        }
-
-        return type.Contains(" | ", StringComparison.Ordinal)
-            ? "(" + type + ")[]"
-            : type + "[]";
-    }
-
-    private static string FormatTypeCore(string rawType, TypeUsage usage)
-    {
-        if (string.IsNullOrWhiteSpace(rawType))
-        {
-            return "Object";
-        }
-
-        var parts = rawType.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (parts.Length > 1)
-        {
-            var mapped = new List<string>(parts.Length);
-            for (var i = 0; i < parts.Length; i++)
-            {
-                var part = MapSingleType(parts[i], usage);
-                if (!mapped.Contains(part))
-                {
-                    mapped.Add(part);
-                }
-            }
-
-            return string.Join(" | ", mapped);
-        }
-
-        return MapSingleType(rawType, usage);
-    }
-
-    private static string MapSingleType(string rawType, TypeUsage usage)
-    {
-        var trimmed = rawType.Trim();
-        if (trimmed.EndsWith("[]", StringComparison.Ordinal))
-        {
-            return MapSingleType(trimmed.Substring(0, trimmed.Length - 2), usage) + "[]";
-        }
-
-        return trimmed.ToLowerInvariant() switch
-        {
-            "number" => "Number",
-            "string" => "String",
-            "boolean" => "Boolean",
-            "bool" => "Boolean",
-            "array" => "Array",
-            "date" => "Date",
-            "object" => "Object",
-            "any" => "Object",
-            "regex" => "Regex",
-            "regexp" => "Regex",
-            "function" => "Function",
-            "func" => "Function",
-            "null" => usage == TypeUsage.Return ? "void" : "null",
-            "undefined" => usage == TypeUsage.Return ? "void" : "null",
-            "void" => "void",
-            _ => trimmed
-        };
-    }
-
-    private static bool ContainsNullType(string rawType)
-    {
-        var parts = rawType.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        for (var i = 0; i < parts.Length; i++)
-        {
-            var part = parts[i];
-            if (string.Equals(part, "null", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(part, "undefined", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(part, "void", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static string SafeParameterName(string name, int index)
-    {
-        if (IsIdentifier(name))
-        {
-            return name;
-        }
-
-        return "arg" + index;
-    }
-
-    private static bool IsIdentifier(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return false;
-        }
-
-        if (!IsIdentifierStart(value[0]))
-        {
-            return false;
-        }
-
-        for (var i = 1; i < value.Length; i++)
-        {
-            if (!IsIdentifierPart(value[i]))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static bool IsIdentifierStart(char value)
-    {
-        return char.IsLetter(value) || value == '_' || value == '$';
-    }
-
-    private static bool IsIdentifierPart(char value)
-    {
-        return char.IsLetterOrDigit(value) || value == '_' || value == '$';
     }
 
     private static bool Contains(TextRange range, TextPosition position)
@@ -642,12 +520,6 @@ internal sealed class BuiltinDefinitionDocuments
     private static string Uri(string ownerName)
     {
         return Scheme + ":/" + ownerName + ".as";
-    }
-
-    private enum TypeUsage
-    {
-        Value,
-        Return
     }
 
     private readonly record struct BuiltinReference(string TargetName, TextRange Range);

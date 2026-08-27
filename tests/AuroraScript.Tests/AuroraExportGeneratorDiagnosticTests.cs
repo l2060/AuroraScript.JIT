@@ -1,0 +1,143 @@
+using AuroraScript.Hosting.Generators;
+using AuroraScript.Hosting;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.IO;
+using System.Linq;
+using Xunit;
+
+namespace AuroraScript.Tests;
+
+public sealed class AuroraExportGeneratorDiagnosticTests
+{
+    [Fact]
+    public void ReportsNonPartialBuiltinGlobal()
+    {
+        var diagnostics = Run(
+            """
+            using AuroraScript.Hosting;
+            using AuroraScript.Runtime.Types;
+            namespace Test;
+
+            [AuroraBuiltinGlobal("Bad")]
+            public sealed class Bad : ScriptObject
+            {
+                [AuroraExport("value")]
+                public static double Value() => 1;
+            }
+            """);
+
+        Assert.Contains(diagnostics, diagnostic =>
+            diagnostic.Id == "AURORAEXP001" &&
+            diagnostic.GetMessage().Contains("partial", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ReportsUnsupportedExportSignature()
+    {
+        var diagnostics = Run(
+            """
+            using AuroraScript.Hosting;
+            using AuroraScript.Runtime.Types;
+            using System;
+            namespace Test;
+
+            [AuroraBuiltinGlobal("Bad")]
+            public sealed partial class Bad : ScriptObject
+            {
+                [AuroraExport("value")]
+                public static DateTime Value(DateTime value) => value;
+            }
+            """);
+
+        Assert.Contains(diagnostics, diagnostic =>
+            diagnostic.Id == "AURORAEXP002");
+    }
+
+    [Fact]
+    public void ReportsDuplicateScriptMemberNames()
+    {
+        var diagnostics = Run(
+            """
+            using AuroraScript.Hosting;
+            using AuroraScript.Runtime.Types;
+            namespace Test;
+
+            [AuroraBuiltinGlobal("Bad")]
+            public sealed partial class Bad : ScriptObject
+            {
+                [AuroraExport("value")]
+                public static double First() => 1;
+
+                [AuroraExport("value")]
+                public static double Second() => 2;
+            }
+            """);
+
+        Assert.Contains(diagnostics, diagnostic =>
+            diagnostic.Id == "AURORAEXP003");
+    }
+
+    [Fact]
+    public void ReportsDuplicateGlobalNames()
+    {
+        var diagnostics = Run(
+            """
+            using AuroraScript.Hosting;
+            using AuroraScript.Runtime.Types;
+            namespace Test;
+
+            [AuroraBuiltinGlobal("Same")]
+            public sealed partial class First : ScriptObject
+            {
+                [AuroraExport("first")]
+                public static double Value() => 1;
+            }
+
+            [AuroraBuiltinGlobal("Same")]
+            public sealed partial class Second : ScriptObject
+            {
+                [AuroraExport("second")]
+                public static double Value() => 2;
+            }
+            """);
+
+        Assert.Contains(diagnostics, diagnostic =>
+            diagnostic.Id == "AURORAEXP001" &&
+            diagnostic.GetMessage().Contains(
+                "more than one",
+                StringComparison.Ordinal));
+    }
+
+    private static ImmutableArray<Diagnostic> Run(string source)
+    {
+        var references = new List<MetadataReference>();
+        var trustedAssemblies = (string?)AppContext.GetData(
+            "TRUSTED_PLATFORM_ASSEMBLIES");
+        Assert.NotNull(trustedAssemblies);
+        foreach (var path in trustedAssemblies.Split(Path.PathSeparator))
+        {
+            references.Add(MetadataReference.CreateFromFile(path));
+        }
+        references.Add(MetadataReference.CreateFromFile(
+            typeof(AuroraExportAttribute).Assembly.Location));
+
+        var compilation = CSharpCompilation.Create(
+            "GeneratorDiagnostics",
+            [CSharpSyntaxTree.ParseText(source)],
+            references.DistinctBy(reference => reference.Display),
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(
+            new AuroraExportGenerator());
+        driver = driver.RunGeneratorsAndUpdateCompilation(
+            compilation,
+            out _,
+            out var generatorDiagnostics);
+
+        return generatorDiagnostics.AddRange(
+            driver.GetRunResult().Diagnostics);
+    }
+}

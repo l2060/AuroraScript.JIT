@@ -10,7 +10,7 @@ Contents:
 - `docs/script-authoring-best-practices.md`: recommended defaults for AI-generated AuroraScript modules and blocks.
 - `docs/language-reference.md`: human-readable language reference.
 - `docs/performance-best-practices.md`: compiler and runtime performance guidance.
-- `docs/host-integration.md`: .NET host API and advanced integration guide, including custom source resolver rules.
+- `docs/host-integration.md`: .NET host API and advanced integration guide, including custom source resolver rules and generated native host exports.
 - `schema/aurora-script.ebnf`: grammar summary.
 - `schema/*.schema.json`: JSON Schema files for tools.
 - `schema/language-features.json`: structured feature index.

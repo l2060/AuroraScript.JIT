@@ -12,7 +12,8 @@
     "AuroraScript.Runtime.Interop",
     "AuroraScript.Runtime.Package",
     "AuroraScript.Runtime.Serialization",
-    "AuroraScript.Runtime.Types"
+    "AuroraScript.Runtime.Types",
+    "AuroraScript.Hosting"
   ],
   "types": {
     "AuroraEngine": {
@@ -99,7 +100,7 @@
     "EngineOptions": {
       "kind": "record",
       "namespace": "AuroraScript",
-      "summary": "Immutable root configuration for compiler, runtime, optimization, output, and opt-in native modules.",
+      "summary": "Immutable root configuration for compiler, runtime, optimization, output, opt-in native modules, and extra host-export assemblies.",
       "members": {
         "Default": {
           "kind": "field",
@@ -125,6 +126,14 @@
           "kind": "property",
           "signature": "IReadOnlyList<BuiltInModuleDefinition> BuiltIns",
           "summary": "Native modules explicitly enabled for this engine. Empty by default."
+        },
+        "HostExportAssemblies": {
+          "kind": "property",
+          "signature": "IReadOnlyList<Assembly> HostExportAssemblies",
+          "summary": "Additional assemblies whose generated AuroraGeneratedExport/Constant attributes participate in compiler direct-call. The engine assembly is always scanned. Runtime globals must still be Define'd separately.",
+          "notes": [
+            "Default is empty. Set with EngineOptions.Default with { HostExportAssemblies = new[] { typeof(MyExports).Assembly } }."
+          ]
         },
         "WithCompiler": {
           "kind": "method",
@@ -1392,6 +1401,7 @@
           "kind": "method",
           "overloads": [
             "static bool TryGetAnyObject(in ScriptDatum d, out ScriptObject value)",
+            "static bool TryGetScriptObject(in ScriptDatum d, out ScriptObject value)",
             "static bool TryGetObject(in ScriptDatum d, out ScriptObject value)",
             "static bool TryGetArray(in ScriptDatum d, out ScriptArray value)",
             "static bool TryGetString(in ScriptDatum d, out StringValue value)",
@@ -2176,6 +2186,117 @@
         "For simple host functions, passing a normal CLR delegate to ScriptGlobal.Define is usually easier."
       ]
     },
+    "AuroraBuiltinGlobalAttribute": {
+      "kind": "class",
+      "namespace": "AuroraScript.Hosting",
+      "summary": "Marks a public sealed partial ScriptObject subclass whose [AuroraExport] members become a generated script global.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "signature": "AuroraBuiltinGlobalAttribute(string globalName)"
+        },
+        "GlobalName": {
+          "kind": "property",
+          "signature": "string GlobalName"
+        },
+        "Writable": {
+          "kind": "property",
+          "signature": "bool Writable"
+        },
+        "Enumerable": {
+          "kind": "property",
+          "signature": "bool Enumerable"
+        }
+      },
+      "notes": [
+        "The declaring type must be a non-generic top-level partial class in a namespace and must derive from ScriptObject.",
+        "If an instance constructor is written by hand, it must call RegisterAuroraExports()."
+      ]
+    },
+    "AuroraExportAttribute": {
+      "kind": "class",
+      "namespace": "AuroraScript.Hosting",
+      "summary": "Marks a public static Core method or public static readonly double field for generated script export.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "overloads": [
+            "AuroraExportAttribute(string scriptName)",
+            "AuroraExportAttribute(string scriptName, MatchFailure failure)"
+          ]
+        },
+        "ScriptName": {
+          "kind": "property",
+          "signature": "string ScriptName"
+        },
+        "Failure": {
+          "kind": "property",
+          "signature": "MatchFailure Failure"
+        }
+      },
+      "notes": [
+        "Core methods may prefix ScriptContext ctx and ScriptObject thisObject. Script parameters support double, int, bool, string, ScriptDatum, ScriptObject subclasses, trailing defaults, and params double[] or params ScriptDatum[].",
+        "params exports generate Datum adapters only; they are not compiler direct-call candidates."
+      ]
+    },
+    "AuroraParamAttribute": {
+      "kind": "class",
+      "namespace": "AuroraScript.Hosting",
+      "summary": "Sets generated Datum-adapter coercion for one Core parameter.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "signature": "AuroraParamAttribute(MatchLevel coercion)"
+        },
+        "Coercion": {
+          "kind": "field",
+          "signature": "readonly MatchLevel Coercion"
+        }
+      },
+      "notes": [
+        "Cannot be combined with a params parameter."
+      ]
+    },
+    "MatchLevel": {
+      "kind": "enum",
+      "namespace": "AuroraScript.Hosting",
+      "values": ["Weak", "Exact", "Strict"],
+      "summary": "Script-to-Core coercion used by generated Datum adapters."
+    },
+    "MatchFailure": {
+      "kind": "enum",
+      "namespace": "AuroraScript.Hosting",
+      "values": ["Default", "ReturnNaN", "ReturnNull", "Throw"],
+      "summary": "Adapter behavior when a generated export cannot coerce arguments. Default infers NaN for numeric returns and null otherwise."
+    },
+    "AuroraExportValueKind": {
+      "kind": "enum",
+      "namespace": "AuroraScript.Hosting",
+      "values": ["Void", "Number", "Int32", "Boolean", "String", "Object", "Datum"],
+      "summary": "Native representations recorded on generated assembly catalog attributes."
+    },
+    "AuroraGeneratedExportAttribute": {
+      "kind": "class",
+      "namespace": "AuroraScript.Hosting",
+      "summary": "Assembly catalog metadata emitted for one direct-call Core method. Host code should not apply this attribute directly.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "signature": "AuroraGeneratedExportAttribute(string globalName, string memberName, Type declaringType, string methodName, AuroraExportValueKind returnKind, AuroraExportValueKind[] parameterKinds, bool takesContext = false, bool takesThisObject = false)"
+        }
+      }
+    },
+    "AuroraGeneratedConstantAttribute": {
+      "kind": "class",
+      "namespace": "AuroraScript.Hosting",
+      "summary": "Assembly catalog metadata emitted for one exported public static readonly double field. Host code should not apply this attribute directly.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "signature": "AuroraGeneratedConstantAttribute(string globalName, string memberName, Type declaringType, string fieldName)"
+        }
+      }
+    },
     "ClrGetterDelegate": {
       "kind": "delegate",
       "namespace": "AuroraScript.Runtime.Types",
@@ -2242,6 +2363,11 @@
       "id": "interop.domain-global",
       "summary": "Use CreateDomain(global => global.Define(...)) to expose per-domain host services or state.",
       "apis": ["AuroraEngine.CreateDomain", "ScriptGlobal.Define", "ClrMarshaller"]
+    },
+    {
+      "id": "interop.native-host-exports",
+      "summary": "Implement a ScriptObject global with [AuroraBuiltinGlobal] and [AuroraExport] Core methods, Define the instance at runtime, and list extra host assemblies on EngineOptions.HostExportAssemblies for compiler direct-call.",
+      "apis": ["AuroraBuiltinGlobalAttribute", "AuroraExportAttribute", "AuroraParamAttribute", "EngineOptions.HostExportAssemblies", "ScriptGlobal.Define"]
     },
     {
       "id": "interop.register-clr-type",

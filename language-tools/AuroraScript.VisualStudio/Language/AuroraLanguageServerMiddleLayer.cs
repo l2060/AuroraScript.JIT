@@ -1,5 +1,4 @@
 using Microsoft.VisualStudio.LanguageServer.Client;
-using Microsoft.VisualStudio.Threading;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Threading.Tasks;
@@ -15,14 +14,10 @@ internal sealed class AuroraLanguageServerMiddleLayer : ILanguageClientMiddleLay
     private const int NumberSemanticTokenType = 12;
 
     private readonly BuiltinDocumentManager _builtinDocuments;
-    private readonly JoinableTaskContext _joinableTaskContext;
 
-    public AuroraLanguageServerMiddleLayer(
-        BuiltinDocumentManager builtinDocuments,
-        JoinableTaskContext joinableTaskContext)
+    public AuroraLanguageServerMiddleLayer(BuiltinDocumentManager builtinDocuments)
     {
         _builtinDocuments = builtinDocuments;
-        _joinableTaskContext = joinableTaskContext;
     }
 
     public bool CanHandle(string methodName)
@@ -195,8 +190,7 @@ internal sealed class AuroraLanguageServerMiddleLayer : ILanguageClientMiddleLay
             return;
         }
 
-        var filePath = await _joinableTaskContext.Factory.RunAsync(
-            async () => await _builtinDocuments.OpenOrGetDocumentAsync(uri, default).ConfigureAwait(false)).Task.ConfigureAwait(false);
+        var filePath = await _builtinDocuments.OpenOrGetDocumentAsync(uri, default).ConfigureAwait(false);
         location["uri"] = new Uri(filePath).AbsoluteUri;
     }
 }

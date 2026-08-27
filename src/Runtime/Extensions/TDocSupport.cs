@@ -1,30 +1,22 @@
+using AuroraScript.Hosting;
 using AuroraScript.Runtime.Serialization;
 using AuroraScript.Runtime.Types;
-using System;
 
 namespace AuroraScript.Runtime.Extensions
 {
     /// <summary>
-    /// Exposes TDoc serialization to AuroraScript code.
+    /// Exposes TDoc serialization through generated native exports.
     /// </summary>
-    internal sealed class TDocSupport : ScriptObject
+    [AuroraBuiltinGlobal("TDoc")]
+    public sealed partial class TDocSupport : ScriptObject
     {
-        internal TDocSupport()
+        /// <summary>Deserializes TDoc text.</summary>
+        [AuroraExport("parse", MatchFailure.Throw)]
+        public static ScriptDatum ParseCore(ScriptContext ctx, string text)
         {
-            Define("parse", ScriptDatum.FromBonding(PARSE), writeable: false, enumerable: false);
-            Define("stringify", ScriptDatum.FromBonding(STRINGIFY), writeable: false, enumerable: false);
-        }
-
-        internal static void PARSE(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            if (!args.TryGetString(0, out var text))
-            {
-                throw new AuroraRuntimeException("TDoc.parse requires text.");
-            }
-
             try
             {
-                result = TypedDocumentSerializer.Deserialize(ctx.Engine, text);
+                return TypedDocumentSerializer.Deserialize(ctx.Engine, text);
             }
             catch (TypedDocumentException exception)
             {
@@ -32,29 +24,18 @@ namespace AuroraScript.Runtime.Extensions
             }
         }
 
-        internal static void STRINGIFY(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        /// <summary>Serializes a script value as TDoc text.</summary>
+        [AuroraExport("stringify", MatchFailure.Throw)]
+        public static string StringifyCore(
+            ScriptContext ctx,
+            ScriptDatum value,
+            bool indented = true,
+            bool emitTypeNames = false)
         {
-            if (!args.TryGetRef(0, ref result))
-            {
-                throw new AuroraRuntimeException("TDoc.stringify requires a value.");
-            }
-
-            var indented = true;
-            if (args.Length > 1 && args.TryGetBoolean(1, out var specifiedIndented))
-            {
-                indented = specifiedIndented;
-            }
-
-            var emitTypeNames = false;
-            if (args.Length > 2 && args.TryGetBoolean(2, out var specifiedEmitTypeNames))
-            {
-                emitTypeNames = specifiedEmitTypeNames;
-            }
-
             try
             {
                 var options = TypedDocumentOptions.GetFormattingOptions(indented, emitTypeNames);
-                ScriptDatum.WriteAsString(ref result, TypedDocumentSerializer.Serialize(ctx.Engine, result, options));
+                return TypedDocumentSerializer.Serialize(ctx.Engine, value, options);
             }
             catch (TypedDocumentException exception)
             {

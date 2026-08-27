@@ -157,13 +157,13 @@ internal static class ScriptDocumentationQuery
         hover = null!;
         var documentationLine = GetDocumentationAnchorLine(function);
         var comments = ReadLeadingComments(sourceText, documentationLine);
-        if (comments.Count == 0)
-        {
-            return false;
-        }
-
         var builder = new StringBuilder();
         builder.Append("```").Append(MarkdownLanguageId).Append('\n');
+        if (function.IsNative)
+        {
+            builder.Append("native ");
+        }
+
         if (function.Access == MemberAccess.Export)
         {
             builder.Append("export ");
@@ -379,11 +379,6 @@ internal static class ScriptDocumentationQuery
     {
         hover = null!;
         var comments = ReadLeadingComments(sourceText, declarationStartLine);
-        if (comments.Count == 0)
-        {
-            return false;
-        }
-
         var builder = new StringBuilder();
         builder.Append("```").Append(MarkdownLanguageId).Append('\n');
         if (value is LambdaExpression lambda)
@@ -548,11 +543,6 @@ internal static class ScriptDocumentationQuery
     {
         hover = null!;
         var comments = ReadLeadingComments(sourceText, declarationStartLine);
-        if (comments.Count == 0)
-        {
-            return false;
-        }
-
         var builder = new StringBuilder();
         builder.Append("```").Append(MarkdownLanguageId).Append('\n').Append(kind).Append(' ').Append(name).Append("\n```");
         AppendComments(builder, comments);

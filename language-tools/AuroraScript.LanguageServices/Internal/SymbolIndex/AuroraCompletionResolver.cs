@@ -26,19 +26,22 @@ internal static class AuroraCompletionResolver
                 index,
                 module,
                 context.PropertyAccess.Object);
-            if (shapeCompletions.Items.Count != 0)
-            {
-                return shapeCompletions;
-            }
-
+            CompletionResult objectCompletions = new CompletionResult(Array.Empty<CompletionItem>());
+            CompletionResult importCompletions = new CompletionResult(Array.Empty<CompletionItem>());
             if (TryResolveOwnerName(context.PropertyAccess.Object, out var ownerName))
             {
-                return GetMemberCompletions(index, module, ownerName);
+                objectCompletions = AuroraDefinitionResolver.GetObjectMemberCompletions(
+                    index,
+                    module,
+                    ownerName,
+                    position);
+                importCompletions = GetImportMemberCompletions(index, module, ownerName);
             }
 
-            if (context.IsAfterMemberAccessDot)
+            var merged = Merge(shapeCompletions, objectCompletions, importCompletions);
+            if (merged.Items.Count != 0 || context.IsAfterMemberAccessDot)
             {
-                return shapeCompletions;
+                return merged;
             }
         }
 
@@ -48,12 +51,19 @@ internal static class AuroraCompletionResolver
     public static CompletionResult GetMemberCompletions(
         AuroraWorkspaceIndex index,
         string path,
-        string ownerName)
+        string ownerName,
+        TextPosition position)
     {
         var module = index.TryGetModule(path);
-        return module == null
-            ? new CompletionResult(Array.Empty<CompletionItem>())
-            : GetMemberCompletions(index, module, ownerName);
+        if (module == null)
+        {
+            return new CompletionResult(Array.Empty<CompletionItem>());
+        }
+
+        return Merge(
+            AuroraShapeQuery.GetFieldCompletionsForName(index, module, ownerName, position),
+            AuroraDefinitionResolver.GetObjectMemberCompletions(index, module, ownerName, position),
+            GetImportMemberCompletions(index, module, ownerName));
     }
 
     private static CompletionResult GetGlobalCompletions(
@@ -89,7 +99,7 @@ internal static class AuroraCompletionResolver
         return new CompletionResult(items);
     }
 
-    private static CompletionResult GetMemberCompletions(
+    private static CompletionResult GetImportMemberCompletions(
         AuroraWorkspaceIndex index,
         AuroraModuleIndex module,
         string ownerName)
@@ -142,6 +152,26 @@ internal static class AuroraCompletionResolver
 
             AddIncludedExports(index, included, items, seen, visited);
         }
+    }
+
+    private static CompletionResult Merge(params CompletionResult[] results)
+    {
+        var items = new List<CompletionItem>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var result in results)
+        {
+            if (result == null)
+            {
+                continue;
+            }
+
+            for (var i = 0; i < result.Items.Count; i++)
+            {
+                Add(items, seen, result.Items[i]);
+            }
+        }
+
+        return new CompletionResult(items);
     }
 
     private static CompletionItem ToLocalCompletion(AuroraLocalSymbolIndex.LocalSymbolInfo symbol)

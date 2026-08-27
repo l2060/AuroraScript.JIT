@@ -197,7 +197,7 @@ public sealed class BuiltinApiCatalogTests
         {
             Assert.True(catalog.TryGetGlobal(registration.Key, out var global), $"runtime-api.json is missing global '{registration.Key}'.");
             var source = File.ReadAllText(registration.Value);
-            var memberNames = string.Equals(registration.Key, "Stats", StringComparison.Ordinal)
+            var memberNames = registration.Key is "Stats" or "Math"
                 ? ExtractAuroraExportNames(source)
                 : ExtractDefineNames(source, null);
             foreach (var memberName in memberNames)

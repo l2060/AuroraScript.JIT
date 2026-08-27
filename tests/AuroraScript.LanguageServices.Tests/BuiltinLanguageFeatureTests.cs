@@ -391,7 +391,7 @@ public sealed class BuiltinLanguageFeatureTests
         Assert.Contains("callback(null, response)", hover.Contents, StringComparison.Ordinal);
         Assert.NotNull(signature);
         Assert.Equal(
-            "http.getAsync(url: string, options: HttpRequestOptions?, callback: function): boolean",
+            "http.getAsync(url: String, options: HttpRequestOptions | null, callback: Function): Boolean",
             Assert.Single(signature!.Signatures).Label);
     }
 
@@ -552,7 +552,7 @@ public sealed class BuiltinLanguageFeatureTests
 
         Assert.NotNull(signatureHelp);
         var signature = Assert.Single(signatureHelp!.Signatures);
-        Assert.Equal("Math.pow(x: number, y: number): number", signature.Label);
+        Assert.Equal("Math.pow(x: Number, y: Number): Number", signature.Label);
         Assert.Equal(1, signatureHelp.ActiveParameter);
         Assert.Equal(2, signature.Parameters.Count);
     }
@@ -573,7 +573,7 @@ public sealed class BuiltinLanguageFeatureTests
 
         Assert.NotNull(signatureHelp);
         var signature = Assert.Single(signatureHelp!.Signatures);
-        Assert.Equal("new Path(root: string|Path?, ...segments: string|Path): Path", signature.Label);
+        Assert.Equal("new Path(root: String | Path | null, ...segments: (String | Path)[]): Path", signature.Label);
         Assert.Equal(1, signatureHelp.ActiveParameter);
         Assert.Equal(2, signature.Parameters.Count);
     }
@@ -594,7 +594,7 @@ public sealed class BuiltinLanguageFeatureTests
 
         Assert.NotNull(signatureHelp);
         var signature = Assert.Single(signatureHelp!.Signatures);
-        Assert.Equal("String(value: any?): string", signature.Label);
+        Assert.Equal("String(value: Object | null): String", signature.Label);
         Assert.Equal(0, signatureHelp.ActiveParameter);
     }
 
@@ -614,7 +614,74 @@ public sealed class BuiltinLanguageFeatureTests
 
         Assert.Contains(completions.Items, item =>
             item.Label == "Path" &&
-            item.Detail == "new Path(root: string|Path?, ...segments: string|Path): Path");
+            item.Detail == "new Path(root: String | Path | null, ...segments: (String | Path)[]): Path");
+    }
+
+    [Fact]
+    public void CompletionReturnsObjectLiteralMembers()
+    {
+        const string source =
+            """
+            @module(TEST);
+            export func run() {
+                const timer = {
+                    reset: () => 0,
+                    count: 1
+                };
+                timer.
+            }
+            """;
+        var service = CreateService();
+
+        var completions = service.GetCompletions("test.as", source, PositionAfter(source, "timer."));
+
+        Assert.Contains(completions.Items, item => item.Label == "reset" && item.Kind == CompletionItemKind.Method);
+        Assert.Contains(completions.Items, item => item.Label == "count" && item.Kind == CompletionItemKind.Property);
+        Assert.DoesNotContain(completions.Items, item => item.Label == "Math");
+    }
+
+    [Fact]
+    public void HoverReturnsFunctionSignatureWithoutComments()
+    {
+        const string source =
+            """
+            @module(TEST);
+            export func add(Number left, Number right) Number {
+                return left + right;
+            }
+            export func run() {
+                return add(1, 2);
+            }
+            """;
+        var service = CreateService();
+
+        var hover = service.GetHover("test.as", source, PositionOfLast(source, "add"));
+
+        Assert.NotNull(hover);
+        Assert.Contains("func add(Number left, Number right) Number", hover!.Contents, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SignatureHelpReturnsScriptFunctionSignature()
+    {
+        const string source =
+            """
+            @module(TEST);
+            export func add(Number left, Number right) Number {
+                return left + right;
+            }
+            export func run() {
+                return add(1, 2);
+            }
+            """;
+        var service = CreateService();
+
+        var signatureHelp = service.GetSignatureHelp("test.as", source, PositionOf(source, "2"));
+
+        Assert.NotNull(signatureHelp);
+        var signature = Assert.Single(signatureHelp!.Signatures);
+        Assert.Equal("func add(Number left, Number right) Number", signature.Label);
+        Assert.Equal(1, signatureHelp.ActiveParameter);
     }
 
     private static AuroraLanguageService CreateService(string? locale = null)

@@ -76,6 +76,7 @@ The detailed overview, tutorials, per-object API Reference, benchmark data, MCP,
 - [Language Guide](https://github.com/l2060/AuroraScript.JIT/wiki/Language-Guide)
 - [Script API Reference](https://github.com/l2060/AuroraScript.JIT/wiki/API-Script-Reference)
 - [.NET Host API Reference](https://github.com/l2060/AuroraScript.JIT/wiki/API-Host-Reference)
+- [Native host exports](https://github.com/l2060/AuroraScript.JIT/wiki/Host-Native-Exports)
 - [MCP, LSP, and VSIX](https://github.com/l2060/AuroraScript.JIT/wiki/Tooling)
 - [Performance and Benchmarks](https://github.com/l2060/AuroraScript.JIT/wiki/Performance-and-Benchmarks)
 

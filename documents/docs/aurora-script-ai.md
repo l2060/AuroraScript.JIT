@@ -323,7 +323,7 @@ Typical diagnostics:
 
 1. Read this file.
 2. If generating script code, read `docs/script-authoring-best-practices.md`.
-3. If generating host-side C# integration code, read `docs/host-integration.md` and `schema/host-api.json`.
+3. If generating host-side C# integration code, read `docs/host-integration.md` and `schema/host-api.json`. For typed script globals implemented in C#, use `[AuroraBuiltinGlobal]` / `[AuroraExport]` rather than `BondingFunction` unless you need a raw `ScriptDatum` span callback.
 4. Check examples in `examples/valid` for accepted syntax.
 5. If rejecting code, compare with `examples/invalid`.
 6. Use `aurora_search_runtime_api` or `aurora_get_runtime_api` before using runtime APIs that may be confused with JavaScript built-ins.

@@ -171,6 +171,30 @@ public sealed class TypedDocumentLanguageFeatureTests
     }
 
     [Fact]
+    public void ReturnedCustomTypesProvideMemberCompletions()
+    {
+        const string source =
+            "export type Point {\n" +
+            "    Number x;\n" +
+            "    Number y;\n" +
+            "}\n" +
+            "export func make(Number x, Number y) Point {\n" +
+            "    return { x: x, y: y };\n" +
+            "}\n" +
+            "export func run() {\n" +
+            "    var p = make(1, 2);\n" +
+            "    return p.\n" +
+            "}\n";
+        var service = new AuroraLanguageService(
+            BuiltinApiLoader.LoadFromFile(BuiltinApiCatalogTests.GetRuntimeApiPath()));
+
+        var completions = service.GetCompletions("main.as", source, PositionAfter(source, "return p."));
+        Assert.Contains(completions.Items, item => item.Label == "x");
+        Assert.Contains(completions.Items, item => item.Label == "y");
+        Assert.DoesNotContain(completions.Items, item => item.Label == "Math");
+    }
+
+    [Fact]
     public void QualifiedImportedTypesProvideHoverAndDefinition()
     {
         var root = Path.Combine(

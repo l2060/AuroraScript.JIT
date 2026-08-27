@@ -107,13 +107,14 @@ internal sealed class AuroraLanguageServerClient :
         });
     }
 
-    public object? MiddleLayer => new AuroraLanguageServerMiddleLayer(_builtinDocuments, _joinableTaskContext);
+    public object? MiddleLayer => new AuroraLanguageServerMiddleLayer(_builtinDocuments);
 
     public object? CustomMessageTarget => null;
 
     public Task AttachForCustomMessageAsync(JsonRpc rpc)
     {
         _builtinDocuments.Attach(rpc);
+        _ = _builtinDocuments.PrefetchAllAsync(CancellationToken.None);
         return Task.CompletedTask;
     }
 

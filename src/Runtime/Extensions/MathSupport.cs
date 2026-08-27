@@ -1,255 +1,117 @@
-﻿using AuroraScript.Runtime.Types;
+﻿using AuroraScript.Hosting;
+using AuroraScript.Runtime.Types;
 using System;
 
 namespace AuroraScript.Runtime.Extensions
 {
-    internal class MathSupport : ScriptObject
+    /// <summary>
+    /// Script Math global implemented through generated native exports.
+    /// </summary>
+    [AuroraBuiltinGlobal("Math")]
+    public sealed partial class MathSupport : ScriptObject
     {
-        public MathSupport()
+        /// <summary>Circle constant pi.</summary>
+        [AuroraExport("PI")]
+        public static readonly double PI = Math.PI;
+
+        /// <summary>Euler number constant.</summary>
+        [AuroraExport("E")]
+        public static readonly double E = Math.E;
+
+        /// <summary>Circle constant tau, equal to 2*pi.</summary>
+        [AuroraExport("Tau")]
+        public static readonly double Tau = Math.Tau;
+
+        /// <summary>Degrees per radian conversion constant.</summary>
+        [AuroraExport("DEG_PER_RAD")]
+        public static readonly double DEG_PER_RAD = Math.PI / 180D;
+
+        /// <summary>Returns the absolute value.</summary>
+        [AuroraExport("abs", MatchFailure.ReturnNaN)]
+        public static double AbsCore(double value) => Math.Abs(value);
+
+        /// <summary>Returns the largest argument.</summary>
+        [AuroraExport("max", MatchFailure.ReturnNaN)]
+        public static double MaxCore(params double[] values)
         {
-            Define("PI", ScriptDatum.FromNumber(Math.PI), writeable: false, enumerable: false);
-            Define("E", ScriptDatum.FromNumber(Math.E), writeable: false, enumerable: false);
-            Define("Tau", ScriptDatum.FromNumber(Math.Tau), writeable: false, enumerable: false);
-            Define("DEG_PER_RAD", ScriptDatum.FromNumber(Math.PI / 180D), writeable: false, enumerable: false);
-
-
-
-
-
-            Define("abs", ScriptDatum.FromBonding(ABS), writeable: false, enumerable: false);
-            Define("max", ScriptDatum.FromBonding(MAX), writeable: false, enumerable: false);
-            Define("min", ScriptDatum.FromBonding(MIN), writeable: false, enumerable: false);
-
-            Define("random", ScriptDatum.FromBonding(RANDOM), writeable: false, enumerable: false);
-            Define("log", ScriptDatum.FromBonding(LOG), writeable: false, enumerable: false);
-            Define("pow", ScriptDatum.FromBonding(POW), writeable: false, enumerable: false);
-            Define("exp", ScriptDatum.FromBonding(EXP), writeable: false, enumerable: false);
-
-            Define("cos", ScriptDatum.FromBonding(COS), writeable: false, enumerable: false);
-            Define("sin", ScriptDatum.FromBonding(SIN), writeable: false, enumerable: false);
-            Define("tan", ScriptDatum.FromBonding(TAN), writeable: false, enumerable: false);
-            Define("acos", ScriptDatum.FromBonding(ACOS), writeable: false, enumerable: false);
-            Define("asin", ScriptDatum.FromBonding(ASIN), writeable: false, enumerable: false);
-            Define("atan", ScriptDatum.FromBonding(ATAN), writeable: false, enumerable: false);
-
-            Define("ceil", ScriptDatum.FromBonding(CEIL), writeable: false, enumerable: false);
-
-            Define("floor", ScriptDatum.FromBonding(FLOOR), writeable: false, enumerable: false);
-            Define("round", ScriptDatum.FromBonding(ROUND), writeable: false, enumerable: false);
-
-        }
-        public static void CEIL(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            if (args.TryGetNumber(0, out var num))
+            var max = values[0];
+            for (var i = 1; i < values.Length; i++)
             {
-                ScriptDatum.WriteAsNumber(ref result, Math.Ceiling(num));
-            }
-            else
-            {
-                ScriptDatum.WriteAsNumber(ref result, Double.NaN);
-            }
-        }
-
-        public static void FLOOR(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            if (args.TryGetNumber(0, out var num))
-            {
-                ScriptDatum.WriteAsNumber(ref result, Math.Floor(num));
-            }
-            else
-            {
-                ScriptDatum.WriteAsNumber(ref result, Double.NaN);
-            }
-        }
-
-        public static void ROUND(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            if (args.TryGetNumber(0, out var num))
-            {
-                ScriptDatum.WriteAsNumber(ref result, Math.Round(num));
-            }
-            else
-            {
-                ScriptDatum.WriteAsNumber(ref result, Double.NaN);
-            }
-        }
-
-
-
-
-        #region MyRegion
-
-        public static void COS(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            if (args.TryGetNumber(0, out var num))
-            {
-                ScriptDatum.WriteAsNumber(ref result, Math.Cos(num));
-            }
-            else
-            {
-                ScriptDatum.WriteAsNumber(ref result, Double.NaN);
-            }
-        }
-        public static void ACOS(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            if (args.TryGetNumber(0, out var num))
-            {
-                ScriptDatum.WriteAsNumber(ref result, Math.Acos(num));
-            }
-            else
-            {
-                ScriptDatum.WriteAsNumber(ref result, Double.NaN);
-            }
-        }
-
-        public static void SIN(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            if (args.TryGetNumber(0, out var num))
-            {
-                ScriptDatum.WriteAsNumber(ref result, Math.Sin(num));
-            }
-            else
-            {
-                ScriptDatum.WriteAsNumber(ref result, Double.NaN);
-            }
-        }
-
-        public static void ASIN(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            if (args.TryGetNumber(0, out var num))
-            {
-                ScriptDatum.WriteAsNumber(ref result, Math.Asin(num));
-            }
-            else
-            {
-                ScriptDatum.WriteAsNumber(ref result, Double.NaN);
-            }
-        }
-
-        public static void TAN(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            if (args.TryGetNumber(0, out var num))
-            {
-                ScriptDatum.WriteAsNumber(ref result, Math.Tan(num));
-            }
-            else
-            {
-                ScriptDatum.WriteAsNumber(ref result, Double.NaN);
-            }
-        }
-
-        public static void ATAN(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            if (args.TryGetNumber(0, out var num))
-            {
-                ScriptDatum.WriteAsNumber(ref result, Math.Atan(num));
-            }
-            else
-            {
-                ScriptDatum.WriteAsNumber(ref result, Double.NaN);
-            }
-        }
-
-
-
-
-
-        #endregion
-
-
-
-
-
-
-        public static void RANDOM(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            ScriptDatum.WriteAsNumber(ref result, Random.Shared.NextDouble());
-        }
-
-
-        public static void POW(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            if (args.TryGetNumber(0, out var num1) && args.TryGetNumber(1, out var num2))
-            {
-                ScriptDatum.WriteAsNumber(ref result, Math.Pow(num1, num2));
-            }
-            else
-            {
-                ScriptDatum.WriteAsNumber(ref result, Double.NaN);
-            }
-        }
-
-        public static void EXP(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            if (args.TryGetNumber(0, out var num))
-            {
-                ScriptDatum.WriteAsNumber(ref result, Math.Exp(num));
-            }
-            else
-            {
-                ScriptDatum.WriteAsNumber(ref result, Double.NaN);
-            }
-        }
-
-        public static void LOG(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            if (args.TryGetNumber(0, out var num))
-            {
-                ScriptDatum.WriteAsNumber(ref result, Math.Log(num));
-            }
-            else
-            {
-                ScriptDatum.WriteAsNumber(ref result, Double.NaN);
-            }
-        }
-
-        public static void ABS(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            if (args.TryGetNumber(0, out var num))
-            {
-                ScriptDatum.WriteAsNumber(ref result, num < 0 ? -num : num);
-            }
-            else
-            {
-                ScriptDatum.WriteAsNumber(ref result, Double.NaN);
-            }
-        }
-
-
-        public static void MAX(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            if (args.TryGetNumber(0, out var num))
-            {
-                var index = 1;
-                while (args.TryGetNumber(index++, out var num2))
+                if (values[i] > max)
                 {
-                    if (num2 > num) num = num2;
+                    max = values[i];
                 }
-                ScriptDatum.WriteAsNumber(ref result, num);
             }
-            else
-            {
-                ScriptDatum.WriteAsNumber(ref result, Double.NaN);
-            }
+
+            return max;
         }
 
-        public static void MIN(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        /// <summary>Returns the smallest argument.</summary>
+        [AuroraExport("min", MatchFailure.ReturnNaN)]
+        public static double MinCore(params double[] values)
         {
-            if (args.TryGetNumber(0, out var num))
+            var min = values[0];
+            for (var i = 1; i < values.Length; i++)
             {
-                var index = 1;
-                while (args.TryGetNumber(index++, out var num2))
+                if (values[i] < min)
                 {
-                    if (num2 < num) num = num2;
+                    min = values[i];
                 }
-                ScriptDatum.WriteAsNumber(ref result, num);
             }
-            else
-            {
-                ScriptDatum.WriteAsNumber(ref result, Double.NaN);
-            }
+
+            return min;
         }
 
+        /// <summary>Returns a pseudo-random number.</summary>
+        [AuroraExport("random", MatchFailure.ReturnNaN)]
+        public static double RandomCore() => Random.Shared.NextDouble();
 
+        /// <summary>Returns the natural logarithm.</summary>
+        [AuroraExport("log", MatchFailure.ReturnNaN)]
+        public static double LogCore(double value) => Math.Log(value);
+
+        /// <summary>Returns a number raised to a power.</summary>
+        [AuroraExport("pow", MatchFailure.ReturnNaN)]
+        public static double PowCore(double x, double y) => Math.Pow(x, y);
+
+        /// <summary>Returns e raised to a power.</summary>
+        [AuroraExport("exp", MatchFailure.ReturnNaN)]
+        public static double ExpCore(double value) => Math.Exp(value);
+
+        /// <summary>Returns the cosine.</summary>
+        [AuroraExport("cos", MatchFailure.ReturnNaN)]
+        public static double CosCore(double value) => Math.Cos(value);
+
+        /// <summary>Returns the sine.</summary>
+        [AuroraExport("sin", MatchFailure.ReturnNaN)]
+        public static double SinCore(double value) => Math.Sin(value);
+
+        /// <summary>Returns the tangent.</summary>
+        [AuroraExport("tan", MatchFailure.ReturnNaN)]
+        public static double TanCore(double value) => Math.Tan(value);
+
+        /// <summary>Returns the arccosine.</summary>
+        [AuroraExport("acos", MatchFailure.ReturnNaN)]
+        public static double AcosCore(double value) => Math.Acos(value);
+
+        /// <summary>Returns the arcsine.</summary>
+        [AuroraExport("asin", MatchFailure.ReturnNaN)]
+        public static double AsinCore(double value) => Math.Asin(value);
+
+        /// <summary>Returns the arctangent.</summary>
+        [AuroraExport("atan", MatchFailure.ReturnNaN)]
+        public static double AtanCore(double value) => Math.Atan(value);
+
+        /// <summary>Returns the smallest integer greater than or equal to the value.</summary>
+        [AuroraExport("ceil", MatchFailure.ReturnNaN)]
+        public static double CeilCore(double value) => Math.Ceiling(value);
+
+        /// <summary>Returns the largest integer less than or equal to the value.</summary>
+        [AuroraExport("floor", MatchFailure.ReturnNaN)]
+        public static double FloorCore(double value) => Math.Floor(value);
+
+        /// <summary>Returns the nearest integer.</summary>
+        [AuroraExport("round", MatchFailure.ReturnNaN)]
+        public static double RoundCore(double value) => Math.Round(value);
     }
 }

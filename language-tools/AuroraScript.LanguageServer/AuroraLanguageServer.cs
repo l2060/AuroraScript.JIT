@@ -68,6 +68,8 @@ public sealed class AuroraLanguageServer
                 return Respond(id, HandleSemanticTokens(parameters));
             case "aurora/builtinDocument":
                 return Respond(id, HandleBuiltinDocument(parameters));
+            case "aurora/builtinDocuments":
+                return Respond(id, HandleBuiltinDocuments());
             default:
                 return Respond(id, null);
         }
@@ -211,6 +213,24 @@ public sealed class AuroraLanguageServer
             ["languageId"] = document.LanguageId,
             ["text"] = document.Text
         };
+    }
+
+    private JsonArray HandleBuiltinDocuments()
+    {
+        var documents = _languageService.GetBuiltinDocuments();
+        var array = new JsonArray();
+        for (var i = 0; i < documents.Count; i++)
+        {
+            var document = documents[i];
+            array.Add(new JsonObject
+            {
+                ["uri"] = document.Uri,
+                ["languageId"] = document.LanguageId,
+                ["text"] = document.Text
+            });
+        }
+
+        return array;
     }
 
     private void ConfigureWorkspace(JsonObject parameters)

@@ -1,7 +1,6 @@
 using AuroraScript.LanguageServices.Builtins;
 using AuroraScript.LanguageServices.Features.Completion;
 using AuroraScript.LanguageServices.Features.SignatureHelp;
-using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -15,11 +14,12 @@ internal static class BuiltinFormat
     {
         var builder = new StringBuilder();
         builder.Append("```").Append(MarkdownLanguageId).Append('\n');
+        BuiltinTypeFormatter.AppendJsDoc(builder, symbol.Documentation.GetNotes(locale), null, null);
         if (symbol.Kind == BuiltinApiKind.Constructor && symbol.Constructors.Count != 0)
         {
             for (var i = 0; i < symbol.Constructors.Count; i++)
             {
-                AppendConstructorDeclaration(builder, symbol.Constructors[i], includeNewKeyword: true, mappedTypes: true);
+                builder.Append(BuiltinTypeFormatter.FormatConstructorSignature(symbol.Constructors[i], includeNewKeyword: true));
                 builder.Append(";\n");
             }
         }
@@ -33,7 +33,6 @@ internal static class BuiltinFormat
             builder.Append(";\n");
         }
         builder.Append("```");
-        AppendNotes(builder, symbol.Documentation.GetNotes(locale));
         return builder.ToString();
     }
 
@@ -43,12 +42,12 @@ internal static class BuiltinFormat
         string? locale = null)
     {
         var builder = new StringBuilder();
+        builder.Append("```").Append(MarkdownLanguageId).Append('\n');
+        BuiltinTypeFormatter.AppendJsDoc(builder, module.Documentation.GetNotes(locale), null, null);
         builder
-            .Append("```").Append(MarkdownLanguageId).Append('\n')
             .Append("import ").Append(string.IsNullOrWhiteSpace(alias) ? module.Name : alias)
             .Append(" from \"").Append(module.ModulePath).Append("\";\n")
             .Append("```");
-        AppendNotes(builder, module.Documentation.GetNotes(locale));
         return builder.ToString();
     }
 
@@ -56,21 +55,12 @@ internal static class BuiltinFormat
     {
         var builder = new StringBuilder();
         builder.Append("```").Append(MarkdownLanguageId).Append('\n');
-        builder.Append(member.FullName);
-
-        if (member.Kind == BuiltinApiKind.Method || member.Kind == BuiltinApiKind.Function)
-        {
-            builder.Append('(');
-            AppendMappedParameters(builder, member.Parameters);
-            builder.Append("): ").Append(FormatType(member.ReturnType, TypeUsage.Return, optional: false, variadic: false));
-        }
-        else
-        {
-            builder.Append(": ").Append(FormatType(member.ReturnType, TypeUsage.Value, optional: false, variadic: false));
-        }
-
-        builder.Append(";\n```");
-        AppendNotes(builder, member.Documentation.GetNotes(locale));
+        var notes = member.Documentation.GetNotes(locale);
+        var parameters = member.Kind is BuiltinApiKind.Method or BuiltinApiKind.Function
+            ? member.Parameters
+            : null;
+        BuiltinTypeFormatter.AppendJsDoc(builder, notes, parameters, member.ReturnType);
+        builder.Append(BuiltinTypeFormatter.FormatMemberSignature(member)).Append(";\n```");
         return builder.ToString();
     }
 
@@ -78,7 +68,7 @@ internal static class BuiltinFormat
     {
         if (symbol.Kind == BuiltinApiKind.Constructor && symbol.Constructors.Count != 0)
         {
-            return FormatConstructorSignature(symbol.Constructors[0], includeNewKeyword: true);
+            return BuiltinTypeFormatter.FormatConstructorSignature(symbol.Constructors[0], includeNewKeyword: true);
         }
 
         return (symbol.ReadOnly ? "readonly " : string.Empty) + FormatKind(symbol.Kind);
@@ -88,10 +78,11 @@ internal static class BuiltinFormat
     {
         if (member.Kind == BuiltinApiKind.Method || member.Kind == BuiltinApiKind.Function)
         {
-            return FormatSignature(member);
+            return BuiltinTypeFormatter.FormatMemberSignature(member);
         }
 
-        return (member.ReadOnly ? "readonly " : string.Empty) + member.ReturnType;
+        return (member.ReadOnly ? "readonly " : string.Empty) +
+            BuiltinTypeFormatter.FormatType(member.ReturnType, BuiltinTypeFormatter.TypeUsage.Value, optional: false, variadic: false);
     }
 
     public static SignatureInformation FormatSignatureInfo(BuiltinApiMember member, string? locale = null)
@@ -100,10 +91,15 @@ internal static class BuiltinFormat
         for (var i = 0; i < member.Parameters.Count; i++)
         {
             var parameter = member.Parameters[i];
-            parameters.Add(new SignatureParameter(FormatParameter(parameter), parameter.Type));
+            parameters.Add(new SignatureParameter(
+                FormatMappedParameter(parameter, i),
+                BuiltinTypeFormatter.FormatType(parameter.Type, BuiltinTypeFormatter.TypeUsage.Value, parameter.Optional, parameter.Variadic)));
         }
 
-        return new SignatureInformation(FormatSignature(member), FormatMember(member, locale), parameters);
+        return new SignatureInformation(
+            BuiltinTypeFormatter.FormatMemberSignature(member),
+            FormatMember(member, locale),
+            parameters);
     }
 
     public static SignatureInformation FormatConstructorSignatureInfo(
@@ -115,12 +111,14 @@ internal static class BuiltinFormat
         for (var i = 0; i < constructor.Parameters.Count; i++)
         {
             var parameter = constructor.Parameters[i];
-            parameters.Add(new SignatureParameter(FormatParameter(parameter), parameter.Type));
+            parameters.Add(new SignatureParameter(
+                FormatMappedParameter(parameter, i),
+                BuiltinTypeFormatter.FormatType(parameter.Type, BuiltinTypeFormatter.TypeUsage.Value, parameter.Optional, parameter.Variadic)));
         }
 
         return new SignatureInformation(
-            FormatConstructorSignature(constructor, includeNewKeyword),
-            FormatConstructor(constructor, locale),
+            BuiltinTypeFormatter.FormatConstructorSignature(constructor, includeNewKeyword),
+            FormatConstructor(constructor, locale, includeNewKeyword),
             parameters);
     }
 
@@ -138,105 +136,31 @@ internal static class BuiltinFormat
         };
     }
 
-    private static string FormatSignature(BuiltinApiMember member)
-    {
-        var builder = new StringBuilder();
-        builder.Append(member.FullName).Append('(');
-        AppendParameters(builder, member.Parameters);
-        builder.Append("): ").Append(member.ReturnType);
-        return builder.ToString();
-    }
-
-    private static string FormatConstructor(BuiltinApiMember constructor, string? locale = null)
+    private static string FormatConstructor(BuiltinApiMember constructor, string? locale, bool includeNewKeyword)
     {
         var builder = new StringBuilder();
         builder.Append("```").Append(MarkdownLanguageId).Append('\n');
-        AppendConstructorDeclaration(builder, constructor, includeNewKeyword: true, mappedTypes: true);
-        builder.Append(";\n```");
-        AppendNotes(builder, constructor.Documentation.GetNotes(locale));
+        BuiltinTypeFormatter.AppendJsDoc(
+            builder,
+            constructor.Documentation.GetNotes(locale),
+            constructor.Parameters,
+            constructor.ReturnType);
+        builder.Append(BuiltinTypeFormatter.FormatConstructorSignature(constructor, includeNewKeyword)).Append(";\n```");
         return builder.ToString();
     }
 
-    private static string FormatConstructorSignature(BuiltinApiMember constructor, bool includeNewKeyword)
-    {
-        var builder = new StringBuilder();
-        AppendConstructorDeclaration(builder, constructor, includeNewKeyword, mappedTypes: false);
-        return builder.ToString();
-    }
-
-    private static void AppendConstructorDeclaration(
-        StringBuilder builder,
-        BuiltinApiMember constructor,
-        bool includeNewKeyword,
-        bool mappedTypes)
-    {
-        if (includeNewKeyword)
-        {
-            builder.Append("new ");
-        }
-
-        builder.Append(constructor.Name).Append('(');
-        if (mappedTypes)
-        {
-            AppendMappedParameters(builder, constructor.Parameters);
-        }
-        else
-        {
-            AppendParameters(builder, constructor.Parameters);
-        }
-
-        builder.Append("): ");
-        builder.Append(mappedTypes
-            ? FormatType(constructor.ReturnType, TypeUsage.Return, optional: false, variadic: false)
-            : constructor.ReturnType);
-    }
-
-    private static void AppendParameters(StringBuilder builder, IReadOnlyList<BuiltinApiParameter> parameters)
-    {
-        for (var i = 0; i < parameters.Count; i++)
-        {
-            if (i > 0)
-            {
-                builder.Append(", ");
-            }
-            builder.Append(FormatParameter(parameters[i]));
-        }
-    }
-
-    private static void AppendMappedParameters(StringBuilder builder, IReadOnlyList<BuiltinApiParameter> parameters)
-    {
-        for (var i = 0; i < parameters.Count; i++)
-        {
-            if (i > 0)
-            {
-                builder.Append(", ");
-            }
-
-            var parameter = parameters[i];
-            if (parameter.Variadic)
-            {
-                builder.Append("...");
-            }
-
-            builder
-                .Append(SafeParameterName(parameter.Name, i))
-                .Append(": ")
-                .Append(FormatType(parameter.Type, TypeUsage.Value, parameter.Optional, parameter.Variadic));
-        }
-    }
-
-    private static string FormatParameter(BuiltinApiParameter parameter)
+    private static string FormatMappedParameter(BuiltinApiParameter parameter, int index)
     {
         var builder = new StringBuilder();
         if (parameter.Variadic)
         {
             builder.Append("...");
         }
-        builder.Append(parameter.Name).Append(": ").Append(parameter.Type);
-        if (parameter.Optional)
-        {
-            builder.Append('?');
-        }
+
+        builder
+            .Append(BuiltinTypeFormatter.SafeParameterName(parameter.Name, index))
+            .Append(": ")
+            .Append(BuiltinTypeFormatter.FormatType(parameter.Type, BuiltinTypeFormatter.TypeUsage.Value, parameter.Optional, parameter.Variadic));
         return builder.ToString();
     }
 
@@ -252,147 +176,5 @@ internal static class BuiltinFormat
             BuiltinApiKind.Constant => "const",
             _ => "symbol"
         };
-    }
-
-    private static string FormatType(string rawType, TypeUsage usage, bool optional, bool variadic)
-    {
-        var type = FormatTypeCore(rawType, usage);
-        if (optional && !ContainsNullType(rawType) && !string.Equals(type, "void", StringComparison.Ordinal))
-        {
-            type += " | null";
-        }
-
-        if (!variadic)
-        {
-            return type;
-        }
-
-        return type.Contains(" | ", StringComparison.Ordinal)
-            ? "(" + type + ")[]"
-            : type + "[]";
-    }
-
-    private static string FormatTypeCore(string rawType, TypeUsage usage)
-    {
-        if (string.IsNullOrWhiteSpace(rawType))
-        {
-            return "Object";
-        }
-
-        var parts = rawType.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (parts.Length > 1)
-        {
-            var mapped = new List<string>(parts.Length);
-            for (var i = 0; i < parts.Length; i++)
-            {
-                var part = MapSingleType(parts[i], usage);
-                if (!mapped.Contains(part))
-                {
-                    mapped.Add(part);
-                }
-            }
-
-            return string.Join(" | ", mapped);
-        }
-
-        return MapSingleType(rawType, usage);
-    }
-
-    private static string MapSingleType(string rawType, TypeUsage usage)
-    {
-        var trimmed = rawType.Trim();
-        if (trimmed.EndsWith("[]", StringComparison.Ordinal))
-        {
-            return MapSingleType(trimmed.Substring(0, trimmed.Length - 2), usage) + "[]";
-        }
-
-        return trimmed.ToLowerInvariant() switch
-        {
-            "number" => "Number",
-            "string" => "String",
-            "boolean" => "Boolean",
-            "bool" => "Boolean",
-            "array" => "Array",
-            "date" => "Date",
-            "object" => "Object",
-            "any" => "Object",
-            "regex" => "Regex",
-            "regexp" => "Regex",
-            "function" => "Function",
-            "func" => "Function",
-            "null" => usage == TypeUsage.Return ? "void" : "null",
-            "undefined" => usage == TypeUsage.Return ? "void" : "null",
-            "void" => "void",
-            _ => trimmed
-        };
-    }
-
-    private static bool ContainsNullType(string rawType)
-    {
-        var parts = rawType.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        for (var i = 0; i < parts.Length; i++)
-        {
-            var part = parts[i];
-            if (string.Equals(part, "null", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(part, "undefined", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(part, "void", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static string SafeParameterName(string name, int index)
-    {
-        if (IsIdentifier(name))
-        {
-            return name;
-        }
-
-        return "arg" + index;
-    }
-
-    private static bool IsIdentifier(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value) || !IsIdentifierStart(value[0]))
-        {
-            return false;
-        }
-
-        for (var i = 1; i < value.Length; i++)
-        {
-            if (!IsIdentifierPart(value[i]))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static bool IsIdentifierStart(char value)
-    {
-        return char.IsLetter(value) || value == '_' || value == '$';
-    }
-
-    private static bool IsIdentifierPart(char value)
-    {
-        return char.IsLetterOrDigit(value) || value == '_' || value == '$';
-    }
-
-    private static void AppendNotes(StringBuilder builder, IReadOnlyList<string> notes)
-    {
-        for (var i = 0; i < notes.Count; i++)
-        {
-            builder.Append("\n\n").Append(notes[i]);
-        }
-    }
-
-    private enum TypeUsage
-    {
-        Value,
-        Return
     }
 }

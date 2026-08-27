@@ -277,7 +277,7 @@ internal static class BuiltinQuery
         return false;
     }
 
-    private static int GetActiveParameter(FunctionCallExpression call, TextPosition position)
+    internal static int GetActiveParameter(FunctionCallExpression call, TextPosition position)
     {
         for (var i = 0; i < call.Arguments.Count; i++)
         {

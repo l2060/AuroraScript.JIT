@@ -1,7 +1,7 @@
 namespace AuroraScript.Hosting
 {
     /// <summary>Parameter coercion contract for generated Datum adapters.</summary>
-    public enum AuroraParamCoercion
+    public enum MatchLevel
     {
         /// <summary>Uses TryGet* helpers (for example string to number parsing).</summary>
         Weak,

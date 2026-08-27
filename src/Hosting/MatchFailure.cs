@@ -1,7 +1,7 @@
 namespace AuroraScript.Hosting
 {
     /// <summary>Failure behavior when a generated Datum adapter cannot coerce arguments.</summary>
-    public enum AuroraExportFailure
+    public enum MatchFailure
     {
         /// <summary>Infer from the core return type (number to NaN, otherwise null).</summary>
         Default,

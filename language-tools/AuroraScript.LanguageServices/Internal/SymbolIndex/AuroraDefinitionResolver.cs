@@ -2,8 +2,10 @@ using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Compiler.GlobalDeclarations;
+using AuroraScript.LanguageServices.Features.Completion;
 using AuroraScript.LanguageServices.Features.Definition;
 using AuroraScript.LanguageServices.Text;
+using System;
 using System.Collections.Generic;
 
 namespace AuroraScript.LanguageServices.Internal.SymbolIndex;
@@ -206,6 +208,155 @@ internal static class AuroraDefinitionResolver
         var module = index.TryGetModule(path);
         var normalizedPath = module?.Path ?? path;
         return new TextRange(normalizedPath, TextPosition.Zero, TextPosition.Zero);
+    }
+
+    internal static CompletionResult GetObjectMemberCompletions(
+        AuroraWorkspaceIndex index,
+        AuroraModuleIndex module,
+        string ownerName,
+        TextPosition position)
+    {
+        var items = new List<CompletionItem>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var member in AuroraObjectMemberIndex.Build(module).GetMembers(ownerName))
+        {
+            AddObjectCompletion(items, seen, member);
+        }
+
+        var localIndex = AuroraLocalSymbolIndex.Build(module);
+        if (TryFindOwnerInitializer(module, localIndex, ownerName, position, out var initializer) &&
+            TryResolveCallTarget(index, module, initializer, out var targetModule, out var function))
+        {
+            foreach (var member in CollectReturnedObjectMembers(targetModule, function))
+            {
+                AddObjectCompletion(items, seen, member);
+            }
+        }
+
+        return new CompletionResult(items);
+    }
+
+    private static void AddObjectCompletion(
+        List<CompletionItem> items,
+        HashSet<string> seen,
+        AuroraObjectMemberIndex.ObjectMemberInfo member)
+    {
+        if (!seen.Add(member.Name))
+        {
+            return;
+        }
+
+        items.Add(new CompletionItem(
+            member.Name,
+            member.IsMethod ? CompletionItemKind.Method : CompletionItemKind.Property,
+            member.IsMethod ? "object method" : "object property",
+            documentation: null,
+            readOnly: false));
+    }
+
+    private static bool TryFindOwnerInitializer(
+        AuroraModuleIndex module,
+        AuroraLocalSymbolIndex localIndex,
+        string ownerName,
+        TextPosition position,
+        out Expression initializer)
+    {
+        foreach (var symbol in localIndex.GetVisibleSymbols(position))
+        {
+            if (string.Equals(symbol.Name, ownerName, StringComparison.Ordinal) &&
+                symbol.HasDeclarationRange &&
+                TryFindVariableInitializer(module.Module, ownerName, symbol.DeclarationRange, out initializer))
+            {
+                return true;
+            }
+        }
+
+        if (module.Symbols.TryGetValue(ownerName, out var moduleSymbol))
+        {
+            return TryFindVariableInitializer(module.Module, ownerName, moduleSymbol.NameRange, out initializer);
+        }
+
+        initializer = null!;
+        return false;
+    }
+
+    private static IReadOnlyList<AuroraObjectMemberIndex.ObjectMemberInfo> CollectReturnedObjectMembers(
+        AuroraModuleIndex targetModule,
+        FunctionDeclaration function)
+    {
+        var members = new List<AuroraObjectMemberIndex.ObjectMemberInfo>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var returnExpression = function.Body == null ? null : FindReturnExpression(function.Body);
+        if (returnExpression == null)
+        {
+            return members;
+        }
+
+        AddReturnedMembers(targetModule, function, returnExpression, members, seen);
+        return members;
+    }
+
+    private static void AddReturnedMembers(
+        AuroraModuleIndex targetModule,
+        FunctionDeclaration function,
+        Expression expression,
+        List<AuroraObjectMemberIndex.ObjectMemberInfo> members,
+        HashSet<string> seen)
+    {
+        if (expression is MapExpression map)
+        {
+            AddMapMembers(map, members, seen);
+            return;
+        }
+
+        if (expression is NameExpression name)
+        {
+            AddIndexedMembers(AuroraObjectMemberIndex.Build(targetModule, function).GetMembers(name.Identifier.Value), members, seen);
+            return;
+        }
+
+        if (expression is FunctionCallExpression call &&
+            call.Target is NameExpression { Identifier.Value: "Object" } &&
+            call.Arguments.Count > 0)
+        {
+            AddReturnedMembers(targetModule, function, call.Arguments[0], members, seen);
+        }
+    }
+
+    private static void AddMapMembers(
+        MapExpression map,
+        List<AuroraObjectMemberIndex.ObjectMemberInfo> members,
+        HashSet<string> seen)
+    {
+        for (var i = 0; i < map.Entries.Count; i++)
+        {
+            if (map.Entries[i] is not MapKeyValueExpression entry ||
+                string.IsNullOrEmpty(entry.Key?.Value) ||
+                !seen.Add(entry.Key.Value))
+            {
+                continue;
+            }
+
+            members.Add(new AuroraObjectMemberIndex.ObjectMemberInfo(
+                entry.Key.Value,
+                TextRange.FromSourceSpan(entry.Key.Range),
+                entry.Value is LambdaExpression));
+        }
+    }
+
+    private static void AddIndexedMembers(
+        IReadOnlyList<AuroraObjectMemberIndex.ObjectMemberInfo> source,
+        List<AuroraObjectMemberIndex.ObjectMemberInfo> members,
+        HashSet<string> seen)
+    {
+        for (var i = 0; i < source.Count; i++)
+        {
+            var member = source[i];
+            if (seen.Add(member.Name))
+            {
+                members.Add(member);
+            }
+        }
     }
 
     private static bool TryResolveConstructedObjectMember(
