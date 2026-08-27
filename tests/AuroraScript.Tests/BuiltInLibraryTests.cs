@@ -383,7 +383,7 @@ public sealed class BuiltInLibraryTests
             {
                 true,
                 true,
-                "object",
+                "Path",
                 "res://pkg/modules/runtime.as",
                 "mem://app/shared/main.as",
                 "mem://app/shared",
