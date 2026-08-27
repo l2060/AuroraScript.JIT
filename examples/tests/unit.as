@@ -788,7 +788,7 @@ func deepInterruption() {
 	lll();
 }
 
-export func testFor(count = 1000000) {
+export func testFor(Number count = 1000000) {
 	for (var o = 0; o < count; o++) {
 		// .....
 		// var s = a == b;

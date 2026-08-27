@@ -124,7 +124,7 @@ public sealed class AstarExampleTests
             {
                 heapNativeHandle = handle;
             }
-            else if (string.Equals(name, "findPathInto$typed", StringComparison.Ordinal))
+            else if (string.Equals(name, "findPathInto$native", StringComparison.Ordinal))
             {
                 findPathHandle = handle;
             }

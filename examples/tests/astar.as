@@ -228,7 +228,7 @@ export func newPathBuffer(AStar astar) Array {
 	return Array.withCapacity(astar.width + astar.height);
 }
 
-export func findPathInto(AStar astar, Number startX, Number startY, Number goalX, Number goalY, Array outPath, Boolean allowDiagonal = true, Boolean avoidCornerCut = true) Number {
+export native func findPathInto(AStar astar, Number startX, Number startY, Number goalX, Number goalY, Array outPath, Boolean allowDiagonal, Boolean avoidCornerCut) Number {
 	if (astar == null) {
 		throw "astar is required";
 	}
@@ -711,7 +711,7 @@ init();
 export func runExample() {
 
 	console.time("astar");
-	var pathLength = findPathInto(astar, startX, startY, goalX, goalY, pathBuffer, true, true);
+	var pathLength = findPathInto(astar as AStar, startX as Number, startY as Number, goalX as Number, goalY as Number, pathBuffer as Array, true, true);
 	console.timeEnd("astar");
 
 	console.log("expanded =", astar.expanded);

@@ -51,41 +51,149 @@ namespace AuroraScript.Runtime
         /// Validates <paramref name="value"/> against an exact script type and
         /// returns the unchanged value.
         /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public static ScriptDatum Check(ScriptDatum value, CheckedType expected)
         {
-            var reference = value.Reference;
-            var valid = expected switch
+            return expected switch
             {
-                CheckedType.Null => value.Kind == ValueKind.Null,
-                CheckedType.Boolean => value.Kind == ValueKind.Boolean,
-                CheckedType.Number => value.Kind == ValueKind.Number,
-                CheckedType.String => value.Kind == ValueKind.String,
-                CheckedType.Object => value.Kind == ValueKind.Object &&
-                    reference is ScriptObject,
-                CheckedType.Array => value.Kind == ValueKind.Array &&
-                    reference is ScriptArray,
-                CheckedType.Int32Array => reference is ScriptInt32Array,
-                CheckedType.Int8Array => reference is ScriptInt8Array,
-                CheckedType.Float64Array => reference is ScriptFloat64Array,
-                CheckedType.BooleanArray => reference is ScriptBooleanArray,
-                CheckedType.UInt8Array => reference is ScriptUInt8Array,
-                CheckedType.Int16Array => reference is ScriptInt16Array,
-                CheckedType.UInt16Array => reference is ScriptUInt16Array,
-                CheckedType.UInt32Array => reference is ScriptUInt32Array,
-                CheckedType.Int64Array => reference is ScriptInt64Array,
-                CheckedType.UInt64Array => reference is ScriptUInt64Array,
-                _ => false
+                CheckedType.Null => CheckNull(value),
+                CheckedType.Boolean => CheckBoolean(value),
+                CheckedType.Number => CheckNumber(value),
+                CheckedType.String => CheckString(value),
+                CheckedType.Object => CheckObject(value),
+                CheckedType.Array => CheckArray(value),
+                CheckedType.Int32Array => CheckInt32Array(value),
+                CheckedType.Int8Array => CheckInt8Array(value),
+                CheckedType.Float64Array => CheckFloat64Array(value),
+                CheckedType.BooleanArray => CheckBooleanArray(value),
+                CheckedType.UInt8Array => CheckUInt8Array(value),
+                CheckedType.Int16Array => CheckInt16Array(value),
+                CheckedType.UInt16Array => CheckUInt16Array(value),
+                CheckedType.UInt32Array => CheckUInt32Array(value),
+                CheckedType.Int64Array => CheckInt64Array(value),
+                CheckedType.UInt64Array => CheckUInt64Array(value),
+                _ => Mismatch(expected, value)
             };
-            if (valid) return value;
-            throw Mismatch(expected.ToString(), value);
         }
 
-        private static AuroraRuntimeException Mismatch(
-            string expected,
+        /// <summary>Validates an exact null value.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum CheckNull(ScriptDatum value) =>
+            value.Kind == ValueKind.Null
+                ? value
+                : Mismatch(CheckedType.Null, value);
+
+        /// <summary>Validates an exact Boolean value.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum CheckBoolean(ScriptDatum value) =>
+            value.Kind == ValueKind.Boolean
+                ? value
+                : Mismatch(CheckedType.Boolean, value);
+
+        /// <summary>Validates an exact Number value.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum CheckNumber(ScriptDatum value) =>
+            value.Kind == ValueKind.Number
+                ? value
+                : Mismatch(CheckedType.Number, value);
+
+        /// <summary>Validates an exact String value.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum CheckString(ScriptDatum value) =>
+            value.Kind == ValueKind.String
+                ? value
+                : Mismatch(CheckedType.String, value);
+
+        /// <summary>Validates an exact Object value.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum CheckObject(ScriptDatum value) =>
+            value.Kind == ValueKind.Object && value.Reference is ScriptObject
+                ? value
+                : Mismatch(CheckedType.Object, value);
+
+        /// <summary>Validates an exact Array value.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum CheckArray(ScriptDatum value) =>
+            value.Kind == ValueKind.Array && value.Reference is ScriptArray
+                ? value
+                : Mismatch(CheckedType.Array, value);
+
+        /// <summary>Validates an exact Int32Array value.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum CheckInt32Array(ScriptDatum value) =>
+            value.Reference is ScriptInt32Array
+                ? value
+                : Mismatch(CheckedType.Int32Array, value);
+
+        /// <summary>Validates an exact Int8Array value.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum CheckInt8Array(ScriptDatum value) =>
+            value.Reference is ScriptInt8Array
+                ? value
+                : Mismatch(CheckedType.Int8Array, value);
+
+        /// <summary>Validates an exact Float64Array value.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum CheckFloat64Array(ScriptDatum value) =>
+            value.Reference is ScriptFloat64Array
+                ? value
+                : Mismatch(CheckedType.Float64Array, value);
+
+        /// <summary>Validates an exact BooleanArray value.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum CheckBooleanArray(ScriptDatum value) =>
+            value.Reference is ScriptBooleanArray
+                ? value
+                : Mismatch(CheckedType.BooleanArray, value);
+
+        /// <summary>Validates an exact UInt8Array value.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum CheckUInt8Array(ScriptDatum value) =>
+            value.Reference is ScriptUInt8Array
+                ? value
+                : Mismatch(CheckedType.UInt8Array, value);
+
+        /// <summary>Validates an exact Int16Array value.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum CheckInt16Array(ScriptDatum value) =>
+            value.Reference is ScriptInt16Array
+                ? value
+                : Mismatch(CheckedType.Int16Array, value);
+
+        /// <summary>Validates an exact UInt16Array value.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum CheckUInt16Array(ScriptDatum value) =>
+            value.Reference is ScriptUInt16Array
+                ? value
+                : Mismatch(CheckedType.UInt16Array, value);
+
+        /// <summary>Validates an exact UInt32Array value.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum CheckUInt32Array(ScriptDatum value) =>
+            value.Reference is ScriptUInt32Array
+                ? value
+                : Mismatch(CheckedType.UInt32Array, value);
+
+        /// <summary>Validates an exact Int64Array value.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum CheckInt64Array(ScriptDatum value) =>
+            value.Reference is ScriptInt64Array
+                ? value
+                : Mismatch(CheckedType.Int64Array, value);
+
+        /// <summary>Validates an exact UInt64Array value.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum CheckUInt64Array(ScriptDatum value) =>
+            value.Reference is ScriptUInt64Array
+                ? value
+                : Mismatch(CheckedType.UInt64Array, value);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static ScriptDatum Mismatch(
+            CheckedType expected,
             ScriptDatum actual)
         {
-            return new AuroraRuntimeException(
+            throw new AuroraRuntimeException(
                 "Type check failed: expected " + expected +
                 ", actual " + ScriptDatum.GetTypeName(actual) + ".");
         }

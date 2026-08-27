@@ -734,7 +734,7 @@ namespace AuroraScript.Hosting.Generators
                     AppendFailureReturn(builder, export, indent: "                ");
                     builder.AppendLine("            }");
                     builder.AppendLine("            var " + parameter.VariableName + "Datum = args[" + parameter.Index + "];");
-                    builder.AppendLine("            TypeCheckOps.Check(" + parameter.VariableName + "Datum, CheckedType.Number);");
+                    builder.AppendLine("            TypeCheckOps.CheckNumber(" + parameter.VariableName + "Datum);");
                     builder.AppendLine("            var " + parameter.VariableName + " = " + parameter.VariableName + "Datum.Number;");
                     break;
 
@@ -802,7 +802,7 @@ namespace AuroraScript.Hosting.Generators
                 AppendFailureReturn(builder, export, indent: "                ");
                 builder.AppendLine("            }");
                 builder.AppendLine("            var " + parameter.VariableName + "Datum = args[" + parameter.Index + "];");
-                builder.AppendLine("            TypeCheckOps.Check(" + parameter.VariableName + "Datum, CheckedType.Boolean);");
+                builder.AppendLine("            TypeCheckOps.CheckBoolean(" + parameter.VariableName + "Datum);");
                 builder.AppendLine("            var " + parameter.VariableName + " = " + parameter.VariableName + "Datum.Boolean;");
                 return;
             }
@@ -825,7 +825,7 @@ namespace AuroraScript.Hosting.Generators
                 AppendFailureReturn(builder, export, indent: "                ");
                 builder.AppendLine("            }");
                 builder.AppendLine("            var " + parameter.VariableName + "Datum = args[" + parameter.Index + "];");
-                builder.AppendLine("            TypeCheckOps.Check(" + parameter.VariableName + "Datum, CheckedType.Number);");
+                builder.AppendLine("            TypeCheckOps.CheckNumber(" + parameter.VariableName + "Datum);");
                 builder.AppendLine("            var " + parameter.VariableName + " = (int)" + parameter.VariableName + "Datum.Number;");
                 return;
             }
@@ -848,7 +848,7 @@ namespace AuroraScript.Hosting.Generators
                 AppendFailureReturn(builder, export, indent: "                ");
                 builder.AppendLine("            }");
                 builder.AppendLine("            var " + parameter.VariableName + "Datum = args[" + parameter.Index + "];");
-                builder.AppendLine("            TypeCheckOps.Check(" + parameter.VariableName + "Datum, CheckedType.String);");
+                builder.AppendLine("            TypeCheckOps.CheckString(" + parameter.VariableName + "Datum);");
                 builder.AppendLine("            var " + parameter.VariableName + " = " + parameter.VariableName + "Datum.StringText;");
                 return;
             }

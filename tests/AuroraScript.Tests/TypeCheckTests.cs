@@ -3,6 +3,8 @@ using AuroraScript.Runtime.Types;
 using AuroraScript.Tests.Infrastructure;
 using System;
 using System.IO;
+using System.Linq;
+using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
 using System.Threading.Tasks;
@@ -12,6 +14,79 @@ namespace AuroraScript.Tests;
 
 public sealed class TypeCheckTests
 {
+    [Fact]
+    public void DedicatedTypeChecksAreInlineCandidates()
+    {
+        foreach (var type in Enum.GetValues<CheckedType>())
+        {
+            var method = typeof(TypeCheckOps).GetMethod("Check" + type);
+            Assert.NotNull(method);
+            Assert.True(method.MethodImplementationFlags.HasFlag(
+                MethodImplAttributes.AggressiveInlining));
+        }
+
+        Assert.True(typeof(TypeCheckOps)
+            .GetMethod(nameof(TypeCheckOps.Check))!
+            .MethodImplementationFlags
+            .HasFlag(MethodImplAttributes.NoInlining));
+    }
+
+#if NET9_0_OR_GREATER
+    [Fact]
+    public async Task PersistenceEmitsDedicatedTypeCheckCalls()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func check(value) {
+                return [
+                    value as Null,
+                    value as Boolean,
+                    value as Number,
+                    value as String,
+                    value as Object,
+                    value as Array,
+                    value as Int32Array,
+                    value as Int8Array,
+                    value as Float64Array,
+                    value as BooleanArray,
+                    value as UInt8Array,
+                    value as Int16Array,
+                    value as UInt16Array,
+                    value as UInt32Array,
+                    value as Int64Array,
+                    value as UInt64Array
+                ];
+            }
+            """,
+            CompilationMode.Persistence);
+
+        using var stream = File.OpenRead(
+            Path.Combine(workspace.Root, "test-output.dll"));
+        using var peReader = new PEReader(stream);
+        var reader = peReader.GetMetadataReader();
+        var calls = reader.MemberReferences
+            .Where(handle =>
+            {
+                var member = reader.GetMemberReference(handle);
+                if (member.Parent.Kind != HandleKind.TypeReference) return false;
+                var parent = reader.GetTypeReference(
+                    (TypeReferenceHandle)member.Parent);
+                return reader.GetString(parent.Name) == nameof(TypeCheckOps);
+            })
+            .Select(handle => reader.GetString(
+                reader.GetMemberReference(handle).Name))
+            .ToHashSet(StringComparer.Ordinal);
+
+        foreach (var type in Enum.GetValues<CheckedType>())
+        {
+            Assert.Contains("Check" + type, calls);
+        }
+        Assert.DoesNotContain(nameof(TypeCheckOps.Check), calls);
+    }
+#endif
+
     [Theory]
     [InlineData(CompilationMode.Dynamic)]
 #if NET9_0_OR_GREATER

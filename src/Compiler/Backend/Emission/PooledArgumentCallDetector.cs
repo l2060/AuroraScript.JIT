@@ -1,20 +1,36 @@
 using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Backend.Traversal;
+using System;
 
 namespace AuroraScript.Compiler.Backend.Emission
 {
     internal static class PooledArgumentCallDetector
     {
-        public static bool Contains(AstNode node)
+        public static bool Contains(
+            AstNode node,
+            Func<FunctionCallExpression, bool> callUsesBuffer = null,
+            Func<NewExpression, bool> constructorUsesBuffer = null)
         {
-            var visitor = new Visitor();
+            var visitor = new Visitor(callUsesBuffer, constructorUsesBuffer);
             visitor.VisitRoot(node);
             return visitor.Found;
         }
 
         private struct Visitor : IAstChildVisitor
         {
+            private readonly Func<FunctionCallExpression, bool> _callUsesBuffer;
+            private readonly Func<NewExpression, bool> _constructorUsesBuffer;
+
+            public Visitor(
+                Func<FunctionCallExpression, bool> callUsesBuffer,
+                Func<NewExpression, bool> constructorUsesBuffer)
+            {
+                _callUsesBuffer = callUsesBuffer;
+                _constructorUsesBuffer = constructorUsesBuffer;
+                Found = false;
+            }
+
             public bool Found;
 
             public void VisitRoot(AstNode node)
@@ -39,15 +55,18 @@ namespace AuroraScript.Compiler.Backend.Emission
                     return;
                 }
 
-                if (node is NewExpression { Expression: FunctionCallExpression constructor } &&
-                    (constructor.Arguments.Count > 2 || HasSpread(constructor)))
+                if (node is NewExpression { Expression: FunctionCallExpression constructor } @new &&
+                    (_constructorUsesBuffer?.Invoke(@new) ??
+                        (constructor.Arguments.Count > 2 || HasSpread(constructor))))
                 {
                     Found = true;
                     return;
                 }
 
                 if (node is FunctionCallExpression call &&
-                    (call.Arguments.Count > 7 || HasSpread(call)))
+                    node.Parent is not NewExpression &&
+                    (_callUsesBuffer?.Invoke(call) ??
+                        (call.Arguments.Count > 7 || HasSpread(call))))
                 {
                     Found = true;
                     return;

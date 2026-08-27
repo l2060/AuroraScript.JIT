@@ -346,9 +346,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                         FlowValueType.None)
                 {
                     il.Emit(
-                        OpCodes.Ldc_I4,
-                        (int)FlowValueTypeFacts.GetCheckedType(declared.Name));
-                    il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckType);
+                        OpCodes.Call,
+                        TypedRuntimeMetadata.GetTypeCheck(
+                            FlowValueTypeFacts.GetCheckedType(declared.Name)));
                 }
 
                 EmitDatumToNativeParameter(
@@ -509,7 +509,10 @@ namespace AuroraScript.Compiler.Backend.Emission
                 _handlesFinallyReturn = supportsRuntimeBoundary &&
                     ContainsReturnInFinally(body);
                 _hasArgumentBufferCleanup = supportsRuntimeBoundary &&
-                    PooledArgumentCallDetector.Contains(function.Declaration);
+                    PooledArgumentCallDetector.Contains(
+                        function.Declaration,
+                        CallUsesArgumentBuffer,
+                        ConstructorUsesArgumentBuffer);
                 _argumentBuffers = _hasArgumentBufferCleanup
                     ? new List<(LocalBuilder Arguments, LocalBuilder Count)>()
                     : null;
@@ -888,8 +891,10 @@ namespace AuroraScript.Compiler.Backend.Emission
             if (declaredType != null)
             {
                 var type = FlowValueTypeFacts.FromCheckedTypeName(declaredType.Name);
-                EmitInt32((int)FlowValueTypeFacts.GetCheckedType(declaredType.Name));
-                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckType);
+                _il.Emit(
+                    OpCodes.Call,
+                    TypedRuntimeMetadata.GetTypeCheck(
+                        FlowValueTypeFacts.GetCheckedType(declaredType.Name)));
                 var kind = EmitCheckedDatumConversion(type);
                 if (type == FlowValueType.Object)
                 {
@@ -1064,8 +1069,10 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 if (expression == null) EmitNull();
                 else EmitDatum(expression);
-                EmitInt32((int)FlowValueTypeFacts.GetCheckedType(declaredName));
-                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckType);
+                _il.Emit(
+                    OpCodes.Call,
+                    TypedRuntimeMetadata.GetTypeCheck(
+                        FlowValueTypeFacts.GetCheckedType(declaredName)));
                 if (_methodReturnKind == StackValueKind.Datum) return;
 
                 var converted = EmitCheckedDatumConversion(declaredType);
@@ -1693,8 +1700,10 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return StackValueKind.Datum;
             }
             var type = FlowValueTypeFacts.FromCheckedTypeName(expression.TypeName);
-            EmitInt32((int)FlowValueTypeFacts.GetCheckedType(expression.TypeName));
-            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckType);
+            _il.Emit(
+                OpCodes.Call,
+                TypedRuntimeMetadata.GetTypeCheck(
+                    FlowValueTypeFacts.GetCheckedType(expression.TypeName)));
             return EmitCheckedDatumConversion(type);
         }
 
@@ -2989,6 +2998,43 @@ namespace AuroraScript.Compiler.Backend.Emission
                 }
             }
             return true;
+        }
+
+        private bool CallUsesArgumentBuffer(FunctionCallExpression call)
+        {
+            if (TryGetImportedNativeCall(call, out _) ||
+                TryGetDirectCall(call, out _) ||
+                (IsArrayFactoryCall(_code, call) && !HasSpread(call.Arguments)))
+            {
+                return false;
+            }
+            if (call.Target is GetPropertyExpression property &&
+                TryGetStaticPropertyName(property.Property, out var name) &&
+                TryGetHostExportCall(call, property.Object, name, out _))
+            {
+                return false;
+            }
+            return HasSpread(call.Arguments) || call.Arguments.Count > 7;
+        }
+
+        private bool ConstructorUsesArgumentBuffer(NewExpression expression)
+        {
+            var call = expression.Expression;
+            var hasSpread = HasSpread(call.Arguments);
+            var resultType = _code.GetExpressionType(expression);
+            if (FlowValueTypeFacts.IsPackedArray(resultType) &&
+                call.Arguments.Count <= 1 &&
+                !hasSpread)
+            {
+                return false;
+            }
+            if (resultType == FlowValueType.Array &&
+                IsArrayConstruction(_code, expression) &&
+                !hasSpread)
+            {
+                return false;
+            }
+            return hasSpread || call.Arguments.Count > 2;
         }
 
         private StackValueKind EmitCall(FunctionCallExpression call)

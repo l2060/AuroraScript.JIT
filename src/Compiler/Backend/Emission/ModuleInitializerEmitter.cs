@@ -440,9 +440,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return;
             }
             _il.Emit(
-                OpCodes.Ldc_I4,
-                (int)FlowValueTypeFacts.GetCheckedType(expression.TypeName));
-            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckType);
+                OpCodes.Call,
+                TypedRuntimeMetadata.GetTypeCheck(
+                    FlowValueTypeFacts.GetCheckedType(expression.TypeName)));
         }
 
         private void EmitCondition(Expression expression)

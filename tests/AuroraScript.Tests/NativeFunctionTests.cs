@@ -192,6 +192,67 @@ public sealed class NativeFunctionTests
             MetadataTokens.GetToken(native)));
     }
 
+#if NET9_0_OR_GREATER
+    [Fact]
+    public async Task PersistenceOnlyWrapsCallsThatRentArgumentBuffers()
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource(
+            "main.as",
+            """
+            @module(TEST);
+            native func sum(Number a, Number b, Number c, Number d, Number e, Number f, Number g, Number h) Number {
+                return a + b + c + d + e + f + g + h;
+            }
+            func first(a, b, c, d, e, f, g, h) {
+                return a;
+            }
+            export func runNative() Number {
+                return sum(1, 2, 3, 4, 5, 6, 7, 8);
+            }
+            export func runDynamic() {
+                var callback = first;
+                return callback(1, 2, 3, 4, 5, 6, 7, 8);
+            }
+            """);
+        var assemblyPath = Path.Combine(workspace.Root, "test-output.dll");
+        var engine = workspace.CreateEngine(
+            CompilationMode.Persistence,
+            assemblyOut: assemblyPath);
+        await engine.BuildAsync(["main.as"]);
+        using var domain = engine.CreateDomain();
+        ScriptAssert.Equal(36, TestWorkspace.Execute(domain, "runNative"));
+        ScriptAssert.Equal(1, TestWorkspace.Execute(domain, "runDynamic"));
+
+        using var stream = File.OpenRead(assemblyPath);
+        using var peReader = new PEReader(stream);
+        var reader = peReader.GetMetadataReader();
+        MethodDefinitionHandle native = default;
+        MethodDefinitionHandle nativeCaller = default;
+        MethodDefinitionHandle dynamicCaller = default;
+        foreach (var handle in reader.MethodDefinitions)
+        {
+            var name = reader.GetString(reader.GetMethodDefinition(handle).Name);
+            if (name == "sum$native") native = handle;
+            else if (name == "runNative$typed") nativeCaller = handle;
+            else if (name == "runDynamic$typed") dynamicCaller = handle;
+        }
+
+        Assert.False(native.IsNil);
+        Assert.False(nativeCaller.IsNil);
+        Assert.False(dynamicCaller.IsNil);
+        var nativeBody = peReader.GetMethodBody(
+            reader.GetMethodDefinition(nativeCaller).RelativeVirtualAddress);
+        var dynamicBody = peReader.GetMethodBody(
+            reader.GetMethodDefinition(dynamicCaller).RelativeVirtualAddress);
+        Assert.Empty(nativeBody.ExceptionRegions);
+        Assert.True(ContainsCall(
+            nativeBody.GetILBytes(),
+            MetadataTokens.GetToken(native)));
+        Assert.NotEmpty(dynamicBody.ExceptionRegions);
+    }
+#endif
+
     [Fact]
     public async Task NativeDirectCallsPreserveScriptStackFrames()
     {

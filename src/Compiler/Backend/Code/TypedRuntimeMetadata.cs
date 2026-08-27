@@ -21,7 +21,22 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo DatumToObject = Method(typeof(ScriptDatum), nameof(ScriptDatum.ToObject), typeof(ScriptDatum));
         public static readonly MethodInfo DatumToString = Method(typeof(ScriptDatum), nameof(ScriptDatum.ToString), typeof(ScriptDatum));
         public static readonly FieldInfo DatumNull = typeof(ScriptDatum).GetField(nameof(ScriptDatum.Null));
-        public static readonly MethodInfo CheckType = Method(typeof(TypeCheckOps), nameof(TypeCheckOps.Check), typeof(ScriptDatum), typeof(CheckedType));
+        public static readonly MethodInfo CheckNull = TypeCheck(nameof(TypeCheckOps.CheckNull));
+        public static readonly MethodInfo CheckBoolean = TypeCheck(nameof(TypeCheckOps.CheckBoolean));
+        public static readonly MethodInfo CheckNumber = TypeCheck(nameof(TypeCheckOps.CheckNumber));
+        public static readonly MethodInfo CheckString = TypeCheck(nameof(TypeCheckOps.CheckString));
+        public static readonly MethodInfo CheckObject = TypeCheck(nameof(TypeCheckOps.CheckObject));
+        public static readonly MethodInfo CheckArray = TypeCheck(nameof(TypeCheckOps.CheckArray));
+        public static readonly MethodInfo CheckInt32Array = TypeCheck(nameof(TypeCheckOps.CheckInt32Array));
+        public static readonly MethodInfo CheckInt8Array = TypeCheck(nameof(TypeCheckOps.CheckInt8Array));
+        public static readonly MethodInfo CheckFloat64Array = TypeCheck(nameof(TypeCheckOps.CheckFloat64Array));
+        public static readonly MethodInfo CheckBooleanArray = TypeCheck(nameof(TypeCheckOps.CheckBooleanArray));
+        public static readonly MethodInfo CheckUInt8Array = TypeCheck(nameof(TypeCheckOps.CheckUInt8Array));
+        public static readonly MethodInfo CheckInt16Array = TypeCheck(nameof(TypeCheckOps.CheckInt16Array));
+        public static readonly MethodInfo CheckUInt16Array = TypeCheck(nameof(TypeCheckOps.CheckUInt16Array));
+        public static readonly MethodInfo CheckUInt32Array = TypeCheck(nameof(TypeCheckOps.CheckUInt32Array));
+        public static readonly MethodInfo CheckInt64Array = TypeCheck(nameof(TypeCheckOps.CheckInt64Array));
+        public static readonly MethodInfo CheckUInt64Array = TypeCheck(nameof(TypeCheckOps.CheckUInt64Array));
         public static readonly MethodInfo DatumNumber = typeof(ScriptDatum).GetProperty(nameof(ScriptDatum.Number)).GetMethod;
         public static readonly MethodInfo DatumBoolean = typeof(ScriptDatum).GetProperty(nameof(ScriptDatum.Boolean)).GetMethod;
         public static readonly FieldInfo ContextDomain = typeof(ScriptContext).GetField(nameof(ScriptContext.Domain));
@@ -234,6 +249,35 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly ConstructorInfo StringBuilderCapacity = Constructor(typeof(StringBuilder), typeof(int));
         public static readonly MethodInfo StringBuilderAppend = InstanceMethod(typeof(StringBuilder), nameof(StringBuilder.Append), typeof(string));
         public static readonly MethodInfo StringBuilderToString = typeof(StringBuilder).GetMethod(nameof(StringBuilder.ToString), Type.EmptyTypes);
+
+        public static MethodInfo GetTypeCheck(CheckedType type)
+        {
+            return type switch
+            {
+                CheckedType.Null => CheckNull,
+                CheckedType.Boolean => CheckBoolean,
+                CheckedType.Number => CheckNumber,
+                CheckedType.String => CheckString,
+                CheckedType.Object => CheckObject,
+                CheckedType.Array => CheckArray,
+                CheckedType.Int32Array => CheckInt32Array,
+                CheckedType.Int8Array => CheckInt8Array,
+                CheckedType.Float64Array => CheckFloat64Array,
+                CheckedType.BooleanArray => CheckBooleanArray,
+                CheckedType.UInt8Array => CheckUInt8Array,
+                CheckedType.Int16Array => CheckInt16Array,
+                CheckedType.UInt16Array => CheckUInt16Array,
+                CheckedType.UInt32Array => CheckUInt32Array,
+                CheckedType.Int64Array => CheckInt64Array,
+                CheckedType.UInt64Array => CheckUInt64Array,
+                _ => throw new ArgumentOutOfRangeException(nameof(type), type, null)
+            };
+        }
+
+        private static MethodInfo TypeCheck(string name)
+        {
+            return Method(typeof(TypeCheckOps), name, typeof(ScriptDatum));
+        }
 
         private static MethodInfo Method(Type type, string name, params Type[] parameterTypes)
         {
