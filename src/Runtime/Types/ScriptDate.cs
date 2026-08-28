@@ -11,7 +11,8 @@ namespace AuroraScript.Runtime.Types
         /// <summary> Gets the underlying <see cref="DateTimeOffset"/> value. </summary>
         public DateTimeOffset DateTime { get; private set; }
 
-        internal override ScriptDatum TypeOfValue => TypeNames.Date;
+        /// <inheritdoc />
+        protected internal override ScriptDatum TypeOfValue => TypeNames.Date;
 
         private ScriptDate() : base(Prototypes.DatePrototype)
         {

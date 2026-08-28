@@ -25,9 +25,10 @@ namespace AuroraScript.Hosting.Generators
         Throw
     }
     [Generator]
-    public sealed class AuroraExportGenerator : IIncrementalGenerator
+    public sealed partial class AuroraExportGenerator : IIncrementalGenerator
     {
         private const string BuiltinGlobalAttribute = "AuroraScript.Hosting.AuroraNativeModuleAttribute";
+        private const string NativeObjectAttribute = "AuroraScript.Hosting.AuroraNativeObjectAttribute";
         private const string ExportAttribute = "AuroraScript.Hosting.AuroraExportAttribute";
         private const string ParamAttribute = "AuroraScript.Hosting.AuroraParamAttribute";
         private static readonly DiagnosticDescriptor InvalidGlobal = new(
@@ -65,6 +66,10 @@ namespace AuroraScript.Hosting.Generators
                 BuiltinGlobalAttribute,
                 static (node, _) => node is TypeDeclarationSyntax,
                 static (context, cancellationToken) => ParseBuiltinGlobal(context, cancellationToken));
+            var nativeObjects = context.SyntaxProvider.ForAttributeWithMetadataName(
+                NativeObjectAttribute,
+                static (node, _) => node is TypeDeclarationSyntax,
+                static (context, cancellationToken) => ParseNativeObject(context, cancellationToken));
 
             context.RegisterSourceOutput(
                 candidates.Collect(),
@@ -73,6 +78,13 @@ namespace AuroraScript.Hosting.Generators
                 candidates.Collect(),
                 static (productionContext, models) =>
                     EmitCompilerCatalog(productionContext, models));
+        context.RegisterSourceOutput(
+            nativeObjects.Collect(),
+            static (productionContext, models) => ExecuteNativeObjects(productionContext, models));
+        context.RegisterSourceOutput(
+            nativeObjects.Collect(),
+            static (productionContext, models) =>
+                EmitNativeObjectCatalog(productionContext, models));
         }
 
         private static BuiltinGlobalModel? ParseBuiltinGlobal(
@@ -376,7 +388,8 @@ namespace AuroraScript.Hosting.Generators
                 returnKind,
                 parameters,
                 takesContext,
-                takesThisObject);
+                takesThisObject,
+                isInstance: !methodSymbol.IsStatic);
         }
 
         private static ConstantModel? ParseConstant(
@@ -469,7 +482,7 @@ namespace AuroraScript.Hosting.Generators
 
                 foreach (var export in model.Exports)
                 {
-                    if (!export.CanDirectCall)
+                    if (!export.CanDirectCall || export.IsInstance)
                     {
                         continue;
                     }
@@ -929,13 +942,16 @@ namespace AuroraScript.Hosting.Generators
                 argumentNames.Add(export.Parameters[i].VariableName);
             }
             var argumentList = string.Join(", ", argumentNames);
+            var callee = export.IsInstance
+                ? "self." + export.CoreMethodName
+                : export.CoreMethodName;
             if (export.ReturnKind == ReturnKind.Void)
             {
-                builder.AppendLine("            " + export.CoreMethodName + "(" + argumentList + ");");
+                builder.AppendLine("            " + callee + "(" + argumentList + ");");
                 return;
             }
 
-            builder.Append("            var coreResult = " + export.CoreMethodName + "(" + argumentList + ");");
+            builder.Append("            var coreResult = " + callee + "(" + argumentList + ");");
             builder.AppendLine();
             switch (export.ReturnKind)
             {
@@ -1411,7 +1427,8 @@ namespace AuroraScript.Hosting.Generators
                 ReturnKind returnKind,
                 IReadOnlyList<ParameterModel> parameters,
                 bool takesContext,
-                bool takesThisObject)
+                bool takesThisObject,
+                bool isInstance = false)
             {
                 ScriptName = scriptName;
                 CoreMethodName = coreMethodName;
@@ -1423,6 +1440,7 @@ namespace AuroraScript.Hosting.Generators
                 Parameters = parameters;
                 TakesContext = takesContext;
                 TakesThisObject = takesThisObject;
+                IsInstance = isInstance;
                 EffectiveFailure = failure == HostExportFailure.Default
                     ? ResolveDefaultFailure(returnKind)
                     : failure;
@@ -1439,6 +1457,7 @@ namespace AuroraScript.Hosting.Generators
             public IReadOnlyList<ParameterModel> Parameters { get; }
             public bool TakesContext { get; }
             public bool TakesThisObject { get; }
+            public bool IsInstance { get; }
 
             private static HostExportFailure ResolveDefaultFailure(ReturnKind returnKind)
             {

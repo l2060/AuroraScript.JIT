@@ -23,7 +23,15 @@ func testNative() {
 	var e = {a: 1, b: 2};
 
 
-	var v = Math.PI;
-	var h = Math.pow(c,d);
-	var h2 = Math.pow(c,b);
+	var v = Stats.PI;
+	var h = Stats.mean(c,d);
+	var h2 = Stats.mean(c,b);
+
+
+
+	var vec = new Vec2(1000,2000);
+	var vx = vec.x;
+	vec.x++;
+	vec.x =10086;
+
 }

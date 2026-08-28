@@ -16,7 +16,8 @@ namespace AuroraScript.Runtime.Types
         internal string Pattern => _regex.ToString();
         internal string Flags => _flags ?? string.Empty;
 
-        internal override ScriptDatum TypeOfValue => TypeNames.Regex;
+        /// <inheritdoc />
+        protected internal override ScriptDatum TypeOfValue => TypeNames.Regex;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ScriptRegex"/> class.

@@ -27,9 +27,11 @@ namespace Examples
 
 
         private static readonly EngineOptions engineOptions = EngineOptions.Default
+
         .WithBuiltIns(builtIns => builtIns.Add(BuiltInModules.FileSystem).Add(BuiltInModules.HttpClient))
         .WithCompiler(compiler =>
         {
+            compiler.WithHostExportAssemblies(typeof(Program).Assembly);
             compiler.SourceResolver = ScriptSources.Composite(memorySource, fileSystemSource);
             compiler.MaxDegreeOfParallelism = 0;
             compiler.ExtName = "as";
@@ -76,6 +78,10 @@ namespace Examples
             g.Define("ONLINE_TOTAL", ScriptDatum.FromNumber(0));
             var fo = new TestObject();
             g.SetPropertyValue("fo", fo);
+
+            g.Define("Stats", new StatsSupport(), writeable: false, enumerable: false);
+            g.Define("Vec2", Vec2.Type, writeable: false, enumerable: false);
+
         }
         public static async Task Main()
         {

@@ -40,7 +40,8 @@ namespace AuroraScript.Runtime.Types
 
 
 
-        internal sealed override Boolean DeletePropertyValue(ScriptContext ctx, String key)
+        /// <inheritdoc />
+        protected internal sealed override Boolean DeletePropertyValue(ScriptContext ctx, String key)
         {
             if (_delete != null)
             {
@@ -56,7 +57,8 @@ namespace AuroraScript.Runtime.Types
             return ScriptDatum.ToObject(GetPropertyDatum(ctx, key));
         }
 
-        internal sealed override ScriptDatum GetPropertyDatum(ScriptContext ctx, String key)
+        /// <inheritdoc />
+        protected internal sealed override ScriptDatum GetPropertyDatum(ScriptContext ctx, String key)
         {
             if (_getter != null)
             {
@@ -70,7 +72,8 @@ namespace AuroraScript.Runtime.Types
             SetPropertyDatum(ctx, key, ScriptDatum.FromObject(value));
         }
 
-        internal sealed override void SetPropertyDatum(ScriptContext ctx, string key, ScriptDatum value)
+        /// <inheritdoc />
+        protected internal sealed override void SetPropertyDatum(ScriptContext ctx, string key, ScriptDatum value)
         {
             if (_setter != null)
             {

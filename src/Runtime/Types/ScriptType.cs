@@ -11,7 +11,8 @@ namespace AuroraScript.Runtime.Types
         /// <summary> Gets the name of the script type. </summary>
         public readonly string Name;
 
-        internal override ScriptDatum TypeOfValue => TypeNames.Type;
+        /// <inheritdoc />
+        protected internal override ScriptDatum TypeOfValue => TypeNames.Type;
 
         private readonly Boolean Callable;
         /// <summary>

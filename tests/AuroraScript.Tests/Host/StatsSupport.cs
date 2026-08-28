@@ -1,0 +1,122 @@
+using AuroraScript.Hosting;
+using AuroraScript.Runtime;
+using AuroraScript.Runtime.Types;
+
+namespace AuroraScript.Tests.Host;
+
+/// <summary>
+/// Script global used to validate <see cref="AuroraExportAttribute"/> source generation.
+/// </summary>
+[AuroraNativeModule("Stats")]
+public sealed partial class StatsSupport : ScriptObject
+{
+    /// <summary>Defines the Stats global on a domain or engine global.</summary>
+    public static void Register(ScriptGlobal global)
+    {
+        global.Define("Stats", new StatsSupport(), writeable: false, enumerable: false);
+    }
+
+    /// <summary>Returns the arithmetic mean of two numbers.</summary>
+    [AuroraExport("mean", MatchFailure.ReturnNaN)]
+    public static double MeanCore(double a, double b) => (a + b) / 2D;
+
+    /// <summary>Returns the sum of two exact numbers.</summary>
+    [AuroraExport("sumExact", MatchFailure.Throw)]
+    public static double SumExactCore(
+        [AuroraParam(MatchLevel.Exact)] double a,
+        [AuroraParam(MatchLevel.Exact)] double b)
+        => a + b;
+
+    /// <summary>Returns an exact object argument unchanged.</summary>
+    [AuroraExport("identity", MatchFailure.Throw)]
+    public static ScriptObject IdentityCore(
+        [AuroraParam(MatchLevel.Exact)] ScriptObject value)
+        => value;
+
+    /// <summary>Concatenates a string and an exact Int32 value.</summary>
+    [AuroraExport("chat", MatchFailure.Throw)]
+    public static string Chat(
+        string value,
+        [AuroraParam(MatchLevel.Exact)] int piece)
+        => value + piece;
+
+    /// <summary>Returns a script value unchanged.</summary>
+    [AuroraExport("echo", MatchFailure.Throw)]
+    public static ScriptDatum EchoCore(ScriptDatum value) => value;
+
+    /// <summary>Returns whether the call has an engine-bound context.</summary>
+    [AuroraExport("hasEngine", MatchFailure.Throw)]
+    public static bool HasEngineCore(ScriptContext ctx) => ctx?.Engine != null;
+
+    /// <summary>Returns whether the argument is the same object as this.</summary>
+    [AuroraExport("sameThis", MatchFailure.Throw)]
+    public static bool SameThisCore(
+        ScriptContext ctx,
+        ScriptObject thisObject,
+        ScriptObject other)
+        => ReferenceEquals(thisObject, other);
+
+    /// <summary>Counts arbitrary trailing script values.</summary>
+    [AuroraExport("restCount", MatchFailure.Throw)]
+    public static double RestCountCore(params ScriptDatum[] values)
+        => values.Length;
+
+    /// <summary>Combines a fixed prefix with an arbitrary script-value tail.</summary>
+    [AuroraExport("restAfter", MatchFailure.Throw)]
+    public static double RestAfterCore(
+        double first,
+        params ScriptDatum[] values)
+        => first + values.Length;
+
+    /// <summary>Returns a script array unchanged.</summary>
+    [AuroraExport("array", MatchFailure.Throw)]
+    public static ScriptArray ArrayCore(ScriptArray value) => value;
+
+    /// <summary>Returns a packed array unchanged.</summary>
+    [AuroraExport("packed", MatchFailure.Throw)]
+    public static ScriptPackedArray PackedCore(ScriptPackedArray value) => value;
+
+    /// <summary>Returns a concrete packed array unchanged.</summary>
+    [AuroraExport("int8Array", MatchFailure.Throw)]
+    public static ScriptInt8Array Int8ArrayCore(ScriptInt8Array value) => value;
+
+    /// <summary>Returns a Path unchanged.</summary>
+    [AuroraExport("path", MatchFailure.Throw)]
+    public static ScriptPathValue PathCore(ScriptPathValue value) => value;
+
+    /// <summary>Returns a StringBuffer unchanged.</summary>
+    [AuroraExport("stringBuffer", MatchFailure.Throw)]
+    public static StringBuffer StringBufferCore(StringBuffer value) => value;
+
+    /// <summary>Returns a Proxy unchanged.</summary>
+    [AuroraExport("proxy", MatchFailure.Throw)]
+    public static ScriptProxy ProxyCore(ScriptProxy value) => value;
+
+    /// <summary>Returns a Regex unchanged.</summary>
+    [AuroraExport("regex", MatchFailure.Throw)]
+    public static ScriptRegex RegexCore(ScriptRegex value) => value;
+
+    /// <summary>Returns a Date unchanged.</summary>
+    [AuroraExport("date", MatchFailure.Throw)]
+    public static ScriptDate DateCore(ScriptDate value) => value;
+
+    /// <summary>Returns a HashMap unchanged.</summary>
+    [AuroraExport("hashMap", MatchFailure.Throw)]
+    public static ScriptHashMap HashMapCore(ScriptHashMap value) => value;
+
+    /// <summary>Returns an Error unchanged.</summary>
+    [AuroraExport("error", MatchFailure.Throw)]
+    public static ScriptError ErrorCore(ScriptError value) => value;
+
+    /// <summary>Returns a script function unchanged.</summary>
+    [AuroraExport("function", MatchFailure.Throw)]
+    public static ClosureFunction FunctionCore(ClosureFunction value) => value;
+
+    /// <summary>Returns a boxed immutable primitive unchanged.</summary>
+    [AuroraExport("immutable", MatchFailure.Throw)]
+    public static ScriptImmutable ImmutableCore(ScriptImmutable value) => value;
+
+    /// <summary>Returns the null object wrapper unchanged.</summary>
+    [AuroraExport("nullValue", MatchFailure.Throw)]
+    public static NullValue NullValueCore(NullValue value) => value;
+}

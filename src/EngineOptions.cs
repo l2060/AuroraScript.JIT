@@ -79,7 +79,6 @@ namespace AuroraScript
         private OptimizationOptions _optimization = OptimizationOptions.Default;
         private OutputOptions _output = OutputOptions.Default;
         private IReadOnlyList<BuiltInModuleDefinition> _builtIns = Array.Empty<BuiltInModuleDefinition>();
-        private IReadOnlyList<Assembly> _hostExportAssemblies = Array.Empty<Assembly>();
 
         /// <summary>
         /// Provides a default set of options for the engine.
@@ -131,29 +130,6 @@ namespace AuroraScript
             get => _builtIns;
             init => _builtIns = BuiltInModulesBuilder.CreateSnapshot(value);
         }
-
-        /// <summary>
-        /// Gets assemblies whose source-generated host exports may be called directly
-        /// by compiled scripts. Runtime globals must still be registered separately.
-        /// </summary>
-        public IReadOnlyList<Assembly> HostExportAssemblies
-        {
-            get => _hostExportAssemblies;
-            init
-            {
-                ArgumentNullException.ThrowIfNull(value);
-                var copy = new Assembly[value.Count];
-                for (var i = 0; i < copy.Length; i++)
-                {
-                    copy[i] = value[i] ??
-                        throw new ArgumentException(
-                            "Host export assemblies cannot contain null.",
-                            nameof(value));
-                }
-                _hostExportAssemblies = new ReadOnlyCollection<Assembly>(copy);
-            }
-        }
-
 
         /// <summary>
         /// Configures runtime behavior and returns a new immutable options instance.
@@ -451,6 +427,38 @@ namespace AuroraScript
         /// The default resolver reads from the file system.
         /// </summary>
         public IScriptSourceResolver SourceResolver { get; init; } = FileScriptSourceResolver.Instance;
+
+        /// <summary>
+        /// Gets additional assemblies whose source-generated host exports may be bound
+        /// directly by compiled scripts. The engine assembly is always scanned, and
+        /// runtime globals must still be registered separately.
+        /// </summary>
+        public IReadOnlyList<Assembly> HostExportAssemblies
+        {
+            get => _hostExportAssemblies;
+            init => _hostExportAssemblies = CreateSnapshot(value);
+        }
+
+        private readonly IReadOnlyList<Assembly> _hostExportAssemblies = Array.Empty<Assembly>();
+
+        internal static IReadOnlyList<Assembly> CreateSnapshot(IReadOnlyList<Assembly> value)
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            if (value.Count == 0)
+            {
+                return Array.Empty<Assembly>();
+            }
+
+            var copy = new Assembly[value.Count];
+            for (var i = 0; i < copy.Length; i++)
+            {
+                copy[i] = value[i] ??
+                    throw new ArgumentException(
+                        "Host export assemblies cannot contain null.",
+                        nameof(value));
+            }
+            return new ReadOnlyCollection<Assembly>(copy);
+        }
     }
 
     /// <summary>
@@ -461,6 +469,7 @@ namespace AuroraScript
         private string _extName;
         private int _maxDegreeOfParallelism;
         private IScriptSourceResolver _sourceResolver;
+        private IReadOnlyList<Assembly> _hostExportAssemblies;
 
         /// <summary>
         /// Creates a mutable compiler-options builder from an immutable options snapshot.
@@ -473,6 +482,7 @@ namespace AuroraScript
             _extName = options.ExtName;
             _maxDegreeOfParallelism = options.MaxDegreeOfParallelism;
             _sourceResolver = options.SourceResolver ?? FileScriptSourceResolver.Instance;
+            _hostExportAssemblies = options.HostExportAssemblies;
         }
 
         /// <summary>
@@ -524,6 +534,16 @@ namespace AuroraScript
         }
 
         /// <summary>
+        /// Gets or sets additional assemblies whose source-generated host exports may be
+        /// bound directly by compiled scripts.
+        /// </summary>
+        public IReadOnlyList<Assembly> HostExportAssemblies
+        {
+            get => _hostExportAssemblies;
+            set => _hostExportAssemblies = CompilerOptions.CreateSnapshot(value);
+        }
+
+        /// <summary>
         /// Sets the compilation mode.
         /// </summary>
         public CompilerOptionsBuilder WithMode(CompilationMode value)
@@ -559,6 +579,16 @@ namespace AuroraScript
             return this;
         }
 
+        /// <summary>
+        /// Sets additional assemblies whose source-generated host exports may be bound
+        /// directly by compiled scripts.
+        /// </summary>
+        public CompilerOptionsBuilder WithHostExportAssemblies(params Assembly[] value)
+        {
+            HostExportAssemblies = value;
+            return this;
+        }
+
         internal CompilerOptions ToOptions()
         {
             return new CompilerOptions
@@ -566,7 +596,8 @@ namespace AuroraScript
                 Mode = Mode,
                 ExtName = ExtName,
                 MaxDegreeOfParallelism = MaxDegreeOfParallelism,
-                SourceResolver = SourceResolver
+                SourceResolver = SourceResolver,
+                HostExportAssemblies = HostExportAssemblies
             };
         }
     }

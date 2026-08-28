@@ -127,14 +127,6 @@
           "signature": "IReadOnlyList<BuiltInModuleDefinition> BuiltIns",
           "summary": "Native modules explicitly enabled for this engine. Empty by default."
         },
-        "HostExportAssemblies": {
-          "kind": "property",
-          "signature": "IReadOnlyList<Assembly> HostExportAssemblies",
-          "summary": "Additional assemblies whose generated AuroraGeneratedExport/Constant attributes participate in compiler direct-call. The engine assembly is always scanned. Runtime globals must still be Define'd separately.",
-          "notes": [
-            "Default is empty. Set with EngineOptions.Default with { HostExportAssemblies = new[] { typeof(MyExports).Assembly } }."
-          ]
-        },
         "WithCompiler": {
           "kind": "method",
           "signature": "EngineOptions WithCompiler(Action<CompilerOptionsBuilder> configure)"
@@ -327,6 +319,14 @@
           "kind": "property",
           "signature": "IScriptSourceResolver SourceResolver",
           "summary": "Resolver used to locate and load entry, import, and include sources."
+        },
+        "HostExportAssemblies": {
+          "kind": "property",
+          "signature": "IReadOnlyList<Assembly> HostExportAssemblies",
+          "summary": "Additional assemblies whose generated AuroraGeneratedExport/Constant attributes participate in compiler direct-call. The engine assembly is always scanned. Runtime globals must still be Define'd separately.",
+          "notes": [
+            "Default is empty. Set with EngineOptions.Default.WithCompiler(compiler => compiler.WithHostExportAssemblies(typeof(MyExports).Assembly))."
+          ]
         }
       }
     },
@@ -355,13 +355,18 @@
           "kind": "property",
           "signature": "IScriptSourceResolver SourceResolver"
         },
+        "HostExportAssemblies": {
+          "kind": "property",
+          "signature": "IReadOnlyList<Assembly> HostExportAssemblies"
+        },
         "WithMethods": {
           "kind": "method",
           "overloads": [
             "CompilerOptionsBuilder WithMode(CompilationMode value)",
             "CompilerOptionsBuilder WithExtName(string value)",
             "CompilerOptionsBuilder WithMaxDegreeOfParallelism(int value)",
-            "CompilerOptionsBuilder WithSourceResolver(IScriptSourceResolver value)"
+            "CompilerOptionsBuilder WithSourceResolver(IScriptSourceResolver value)",
+            "CompilerOptionsBuilder WithHostExportAssemblies(params Assembly[] value)"
           ]
         }
       }
@@ -2186,6 +2191,37 @@
         "For simple host functions, passing a normal CLR delegate to ScriptGlobal.Define is usually easier."
       ]
     },
+    "AuroraNativeObjectAttribute": {
+      "kind": "class",
+      "namespace": "AuroraScript.Hosting",
+      "summary": "Marks a public sealed partial AuroraNativeObject subclass whose instance fields and methods become an instantiable script type.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "signature": "AuroraNativeObjectAttribute(string typeName)"
+        },
+        "TypeName": {
+          "kind": "property",
+          "signature": "string TypeName"
+        }
+      },
+      "notes": [
+            "The declaring type must derive AuroraNativeObject and be a non-generic top-level sealed partial class in a namespace. Hand-written constructors use the generated prototype automatically.",
+        "Register the generated constructor with Type.Register(global) or Define(typeName, Type).",
+        "Instance fields stay as CLR storage; methods are dispatched from generated overrides. Instances use the ordinary Object prototype."
+      ]
+    },
+    "AuroraNativeObject": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Types",
+      "summary": "Base type for host-defined instantiable native script objects.",
+      "members": {
+            "Constructor": {
+              "kind": "constructor",
+              "signature": "protected AuroraNativeObject()"
+            }
+      }
+    },
     "AuroraNativeModuleAttribute": {
       "kind": "class",
       "namespace": "AuroraScript.Hosting",
@@ -2366,8 +2402,8 @@
     },
     {
       "id": "interop.native-host-exports",
-      "summary": "Implement a ScriptObject global with [AuroraNativeModule] and [AuroraExport] Core methods, Define the instance at runtime, and list extra host assemblies on EngineOptions.HostExportAssemblies for compiler direct-call.",
-      "apis": ["AuroraNativeModuleAttribute", "AuroraExportAttribute", "AuroraParamAttribute", "EngineOptions.HostExportAssemblies", "ScriptGlobal.Define"]
+      "summary": "Implement a ScriptObject global with [AuroraNativeModule] and [AuroraExport] Core methods, or an instantiable [AuroraNativeObject] type. Define/register at runtime, and list extra host assemblies on CompilerOptions.HostExportAssemblies for compiler direct-call of module globals.",
+      "apis": ["AuroraNativeModuleAttribute", "AuroraNativeObjectAttribute", "AuroraNativeObject", "AuroraExportAttribute", "AuroraParamAttribute", "CompilerOptions.HostExportAssemblies", "ScriptGlobal.Define"]
     },
     {
       "id": "interop.register-clr-type",

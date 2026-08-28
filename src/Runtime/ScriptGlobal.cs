@@ -128,7 +128,8 @@ namespace AuroraScript.Runtime
             return ScriptDatum.ToObject(GetPropertyDatum(ctx, key));
         }
 
-        internal sealed override ScriptDatum GetPropertyDatum(ScriptContext ctx, string key)
+        /// <inheritdoc />
+        protected internal sealed override ScriptDatum GetPropertyDatum(ScriptContext ctx, string key)
         {
             var datum = base.GetPropertyDatum(ctx, key);
             if (datum.Kind == ValueKind.Null && Engine.ClrRegistry.TryGetClrType(key, out var clrType))

@@ -1,15 +1,37 @@
-using AuroraScript.Hosting;
+﻿using AuroraScript.Hosting;
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Types;
+using System;
 
-namespace AuroraScript.Runtime.Extensions
+namespace Examples
 {
+    [AuroraNativeObject("Vec2")]
+    public sealed partial class Vec2 : AuroraNativeObject
+    {
+        [AuroraExport("x")] public double X;
+        [AuroraExport("y")] public double Y;
+        public Vec2(double x, double y)
+        {
+            X = x;
+            Y = y;
+        }
+        [AuroraExport("length")]
+        public double LengthCore() => Math.Sqrt((X * X) + (Y * Y));
+    }
+
+
+
     /// <summary>
     /// Experimental script global used to validate <see cref="AuroraExportAttribute"/> source generation.
     /// </summary>
     [AuroraNativeModule("Stats")]
     public sealed partial class StatsSupport : ScriptObject
     {
+
+        /// <summary>Circle constant pi.</summary>
+        [AuroraExport("PI")]
+        public static readonly double PI = Math.PI;
+
         /// <summary>Returns the arithmetic mean of two numbers.</summary>
         [AuroraExport("mean", MatchFailure.ReturnNaN)]
         public static double MeanCore(double a, double b) => (a + b) / 2D;

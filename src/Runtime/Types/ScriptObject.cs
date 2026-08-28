@@ -59,7 +59,7 @@ namespace AuroraScript.Runtime.Types
         /// Interned <c>typeof</c> result for this object. Native types override this
         /// instead of consuming a <see cref="ValueKind"/> bit.
         /// </summary>
-        internal virtual ScriptDatum TypeOfValue => TypeNames.Object;
+        protected internal virtual ScriptDatum TypeOfValue => TypeNames.Object;
 
         [DebuggerBrowsable(DebuggerBrowsableState.Never)]
         internal string DebuggerDisplayValue => ScriptDebugView.FormatValue(this);
@@ -260,7 +260,10 @@ namespace AuroraScript.Runtime.Types
         /// <summary>
         /// Internal implementation of property deletion.
         /// </summary>
-        internal virtual bool DeletePropertyValue(ScriptContext ctx, string key)
+        /// <param name="ctx">The current script context.</param>
+        /// <param name="key">The property key to delete.</param>
+        /// <returns>True if the property was found and deleted; otherwise, false.</returns>
+        protected internal virtual bool DeletePropertyValue(ScriptContext ctx, string key)
         {
             return InternalDeletePropertyValue(key);
         }
@@ -273,7 +276,8 @@ namespace AuroraScript.Runtime.Types
             return ScriptDatum.ToObject(GetPropertyDatum(ctx, key));
         }
 
-        internal virtual ScriptDatum GetPropertyDatum(ScriptContext ctx, string key)
+        /// <summary>Gets a property as a <see cref="ScriptDatum"/>, including prototype lookup.</summary>
+        protected internal virtual ScriptDatum GetPropertyDatum(ScriptContext ctx, string key)
         {
             return InternalGetPropertyDatum(ctx, key);
         }
@@ -283,7 +287,8 @@ namespace AuroraScript.Runtime.Types
             SetPropertyDatum(ctx, key, ScriptDatum.FromObject(value));
         }
 
-        internal virtual void SetPropertyDatum(ScriptContext ctx, string key, ScriptDatum value)
+        /// <summary>Sets a property from a <see cref="ScriptDatum"/>.</summary>
+        protected internal virtual void SetPropertyDatum(ScriptContext ctx, string key, ScriptDatum value)
         {
             if (TryResolveProperty(key, out var property) && property.Setter != null)
             {
@@ -499,7 +504,9 @@ namespace AuroraScript.Runtime.Types
             }
 
             var type = GetType();
-            if (type == typeof(ScriptObject) || type.Assembly == typeof(ScriptObject).Assembly)
+            if (type == typeof(ScriptObject) ||
+                type.Assembly == typeof(ScriptObject).Assembly ||
+                this is AuroraNativeObject)
             {
                 return false;
             }

@@ -1,0 +1,870 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Text;
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
+using System.Text;
+
+namespace AuroraScript.Hosting.Generators
+{
+    public sealed partial class AuroraExportGenerator
+    {
+        private static NativeObjectModel? ParseNativeObject(
+            GeneratorAttributeSyntaxContext context,
+            System.Threading.CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (context.TargetSymbol is not INamedTypeSymbol typeSymbol)
+            {
+                return null;
+            }
+
+            var typeAttribute = context.Attributes.FirstOrDefault(
+                attribute => attribute.AttributeClass?.ToDisplayString() == NativeObjectAttribute);
+            if (typeAttribute == null)
+            {
+                return null;
+            }
+
+            var diagnostics = new List<Diagnostic>();
+            if (typeSymbol.IsRecord || typeSymbol.IsAbstract || !typeSymbol.IsSealed)
+            {
+                diagnostics.Add(Diagnostic.Create(
+                    InvalidGlobal,
+                    GetLocation(typeSymbol),
+                    $"Type '{typeSymbol.ToDisplayString()}' must be a sealed non-abstract class."));
+            }
+            if (!IsPartialClass(typeSymbol))
+            {
+                diagnostics.Add(Diagnostic.Create(
+                    InvalidGlobal,
+                    GetLocation(typeSymbol),
+                    $"Type '{typeSymbol.ToDisplayString()}' must be partial to use AuroraNativeObject."));
+            }
+            if (typeSymbol.ContainingType != null || typeSymbol.TypeParameters.Length != 0)
+            {
+                diagnostics.Add(Diagnostic.Create(
+                    InvalidGlobal,
+                    GetLocation(typeSymbol),
+                    $"Type '{typeSymbol.ToDisplayString()}' must be a non-generic top-level class."));
+            }
+            if (typeSymbol.ContainingNamespace.IsGlobalNamespace)
+            {
+                diagnostics.Add(Diagnostic.Create(
+                    InvalidGlobal,
+                    GetLocation(typeSymbol),
+                    $"Type '{typeSymbol.ToDisplayString()}' must be declared in a namespace."));
+            }
+            var nativeObjectBase = FindAuroraNativeObjectBase(typeSymbol);
+            if (nativeObjectBase == null)
+            {
+                diagnostics.Add(Diagnostic.Create(
+                    InvalidGlobal,
+                    GetLocation(typeSymbol),
+                    $"Type '{typeSymbol.ToDisplayString()}' must derive from AuroraNativeObject."));
+            }
+            if (typeSymbol.GetAttributes().Any(
+                    attribute => attribute.AttributeClass?.ToDisplayString() == BuiltinGlobalAttribute))
+            {
+                diagnostics.Add(Diagnostic.Create(
+                    InvalidGlobal,
+                    GetLocation(typeSymbol),
+                    $"Type '{typeSymbol.ToDisplayString()}' cannot be both AuroraNativeModule and AuroraNativeObject."));
+            }
+
+            var typeName = typeAttribute.ConstructorArguments.Length > 0
+                ? typeAttribute.ConstructorArguments[0].Value as string
+                : null;
+            if (string.IsNullOrWhiteSpace(typeName))
+            {
+                diagnostics.Add(Diagnostic.Create(
+                    InvalidGlobal,
+                    GetLocation(typeSymbol),
+                    "AuroraNativeObject requires a non-empty type name."));
+                typeName = typeSymbol.Name;
+            }
+
+            var exports = new List<ExportModel>();
+            var fields = new List<InstanceFieldModel>();
+            var exportedNames = new HashSet<string>(StringComparer.Ordinal);
+            var adapterNames = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var member in typeSymbol.GetMembers())
+            {
+                var exportAttribute = member.GetAttributes()
+                    .FirstOrDefault(attribute => attribute.AttributeClass?.ToDisplayString() == ExportAttribute);
+                if (exportAttribute == null || member is IMethodSymbol { MethodKind: MethodKind.Constructor })
+                {
+                    continue;
+                }
+
+                if (member is IMethodSymbol methodSymbol &&
+                    methodSymbol.MethodKind == MethodKind.Ordinary &&
+                    !methodSymbol.IsStatic &&
+                    !methodSymbol.IsImplicitlyDeclared)
+                {
+                    if (methodSymbol.Parameters.Any(IsThisObjectParameter))
+                    {
+                        diagnostics.Add(Diagnostic.Create(
+                            InvalidExport,
+                            GetLocation(member),
+                            $"Instance export '{member.ToDisplayString()}' cannot declare a thisObject parameter."));
+                        continue;
+                    }
+
+                    var export = ParseExport(typeSymbol, methodSymbol, exportAttribute);
+                    if (export != null)
+                    {
+                        if (exportedNames.Add(export.ScriptName) &&
+                            adapterNames.Add(export.AdapterMethodName))
+                        {
+                            exports.Add(export);
+                        }
+                        else
+                        {
+                            diagnostics.Add(Diagnostic.Create(
+                                DuplicateExport,
+                                GetLocation(member),
+                                typeName,
+                                export.ScriptName));
+                        }
+                    }
+                    else
+                    {
+                        diagnostics.Add(Diagnostic.Create(
+                            InvalidExport,
+                            GetLocation(member),
+                            $"Method '{member.ToDisplayString()}' has an unsupported Aurora export signature."));
+                    }
+                }
+                else if (member is IFieldSymbol fieldSymbol &&
+                    !fieldSymbol.IsStatic &&
+                    !fieldSymbol.IsConst &&
+                    !fieldSymbol.IsImplicitlyDeclared)
+                {
+                    var field = ParseInstanceField(fieldSymbol, exportAttribute);
+                    if (field != null)
+                    {
+                        if (exportedNames.Add(field.ScriptName))
+                        {
+                            fields.Add(field);
+                        }
+                        else
+                        {
+                            diagnostics.Add(Diagnostic.Create(
+                                DuplicateExport,
+                                GetLocation(member),
+                                typeName,
+                                field.ScriptName));
+                        }
+                    }
+                    else
+                    {
+                        diagnostics.Add(Diagnostic.Create(
+                            InvalidExport,
+                            GetLocation(member),
+                            $"Field '{member.ToDisplayString()}' must be a public instance double, int, bool, or string field."));
+                    }
+                }
+                else
+                {
+                    diagnostics.Add(Diagnostic.Create(
+                        InvalidExport,
+                        GetLocation(member),
+                        $"Member '{member.ToDisplayString()}' must be an instance method or instance field."));
+                }
+            }
+
+            var constructor = SelectConstructor(typeSymbol, diagnostics, typeName!);
+            var hasUserConstructor = typeSymbol.InstanceConstructors.Any(
+                static candidate => !candidate.IsImplicitlyDeclared);
+
+            exports.Sort(static (left, right) =>
+                string.Compare(left.ScriptName, right.ScriptName, StringComparison.Ordinal));
+            fields.Sort(static (left, right) =>
+                string.Compare(left.ScriptName, right.ScriptName, StringComparison.Ordinal));
+
+            return new NativeObjectModel(
+                typeSymbol.ContainingNamespace.ToDisplayString(),
+                typeSymbol.Name,
+                typeSymbol.ToDisplayString(),
+                typeSymbol.DeclaredAccessibility == Accessibility.Public,
+                GetConstructorAccessibility(typeSymbol),
+                !hasUserConstructor,
+                typeName!,
+                ResolveOverrideAccessibility(nativeObjectBase, context.SemanticModel.Compilation),
+                exports,
+                fields,
+                constructor,
+                diagnostics);
+        }
+
+        private static InstanceFieldModel? ParseInstanceField(
+            IFieldSymbol fieldSymbol,
+            AttributeData exportAttribute)
+        {
+            if (fieldSymbol.DeclaredAccessibility != Accessibility.Public)
+            {
+                return null;
+            }
+
+            var kind = ResolveParameterKind(fieldSymbol.Type);
+            if (kind is ParameterKind.Unsupported or
+                ParameterKind.Object or
+                ParameterKind.Datum or
+                ParameterKind.NumberParams or
+                ParameterKind.DatumParams)
+            {
+                return null;
+            }
+
+            var scriptName = exportAttribute.ConstructorArguments.Length > 0
+                ? exportAttribute.ConstructorArguments[0].Value as string
+                : null;
+            if (string.IsNullOrWhiteSpace(scriptName))
+            {
+                scriptName = InferScriptName(fieldSymbol.Name);
+            }
+
+            return new InstanceFieldModel(
+                scriptName!,
+                fieldSymbol.Name,
+                kind,
+                fieldSymbol.IsReadOnly);
+        }
+
+        private static ConstructorModel? SelectConstructor(
+            INamedTypeSymbol typeSymbol,
+            List<Diagnostic> diagnostics,
+            string typeName)
+        {
+            var candidates = new List<IMethodSymbol>();
+            foreach (var constructor in typeSymbol.InstanceConstructors)
+            {
+                if (constructor.DeclaredAccessibility != Accessibility.Public ||
+                    constructor.IsStatic)
+                {
+                    continue;
+                }
+
+                if (constructor.GetAttributes().Any(
+                        attribute => attribute.AttributeClass?.ToDisplayString() == ExportAttribute) ||
+                    !constructor.IsImplicitlyDeclared)
+                {
+                    candidates.Add(constructor);
+                }
+            }
+
+            var marked = candidates
+                .Where(constructor => constructor.GetAttributes().Any(
+                    attribute => attribute.AttributeClass?.ToDisplayString() == ExportAttribute))
+                .ToList();
+            if (marked.Count > 1)
+            {
+                diagnostics.Add(Diagnostic.Create(
+                    DuplicateExport,
+                    GetLocation(typeSymbol),
+                    typeName,
+                    "constructor"));
+                return null;
+            }
+
+            IMethodSymbol? selected;
+            if (marked.Count == 1)
+            {
+                selected = marked[0];
+            }
+            else if (candidates.Count == 1)
+            {
+                selected = candidates[0];
+            }
+            else if (candidates.Count == 0)
+            {
+                selected = typeSymbol.InstanceConstructors.FirstOrDefault(
+                    constructor => constructor.DeclaredAccessibility == Accessibility.Public &&
+                        constructor.Parameters.Length == 0);
+            }
+            else
+            {
+                diagnostics.Add(Diagnostic.Create(
+                    InvalidExport,
+                    GetLocation(typeSymbol),
+                    $"Type '{typeSymbol.ToDisplayString()}' has multiple public constructors; mark one with [AuroraExport]."));
+                return null;
+            }
+
+            if (selected == null)
+            {
+                diagnostics.Add(Diagnostic.Create(
+                    InvalidExport,
+                    GetLocation(typeSymbol),
+                    $"Type '{typeSymbol.ToDisplayString()}' has no public constructor that AuroraNativeObject can emit."));
+                return null;
+            }
+
+            var parameters = new List<ParameterModel>();
+            for (var index = 0; index < selected.Parameters.Length; index++)
+            {
+                var parameter = selected.Parameters[index];
+                if (parameter.RefKind != RefKind.None ||
+                    IsScriptContext(parameter.Type) ||
+                    IsThisObjectParameter(parameter))
+                {
+                    diagnostics.Add(Diagnostic.Create(
+                        InvalidExport,
+                        GetLocation(selected),
+                        $"Constructor '{selected.ToDisplayString()}' has an unsupported AuroraNativeObject signature."));
+                    return null;
+                }
+
+                var kind = ResolveParameterKind(parameter);
+                if (kind is ParameterKind.Unsupported or
+                    ParameterKind.NumberParams or
+                    ParameterKind.DatumParams)
+                {
+                    diagnostics.Add(Diagnostic.Create(
+                        InvalidExport,
+                        GetLocation(selected),
+                        $"Constructor '{selected.ToDisplayString()}' has an unsupported AuroraNativeObject signature."));
+                    return null;
+                }
+
+                string? defaultLiteral = null;
+                if (parameter.HasExplicitDefaultValue)
+                {
+                    defaultLiteral = FormatDefaultLiteral(parameter);
+                    if (defaultLiteral == null)
+                    {
+                        diagnostics.Add(Diagnostic.Create(
+                            InvalidExport,
+                            GetLocation(selected),
+                            $"Constructor '{selected.ToDisplayString()}' has an unsupported default value."));
+                        return null;
+                    }
+                }
+
+                parameters.Add(new ParameterModel(
+                    index,
+                    $"arg{index}",
+                    kind,
+                    ParseCoercion(parameter),
+                    defaultLiteral,
+                    parameter.Type.ToDisplayString(
+                        SymbolDisplayFormat.FullyQualifiedFormat)));
+            }
+
+            return new ConstructorModel(parameters);
+        }
+
+        private static INamedTypeSymbol? FindAuroraNativeObjectBase(INamedTypeSymbol typeSymbol)
+        {
+            for (var current = typeSymbol.BaseType; current != null; current = current.BaseType)
+            {
+                if (string.Equals(
+                        current.ToDisplayString(),
+                        "AuroraScript.Runtime.Types.AuroraNativeObject",
+                        StringComparison.Ordinal))
+                {
+                    return current;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// C# forces an override of a <c>protected internal</c> member to be declared
+        /// <c>protected</c> unless the declaring assembly grants internal access.
+        /// </summary>
+        private static string ResolveOverrideAccessibility(
+            INamedTypeSymbol? nativeObjectBase,
+            Compilation compilation)
+        {
+            var runtimeAssembly = nativeObjectBase?.ContainingAssembly;
+            if (runtimeAssembly == null ||
+                SymbolEqualityComparer.Default.Equals(runtimeAssembly, compilation.Assembly) ||
+                runtimeAssembly.GivesAccessTo(compilation.Assembly))
+            {
+                return "protected internal";
+            }
+
+            return "protected";
+        }
+
+        private static void ExecuteNativeObjects(
+            SourceProductionContext context,
+            ImmutableArray<NativeObjectModel?> models)
+        {
+            var typeNames = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var model in models)
+            {
+                if (model == null)
+                {
+                    continue;
+                }
+                foreach (var diagnostic in model.Diagnostics)
+                {
+                    context.ReportDiagnostic(diagnostic);
+                }
+                if (model.Diagnostics.Any(static diagnostic =>
+                        diagnostic.Severity == DiagnosticSeverity.Error))
+                {
+                    continue;
+                }
+                if (!typeNames.Add(model.TypeName))
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        InvalidGlobal,
+                        Location.None,
+                        $"Native object '{model.TypeName}' is declared by more than one AuroraNativeObject type."));
+                    continue;
+                }
+
+                context.AddSource(
+                    $"{model.Namespace.Replace('.', '_')}.{model.ClassName}.AuroraNativeObject.g.cs",
+                    SourceText.From(GenerateNativeObjectSource(model), Encoding.UTF8));
+            }
+        }
+
+        /// <summary>
+        /// Emits assembly metadata that lets the script compiler bind proven
+        /// receivers straight to CLR fields, instance methods, and constructors.
+        /// </summary>
+        private static void EmitNativeObjectCatalog(
+            SourceProductionContext context,
+            ImmutableArray<NativeObjectModel?> models)
+        {
+            var builder = new StringBuilder();
+            builder.AppendLine("// <auto-generated />");
+            builder.AppendLine("#nullable disable");
+            builder.AppendLine("#pragma warning disable CS1591");
+
+            var count = 0;
+            var typeNames = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var model in models)
+            {
+                if (model == null ||
+                    !model.IsPublic ||
+                    model.Diagnostics.Any(static diagnostic =>
+                        diagnostic.Severity == DiagnosticSeverity.Error) ||
+                    !typeNames.Add(model.TypeName))
+                {
+                    continue;
+                }
+
+                builder.Append("[assembly: global::AuroraScript.Hosting.AuroraGeneratedNativeObjectAttribute(");
+                builder.Append('"').Append(EscapeString(model.TypeName)).Append("\", ");
+                builder.Append("typeof(global::").Append(model.TypeDisplayName).Append("), ");
+                AppendCatalogKinds(
+                    builder,
+                    model.Constructor?.Parameters,
+                    static parameter => GetCatalogKind(parameter.Kind));
+                builder.Append(", ");
+                builder.Append(model.Constructor != null ? "true" : "false");
+                builder.AppendLine(")]");
+                count++;
+
+                foreach (var field in model.Fields)
+                {
+                    builder.Append("[assembly: global::AuroraScript.Hosting.AuroraGeneratedNativeFieldAttribute(");
+                    builder.Append('"').Append(EscapeString(model.TypeName)).Append("\", ");
+                    builder.Append('"').Append(EscapeString(field.ScriptName)).Append("\", ");
+                    builder.Append("typeof(global::").Append(model.TypeDisplayName).Append("), ");
+                    builder.Append('"').Append(EscapeString(field.FieldName)).Append("\", ");
+                    builder.Append("global::AuroraScript.Hosting.AuroraExportValueKind.")
+                        .Append(GetCatalogKind(field.Kind)).Append(", ");
+                    builder.Append(field.IsReadOnly ? "true" : "false");
+                    builder.AppendLine(")]");
+                    count++;
+                }
+
+                foreach (var export in model.Exports)
+                {
+                    if (!export.CanDirectCall || !export.IsInstance)
+                    {
+                        continue;
+                    }
+
+                    builder.Append("[assembly: global::AuroraScript.Hosting.AuroraGeneratedNativeMethodAttribute(");
+                    builder.Append('"').Append(EscapeString(model.TypeName)).Append("\", ");
+                    builder.Append('"').Append(EscapeString(export.ScriptName)).Append("\", ");
+                    builder.Append("typeof(global::").Append(model.TypeDisplayName).Append("), ");
+                    builder.Append('"').Append(EscapeString(export.CoreMethodName)).Append("\", ");
+                    builder.Append("global::AuroraScript.Hosting.AuroraExportValueKind.")
+                        .Append(GetCatalogKind(export.ReturnKind)).Append(", ");
+                    AppendCatalogKinds(
+                        builder,
+                        export.Parameters,
+                        static parameter => GetCatalogKind(parameter.Kind));
+                    builder.Append(", ");
+                    builder.Append(export.TakesContext ? "true" : "false");
+                    builder.AppendLine(")]");
+                    count++;
+                }
+            }
+
+            if (count != 0)
+            {
+                context.AddSource(
+                    "AuroraNativeObjectCatalog.g.cs",
+                    SourceText.From(builder.ToString(), Encoding.UTF8));
+            }
+        }
+
+        private static void AppendCatalogKinds(
+            StringBuilder builder,
+            IReadOnlyList<ParameterModel>? parameters,
+            Func<ParameterModel, string> selector)
+        {
+            builder.Append("new global::AuroraScript.Hosting.AuroraExportValueKind[] { ");
+            for (var i = 0; parameters != null && i < parameters.Count; i++)
+            {
+                if (i != 0)
+                {
+                    builder.Append(", ");
+                }
+                builder.Append("global::AuroraScript.Hosting.AuroraExportValueKind.")
+                    .Append(selector(parameters[i]));
+            }
+            builder.Append(" }");
+        }
+
+        private static string GenerateNativeObjectSource(NativeObjectModel model)
+        {
+            var builder = new StringBuilder();
+            builder.AppendLine("// <auto-generated />");
+            builder.AppendLine("#nullable disable");
+            builder.AppendLine("#pragma warning disable CS1591");
+            builder.AppendLine("using System;");
+            builder.AppendLine("using AuroraScript;");
+            builder.AppendLine("using AuroraScript.Core;");
+            builder.AppendLine("using AuroraScript.Runtime;");
+            builder.AppendLine("using AuroraScript.Runtime.Types;");
+            builder.AppendLine();
+            builder.AppendLine($"namespace {model.Namespace}");
+            builder.AppendLine("{");
+            builder.AppendLine($"    partial class {model.ClassName}");
+            builder.AppendLine("    {");
+            builder.AppendLine("        private static readonly ScriptDatum NativeTypeName = ScriptDatum.FromString(\"" +
+                EscapeString(model.TypeName) + "\");");
+            builder.AppendLine("        public static readonly ScriptType Type = new NativeConstructor();");
+            builder.AppendLine();
+            if (model.GenerateConstructor)
+            {
+                builder.Append("        ").Append(model.ConstructorAccessibility)
+                    .Append(' ').Append(model.ClassName)
+                    .AppendLine("()");
+                builder.AppendLine("        {");
+                builder.AppendLine("        }");
+                builder.AppendLine();
+            }
+
+            builder.AppendLine("        public static void Register(ScriptGlobal global, bool writeable = false, bool enumerable = false)");
+            builder.AppendLine("        {");
+            builder.AppendLine("            global.Define(\"" + EscapeString(model.TypeName) +
+                "\", Type, writeable, enumerable);");
+            builder.AppendLine("        }");
+            builder.AppendLine();
+            builder.AppendLine("        " + model.OverrideAccessibility +
+                " override ScriptDatum TypeOfValue => NativeTypeName;");
+            builder.AppendLine();
+            foreach (var export in model.Exports)
+            {
+                builder.AppendLine("        private static readonly BondingFunction " +
+                    export.AdapterMethodName + "Bonding = new BondingFunction(" +
+                    export.AdapterMethodName + ");");
+            }
+            if (model.Exports.Count != 0)
+            {
+                builder.AppendLine();
+            }
+            AppendNativePropertyAccess(builder, model);
+            AppendNativeEnumerator(builder, model);
+
+            foreach (var export in model.Exports)
+            {
+                builder.AppendLine("        public static void " + export.AdapterMethodName + "(");
+                builder.AppendLine("            ScriptContext ctx,");
+                builder.AppendLine("            ScriptObject thisObject,");
+                builder.AppendLine("            Span<ScriptDatum> args,");
+                builder.AppendLine("            ref ScriptDatum result)");
+                builder.AppendLine("        {");
+                builder.AppendLine("            if (thisObject is not " + model.ClassName + " self)");
+                builder.AppendLine("            {");
+                AppendFailureReturn(builder, export, indent: "                ");
+                builder.AppendLine("            }");
+                AppendParameterCoercion(builder, export);
+                AppendCoreInvocation(builder, export);
+                builder.AppendLine("        }");
+                builder.AppendLine();
+            }
+
+            AppendNativeConstructor(builder, model);
+            builder.AppendLine("    }");
+            builder.AppendLine("}");
+            return builder.ToString();
+        }
+
+        private static void AppendNativePropertyAccess(StringBuilder builder, NativeObjectModel model)
+        {
+            builder.AppendLine("        " + model.OverrideAccessibility +
+                " override ScriptDatum GetPropertyDatum(ScriptContext ctx, string key)");
+            builder.AppendLine("        {");
+            if (model.Fields.Count != 0 || model.Exports.Count != 0)
+            {
+                builder.AppendLine("            switch (key)");
+                builder.AppendLine("            {");
+                foreach (var field in model.Fields)
+                {
+                    builder.Append("                case \"").Append(EscapeString(field.ScriptName)).AppendLine("\":");
+                    builder.Append("                    return ");
+                    builder.AppendLine(GetFieldReadExpression(field) + ";");
+                }
+                foreach (var export in model.Exports)
+                {
+                    builder.Append("                case \"").Append(EscapeString(export.ScriptName)).AppendLine("\":");
+                    builder.AppendLine("                    return ScriptDatum.FromObject(" +
+                        export.AdapterMethodName + "Bonding.Bind(this));");
+                }
+                builder.AppendLine("            }");
+            }
+            builder.AppendLine("            return base.GetPropertyDatum(ctx, key);");
+            builder.AppendLine("        }");
+            builder.AppendLine();
+
+            builder.AppendLine("        " + model.OverrideAccessibility +
+                " override void SetPropertyDatum(ScriptContext ctx, string key, ScriptDatum value)");
+            builder.AppendLine("        {");
+            var writable = model.Fields.Where(static field => !field.IsReadOnly).ToList();
+            if (writable.Count != 0)
+            {
+                builder.AppendLine("            switch (key)");
+                builder.AppendLine("            {");
+                foreach (var field in writable)
+                {
+                    builder.Append("                case \"").Append(EscapeString(field.ScriptName)).AppendLine("\":");
+                    AppendFieldWrite(builder, field);
+                    builder.AppendLine("                    return;");
+                }
+                builder.AppendLine("            }");
+            }
+            foreach (var field in model.Fields.Where(static field => field.IsReadOnly))
+            {
+                builder.AppendLine("            if (key == \"" + EscapeString(field.ScriptName) + "\")");
+                builder.AppendLine("            {");
+                builder.AppendLine("                return;");
+                builder.AppendLine("            }");
+            }
+            builder.AppendLine("            base.SetPropertyDatum(ctx, key, value);");
+            builder.AppendLine("        }");
+            builder.AppendLine();
+
+            builder.AppendLine("        " + model.OverrideAccessibility +
+                " override bool DeletePropertyValue(ScriptContext ctx, string key)");
+            builder.AppendLine("        {");
+            foreach (var field in model.Fields)
+            {
+                builder.AppendLine("            if (key == \"" + EscapeString(field.ScriptName) + "\")");
+                builder.AppendLine("            {");
+                builder.AppendLine("                return false;");
+                builder.AppendLine("            }");
+            }
+            foreach (var export in model.Exports)
+            {
+                builder.AppendLine("            if (key == \"" + EscapeString(export.ScriptName) + "\")");
+                builder.AppendLine("            {");
+                builder.AppendLine("                return false;");
+                builder.AppendLine("            }");
+            }
+            builder.AppendLine("            return base.DeletePropertyValue(ctx, key);");
+            builder.AppendLine("        }");
+            builder.AppendLine();
+        }
+
+        private static void AppendNativeEnumerator(StringBuilder builder, NativeObjectModel model)
+        {
+            if (model.Fields.Count == 0)
+            {
+                return;
+            }
+
+            builder.AppendLine("        public override ScriptEnumerator GetEnumerator()");
+            builder.AppendLine("        {");
+            builder.AppendLine("            var keys = new System.Collections.Generic.List<ScriptDatum>(" +
+                model.Fields.Count + ");");
+            foreach (var field in model.Fields)
+            {
+                builder.AppendLine("            keys.Add(ScriptDatum.FromString(\"" +
+                    EscapeString(field.ScriptName) + "\"));");
+            }
+            builder.AppendLine("            var rest = base.GetEnumerator();");
+            builder.AppendLine("            while (rest.NextValue(out var key))");
+            builder.AppendLine("            {");
+            builder.AppendLine("                keys.Add(key);");
+            builder.AppendLine("            }");
+            builder.AppendLine("            return new ScriptEnumerator(keys);");
+            builder.AppendLine("        }");
+            builder.AppendLine();
+        }
+
+        private static void AppendNativeConstructor(StringBuilder builder, NativeObjectModel model)
+        {
+            builder.AppendLine("        private sealed class NativeConstructor : ScriptType");
+            builder.AppendLine("        {");
+            builder.AppendLine("            public NativeConstructor() : base(\"" +
+                EscapeString(model.TypeName) + "\", true)");
+            builder.AppendLine("            {");
+            builder.AppendLine("                Frozen();");
+            builder.AppendLine("            }");
+            builder.AppendLine();
+            builder.AppendLine("            public override void Construct(ScriptContext ctx, Span<ScriptDatum> args, ref ScriptDatum result)");
+            builder.AppendLine("            {");
+            if (model.Constructor == null)
+            {
+                builder.AppendLine("                ScriptDatum.MarkAsNull(ref result);");
+            }
+            else
+            {
+                var export = new ExportModel(
+                    "new",
+                    model.ClassName,
+                    "Construct",
+                    model.ClassName,
+                    canDirectCall: false,
+                    HostExportFailure.ReturnNull,
+                    ReturnKind.Object,
+                    model.Constructor.Parameters,
+                    takesContext: false,
+                    takesThisObject: false);
+                AppendParameterCoercion(builder, export);
+                builder.Append("                ScriptDatum.WriteObject(ref result, new ");
+                builder.Append(model.ClassName);
+                builder.Append('(');
+                for (var i = 0; i < model.Constructor.Parameters.Count; i++)
+                {
+                    if (i != 0)
+                    {
+                        builder.Append(", ");
+                    }
+                    builder.Append(model.Constructor.Parameters[i].VariableName);
+                }
+                builder.AppendLine("));");
+            }
+            builder.AppendLine("            }");
+            builder.AppendLine("        }");
+        }
+
+        private static string GetFieldReadExpression(InstanceFieldModel field)
+        {
+            return field.Kind switch
+            {
+                ParameterKind.Number => "ScriptDatum.FromNumber(" + field.FieldName + ")",
+                ParameterKind.Int32 => "ScriptDatum.FromNumber(" + field.FieldName + ")",
+                ParameterKind.Boolean => "ScriptDatum.FromBoolean(" + field.FieldName + ")",
+                ParameterKind.String => "ScriptDatum.FromString(" + field.FieldName + ")",
+                _ => "ScriptDatum.Null"
+            };
+        }
+
+        private static void AppendFieldWrite(StringBuilder builder, InstanceFieldModel field)
+        {
+            switch (field.Kind)
+            {
+                case ParameterKind.Number:
+                    builder.AppendLine("                    if (ScriptDatum.TryToNumber(in value, out var " + field.FieldName + "Number))");
+                    builder.AppendLine("                    {");
+                    builder.AppendLine("                        " + field.FieldName + " = " + field.FieldName + "Number;");
+                    builder.AppendLine("                    }");
+                    break;
+                case ParameterKind.Int32:
+                    builder.AppendLine("                    if (ScriptDatum.TryToNumber(in value, out var " + field.FieldName + "Number))");
+                    builder.AppendLine("                    {");
+                    builder.AppendLine("                        " + field.FieldName + " = (int)" + field.FieldName + "Number;");
+                    builder.AppendLine("                    }");
+                    break;
+                case ParameterKind.Boolean:
+                    builder.AppendLine("                    " + field.FieldName + " = value.Kind == ValueKind.Boolean");
+                    builder.AppendLine("                        ? value.Boolean");
+                    builder.AppendLine("                        : ScriptDatum.IsTrue(value);");
+                    break;
+                case ParameterKind.String:
+                    builder.AppendLine("                    " + field.FieldName + " = ScriptDatum.ToString(value);");
+                    break;
+            }
+        }
+
+        private sealed class NativeObjectModel
+        {
+            public NativeObjectModel(
+                string namespaceName,
+                string className,
+                string typeDisplayName,
+                bool isPublic,
+                string constructorAccessibility,
+                bool generateConstructor,
+                string typeName,
+                string overrideAccessibility,
+                IReadOnlyList<ExportModel> exports,
+                IReadOnlyList<InstanceFieldModel> fields,
+                ConstructorModel? constructor,
+                IReadOnlyList<Diagnostic> diagnostics)
+            {
+                Namespace = namespaceName;
+                ClassName = className;
+                TypeDisplayName = typeDisplayName;
+                IsPublic = isPublic;
+                ConstructorAccessibility = constructorAccessibility;
+                GenerateConstructor = generateConstructor;
+                TypeName = typeName;
+                OverrideAccessibility = overrideAccessibility;
+                Exports = exports;
+                Fields = fields;
+                Constructor = constructor;
+                Diagnostics = diagnostics;
+            }
+
+            public string Namespace { get; }
+            public string ClassName { get; }
+            public string TypeDisplayName { get; }
+            public bool IsPublic { get; }
+            public string ConstructorAccessibility { get; }
+            public bool GenerateConstructor { get; }
+            public string TypeName { get; }
+            public string OverrideAccessibility { get; }
+            public IReadOnlyList<ExportModel> Exports { get; }
+            public IReadOnlyList<InstanceFieldModel> Fields { get; }
+            public ConstructorModel? Constructor { get; }
+            public IReadOnlyList<Diagnostic> Diagnostics { get; }
+        }
+
+        private sealed class InstanceFieldModel
+        {
+            public InstanceFieldModel(
+                string scriptName,
+                string fieldName,
+                ParameterKind kind,
+                bool isReadOnly)
+            {
+                ScriptName = scriptName;
+                FieldName = fieldName;
+                Kind = kind;
+                IsReadOnly = isReadOnly;
+            }
+
+            public string ScriptName { get; }
+            public string FieldName { get; }
+            public ParameterKind Kind { get; }
+            public bool IsReadOnly { get; }
+        }
+
+        private sealed class ConstructorModel
+        {
+            public ConstructorModel(IReadOnlyList<ParameterModel> parameters)
+            {
+                Parameters = parameters;
+            }
+
+            public IReadOnlyList<ParameterModel> Parameters { get; }
+        }
+    }
+}

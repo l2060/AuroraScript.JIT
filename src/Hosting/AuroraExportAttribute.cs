@@ -6,7 +6,7 @@ namespace AuroraScript.Hosting
     /// Marks a core implementation method that should be exposed to scripts through a
     /// generated Datum adapter.
     /// </summary>
-    [AttributeUsage(AttributeTargets.Method | AttributeTargets.Field, Inherited = false, AllowMultiple = false)]
+    [AttributeUsage(AttributeTargets.Method | AttributeTargets.Field | AttributeTargets.Constructor, Inherited = false, AllowMultiple = false)]
     public sealed class AuroraExportAttribute : Attribute
     {
         /// <summary>Marks a Core method or constant field for generated script export.</summary>

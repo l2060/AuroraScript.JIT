@@ -22,7 +22,8 @@ namespace AuroraScript.Runtime.Types
         /// <summary> Gets the underlying double value. </summary>
         public double DoubleValue => _value;
 
-        internal override ScriptDatum TypeOfValue => TypeNames.Number;
+        /// <inheritdoc />
+        protected internal override ScriptDatum TypeOfValue => TypeNames.Number;
 
         /// <summary> Gets the value cast to a 32-bit integer. </summary>
         public int Int32Value => (int)_value;

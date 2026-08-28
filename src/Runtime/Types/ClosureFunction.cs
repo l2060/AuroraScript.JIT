@@ -14,7 +14,8 @@ namespace AuroraScript.Runtime.Types
         /// <summary>The function name used for diagnostics.</summary>
         public readonly string FuncName;
 
-        internal override ScriptDatum TypeOfValue => TypeNames.Function;
+        /// <inheritdoc />
+        protected internal override ScriptDatum TypeOfValue => TypeNames.Function;
 
         /// <summary>The module object this closure belongs to.</summary>
         public readonly ScriptModule Module;

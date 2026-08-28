@@ -536,7 +536,58 @@ Register the instance on a domain or engine global. Runtime visibility still com
 global.Define("Stats", new StatsSupport(), writeable: false, enumerable: false);
 ```
 
-The engine already defines `Math`, `TDoc`, and the experimental `Stats` global this way. `JSON`, `console`, `HotPatch`, and prototype methods remain Bonding-style implementations.
+The engine already defines `Math` and `TDoc` this way. `JSON`, `console`, `HotPatch`, and prototype methods remain Bonding-style implementations.
+
+### Instantiable native objects
+
+Use `[AuroraNativeObject]` when the host needs many instances of a fixed-shape object. The type must be a sealed partial class that derives `AuroraNativeObject`. Native fields stay as CLR storage. Methods are dispatched from generated property overrides. The instance uses the ordinary `Object` prototype (`toString`, and so on); there is no per-type native prototype.
+
+```csharp
+using AuroraScript.Hosting;
+using AuroraScript.Runtime.Types;
+
+[AuroraNativeObject("Vec2")]
+public sealed partial class Vec2 : AuroraNativeObject
+{
+    [AuroraExport("x")]
+    public double X;
+
+    [AuroraExport("y")]
+    public double Y;
+
+    public Vec2(double x, double y)
+    {
+        X = x;
+        Y = y;
+    }
+
+    [AuroraExport("length")]
+    public double LengthCore() => Math.Sqrt((X * X) + (Y * Y));
+}
+```
+
+Register the generated constructor on a domain or engine global:
+
+```csharp
+Vec2.Register(global);
+```
+
+Script code can then construct and use instances:
+
+```as
+var vec = new Vec2(3, 4);
+return vec.length();
+```
+
+Host code can also `new Vec2(3, 4)` and pass the instance as `ScriptDatum.FromObject(vec)`. Dynamic access uses generated `GetPropertyDatum` / adapters; compiler direct-call for instance members is not part of this first step.
+
+Rules:
+
+- Instance fields must be public `double`, `int`, `bool`, or `string`.
+- Instance methods use the same Core signatures as `[AuroraNativeModule]`, without a `thisObject` parameter.
+- Hand-written constructors do not need a special `base(...)` call. Mark one public constructor with `[AuroraExport]` when several exist.
+- Do not store native fields in HiddenClass slots. Extra script properties still use the normal object path.
+
 
 ### Core signatures
 
@@ -566,7 +617,12 @@ When argument types are proven, the compiler calls the Core method directly. Req
 - Unshadowed global receiver (`Math.abs(x)`, not `var m = Math; m.abs(x)`).
 - Public Core method without `params`.
 - Compatible proven argument types, including optional trailing defaults.
-- Catalog metadata present. The engine assembly is always scanned. Additional host assemblies must be listed on `EngineOptions.HostExportAssemblies`.
+- Catalog metadata present. The engine assembly is always scanned. Additional host assemblies must be listed on `CompilerOptions.HostExportAssemblies`.
+
+```csharp
+var options = EngineOptions.Default.WithCompiler(compiler =>
+    compiler.WithHostExportAssemblies(typeof(MyExports).Assembly));
+```
 
 `params` exports, spread arguments, shadowed globals, and unproven argument types stay on the generated Datum adapter.
 
@@ -629,7 +685,7 @@ Patch types:
 For AI-assisted development:
 
 1. Read `host-integration` for .NET host usage, including native host exports.
-2. Read `host-api` for a structured API index (`AuroraNativeModule`, `AuroraExport`, `EngineOptions.HostExportAssemblies`).
+2. Read `host-api` for a structured API index (`AuroraNativeModule`, `AuroraExport`, `CompilerOptions.HostExportAssemblies`).
 3. Use `aurora_search_runtime_api` or `aurora_get_runtime_api` before using runtime APIs that look like JavaScript built-ins.
 4. Use `aurora_check_script` to validate generated in-memory script text.
 5. Use `aurora_run_script` to execute a small module or block and inspect `stdout`, `stderr`, and `result`.

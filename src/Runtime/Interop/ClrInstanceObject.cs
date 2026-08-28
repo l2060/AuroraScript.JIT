@@ -39,7 +39,8 @@ namespace AuroraScript.Runtime.Interop
             return ScriptDatum.ToObject(GetPropertyDatum(ctx, key));
         }
 
-        internal sealed override ScriptDatum GetPropertyDatum(ScriptContext ctx, String key)
+        /// <inheritdoc />
+        protected internal sealed override ScriptDatum GetPropertyDatum(ScriptContext ctx, String key)
         {
             var getter = Descriptor.GetGetter(key);
             if (getter != null)
@@ -68,7 +69,8 @@ namespace AuroraScript.Runtime.Interop
             SetPropertyDatum(ctx, key, ScriptDatum.FromObject(value));
         }
 
-        internal sealed override void SetPropertyDatum(ScriptContext ctx, String key, ScriptDatum value)
+        /// <inheritdoc />
+        protected internal sealed override void SetPropertyDatum(ScriptContext ctx, String key, ScriptDatum value)
         {
             var setter = Descriptor.GetSetter(key);
             if (setter != null)

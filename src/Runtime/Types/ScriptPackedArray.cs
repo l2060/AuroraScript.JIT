@@ -19,7 +19,8 @@ namespace AuroraScript.Runtime.Types
         /// <summary>Gets the immutable number of elements in this array.</summary>
         public abstract int Length { get; }
 
-        internal abstract override ScriptDatum TypeOfValue { get; }
+        /// <inheritdoc />
+        protected internal abstract override ScriptDatum TypeOfValue { get; }
 
         internal abstract ScriptDatum GetElementDatumUnchecked(int index);
 
@@ -295,7 +296,8 @@ namespace AuroraScript.Runtime.Types
             ScriptDatum.WriteAsObject(ref result, array);
         }
 
-        internal override void SetPropertyDatum(
+        /// <inheritdoc />
+        protected internal override void SetPropertyDatum(
             ScriptContext context,
             string key,
             ScriptDatum value)
@@ -369,7 +371,8 @@ namespace AuroraScript.Runtime.Types
         internal override ScriptPackedArray ClonePackedArray() =>
             new ScriptInt32Array((int[])_items.Clone());
 
-        internal override ScriptDatum TypeOfValue => TypeNames.Int32Array;
+        /// <inheritdoc />
+        protected internal override ScriptDatum TypeOfValue => TypeNames.Int32Array;
     }
 
     /// <summary>A fixed-length array backed by a CLR signed-byte array.</summary>
@@ -411,7 +414,8 @@ namespace AuroraScript.Runtime.Types
         internal override ScriptPackedArray ClonePackedArray() =>
             new ScriptInt8Array((sbyte[])_items.Clone());
 
-        internal override ScriptDatum TypeOfValue => TypeNames.Int8Array;
+        /// <inheritdoc />
+        protected internal override ScriptDatum TypeOfValue => TypeNames.Int8Array;
     }
 
     /// <summary>A fixed-length array backed by a CLR <see cref="double"/> array.</summary>
@@ -453,7 +457,8 @@ namespace AuroraScript.Runtime.Types
         internal override ScriptPackedArray ClonePackedArray() =>
             new ScriptFloat64Array((double[])_items.Clone());
 
-        internal override ScriptDatum TypeOfValue => TypeNames.Float64Array;
+        /// <inheritdoc />
+        protected internal override ScriptDatum TypeOfValue => TypeNames.Float64Array;
     }
 
     /// <summary>A fixed-length array backed by a CLR <see cref="bool"/> array.</summary>
@@ -495,7 +500,8 @@ namespace AuroraScript.Runtime.Types
         internal override ScriptPackedArray ClonePackedArray() =>
             new ScriptBooleanArray((bool[])_items.Clone());
 
-        internal override ScriptDatum TypeOfValue => TypeNames.BooleanArray;
+        /// <inheritdoc />
+        protected internal override ScriptDatum TypeOfValue => TypeNames.BooleanArray;
     }
 
     /// <summary>A fixed-length array backed by a CLR <see cref="byte"/> array.</summary>
@@ -531,7 +537,8 @@ namespace AuroraScript.Runtime.Types
         internal override ScriptPackedArray ClonePackedArray() =>
             new ScriptUInt8Array((byte[])_items.Clone());
 
-        internal override ScriptDatum TypeOfValue => TypeNames.UInt8Array;
+        /// <inheritdoc />
+        protected internal override ScriptDatum TypeOfValue => TypeNames.UInt8Array;
     }
 
     /// <summary>A fixed-length array backed by a CLR <see cref="short"/> array.</summary>
@@ -567,7 +574,8 @@ namespace AuroraScript.Runtime.Types
         internal override ScriptPackedArray ClonePackedArray() =>
             new ScriptInt16Array((short[])_items.Clone());
 
-        internal override ScriptDatum TypeOfValue => TypeNames.Int16Array;
+        /// <inheritdoc />
+        protected internal override ScriptDatum TypeOfValue => TypeNames.Int16Array;
     }
 
     /// <summary>A fixed-length array backed by a CLR <see cref="ushort"/> array.</summary>
@@ -603,7 +611,8 @@ namespace AuroraScript.Runtime.Types
         internal override ScriptPackedArray ClonePackedArray() =>
             new ScriptUInt16Array((ushort[])_items.Clone());
 
-        internal override ScriptDatum TypeOfValue => TypeNames.UInt16Array;
+        /// <inheritdoc />
+        protected internal override ScriptDatum TypeOfValue => TypeNames.UInt16Array;
     }
 
     /// <summary>A fixed-length array backed by a CLR <see cref="uint"/> array.</summary>
@@ -639,7 +648,8 @@ namespace AuroraScript.Runtime.Types
         internal override ScriptPackedArray ClonePackedArray() =>
             new ScriptUInt32Array((uint[])_items.Clone());
 
-        internal override ScriptDatum TypeOfValue => TypeNames.UInt32Array;
+        /// <inheritdoc />
+        protected internal override ScriptDatum TypeOfValue => TypeNames.UInt32Array;
     }
 
     /// <summary>A fixed-length array backed by a CLR <see cref="long"/> array.</summary>
@@ -675,7 +685,8 @@ namespace AuroraScript.Runtime.Types
         internal override ScriptPackedArray ClonePackedArray() =>
             new ScriptInt64Array((long[])_items.Clone());
 
-        internal override ScriptDatum TypeOfValue => TypeNames.Int64Array;
+        /// <inheritdoc />
+        protected internal override ScriptDatum TypeOfValue => TypeNames.Int64Array;
     }
 
     /// <summary>A fixed-length array backed by a CLR <see cref="ulong"/> array.</summary>
@@ -711,6 +722,7 @@ namespace AuroraScript.Runtime.Types
         internal override ScriptPackedArray ClonePackedArray() =>
             new ScriptUInt64Array((ulong[])_items.Clone());
 
-        internal override ScriptDatum TypeOfValue => TypeNames.UInt64Array;
+        /// <inheritdoc />
+        protected internal override ScriptDatum TypeOfValue => TypeNames.UInt64Array;
     }
 }

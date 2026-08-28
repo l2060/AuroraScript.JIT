@@ -39,7 +39,8 @@ namespace AuroraScript.Runtime.Types
     {
         private readonly Dictionary<ScriptDatum, ScriptDatum> keyValues;
 
-        internal override ScriptDatum TypeOfValue => TypeNames.HashMap;
+        /// <inheritdoc />
+        protected internal override ScriptDatum TypeOfValue => TypeNames.HashMap;
 
         internal IReadOnlyDictionary<ScriptDatum, ScriptDatum> DebugEntries => keyValues;
         internal Dictionary<ScriptDatum, ScriptDatum> Entries => keyValues;

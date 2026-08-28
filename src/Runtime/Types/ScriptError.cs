@@ -31,7 +31,8 @@ namespace AuroraScript.Runtime.Types
     /// </summary>
     public class ScriptError : ScriptObject
     {
-        internal override ScriptDatum TypeOfValue => TypeNames.Error;
+        /// <inheritdoc />
+        protected internal override ScriptDatum TypeOfValue => TypeNames.Error;
 
         internal ScriptError(string errMsg, AuroraStackTrace[] stackTrace)
         {

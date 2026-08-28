@@ -23,7 +23,7 @@ namespace AuroraScript.Compiler.Backend.Emission
     /// Emits typed locals and native primitive CIL. Dynamic values are created only
     /// when an expression crosses a dynamic runtime boundary.
     /// </summary>
-    internal sealed class TypedCilEmitter
+    internal sealed partial class TypedCilEmitter
     {
         private static readonly Type[] s_spanParameters = [typeof(ScriptContext), typeof(Span<ScriptDatum>)];
         private static readonly Type[][] s_fastParameters =
@@ -1870,6 +1870,10 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 return StackValueKind.Number;
             }
+            if (TryGetNativeField(expression.Object, name, out var nativeOwner, out var nativeField))
+            {
+                return EmitNativeFieldRead(expression.Object, nativeOwner, nativeField);
+            }
             EmitDatum(expression.Object);
             if (_directMode)
             {
@@ -1912,6 +1916,10 @@ namespace AuroraScript.Compiler.Backend.Emission
             if (!TryGetStaticPropertyName(expression.Property, out var name))
             {
                 throw new NotSupportedException("Dynamic dot-property name.");
+            }
+            if (TryEmitNativeFieldWrite(expression, name, out var nativeKind))
+            {
+                return nativeKind;
             }
 
             var receiver = DeclareLocal(typeof(ScriptDatum));
@@ -3199,6 +3207,16 @@ namespace AuroraScript.Compiler.Backend.Emission
             Expression receiver,
             string name)
         {
+            if (TryGetNativeMethodCall(
+                    call,
+                    receiver,
+                    name,
+                    out var nativeOwner,
+                    out var nativeMethod))
+            {
+                return EmitNativeMethodCall(call, receiver, nativeOwner, nativeMethod);
+            }
+
             if (TryGetHostExportCall(
                     call,
                     receiver,
@@ -3312,79 +3330,17 @@ namespace AuroraScript.Compiler.Backend.Emission
                 : descriptor.ParameterKinds.Length;
             for (var i = 0; i < provided; i++)
             {
-                if (!CanPassHostExportArgument(
+                if (!HostExportArgumentFacts.CanPass(
                         descriptor.ParameterKinds[i],
                         descriptor.GetScriptParameterType(i),
-                        _code.GetExpressionType(call.Arguments[i])))
+                        _code.GetExpressionType(call.Arguments[i]),
+                        _code.GetNativeObjectType(call.Arguments[i])?.ClrType))
                 {
                     descriptor = null;
                     return false;
                 }
             }
             return true;
-        }
-
-        private static bool CanPassHostExportArgument(
-            AuroraExportValueKind parameterKind,
-            Type parameterType,
-            FlowValueType argumentType)
-        {
-            return parameterKind switch
-            {
-                AuroraExportValueKind.Number =>
-                    argumentType is FlowValueType.Number or FlowValueType.Int32 or FlowValueType.Int64,
-                AuroraExportValueKind.Int32 =>
-                    argumentType == FlowValueType.Int32,
-                AuroraExportValueKind.Boolean =>
-                    argumentType == FlowValueType.Boolean,
-                AuroraExportValueKind.String =>
-                    argumentType == FlowValueType.String,
-                AuroraExportValueKind.Object =>
-                    CanPassHostObjectArgument(parameterType, argumentType),
-                AuroraExportValueKind.Datum => true,
-                _ => false
-            };
-        }
-
-        private static bool CanPassHostObjectArgument(
-            Type parameterType,
-            FlowValueType argumentType)
-        {
-            if (parameterType == typeof(ScriptObject))
-            {
-                return argumentType == FlowValueType.Object ||
-                    argumentType == FlowValueType.Array ||
-                    FlowValueTypeFacts.IsPackedArray(argumentType);
-            }
-            if (parameterType == typeof(ScriptArray))
-            {
-                return argumentType == FlowValueType.Array;
-            }
-            if (parameterType == typeof(ScriptPackedArray))
-            {
-                return FlowValueTypeFacts.IsPackedArray(argumentType);
-            }
-
-            return (parameterType == typeof(ScriptInt32Array) &&
-                    argumentType == FlowValueType.Int32Array) ||
-                (parameterType == typeof(ScriptInt8Array) &&
-                    argumentType == FlowValueType.Int8Array) ||
-                (parameterType == typeof(ScriptFloat64Array) &&
-                    argumentType == FlowValueType.Float64Array) ||
-                (parameterType == typeof(ScriptBooleanArray) &&
-                    argumentType == FlowValueType.BooleanArray) ||
-                (parameterType == typeof(ScriptUInt8Array) &&
-                    argumentType == FlowValueType.UInt8Array) ||
-                (parameterType == typeof(ScriptInt16Array) &&
-                    argumentType == FlowValueType.Int16Array) ||
-                (parameterType == typeof(ScriptUInt16Array) &&
-                    argumentType == FlowValueType.UInt16Array) ||
-                (parameterType == typeof(ScriptUInt32Array) &&
-                    argumentType == FlowValueType.UInt32Array) ||
-                (parameterType == typeof(ScriptInt64Array) &&
-                    argumentType == FlowValueType.Int64Array) ||
-                (parameterType == typeof(ScriptUInt64Array) &&
-                    argumentType == FlowValueType.UInt64Array);
         }
 
         private StackValueKind EmitHostExportCall(
@@ -3680,6 +3636,10 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             var call = expression.Expression;
             var resultType = _code.GetExpressionType(expression);
+            if (TryGetNativeConstruction(expression, out var nativeObject))
+            {
+                return EmitNativeConstruction(expression, nativeObject);
+            }
             if (FlowValueTypeFacts.IsPackedArray(resultType) &&
                 call.Arguments.Count <= 1 &&
                 !HasSpread(call.Arguments))

@@ -15,7 +15,8 @@ namespace AuroraScript.Runtime.Types
         /// <summary> Gets the underlying CLI string value. </summary>
         public readonly string Value;
 
-        internal override ScriptDatum TypeOfValue => TypeNames.String;
+        /// <inheritdoc />
+        protected internal override ScriptDatum TypeOfValue => TypeNames.String;
 
         private static readonly StringValue[] _charCache = new StringValue[256];
 

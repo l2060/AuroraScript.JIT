@@ -1,4 +1,4 @@
-using AuroraScript.Runtime;
+using AuroraScript.Tests.Host;
 using AuroraScript.Tests.Infrastructure;
 using System;
 using System.Buffers.Binary;
@@ -14,19 +14,6 @@ namespace AuroraScript.Tests;
 
 public sealed class HostExportGeneratorTests
 {
-    [Fact]
-    public void StatsSupportExportsAreGeneratedAtBuildTime()
-    {
-        var mean = typeof(AuroraScript.Runtime.Extensions.StatsSupport).GetMethod(
-            "MEAN",
-            BindingFlags.Public | BindingFlags.Static);
-        var sumExact = typeof(AuroraScript.Runtime.Extensions.StatsSupport).GetMethod(
-            "SUMEXACT",
-            BindingFlags.Public | BindingFlags.Static);
-
-        Assert.NotNull(mean);
-        Assert.NotNull(sumExact);
-    }
 
     [Fact]
     public void MathSupportExportsAreGeneratedAtBuildTime()
@@ -88,7 +75,9 @@ public sealed class HostExportGeneratorTests
                 var invalid = Stats.mean("bad", 1);
                 return [parsed, invalid != invalid];
             }
-            """);
+            """,
+            configureGlobal: StatsSupport.Register,
+            hostExports: true);
 
         ScriptAssert.Equal(new object?[] { 4D, true }, TestWorkspace.Execute(domain, "run"));
     }
@@ -103,7 +92,9 @@ public sealed class HostExportGeneratorTests
             export func run() {
                 return Stats.sumExact(2, 5);
             }
-            """);
+            """,
+            configureGlobal: StatsSupport.Register,
+            hostExports: true);
 
         ScriptAssert.Equal(7D, TestWorkspace.Execute(domain, "run"));
     }
@@ -118,7 +109,9 @@ public sealed class HostExportGeneratorTests
             export func run() {
                 return Stats.sumExact("2", 5);
             }
-            """);
+            """,
+            configureGlobal: StatsSupport.Register,
+            hostExports: true);
 
         Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, "run"));
     }
@@ -140,9 +133,10 @@ public sealed class HostExportGeneratorTests
 
         var engine = workspace.CreateEngine(
             CompilationMode.Persistence,
-            assemblyOut: assemblyPath);
+            assemblyOut: assemblyPath,
+            hostExports: true);
         await engine.BuildAsync(["main.as"]);
-        using var domain = engine.CreateDomain();
+        using var domain = engine.CreateDomain(StatsSupport.Register);
         ScriptAssert.Equal(4D, TestWorkspace.Execute(domain, "run"));
 
         using var stream = File.OpenRead(assemblyPath);
@@ -152,8 +146,7 @@ public sealed class HostExportGeneratorTests
         foreach (var handle in reader.MemberReferences)
         {
             var member = reader.GetMemberReference(handle);
-            if (reader.GetString(member.Name) == nameof(
-                    AuroraScript.Runtime.Extensions.StatsSupport.MeanCore))
+            if (reader.GetString(member.Name) == nameof(StatsSupport.MeanCore))
             {
                 coreToken = MetadataTokens.GetToken(handle);
                 break;
@@ -246,7 +239,9 @@ public sealed class HostExportGeneratorTests
                 var value = { answer: 42 };
                 return Stats.identity(value).answer;
             }
-            """);
+            """,
+            configureGlobal: StatsSupport.Register,
+            hostExports: true);
 
         ScriptAssert.Equal(42D, TestWorkspace.Execute(domain, "run"));
     }
@@ -262,7 +257,9 @@ public sealed class HostExportGeneratorTests
                 var Stats = { mean: (a, b) => 99 };
                 return Stats.mean(3, 5);
             }
-            """);
+            """,
+            configureGlobal: StatsSupport.Register,
+            hostExports: true);
 
         ScriptAssert.Equal(99D, TestWorkspace.Execute(domain, "run"));
     }
@@ -293,7 +290,9 @@ public sealed class HostExportGeneratorTests
             export func run() {
                 return Stats.chat("piece-", 7);
             }
-            """);
+            """,
+            configureGlobal: StatsSupport.Register,
+            hostExports: true);
 
         ScriptAssert.Equal("piece-7", TestWorkspace.Execute(domain, "run"));
     }
@@ -312,7 +311,9 @@ public sealed class HostExportGeneratorTests
                     Stats.echo({ answer: 7 }).answer
                 ];
             }
-            """);
+            """,
+            configureGlobal: StatsSupport.Register,
+            hostExports: true);
 
         ScriptAssert.Equal(new object?[] { 42D, "ok", 7D }, TestWorkspace.Execute(domain, "run"));
     }
@@ -330,7 +331,9 @@ public sealed class HostExportGeneratorTests
                     Stats.sameThis(Stats)
                 ];
             }
-            """);
+            """,
+            configureGlobal: StatsSupport.Register,
+            hostExports: true);
 
         ScriptAssert.Equal(new object?[] { true, true }, TestWorkspace.Execute(domain, "run"));
     }
@@ -383,7 +386,9 @@ public sealed class HostExportGeneratorTests
                 return Stats.path({});
             }
             """,
-            dateTimeFormat: "yyyy-MM-dd");
+            configureGlobal: StatsSupport.Register,
+            dateTimeFormat: "yyyy-MM-dd",
+            hostExports: true);
 
         ScriptAssert.Equal(
             new object?[]
@@ -409,7 +414,9 @@ public sealed class HostExportGeneratorTests
                 var Stats = { sameThis: (other) => false };
                 return Stats.sameThis(Stats);
             }
-            """);
+            """,
+            configureGlobal: StatsSupport.Register,
+            hostExports: true);
 
         ScriptAssert.Equal(false, TestWorkspace.Execute(domain, "run"));
     }

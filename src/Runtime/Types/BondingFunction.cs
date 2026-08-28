@@ -22,7 +22,8 @@ namespace AuroraScript.Runtime.Types
         /// <summary> Gets or sets the target object used as the 'this' context for the call. </summary>
         public readonly ScriptObject Target;
 
-        internal override ScriptDatum TypeOfValue => TypeNames.ClrBonding;
+        /// <inheritdoc />
+        protected internal override ScriptDatum TypeOfValue => TypeNames.ClrBonding;
 
         /// <summary> Gets the underlying CLR delegate. </summary>
         public readonly ClrDatumDelegate DatumMethod;

@@ -8,6 +8,7 @@ using AuroraScript.Runtime;
 using AuroraScript.Tokens;
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 
 namespace AuroraScript.Compiler.Backend.Code
 {
@@ -389,8 +390,10 @@ namespace AuroraScript.Compiler.Backend.Code
             private readonly HostExportCatalog _hostExports;
             private readonly Dictionary<Expression, FlowValueType> _expressionTypes;
             private readonly Dictionary<Expression, TypeDeclaration> _structuralTypes;
+            private readonly Dictionary<Expression, HostNativeObjectDescriptor> _nativeObjectTypes;
             private readonly FlowValueType[] _locals;
             private readonly TypeDeclaration[] _localStructuralTypes;
+            private readonly HostNativeObjectDescriptor[] _localNativeObjectTypes;
             private readonly FlowValueType[] _forcedLocalTypes;
             private readonly bool[] _writtenLocals;
             private readonly DirectParameterType[] _parameterTypes;
@@ -431,8 +434,11 @@ namespace AuroraScript.Compiler.Backend.Code
                 _hostExports = hostExports;
                 _expressionTypes = new Dictionary<Expression, FlowValueType>(ReferenceEqualityComparer.Instance);
                 _structuralTypes = new Dictionary<Expression, TypeDeclaration>(ReferenceEqualityComparer.Instance);
+                _nativeObjectTypes = new Dictionary<Expression, HostNativeObjectDescriptor>(
+                    ReferenceEqualityComparer.Instance);
                 _locals = new FlowValueType[function.LocalSlots.Length];
                 _localStructuralTypes = new TypeDeclaration[function.LocalSlots.Length];
+                _localNativeObjectTypes = new HostNativeObjectDescriptor[function.LocalSlots.Length];
                 _forcedLocalTypes = new FlowValueType[function.LocalSlots.Length];
                 _writtenLocals = new bool[function.LocalSlots.Length];
                 _parameterTypes = parameterTypes;
@@ -503,6 +509,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     _sawReturn = false;
                     _expressionTypes.Clear();
                     _structuralTypes.Clear();
+                    _nativeObjectTypes.Clear();
                     AnalyzeStatement(body as Statement);
                     if (!_changed) break;
                 }
@@ -518,6 +525,7 @@ namespace AuroraScript.Compiler.Backend.Code
                         _sawReturn = false;
                         _expressionTypes.Clear();
                         _structuralTypes.Clear();
+                        _nativeObjectTypes.Clear();
                         AnalyzeStatement(body as Statement);
                         if (!_changed) break;
                     }
@@ -562,8 +570,10 @@ namespace AuroraScript.Compiler.Backend.Code
                     _declarations,
                     _expressionTypes,
                     _structuralTypes,
+                    _nativeObjectTypes,
                     _locals,
                     _localStructuralTypes,
+                    _localNativeObjectTypes,
                     _writtenLocals,
                     returnType,
                     _countedLoops);
@@ -606,6 +616,14 @@ namespace AuroraScript.Compiler.Backend.Code
                             {
                                 _localStructuralTypes[slot.Value] =
                                     initializerStructuralType;
+                            }
+                            if (!_writtenLocals[slot.Value] &&
+                                variable.Initializer != null &&
+                                _nativeObjectTypes.TryGetValue(
+                                    variable.Initializer,
+                                    out var initializerNativeType))
+                            {
+                                _localNativeObjectTypes[slot.Value] = initializerNativeType;
                             }
                             if (variable.Initializer is MapExpression map)
                             {
@@ -816,10 +834,14 @@ namespace AuroraScript.Compiler.Backend.Code
                         _structuralTypes.TryGetValue(
                             assignment.Right,
                             out var assignedStructuralType);
+                        _nativeObjectTypes.TryGetValue(
+                            assignment.Right,
+                            out var assignedNativeType);
                         WriteTarget(
                             assignment.Left,
                             type,
-                            assignedStructuralType);
+                            assignedStructuralType,
+                            assignedNativeType);
                         break;
                     case CompoundExpression compound:
                         var left = AnalyzeExpression(compound.Left);
@@ -925,6 +947,10 @@ namespace AuroraScript.Compiler.Backend.Code
                                 type = FlowValueType.Dynamic;
                             }
                         }
+                        else if (TryGetNativeMethodCall(call, out _, out var nativeMethod))
+                        {
+                            type = GetNativeFlowType(nativeMethod.ReturnKind);
+                        }
                         else if (TryGetHostExport(call, out var hostExport))
                         {
                             type = hostExport.ReturnKind switch
@@ -951,6 +977,8 @@ namespace AuroraScript.Compiler.Backend.Code
                                 propertyObjectType == FlowValueType.String) &&
                             IsStaticProperty(property.Property, "length")
                                 ? FlowValueType.Int32
+                                : TryGetNativeMemberType(property, out var nativeMemberType)
+                                    ? nativeMemberType
                                 : TryGetStructuralFieldType(
                                     property.Object,
                                     property.Property,
@@ -1050,7 +1078,200 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     _structuralTypes[expression] = structuralType;
                 }
+                var nativeObjectType = InferNativeObjectType(expression);
+                if (nativeObjectType != null)
+                {
+                    _nativeObjectTypes[expression] = nativeObjectType;
+                }
                 return type;
+            }
+
+            private HostNativeObjectDescriptor InferNativeObjectType(Expression expression)
+            {
+                if (_hostExports == null)
+                {
+                    return null;
+                }
+
+                switch (expression)
+                {
+                    case NewExpression @new:
+                        return TryGetNativeConstruction(@new, out var constructed)
+                            ? constructed
+                            : null;
+                    case NameExpression name
+                        when _names.TryGetValue(name, out var binding) && binding.IsLocal:
+                        return _localNativeObjectTypes[binding.Local.Value];
+                    case FunctionCallExpression call
+                        when TryGetNativeMethodCall(call, out _, out var method) &&
+                            method.ReturnKind == AuroraExportValueKind.Object &&
+                            _hostExports.TryGetNativeObject(
+                                method.Method.ReturnType,
+                                out var returned):
+                        return returned;
+                    case AssignmentExpression assignment:
+                        return _nativeObjectTypes.TryGetValue(assignment.Right, out var assigned)
+                            ? assigned
+                            : null;
+                    case GroupExpression group when group.Expressions.Count != 0:
+                        return _nativeObjectTypes.TryGetValue(
+                            group.Expressions[group.Expressions.Count - 1],
+                            out var grouped)
+                                ? grouped
+                                : null;
+                    default:
+                        return null;
+                }
+            }
+
+            /// <summary>
+            /// True when <c>new Name(...)</c> targets a generated native object whose
+            /// constructor the emitter can call directly.
+            /// </summary>
+            private bool TryGetNativeConstruction(
+                NewExpression expression,
+                out HostNativeObjectDescriptor descriptor)
+            {
+                descriptor = null;
+                var call = expression.Expression;
+                if (_hostExports == null ||
+                    call == null ||
+                    call.Target is not NameExpression target ||
+                    !_names.TryGetValue(target, out var binding) ||
+                    !binding.IsUnshadowedGlobal ||
+                    !_hostExports.TryGetNativeObject(
+                        target.Identifier?.Value,
+                        out var candidate) ||
+                    candidate.Constructor == null ||
+                    !CanBindNativeArguments(
+                        call,
+                        candidate.ConstructorParameterKinds,
+                        candidate.RequiredConstructorParameterCount,
+                        candidate.Constructor.GetParameters(),
+                        prefix: 0))
+                {
+                    return false;
+                }
+
+                descriptor = candidate;
+                return true;
+            }
+
+            /// <summary>
+            /// True when <c>receiver.member(...)</c> resolves to an exported instance
+            /// method of a proven native object.
+            /// </summary>
+            private bool TryGetNativeMethodCall(
+                FunctionCallExpression call,
+                out HostNativeObjectDescriptor owner,
+                out HostNativeMethodDescriptor method)
+            {
+                owner = null;
+                method = null;
+                if (call?.Target is not GetPropertyExpression property ||
+                    !TryGetStaticPropertyName(property.Property, out var name) ||
+                    !_nativeObjectTypes.TryGetValue(property.Object, out var receiver) ||
+                    !receiver.TryGetMethod(name, out var candidate) ||
+                    !CanBindNativeArguments(
+                        call,
+                        candidate.ParameterKinds,
+                        candidate.RequiredScriptParameterCount,
+                        candidate.Method.GetParameters(),
+                        prefix: candidate.TakesContext ? 1 : 0))
+                {
+                    return false;
+                }
+
+                owner = receiver;
+                method = candidate;
+                return true;
+            }
+
+            private bool CanBindNativeArguments(
+                FunctionCallExpression call,
+                AuroraExportValueKind[] parameterKinds,
+                int requiredCount,
+                ParameterInfo[] clrParameters,
+                int prefix)
+            {
+                if (HasSpreadArgument(call) || call.Arguments.Count < requiredCount)
+                {
+                    return false;
+                }
+
+                var provided = Math.Min(call.Arguments.Count, parameterKinds.Length);
+                for (var i = 0; i < provided; i++)
+                {
+                    var argument = call.Arguments[i];
+                    if (!HostExportArgumentFacts.CanPass(
+                            parameterKinds[i],
+                            clrParameters[prefix + i].ParameterType,
+                            _expressionTypes.TryGetValue(argument, out var argumentType)
+                                ? argumentType
+                                : FlowValueType.Dynamic,
+                            _nativeObjectTypes.TryGetValue(argument, out var argumentNative)
+                                ? argumentNative.ClrType
+                                : null))
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            private static bool HasSpreadArgument(FunctionCallExpression call)
+            {
+                for (var i = 0; i < call.Arguments.Count; i++)
+                {
+                    if (call.Arguments[i] is SpreadExpression)
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            /// <summary>
+            /// Native member access is only bound when the receiver is a proven native
+            /// object and the member name matches an exported field or method.
+            /// </summary>
+            private bool TryGetNativeMemberType(
+                GetPropertyExpression property,
+                out FlowValueType type)
+            {
+                type = FlowValueType.Dynamic;
+                if (!_nativeObjectTypes.TryGetValue(property.Object, out var receiver) ||
+                    !TryGetStaticPropertyName(property.Property, out var name))
+                {
+                    return false;
+                }
+
+                if (receiver.TryGetField(name, out var field))
+                {
+                    type = GetNativeFlowType(field.Kind);
+                    return type != FlowValueType.None;
+                }
+                if (receiver.TryGetMethod(name, out _))
+                {
+                    // A bare member reference still materializes a bound function.
+                    type = FlowValueType.Object;
+                    return true;
+                }
+                return false;
+            }
+
+            private static FlowValueType GetNativeFlowType(AuroraExportValueKind kind)
+            {
+                return kind switch
+                {
+                    AuroraExportValueKind.Void => FlowValueType.Null,
+                    AuroraExportValueKind.Number => FlowValueType.Number,
+                    AuroraExportValueKind.Int32 => FlowValueType.Int32,
+                    AuroraExportValueKind.Boolean => FlowValueType.Boolean,
+                    AuroraExportValueKind.String => FlowValueType.String,
+                    AuroraExportValueKind.Object => FlowValueType.Object,
+                    _ => FlowValueType.Dynamic
+                };
             }
 
             private TypeDeclaration InferStructuralType(Expression expression)
@@ -1232,29 +1453,59 @@ namespace AuroraScript.Compiler.Backend.Code
                 return node;
             }
 
-            private TypeDeclaration[] SnapshotStructural()
+            /// <summary>
+            /// Per-local shape facts that only survive a branch when both paths agree.
+            /// </summary>
+            private readonly struct ShapeSnapshot
             {
-                var snapshot = new TypeDeclaration[_localStructuralTypes.Length];
-                Array.Copy(_localStructuralTypes, snapshot, snapshot.Length);
-                return snapshot;
+                public ShapeSnapshot(
+                    TypeDeclaration[] structural,
+                    HostNativeObjectDescriptor[] nativeObjects)
+                {
+                    Structural = structural;
+                    NativeObjects = nativeObjects;
+                }
+
+                public TypeDeclaration[] Structural { get; }
+                public HostNativeObjectDescriptor[] NativeObjects { get; }
             }
 
-            private void RestoreStructural(TypeDeclaration[] snapshot)
+            private ShapeSnapshot SnapshotStructural()
             {
-                Array.Copy(snapshot, _localStructuralTypes, snapshot.Length);
+                var structural = new TypeDeclaration[_localStructuralTypes.Length];
+                Array.Copy(_localStructuralTypes, structural, structural.Length);
+                var nativeObjects =
+                    new HostNativeObjectDescriptor[_localNativeObjectTypes.Length];
+                Array.Copy(_localNativeObjectTypes, nativeObjects, nativeObjects.Length);
+                return new ShapeSnapshot(structural, nativeObjects);
             }
 
-            private void IntersectStructural(TypeDeclaration[] other)
+            private void RestoreStructural(ShapeSnapshot snapshot)
+            {
+                Array.Copy(
+                    snapshot.Structural,
+                    _localStructuralTypes,
+                    snapshot.Structural.Length);
+                Array.Copy(
+                    snapshot.NativeObjects,
+                    _localNativeObjectTypes,
+                    snapshot.NativeObjects.Length);
+            }
+
+            private void IntersectStructural(ShapeSnapshot other)
             {
                 for (var i = 0; i < _localStructuralTypes.Length; i++)
                 {
-                    if (ReferenceEquals(_localStructuralTypes[i], other[i]))
+                    if (!ReferenceEquals(_localStructuralTypes[i], other.Structural[i]))
                     {
-                        continue;
+                        _localStructuralTypes[i] = null;
+                        _changed = true;
                     }
-
-                    _localStructuralTypes[i] = null;
-                    _changed = true;
+                    if (!ReferenceEquals(_localNativeObjectTypes[i], other.NativeObjects[i]))
+                    {
+                        _localNativeObjectTypes[i] = null;
+                        _changed = true;
+                    }
                 }
             }
 
@@ -2120,7 +2371,8 @@ namespace AuroraScript.Compiler.Backend.Code
             private void WriteTarget(
                 Expression target,
                 FlowValueType type,
-                TypeDeclaration structuralType)
+                TypeDeclaration structuralType,
+                HostNativeObjectDescriptor nativeObjectType = null)
             {
                 if (target is NameExpression name &&
                     _names.TryGetValue(name, out var binding) &&
@@ -2134,6 +2386,13 @@ namespace AuroraScript.Compiler.Backend.Code
                         structuralType))
                     {
                         _localStructuralTypes[binding.Local.Value] = structuralType;
+                        _changed = true;
+                    }
+                    if (!ReferenceEquals(
+                        _localNativeObjectTypes[binding.Local.Value],
+                        nativeObjectType))
+                    {
+                        _localNativeObjectTypes[binding.Local.Value] = nativeObjectType;
                         _changed = true;
                     }
                     MergeLocal(binding.Local, type);

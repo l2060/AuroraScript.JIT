@@ -21,13 +21,15 @@
             // Immutable objects do not allow property settings.
         }
 
-        internal sealed override void SetPropertyDatum(ScriptContext ctx, string key, ScriptDatum value)
+        /// <inheritdoc />
+        protected internal sealed override void SetPropertyDatum(ScriptContext ctx, string key, ScriptDatum value)
         {
             // Immutable objects do not allow property settings.
         }
 
         /// <summary> Overridden to prevent property deletion on immutable objects. Always returns false. </summary>
-        internal sealed override bool DeletePropertyValue(ScriptContext ctx, string key)
+        /// <inheritdoc />
+        protected internal sealed override bool DeletePropertyValue(ScriptContext ctx, string key)
         {
             return false;
         }

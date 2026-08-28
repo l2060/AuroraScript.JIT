@@ -13,7 +13,8 @@ namespace AuroraScript.Runtime.Types
         /// <summary> The global singleton instance of Null. </summary>
         public readonly static NullValue Instance = new NullValue();
 
-        internal override ScriptDatum TypeOfValue => TypeNames.Null;
+        /// <inheritdoc />
+        protected internal override ScriptDatum TypeOfValue => TypeNames.Null;
 
         private NullValue() : base(Prototypes.NullValuePrototype)
         {
@@ -83,7 +84,8 @@ namespace AuroraScript.Runtime.Types
             throw new AuroraRuntimeException(string.Format("Cannot read properties of undefined (reading '{0}')", key));
         }
 
-        internal sealed override ScriptDatum GetPropertyDatum(ScriptContext ctx, string key)
+        /// <inheritdoc />
+        protected internal sealed override ScriptDatum GetPropertyDatum(ScriptContext ctx, string key)
         {
             throw new AuroraRuntimeException(string.Format("Cannot read properties of undefined (reading '{0}')", key));
         }
@@ -94,7 +96,8 @@ namespace AuroraScript.Runtime.Types
             throw new AuroraRuntimeException(string.Format("Cannot read properties of undefined (reading '{0}')", key));
         }
 
-        internal sealed override void SetPropertyDatum(ScriptContext ctx, string key, ScriptDatum value)
+        /// <inheritdoc />
+        protected internal sealed override void SetPropertyDatum(ScriptContext ctx, string key, ScriptDatum value)
         {
             throw new AuroraRuntimeException(string.Format("Cannot read properties of undefined (reading '{0}')", key));
         }
@@ -112,7 +115,8 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary> Throws Exception: Cannot delete properties of null. </summary>
-        internal sealed override bool DeletePropertyValue(ScriptContext ctx, string key)
+        /// <inheritdoc />
+        protected internal sealed override bool DeletePropertyValue(ScriptContext ctx, string key)
         {
             throw new AuroraRuntimeException(string.Format("Cannot read properties of undefined (reading '{0}')", key));
         }

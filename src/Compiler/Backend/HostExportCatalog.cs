@@ -10,7 +10,7 @@ namespace AuroraScript.Compiler.Backend
     /// <summary>
     /// Immutable compiler view of source-generated host exports.
     /// </summary>
-    internal sealed class HostExportCatalog
+    internal sealed partial class HostExportCatalog
     {
         private readonly Dictionary<ExportKey, HostExportDescriptor> _exports;
         private readonly Dictionary<ExportKey, FieldInfo> _constants;
@@ -20,6 +20,8 @@ namespace AuroraScript.Compiler.Backend
             ArgumentNullException.ThrowIfNull(hostAssemblies);
             _exports = new Dictionary<ExportKey, HostExportDescriptor>();
             _constants = new Dictionary<ExportKey, FieldInfo>();
+            _nativeObjects = new Dictionary<string, HostNativeObjectDescriptor>(StringComparer.Ordinal);
+            _nativeObjectsByClrType = new Dictionary<Type, HostNativeObjectDescriptor>();
             AddAssembly(typeof(AuroraEngine).Assembly);
             for (var i = 0; i < hostAssemblies.Count; i++)
             {
@@ -56,6 +58,7 @@ namespace AuroraScript.Compiler.Backend
 
         private void AddAssembly(Assembly assembly)
         {
+            AddNativeObjects(assembly);
             foreach (var attribute in assembly.GetCustomAttributes<AuroraGeneratedConstantAttribute>())
             {
                 var field = attribute.DeclaringType.GetField(

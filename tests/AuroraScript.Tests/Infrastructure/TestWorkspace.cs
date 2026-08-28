@@ -46,7 +46,8 @@ internal sealed class TestWorkspace : IDisposable
         TextWriter? output = null,
         bool enableModuleConstInlining = false,
         bool stackTrace = true,
-        string? dateTimeFormat = null)
+        string? dateTimeFormat = null,
+        bool hostExports = false)
     {
         var options = EngineOptions.Default
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(Root))
@@ -69,6 +70,11 @@ internal sealed class TestWorkspace : IDisposable
         {
             options = options.WithOutput(output => output.AssemblyFile = assemblyOut);
         }
+        if (hostExports)
+        {
+            options = options.WithCompiler(compiler =>
+                compiler.WithHostExportAssemblies(typeof(TestWorkspace).Assembly));
+        }
         return new AuroraEngine(options);
     }
 
@@ -80,7 +86,8 @@ internal sealed class TestWorkspace : IDisposable
         bool enableConfused = false,
         int maxDegreeOfParallelism = 4,
         CancellationToken cancellationToken = default,
-        string? dateTimeFormat = null)
+        string? dateTimeFormat = null,
+        bool hostExports = false)
     {
         var assemblyOut = mode == CompilationMode.Persistence ? Path.Combine(Root, "test-output.dll") : null;
         var engine = CreateEngine(
@@ -89,7 +96,8 @@ internal sealed class TestWorkspace : IDisposable
             enableConfused,
             maxDegreeOfParallelism,
             assemblyOut,
-            dateTimeFormat: dateTimeFormat);
+            dateTimeFormat: dateTimeFormat,
+            hostExports: hostExports);
         WriteSource("main.as", source);
         await engine.BuildAsync(["main.as"], cancellationToken);
         var domain = configureGlobal == null ? engine.CreateDomain() : engine.CreateDomain(configureGlobal);

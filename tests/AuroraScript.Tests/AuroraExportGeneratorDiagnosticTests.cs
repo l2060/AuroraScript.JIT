@@ -112,7 +112,74 @@ public sealed class AuroraExportGeneratorDiagnosticTests
                 StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void ReportsNativeObjectMustDeriveAuroraNativeObject()
+    {
+        var diagnostics = Run(
+            """
+            using AuroraScript.Hosting;
+            using AuroraScript.Runtime.Types;
+            namespace Test;
+
+            [AuroraNativeObject("Bad")]
+            public sealed partial class Bad : ScriptObject
+            {
+                [AuroraExport("x")]
+                public double X;
+            }
+            """);
+
+        Assert.Contains(diagnostics, diagnostic =>
+            diagnostic.Id == "AURORAEXP001" &&
+            diagnostic.GetMessage().Contains(
+                "AuroraNativeObject",
+                StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void NativeObjectCompilesWithoutInternalsVisibleTo()
+    {
+        var updated = RunCore(
+            """
+            using AuroraScript.Hosting;
+            using AuroraScript.Runtime.Types;
+            using System;
+            namespace Test;
+
+            [AuroraNativeObject("Vec2")]
+            public sealed partial class Vec2 : AuroraNativeObject
+            {
+                [AuroraExport("x")]
+                public double X;
+
+                public Vec2(double x)
+                {
+                    X = x;
+                }
+
+                [AuroraExport("length")]
+                public double LengthCore() => Math.Abs(X);
+            }
+            """,
+            out _);
+
+        Assert.Contains(updated.SyntaxTrees, tree =>
+            tree.FilePath.EndsWith(
+                "Test.Vec2.AuroraNativeObject.g.cs",
+                StringComparison.Ordinal));
+        Assert.DoesNotContain(updated.GetDiagnostics(), diagnostic =>
+            diagnostic.Severity == DiagnosticSeverity.Error);
+    }
+
     private static ImmutableArray<Diagnostic> Run(string source)
+    {
+        RunCore(source, out var diagnostics);
+        return diagnostics;
+    }
+
+    private static Compilation RunCore(
+        string source,
+        out ImmutableArray<Diagnostic> diagnostics)
     {
         var references = new List<MetadataReference>();
         var trustedAssemblies = (string?)AppContext.GetData(
@@ -134,10 +201,11 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             new AuroraExportGenerator());
         driver = driver.RunGeneratorsAndUpdateCompilation(
             compilation,
-            out _,
+            out var updated,
             out var generatorDiagnostics);
 
-        return generatorDiagnostics.AddRange(
+        diagnostics = generatorDiagnostics.AddRange(
             driver.GetRunResult().Diagnostics);
+        return updated;
     }
 }

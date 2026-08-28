@@ -335,6 +335,7 @@ namespace AuroraScript.Compiler.Backend.Code
         private readonly Dictionary<VariableDeclaration, LocalSlotId> _declarations;
         private readonly Dictionary<Expression, FlowValueType> _expressionTypes;
         private readonly Dictionary<Expression, TypeDeclaration> _structuralTypes;
+        private readonly Dictionary<Expression, HostNativeObjectDescriptor> _nativeObjectTypes;
         private readonly Dictionary<ForStatement, CountedLoop> _countedLoops;
 
         public TypedFunctionCode(
@@ -343,8 +344,10 @@ namespace AuroraScript.Compiler.Backend.Code
             Dictionary<VariableDeclaration, LocalSlotId> declarations,
             Dictionary<Expression, FlowValueType> expressionTypes,
             Dictionary<Expression, TypeDeclaration> structuralTypes,
+            Dictionary<Expression, HostNativeObjectDescriptor> nativeObjectTypes,
             FlowValueType[] localTypes,
             TypeDeclaration[] localStructuralTypes,
+            HostNativeObjectDescriptor[] localNativeObjectTypes,
             bool[] writtenLocals,
             FlowValueType returnType,
             Dictionary<ForStatement, CountedLoop> countedLoops = null)
@@ -354,8 +357,11 @@ namespace AuroraScript.Compiler.Backend.Code
             _declarations = declarations ?? throw new ArgumentNullException(nameof(declarations));
             _expressionTypes = expressionTypes ?? throw new ArgumentNullException(nameof(expressionTypes));
             _structuralTypes = structuralTypes ?? throw new ArgumentNullException(nameof(structuralTypes));
+            _nativeObjectTypes = nativeObjectTypes ?? throw new ArgumentNullException(nameof(nativeObjectTypes));
             LocalTypes = localTypes ?? throw new ArgumentNullException(nameof(localTypes));
             LocalStructuralTypes = localStructuralTypes ?? throw new ArgumentNullException(nameof(localStructuralTypes));
+            LocalNativeObjectTypes = localNativeObjectTypes ??
+                throw new ArgumentNullException(nameof(localNativeObjectTypes));
             WrittenLocals = writtenLocals ?? throw new ArgumentNullException(nameof(writtenLocals));
             ReturnType = returnType;
             _countedLoops = countedLoops;
@@ -374,6 +380,7 @@ namespace AuroraScript.Compiler.Backend.Code
         public FunctionPlan Function { get; }
         public FlowValueType[] LocalTypes { get; }
         public TypeDeclaration[] LocalStructuralTypes { get; }
+        public HostNativeObjectDescriptor[] LocalNativeObjectTypes { get; }
         public bool[] WrittenLocals { get; }
         public FlowValueType ReturnType { get; }
 
@@ -418,6 +425,18 @@ namespace AuroraScript.Compiler.Backend.Code
             return slot.IsValid &&
                 (uint)slot.Value < (uint)LocalStructuralTypes.Length
                     ? LocalStructuralTypes[slot.Value]
+                    : null;
+        }
+
+        /// <summary>
+        /// The host native object type an expression was proven to hold, or null when
+        /// the value is only known to be a dynamic script object.
+        /// </summary>
+        public HostNativeObjectDescriptor GetNativeObjectType(Expression expression)
+        {
+            return expression != null &&
+                _nativeObjectTypes.TryGetValue(expression, out var descriptor)
+                    ? descriptor
                     : null;
         }
     }

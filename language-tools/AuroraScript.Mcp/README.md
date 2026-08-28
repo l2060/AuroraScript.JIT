@@ -59,7 +59,7 @@ enabled = true
 
 脚本需要按显式名称动态获取已加载模块时可使用 `global.getModule("NAME")`；未命名或不存在的模块返回 `null`。`global.modules` 仍只以解析后的 `FullPath` 为键，不会增加模块名别名。该 API 已包含在 MCP 的 `aurora://schema/runtime-api` 资源和运行时 API 查询工具中。
 
-宿主侧用 C# 实现类型化脚本全局时，阅读 MCP 资源 `aurora://docs/host-integration` 与 `aurora://schema/host-api` 中的 `[AuroraNativeModule]` / `[AuroraExport]` 说明；不要猜测 Bonding 回调签名。
+宿主侧用 C# 实现类型化脚本全局或可实例化 NativeObject 时，阅读 MCP 资源 `aurora://docs/host-integration` 与 `aurora://schema/host-api` 中的 `[AuroraNativeModule]` / `[AuroraNativeObject]` / `[AuroraExport]` 说明；不要猜测 Bonding 回调签名。
 
 > `aurora_check_script` and `aurora_check_file` can validate anonymous modules; no default name is derived from a filename when `@module(NAME);` is absent. Imports and includes are resolved by Source Resolver path, so dependency files can normally remain anonymous.
 >
@@ -67,7 +67,7 @@ enabled = true
 >
 > Scripts can use `global.getModule("NAME")` to look up an already loaded module by its explicit name; anonymous or missing modules return `null`. `global.modules` remains keyed only by resolved `FullPath`, with no module-name aliases. The API is available through the MCP `aurora://schema/runtime-api` resource and runtime API query tools.
 >
-> When generating C# host globals, read `aurora://docs/host-integration` and `aurora://schema/host-api` for `[AuroraNativeModule]` / `[AuroraExport]` rather than inventing Bonding callback signatures.
+> When generating C# host globals or instantiable native objects, read `aurora://docs/host-integration` and `aurora://schema/host-api` for `[AuroraNativeModule]` / `[AuroraNativeObject]` / `[AuroraExport]` rather than inventing Bonding callback signatures.
 
 ## 开发
 
