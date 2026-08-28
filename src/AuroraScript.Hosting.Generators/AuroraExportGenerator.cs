@@ -27,7 +27,7 @@ namespace AuroraScript.Hosting.Generators
     [Generator]
     public sealed class AuroraExportGenerator : IIncrementalGenerator
     {
-        private const string BuiltinGlobalAttribute = "AuroraScript.Hosting.AuroraBuiltinGlobalAttribute";
+        private const string BuiltinGlobalAttribute = "AuroraScript.Hosting.AuroraNativeModuleAttribute";
         private const string ExportAttribute = "AuroraScript.Hosting.AuroraExportAttribute";
         private const string ParamAttribute = "AuroraScript.Hosting.AuroraParamAttribute";
         private static readonly DiagnosticDescriptor InvalidGlobal = new(
@@ -106,7 +106,7 @@ namespace AuroraScript.Hosting.Generators
                 diagnostics.Add(Diagnostic.Create(
                     InvalidGlobal,
                     GetLocation(typeSymbol),
-                    $"Type '{typeSymbol.ToDisplayString()}' must be partial to use AuroraBuiltinGlobal."));
+                    $"Type '{typeSymbol.ToDisplayString()}' must be partial to use AuroraNativeModule."));
             }
             if (typeSymbol.ContainingType != null || typeSymbol.TypeParameters.Length != 0)
             {
@@ -146,7 +146,7 @@ namespace AuroraScript.Hosting.Generators
                 diagnostics.Add(Diagnostic.Create(
                     InvalidGlobal,
                     GetLocation(typeSymbol),
-                    "AuroraBuiltinGlobal requires a non-empty global name."));
+                    "AuroraNativeModule requires a non-empty global name."));
                 globalName = typeSymbol.Name;
             }
 
@@ -429,7 +429,7 @@ namespace AuroraScript.Hosting.Generators
                     context.ReportDiagnostic(Diagnostic.Create(
                         InvalidGlobal,
                         Location.None,
-                        $"Global '{model.GlobalName}' is declared by more than one AuroraBuiltinGlobal type."));
+                        $"Global '{model.GlobalName}' is declared by more than one AuroraNativeModule type."));
                     continue;
                 }
 

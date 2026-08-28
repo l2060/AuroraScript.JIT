@@ -7,7 +7,7 @@ namespace AuroraScript.Runtime.Extensions
     /// <summary>
     /// Experimental script global used to validate <see cref="AuroraExportAttribute"/> source generation.
     /// </summary>
-    [AuroraBuiltinGlobal("Stats")]
+    [AuroraNativeModule("Stats")]
     public sealed partial class StatsSupport : ScriptObject
     {
         /// <summary>Returns the arithmetic mean of two numbers.</summary>

@@ -2528,11 +2528,11 @@
       "notes": {
         "en": [
           "Experimental host-export global backed by AuroraScript source generation.",
-          "Use it as the reference surface for [AuroraBuiltinGlobal]/[AuroraExport] Core signatures, optional parameters, params rest, ScriptObject subtypes, and MatchFailure/MatchLevel."
+          "Use it as the reference surface for [AuroraNativeModule]/[AuroraExport] Core signatures, optional parameters, params rest, ScriptObject subtypes, and MatchFailure/MatchLevel."
         ],
         "zh-CN": [
           "由 AuroraScript 源生成器支持的实验性宿主导出 global。",
-          "作为 [AuroraBuiltinGlobal]/[AuroraExport] 的参考面：Core 签名、可选参数、params rest、ScriptObject 子类型，以及 MatchFailure/MatchLevel。"
+          "作为 [AuroraNativeModule]/[AuroraExport] 的参考面：Core 签名、可选参数、params rest、ScriptObject 子类型，以及 MatchFailure/MatchLevel。"
         ]
       }
     },

@@ -75,6 +75,62 @@ public sealed class NativeFunctionTests
 #if NET9_0_OR_GREATER
     [InlineData(CompilationMode.Persistence)]
 #endif
+    public async Task NativeFunctionsSupportConstantTrailingDefaults(
+        CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            const DEFAULT_VALUE = 20 + 1;
+            export native func scale(
+                Number value = DEFAULT_VALUE,
+                Number factor = 2
+            ) Number {
+                return value * factor;
+            }
+            export func localCall() Number {
+                return scale();
+            }
+            export native func choose(
+                Boolean enabled = true,
+                String value = "ok"
+            ) String {
+                if (enabled) return value;
+                return "no";
+            }
+            """,
+            mode);
+
+        ScriptAssert.Equal(
+            42,
+            TestWorkspace.Execute(domain, "scale"));
+        ScriptAssert.Equal(
+            6,
+            TestWorkspace.Execute(
+                domain,
+                "scale",
+                arguments: [ScriptDatum.FromNumber(3)]));
+        ScriptAssert.Equal(
+            42,
+            TestWorkspace.Execute(domain, "localCall"));
+        ScriptAssert.Equal(
+            "ok",
+            TestWorkspace.Execute(domain, "choose"));
+        ScriptAssert.Equal(
+            "no",
+            TestWorkspace.Execute(
+                domain,
+                "choose",
+                arguments: [ScriptDatum.False]));
+    }
+
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+    [InlineData(CompilationMode.OnlyRun)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
     public async Task NativeBodyCanCrossDatumBoundaries(
         CompilationMode mode)
     {
@@ -142,7 +198,10 @@ public sealed class NativeFunctionTests
         workspace.WriteSource(
             "math.as",
             """
-            export native func add(Number left, Number right) Number {
+            export native func add(
+                Number left,
+                Number right = 22
+            ) Number {
                 return left + right;
             }
             """);
@@ -152,7 +211,7 @@ public sealed class NativeFunctionTests
             @module(TEST);
             import math from './math';
             export func run() Number {
-                return math.add(20, 22);
+                return math.add(20);
             }
             """);
 
@@ -308,12 +367,28 @@ public sealed class NativeFunctionTests
             missingReturn.Message,
             StringComparison.Ordinal);
 
-        var defaultParameter = await Assert.ThrowsAsync<AuroraCompilationException>(
+        var nonConstantDefault = await Assert.ThrowsAsync<AuroraCompilationException>(
             () => workspace.CompileModuleAsync(
-                "native func value(Number input = 1) Number { return input; }"));
+                "native func value(Number input = Math.random()) Number { return input; }"));
         Assert.Contains(
-            "cannot declare default parameters",
-            defaultParameter.Message,
+            "must be a compile-time primitive constant",
+            nonConstantDefault.Message,
+            StringComparison.Ordinal);
+
+        var mismatchedDefault = await Assert.ThrowsAsync<AuroraCompilationException>(
+            () => workspace.CompileModuleAsync(
+                "native func value(Number input = \"1\") Number { return input; }"));
+        Assert.Contains(
+            "default type 'String' does not match declared type 'Number'",
+            mismatchedDefault.Message,
+            StringComparison.Ordinal);
+
+        var nonTrailingDefault = await Assert.ThrowsAsync<AuroraCompilationException>(
+            () => workspace.CompileModuleAsync(
+                "native func value(Number first = 1, Number second) Number { return first + second; }"));
+        Assert.Contains(
+            "default parameters must be trailing",
+            nonTrailingDefault.Message,
             StringComparison.Ordinal);
     }
 

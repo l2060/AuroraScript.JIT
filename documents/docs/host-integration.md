@@ -519,7 +519,7 @@ using AuroraScript.Hosting;
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Types;
 
-[AuroraBuiltinGlobal("Stats")]
+[AuroraNativeModule("Stats")]
 public sealed partial class StatsSupport : ScriptObject
 {
     [AuroraExport("mean", MatchFailure.ReturnNaN)]
@@ -577,7 +577,7 @@ When argument types are proven, the compiler calls the Core method directly. Req
 - Invalid globals are `AURORAEXP001`; unsupported members/signatures are `AURORAEXP002`; duplicate script names are `AURORAEXP003`.
 - Unsupported: `async`, `Span`/`ref`/`out`/`in`, generic methods, nested types, records, empty export names, `params` with `[AuroraParam]`, `ctx`/`thisObject` after script parameters.
 
-Reference `AuroraScript.Hosting.Generators` as an analyzer in the project that declares `[AuroraBuiltinGlobal]` types. Do not apply `AuroraGeneratedExportAttribute` or `AuroraGeneratedConstantAttribute` by hand.
+Reference `AuroraScript.Hosting.Generators` as an analyzer in the project that declares `[AuroraNativeModule]` types. Do not apply `AuroraGeneratedExportAttribute` or `AuroraGeneratedConstantAttribute` by hand.
 
 ## Domains And State
 
@@ -629,7 +629,7 @@ Patch types:
 For AI-assisted development:
 
 1. Read `host-integration` for .NET host usage, including native host exports.
-2. Read `host-api` for a structured API index (`AuroraBuiltinGlobal`, `AuroraExport`, `EngineOptions.HostExportAssemblies`).
+2. Read `host-api` for a structured API index (`AuroraNativeModule`, `AuroraExport`, `EngineOptions.HostExportAssemblies`).
 3. Use `aurora_search_runtime_api` or `aurora_get_runtime_api` before using runtime APIs that look like JavaScript built-ins.
 4. Use `aurora_check_script` to validate generated in-memory script text.
 5. Use `aurora_run_script` to execute a small module or block and inspect `stdout`, `stderr`, and `result`.

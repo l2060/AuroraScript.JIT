@@ -204,7 +204,8 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 var function = _module.Functions[i];
                 if (!function.IsDirectCallCandidate ||
-                    function.HasDefaultParameters ||
+                    (function.HasDefaultParameters &&
+                        !function.IsNativeDeclared) ||
                     function.UsesArgumentsObject)
                 {
                     continue;
@@ -249,7 +250,8 @@ namespace AuroraScript.Compiler.Backend.Emission
                             id => id.IsValid &&
                                 (uint)id.Value < (uint)candidates.Length &&
                                 candidates[id.Value],
-                            id => _moduleCode.GetDirectParameters(id));
+                            id => _moduleCode.GetDirectParameters(id),
+                            HasDefaultParameter);
                     if (subsetSupported && signatureSupported)
                     {
                         continue;
@@ -328,6 +330,24 @@ namespace AuroraScript.Compiler.Backend.Emission
                 _directMethods[function.Value].IsDefined;
         }
 
+        private bool HasDefaultParameter(
+            FunctionId function,
+            int parameterIndex)
+        {
+            for (var i = 0; i < _module.Functions.Count; i++)
+            {
+                var candidate = _module.Functions[i];
+                if (candidate.Id.Equals(function))
+                {
+                    return parameterIndex <
+                            candidate.Declaration.Parameters.Count &&
+                        candidate.Declaration.Parameters[parameterIndex]
+                            .Initializer != null;
+                }
+            }
+            return false;
+        }
+
         private void EmitNativeDatumShell(
             ILGenerator il,
             PreparedDirectMethod native,
@@ -338,7 +358,19 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 il.Emit(OpCodes.Ldarg_1);
                 il.Emit(OpCodes.Ldc_I4, i);
-                il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetArgument);
+                var defaultValue =
+                    function.Declaration.Parameters[i].Initializer;
+                if (defaultValue == null)
+                {
+                    il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetArgument);
+                }
+                else
+                {
+                    EmitNativeDefaultDatum(il, defaultValue);
+                    il.Emit(
+                        OpCodes.Call,
+                        TypedRuntimeMetadata.GetArgumentOrDefault);
+                }
 
                 var declared = function.Declaration.Parameters[i].DeclaredType;
                 if (declared != null &&
@@ -373,6 +405,51 @@ namespace AuroraScript.Compiler.Backend.Emission
                     break;
             }
             il.Emit(OpCodes.Ret);
+        }
+
+        private void EmitNativeDefaultDatum(
+            ILGenerator il,
+            Expression expression)
+        {
+            if (expression is not LiteralExpression literal)
+            {
+                throw new NotSupportedException(
+                    "Native defaults must be folded compiler constants.");
+            }
+
+            switch (literal.Token)
+            {
+                case NullToken:
+                    var datum = il.DeclareLocal(typeof(ScriptDatum));
+                    il.Emit(OpCodes.Ldloca, datum);
+                    il.Emit(OpCodes.Initobj, typeof(ScriptDatum));
+                    il.Emit(OpCodes.Ldloc, datum);
+                    return;
+                case BooleanToken boolean:
+                    il.Emit(
+                        boolean.BoolValue
+                            ? OpCodes.Ldc_I4_1
+                            : OpCodes.Ldc_I4_0);
+                    il.Emit(
+                        OpCodes.Call,
+                        TypedRuntimeMetadata.DatumFromBoolean);
+                    return;
+                case NumberToken number:
+                    il.Emit(OpCodes.Ldc_R8, number.NumberValue);
+                    il.Emit(
+                        OpCodes.Call,
+                        TypedRuntimeMetadata.DatumFromNumber);
+                    return;
+                case StringToken text:
+                    _session.Builder.LoadStringConstant(il, text.Value);
+                    il.Emit(
+                        OpCodes.Call,
+                        TypedRuntimeMetadata.DatumFromString);
+                    return;
+                default:
+                    throw new NotSupportedException(
+                        "Unsupported native default constant.");
+            }
         }
 
         private static void EmitDatumToNativeParameter(
@@ -2818,9 +2895,21 @@ namespace AuroraScript.Compiler.Backend.Emission
 
             for (var i = commonCount; i < parameterCount; i++)
             {
-                // Missing script arguments are null. A parameter inferred as native
-                // Number cannot reach this path because missing-call evidence widens it.
-                EmitNull();
+                var defaultValue =
+                    prepared.Code.Function.Declaration.Parameters[i]
+                        .Initializer;
+                if (defaultValue == null)
+                {
+                    // Missing required script arguments are null. A parameter
+                    // inferred as native cannot reach this path.
+                    EmitNull();
+                }
+                else
+                {
+                    EmitDirectArgument(
+                        defaultValue,
+                        prepared.ParameterTypes[i]);
+                }
             }
 
             // Script calls still evaluate surplus arguments, in source order, even
@@ -2855,10 +2944,16 @@ namespace AuroraScript.Compiler.Backend.Emission
                         continue;
                     }
                     if (i >= call.Arguments.Count ||
+                        (i < call.Arguments.Count &&
                         !FlowValueTypeFacts.CanPassNativeArgument(
                             new DirectParameterType(type),
-                            _code.GetExpressionType(call.Arguments[i])))
+                            _code.GetExpressionType(call.Arguments[i]))))
                     {
+                        if (i >= call.Arguments.Count &&
+                            parameters[i].Initializer != null)
+                        {
+                            continue;
+                        }
                         target = null;
                         return false;
                     }
@@ -2893,7 +2988,22 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
             for (var i = common; i < parameters.Count; i++)
             {
-                EmitNull();
+                var type = TypeReferenceFacts.GetFlowType(
+                    target.Declaration.Parent as ModuleDeclaration,
+                    parameters[i].DeclaredType);
+                if (parameters[i].Initializer == null)
+                {
+                    EmitNull();
+                }
+                else
+                {
+                    EmitDirectArgument(
+                        parameters[i].Initializer,
+                        new DirectParameterType(
+                            RequiresNativeArgumentProof(type)
+                                ? type
+                                : FlowValueType.Dynamic));
+                }
             }
             for (var i = parameters.Count;
                 i < call.Arguments.Count;
@@ -2994,6 +3104,12 @@ namespace AuroraScript.Compiler.Backend.Emission
                             prepared.ParameterTypes[i],
                             _code.GetExpressionType(call.Arguments[i]))))
                 {
+                    if (i >= call.Arguments.Count &&
+                        prepared.Code.Function.Declaration.Parameters[i]
+                            .Initializer != null)
+                    {
+                        continue;
+                    }
                     return false;
                 }
             }
@@ -6699,9 +6815,14 @@ namespace AuroraScript.Compiler.Backend.Emission
             public static bool CanEmit(
                 TypedFunctionCode code,
                 Func<FunctionId, bool> canDirectCall,
-                Func<FunctionId, DirectParameterType[]> getParameterTypes)
+                Func<FunctionId, DirectParameterType[]> getParameterTypes,
+                Func<FunctionId, int, bool> hasDefaultParameter)
             {
-                var visitor = new Visitor(code, canDirectCall, getParameterTypes);
+                var visitor = new Visitor(
+                    code,
+                    canDirectCall,
+                    getParameterTypes,
+                    hasDefaultParameter);
                 visitor.VisitRoot(code.Function.Declaration?.Body);
                 return visitor.Valid;
             }
@@ -6711,15 +6832,18 @@ namespace AuroraScript.Compiler.Backend.Emission
                 private readonly TypedFunctionCode _code;
                 private readonly Func<FunctionId, bool> _canDirectCall;
                 private readonly Func<FunctionId, DirectParameterType[]> _getParameterTypes;
+                private readonly Func<FunctionId, int, bool> _hasDefaultParameter;
 
                 public Visitor(
                     TypedFunctionCode code,
                     Func<FunctionId, bool> canDirectCall,
-                    Func<FunctionId, DirectParameterType[]> getParameterTypes)
+                    Func<FunctionId, DirectParameterType[]> getParameterTypes,
+                    Func<FunctionId, int, bool> hasDefaultParameter)
                 {
                     _code = code;
                     _canDirectCall = canDirectCall;
                     _getParameterTypes = getParameterTypes;
+                    _hasDefaultParameter = hasDefaultParameter;
                     Valid = true;
                 }
 
@@ -6799,6 +6923,11 @@ namespace AuroraScript.Compiler.Backend.Emission
                                         parameters[i],
                                         _code.GetExpressionType(call.Arguments[i]))))
                             {
+                                if (i >= call.Arguments.Count &&
+                                    _hasDefaultParameter(function, i))
+                                {
+                                    continue;
+                                }
                                 Valid = false;
                                 return;
                             }

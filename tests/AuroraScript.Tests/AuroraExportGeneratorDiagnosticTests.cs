@@ -22,7 +22,7 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             using AuroraScript.Runtime.Types;
             namespace Test;
 
-            [AuroraBuiltinGlobal("Bad")]
+            [AuroraNativeModule("Bad")]
             public sealed class Bad : ScriptObject
             {
                 [AuroraExport("value")]
@@ -45,7 +45,7 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             using System;
             namespace Test;
 
-            [AuroraBuiltinGlobal("Bad")]
+            [AuroraNativeModule("Bad")]
             public sealed partial class Bad : ScriptObject
             {
                 [AuroraExport("value")]
@@ -66,7 +66,7 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             using AuroraScript.Runtime.Types;
             namespace Test;
 
-            [AuroraBuiltinGlobal("Bad")]
+            [AuroraNativeModule("Bad")]
             public sealed partial class Bad : ScriptObject
             {
                 [AuroraExport("value")]
@@ -90,14 +90,14 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             using AuroraScript.Runtime.Types;
             namespace Test;
 
-            [AuroraBuiltinGlobal("Same")]
+            [AuroraNativeModule("Same")]
             public sealed partial class First : ScriptObject
             {
                 [AuroraExport("first")]
                 public static double Value() => 1;
             }
 
-            [AuroraBuiltinGlobal("Same")]
+            [AuroraNativeModule("Same")]
             public sealed partial class Second : ScriptObject
             {
                 [AuroraExport("second")]

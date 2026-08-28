@@ -155,7 +155,7 @@ namespace AuroraScript.Compiler.Backend.Binding
         private static bool CanBindModuleDirectCall(FunctionPlan function)
         {
             return function.IsModuleFunction &&
-                !function.HasDefaultParameters &&
+                (!function.HasDefaultParameters || function.IsNativeDeclared) &&
                 !function.UsesArgumentsObject &&
                 function.UpvalueSlots.Length == 0 &&
                 function.CapturedLocalSlots.Length == 0;

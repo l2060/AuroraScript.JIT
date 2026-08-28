@@ -65,7 +65,7 @@ their flexible Datum calling convention and remain hot-patchable.
 
 Keep hot helper arguments type-stable. Reassigning a parameter is fine when every assignment preserves its proven native type; assigning unrelated dynamic values forces that parameter back to the dynamic path.
 
-Host globals declared with `[AuroraBuiltinGlobal]` / `[AuroraExport]` use the same
+Host globals declared with `[AuroraNativeModule]` / `[AuroraExport]` use the same
 direct-call idea on the C# side. Unshadowed `Math.abs(x)` with a proven number
 calls `AbsCore` directly. Unshadowed `Math.PI` loads `MathSupport.PI` with
 `ldsfld`. `params` members such as `Math.max` stay on the generated adapter.
@@ -92,9 +92,11 @@ unproven calls use the shell and preserve exact parameter checks. Qualified
 cross-module calls also use the imported native entry directly when its
 native arguments are proven; dynamic arguments keep the exported shell path.
 Native
-functions require a declared return type and reject defaults, rest parameters,
-`$args`, assignment, and all hot patches. Rebuild the module normally when
-changing one.
+functions require a declared return type. Trailing defaults are supported only
+when the compiler can fold them to primitive constants; an explicitly typed
+parameter requires an exact matching default type. Native functions still reject
+rest parameters, `$args`, assignment, and all hot patches. Rebuild the module
+normally when changing one.
 
 ## Loops And Closures
 

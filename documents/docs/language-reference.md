@@ -126,7 +126,9 @@ Exported functions and private functions used as values also receive a
 Datum-compatible closure shell. A qualified call to an imported exported
 native function calls its native entry directly when every native argument is
 proven compatible; otherwise it uses that shell. Native functions require a return contract,
-cannot use default/rest parameters or `$args`, and cannot be assigned. Apply
+may use trailing primitive defaults that the compiler can evaluate as constants,
+but the default must exactly match an explicit `Number`, `Boolean`, `String`, or
+`Null` parameter type. They cannot use rest parameters or `$args`, and cannot be assigned. Apply
 them only through a normal build: neither incremental nor replacement hot
 patches may add, replace, or redefine a native function. The emitted native
 method contains the function body directly; it does not enter a script frame

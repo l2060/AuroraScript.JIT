@@ -5,11 +5,30 @@ using AuroraScript.Compiler.Backend.Plans;
 using AuroraScript.Runtime;
 using AuroraScript.Tokens;
 using System;
+using System.Collections.Generic;
 
 namespace AuroraScript.Compiler.Backend.Analysis
 {
     internal static class ModuleConstInliningAnalyzer
     {
+        public static bool TryEvaluateConstant(
+            CompileSession session,
+            ModulePlan modulePlan,
+            Expression expression,
+            out ScriptDatum value)
+        {
+            ArgumentNullException.ThrowIfNull(session);
+            ArgumentNullException.ThrowIfNull(modulePlan);
+
+            value = default;
+            return new Evaluator(
+                session,
+                modulePlan,
+                resolveConstantDeclarations: true).TryEvaluate(
+                expression,
+                ref value);
+        }
+
         public static void Apply(CompileSession session, ModulePlan modulePlan)
         {
             ArgumentNullException.ThrowIfNull(session);
@@ -92,11 +111,18 @@ namespace AuroraScript.Compiler.Backend.Analysis
         {
             private readonly CompileSession _session;
             private readonly ModulePlan _modulePlan;
+            private readonly HashSet<SymbolId> _evaluating;
+            private readonly bool _resolveConstantDeclarations;
 
-            public Evaluator(CompileSession session, ModulePlan modulePlan)
+            public Evaluator(
+                CompileSession session,
+                ModulePlan modulePlan,
+                bool resolveConstantDeclarations = false)
             {
                 _session = session;
                 _modulePlan = modulePlan;
+                _evaluating = new HashSet<SymbolId>();
+                _resolveConstantDeclarations = resolveConstantDeclarations;
             }
 
             public bool TryEvaluate(Expression expression, ref ScriptDatum value)
@@ -154,17 +180,42 @@ namespace AuroraScript.Compiler.Backend.Analysis
             {
                 var identifier = name.Identifier?.Value;
                 if (string.IsNullOrEmpty(identifier) ||
-                    !_modulePlan.TryGetSymbol(identifier, out var symbolId) ||
-                    !_modulePlan.TryGetInlineConstant(symbolId, out value))
+                    !_modulePlan.TryGetSymbol(identifier, out var symbolId))
                 {
                     return false;
                 }
 
                 var symbol = _session.Symbols[symbolId];
-                return symbol.Module.Equals(_modulePlan.Id) &&
-                    symbol.Kind == BackendSymbolKind.ModuleProperty &&
-                    symbol.HasFlag(BackendSymbolFlags.Const) &&
-                    !symbol.HasFlag(BackendSymbolFlags.Imported);
+                if (!symbol.Module.Equals(_modulePlan.Id) ||
+                    symbol.Kind != BackendSymbolKind.ModuleProperty ||
+                    !symbol.HasFlag(BackendSymbolFlags.Const) ||
+                    symbol.HasFlag(BackendSymbolFlags.Imported))
+                {
+                    return false;
+                }
+                if (_modulePlan.TryGetInlineConstant(symbolId, out value))
+                {
+                    return true;
+                }
+                if (!_resolveConstantDeclarations ||
+                    symbol.Declaration is not VariableDeclaration
+                    {
+                        IsConst: true,
+                        Initializer: not null
+                    } declaration ||
+                    !_evaluating.Add(symbolId))
+                {
+                    return false;
+                }
+
+                try
+                {
+                    return TryEvaluate(declaration.Initializer, ref value);
+                }
+                finally
+                {
+                    _evaluating.Remove(symbolId);
+                }
             }
 
             private bool TryEvaluateUnary(UnaryExpression unary, ref ScriptDatum value)

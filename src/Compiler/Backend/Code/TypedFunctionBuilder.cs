@@ -1392,11 +1392,34 @@ namespace AuroraScript.Compiler.Backend.Code
                         !_expressionTypes.TryGetValue(call.Arguments[i], out var argumentType) ||
                         !FlowValueTypeFacts.CanPassNativeArgument(parameters[i], argumentType))
                     {
+                        if (i >= call.Arguments.Count &&
+                            HasDefaultParameter(function, i))
+                        {
+                            continue;
+                        }
                         return false;
                     }
                 }
 
                 return true;
+            }
+
+            private bool HasDefaultParameter(
+                FunctionId function,
+                int parameterIndex)
+            {
+                for (var i = 0; i < _module.Functions.Count; i++)
+                {
+                    var candidate = _module.Functions[i];
+                    if (candidate.Id.Equals(function))
+                    {
+                        return parameterIndex <
+                                candidate.Declaration.Parameters.Count &&
+                            candidate.Declaration.Parameters[parameterIndex]
+                                .Initializer != null;
+                    }
+                }
+                return false;
             }
 
             private bool CanUseImportedNativeCall(
@@ -1422,6 +1445,11 @@ namespace AuroraScript.Compiler.Backend.Code
                                     ? argumentType
                                     : FlowValueType.Dynamic))
                     {
+                        if (i >= call.Arguments.Count &&
+                            parameters[i].Initializer != null)
+                        {
+                            continue;
+                        }
                         return false;
                     }
                 }

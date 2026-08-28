@@ -7,10 +7,10 @@ namespace AuroraScript.Hosting
     /// generated from <see cref="AuroraExportAttribute"/> core methods.
     /// </summary>
     [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
-    public sealed class AuroraBuiltinGlobalAttribute : Attribute
+    public sealed class AuroraNativeModuleAttribute : Attribute
     {
         /// <summary>Marks a generated immutable global object.</summary>
-        public AuroraBuiltinGlobalAttribute(string globalName)
+        public AuroraNativeModuleAttribute(string globalName)
         {
             GlobalName = globalName ?? throw new ArgumentNullException(nameof(globalName));
         }

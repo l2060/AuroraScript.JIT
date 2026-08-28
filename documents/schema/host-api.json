@@ -2186,14 +2186,14 @@
         "For simple host functions, passing a normal CLR delegate to ScriptGlobal.Define is usually easier."
       ]
     },
-    "AuroraBuiltinGlobalAttribute": {
+    "AuroraNativeModuleAttribute": {
       "kind": "class",
       "namespace": "AuroraScript.Hosting",
       "summary": "Marks a public sealed partial ScriptObject subclass whose [AuroraExport] members become a generated script global.",
       "members": {
         "Constructor": {
           "kind": "constructor",
-          "signature": "AuroraBuiltinGlobalAttribute(string globalName)"
+          "signature": "AuroraNativeModuleAttribute(string globalName)"
         },
         "GlobalName": {
           "kind": "property",
@@ -2366,8 +2366,8 @@
     },
     {
       "id": "interop.native-host-exports",
-      "summary": "Implement a ScriptObject global with [AuroraBuiltinGlobal] and [AuroraExport] Core methods, Define the instance at runtime, and list extra host assemblies on EngineOptions.HostExportAssemblies for compiler direct-call.",
-      "apis": ["AuroraBuiltinGlobalAttribute", "AuroraExportAttribute", "AuroraParamAttribute", "EngineOptions.HostExportAssemblies", "ScriptGlobal.Define"]
+      "summary": "Implement a ScriptObject global with [AuroraNativeModule] and [AuroraExport] Core methods, Define the instance at runtime, and list extra host assemblies on EngineOptions.HostExportAssemblies for compiler direct-call.",
+      "apis": ["AuroraNativeModuleAttribute", "AuroraExportAttribute", "AuroraParamAttribute", "EngineOptions.HostExportAssemblies", "ScriptGlobal.Define"]
     },
     {
       "id": "interop.register-clr-type",

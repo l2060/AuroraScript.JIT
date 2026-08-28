@@ -1,6 +1,7 @@
 using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Ast.Statements;
+using AuroraScript.Compiler.Backend.Analysis;
 using AuroraScript.Compiler.Backend.Plans;
 using AuroraScript.Compiler.Backend.Traversal;
 using AuroraScript.Runtime;
@@ -377,13 +378,7 @@ namespace AuroraScript.Compiler.Backend.Binding
                         declaration,
                         $"Native function '{declaration.Name.Value}' requires a declared return type.");
                 }
-                if (_function.HasDefaultParameters)
-                {
-                    throw new AuroraCompilationException(
-                        AuroraCompilationStage.Binding,
-                        declaration,
-                        $"Native function '{declaration.Name.Value}' cannot declare default parameters.");
-                }
+                ValidateNativeDefaults(declaration);
                 if (_function.UsesArgumentsObject)
                 {
                     throw new AuroraCompilationException(
@@ -402,6 +397,92 @@ namespace AuroraScript.Compiler.Backend.Binding
                             $"Native function '{declaration.Name.Value}' cannot declare spread parameters.");
                     }
                 }
+            }
+
+            private void ValidateNativeDefaults(
+                FunctionDeclaration declaration)
+            {
+                var sawDefault = false;
+                for (var i = 0; i < declaration.Parameters.Count; i++)
+                {
+                    var parameter = declaration.Parameters[i];
+                    if (parameter.Initializer == null)
+                    {
+                        if (sawDefault)
+                        {
+                            throw new AuroraCompilationException(
+                                AuroraCompilationStage.Binding,
+                                parameter,
+                                $"Native function '{declaration.Name.Value}' default parameters must be trailing.");
+                        }
+                        continue;
+                    }
+
+                    sawDefault = true;
+                    if (!ModuleConstInliningAnalyzer.TryEvaluateConstant(
+                            _session,
+                            _modulePlan,
+                            parameter.Initializer,
+                            out var value) ||
+                        value.Kind is not (
+                            ValueKind.Null or
+                            ValueKind.Boolean or
+                            ValueKind.Number or
+                            ValueKind.String))
+                    {
+                        throw new AuroraCompilationException(
+                            AuroraCompilationStage.Binding,
+                            parameter.Initializer,
+                            $"Native function '{declaration.Name.Value}' default for parameter '{parameter.Name?.Value}' must be a compile-time primitive constant.");
+                    }
+
+                    if (!MatchesDeclaredDefaultType(
+                            parameter.DeclaredType?.Name,
+                            value.Kind))
+                    {
+                        throw new AuroraCompilationException(
+                            AuroraCompilationStage.Binding,
+                            parameter.Initializer,
+                            $"Native function '{declaration.Name.Value}' default type '{GetDefaultTypeName(value.Kind)}' does not match declared type '{parameter.DeclaredType.Name}'.");
+                    }
+
+                    parameter.Initializer =
+                        ModuleConstInliningAnalyzer.CreateLiteralExpression(
+                            value,
+                            parameter.Initializer.Range);
+                    parameter.Initializer.Parent = parameter;
+                }
+            }
+
+            private static bool MatchesDeclaredDefaultType(
+                string declaredType,
+                ValueKind valueKind)
+            {
+                if (declaredType == null)
+                {
+                    return true;
+                }
+
+                return (declaredType, valueKind) switch
+                {
+                    ("Null", ValueKind.Null) => true,
+                    ("Boolean", ValueKind.Boolean) => true,
+                    ("Number", ValueKind.Number) => true,
+                    ("String", ValueKind.String) => true,
+                    _ => false
+                };
+            }
+
+            private static string GetDefaultTypeName(ValueKind valueKind)
+            {
+                return valueKind switch
+                {
+                    ValueKind.Null => "Null",
+                    ValueKind.Boolean => "Boolean",
+                    ValueKind.Number => "Number",
+                    ValueKind.String => "String",
+                    _ => valueKind.ToString()
+                };
             }
 
             private int CurrentScopeId => _scopeStack.Peek();

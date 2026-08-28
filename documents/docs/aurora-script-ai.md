@@ -292,7 +292,7 @@ import http from "http";
 - Use normal template strings for small or medium formatting; the compiler already selects concat or builder paths.
 - Use `StringBuffer` for long loops or many incremental appends.
 - Use `typeof value == "Int8Array"` (or the matching constructor name) to distinguish packed arrays; they are not `"object"`.
-- Use `native func` only when a stable native ABI and direct-call behavior are required.
+- Use `native func` only when a stable native ABI and direct-call behavior are required. Its defaults must be trailing compiler-foldable primitive constants; when a parameter has an explicit type, the default type must match it exactly.
 - `export type` declares compile-time shapes for native field derivation. Shapes may nest or form cycles (for example `Node { Number value; Node next; }`). They are not runtime contracts; missing or mismatched fields are not rejected as shape errors.
 - Avoid `console.log` in hot paths.
 - Avoid unnecessary closure captures in loops.
@@ -323,7 +323,7 @@ Typical diagnostics:
 
 1. Read this file.
 2. If generating script code, read `docs/script-authoring-best-practices.md`.
-3. If generating host-side C# integration code, read `docs/host-integration.md` and `schema/host-api.json`. For typed script globals implemented in C#, use `[AuroraBuiltinGlobal]` / `[AuroraExport]` rather than `BondingFunction` unless you need a raw `ScriptDatum` span callback.
+3. If generating host-side C# integration code, read `docs/host-integration.md` and `schema/host-api.json`. For typed script globals implemented in C#, use `[AuroraNativeModule]` / `[AuroraExport]` rather than `BondingFunction` unless you need a raw `ScriptDatum` span callback.
 4. Check examples in `examples/valid` for accepted syntax.
 5. If rejecting code, compare with `examples/invalid`.
 6. Use `aurora_search_runtime_api` or `aurora_get_runtime_api` before using runtime APIs that may be confused with JavaScript built-ins.
