@@ -59,8 +59,6 @@ namespace Examples
                 hex[idx++] = b.ToString("x2")[0];// GetHex((byte)(b >> 4));
             }
             result = ScriptDatum.FromString(new string(hex));
-
-            static char GetHex(byte val) => (char)(val < 10 ? '0' + val : 'a' + (val - 10));
         }
 
     }

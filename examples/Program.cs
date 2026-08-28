@@ -8,6 +8,7 @@ using AuroraScript.Source;
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -35,7 +36,7 @@ namespace Examples
             compiler.SourceResolver = ScriptSources.Composite(memorySource, fileSystemSource);
             compiler.MaxDegreeOfParallelism = 0;
             compiler.ExtName = "as";
-            compiler.Mode = CompilationMode.Persistence;
+            compiler.Mode = CompilationMode.Dynamic;
         })
         .WithOutput(output =>
         {
@@ -111,12 +112,16 @@ namespace Examples
                 Console.WriteLine(ex.ToString());
             }
 
+            GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true);
+            // CompactOnce执行一次后自动切回Default
+
 
             for (int i = 0; i < 10; i++)
             {
-                GC.Collect();
+                GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, true, true);
                 GC.WaitForPendingFinalizers();
-                GC.Collect();
+                GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, true, true);
                 Thread.Sleep(100);
             }
             Console.ReadLine();
