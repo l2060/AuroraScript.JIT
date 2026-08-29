@@ -90,10 +90,28 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="AuroraScript.Hosting.Generators\AuroraScript.Hosting.Generators.csproj"
-		                  OutputItemType="Analyzer"
-		                  ReferenceOutputAssembly="false" />
+		<ProjectReference Include="AuroraScript.Hosting.Generators\AuroraScript.Hosting.Generators.csproj">
+			<OutputItemType>Analyzer</OutputItemType>
+			<ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+			<PrivateAssets>all</PrivateAssets>
+		</ProjectReference>
 	</ItemGroup>
+
+	<PropertyGroup>
+		<TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);_PackHostingGeneratorAnalyzer</TargetsForTfmSpecificContentInPackage>
+	</PropertyGroup>
+
+	<Target Name="_PackHostingGeneratorAnalyzer" DependsOnTargets="ResolveProjectReferences" Condition="$([MSBuild]::ValueOrDefault('$(TargetFrameworks)', '$(TargetFramework)').StartsWith('$(TargetFramework)'))">
+		<MSBuild
+			Projects="$(MSBuildThisFileDirectory)AuroraScript.Hosting.Generators\AuroraScript.Hosting.Generators.csproj"
+			Targets="GetTargetPath"
+			Properties="Configuration=$(Configuration);TargetFramework=netstandard2.0">
+			<Output TaskParameter="TargetOutputs" ItemName="_HostingGeneratorDll" />
+		</MSBuild>
+		<ItemGroup>
+			<TfmSpecificPackageFile Include="@(_HostingGeneratorDll)" PackagePath="analyzers/dotnet/cs" />
+		</ItemGroup>
+	</Target>
 
 	<PropertyGroup Condition="'$(Configuration)' == 'Debug'">
 		<EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>

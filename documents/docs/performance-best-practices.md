@@ -71,6 +71,8 @@ calls `AbsCore` directly. Unshadowed `Math.PI` loads `MathSupport.PI` with
 `ldsfld`. `params` members such as `Math.max` stay on the generated adapter.
 Shadowing the global (`var Math = other`) disables both paths.
 
+Proven `[AuroraNativeObject]` locals use the same idea. Keep a `Vec2` (or similar) in a local that is never reassigned to an unproven value and never captured by a closure. The compiler then stores the CLR instance directly; field `++`/`+=` and method calls stay on `ldfld`/`stfld`/`callvirt` instead of boxing through `ScriptDatum`. Passing the object as an untyped parameter, assigning `other` into the local, or capturing it for a lambda forces the dynamic protocol.
+
 Use `native func` when the ABI itself must be explicit:
 
 ```as

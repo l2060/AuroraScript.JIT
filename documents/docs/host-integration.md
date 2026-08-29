@@ -508,7 +508,7 @@ Use `ScriptDatum` when you need exact runtime values and minimum conversion over
 
 ## Native Host Exports
 
-Use generated native exports when a host global should be a `ScriptObject` with typed Core methods instead of `BondingFunction` or a CLR delegate. The `AuroraScript.Hosting.Generators` analyzer turns `[AuroraExport]` members into Datum adapters and compiler catalog metadata.
+Use generated native exports when a host global should be a `ScriptObject` with typed Core methods instead of `BondingFunction` or a CLR delegate. Referencing the `AuroraScript.JIT` package (or the `AuroraScript` project in this repo) brings in the hosting source generator automatically. There is no separate generator package. The analyzer turns `[AuroraExport]` members into Datum adapters and compiler catalog metadata.
 
 This is distinct from script `native func` (a module ABI) and from opt-in `BuiltInModules` such as `fs` and `http`.
 
@@ -579,7 +579,9 @@ var vec = new Vec2(3, 4);
 return vec.length();
 ```
 
-Host code can also `new Vec2(3, 4)` and pass the instance as `ScriptDatum.FromObject(vec)`. Dynamic access uses generated `GetPropertyDatum` / adapters; compiler direct-call for instance members is not part of this first step.
+Host code can also `new Vec2(3, 4)` and pass the instance as `ScriptDatum.FromObject(vec)`.
+
+When flow analysis proves a local always holds one native object type, the compiler stores that local as the CLR type (`Vec2`) instead of `ScriptDatum`. Proven `new`, field reads/writes, `++`/`--`, compound assignments such as `+=`, and method calls bind to CLR constructors, fields, and methods (`newobj` / `ldfld` / `stfld` / `callvirt`) without boxing through `ScriptDatum`. Locals captured by closures, values reassigned to an unproven type, and receivers the compiler cannot prove (for example a function parameter) stay on the dynamic property protocol.
 
 Rules:
 
@@ -633,7 +635,7 @@ var options = EngineOptions.Default.WithCompiler(compiler =>
 - Invalid globals are `AURORAEXP001`; unsupported members/signatures are `AURORAEXP002`; duplicate script names are `AURORAEXP003`.
 - Unsupported: `async`, `Span`/`ref`/`out`/`in`, generic methods, nested types, records, empty export names, `params` with `[AuroraParam]`, `ctx`/`thisObject` after script parameters.
 
-Reference `AuroraScript.Hosting.Generators` as an analyzer in the project that declares `[AuroraNativeModule]` types. Do not apply `AuroraGeneratedExportAttribute` or `AuroraGeneratedConstantAttribute` by hand.
+Referencing `AuroraScript.JIT` brings in the hosting generator automatically. Do not apply `AuroraGeneratedExportAttribute` or `AuroraGeneratedConstantAttribute` by hand.
 
 ## Domains And State
 

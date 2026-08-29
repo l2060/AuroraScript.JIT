@@ -2402,7 +2402,7 @@
     },
     {
       "id": "interop.native-host-exports",
-      "summary": "Implement a ScriptObject global with [AuroraNativeModule] and [AuroraExport] Core methods, or an instantiable [AuroraNativeObject] type. Define/register at runtime, and list extra host assemblies on CompilerOptions.HostExportAssemblies for compiler direct-call of module globals.",
+      "summary": "Implement a ScriptObject global with [AuroraNativeModule] and [AuroraExport] Core methods, or an instantiable [AuroraNativeObject] type. The AuroraScript.JIT package includes the hosting source generator; do not reference a separate generator package. Define/register at runtime, and list extra host assemblies on CompilerOptions.HostExportAssemblies for compiler direct-call.",
       "apis": ["AuroraNativeModuleAttribute", "AuroraNativeObjectAttribute", "AuroraNativeObject", "AuroraExportAttribute", "AuroraParamAttribute", "CompilerOptions.HostExportAssemblies", "ScriptGlobal.Define"]
     },
     {

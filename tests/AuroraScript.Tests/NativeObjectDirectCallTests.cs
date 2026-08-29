@@ -58,6 +58,20 @@ public sealed class NativeObjectDirectCallTests
                 vec = other;
                 return vec.x;
             }
+            export func mutate() Number {
+                var vec = new Vec2(1000, 2000);
+                var previous = vec.x++;
+                var current = ++vec.x;
+                vec.x += 65;
+                vec.x -= 3;
+                return previous + current + vec.x;
+            }
+            export func captured() Number {
+                var vec = new Vec2(1, 2);
+                var read = () => vec.x;
+                vec.x += 2;
+                return read();
+            }
             """,
             mode,
             configureGlobal: global => Vec2.Register(global),
@@ -90,6 +104,8 @@ public sealed class NativeObjectDirectCallTests
                 domain,
                 "reassignedToDynamic",
                 arguments: [ScriptDatum.FromObject(new Vec2(7, 8))]));
+        ScriptAssert.Equal(3066, TestWorkspace.Execute(domain, "mutate"));
+        ScriptAssert.Equal(3, TestWorkspace.Execute(domain, "captured"));
     }
 
     [Fact]
@@ -130,8 +146,10 @@ public sealed class NativeObjectDirectCallTests
             @module(TEST);
             export func direct() Number {
                 var vec = new Vec2(6, 8);
+                var original = vec.x++;
+                vec.x += 2;
                 vec.x = 3;
-                return vec.length() + vec.y;
+                return original + vec.length() + vec.y;
             }
             export func dynamicReceiver(vec) Number {
                 return vec.length();
@@ -145,7 +163,7 @@ public sealed class NativeObjectDirectCallTests
         await engine.BuildAsync(["main.as"]);
         using var domain = engine.CreateDomain(global => Vec2.Register(global));
         // length() runs after the field write, so it measures (3, 8).
-        ScriptAssert.Equal(Math.Sqrt(73D) + 8D, TestWorkspace.Execute(domain, "direct"));
+        ScriptAssert.Equal(6D + Math.Sqrt(73D) + 8D, TestWorkspace.Execute(domain, "direct"));
 
         using var stream = File.OpenRead(assemblyPath);
         using var peReader = new PEReader(stream);
@@ -169,6 +187,9 @@ public sealed class NativeObjectDirectCallTests
         Assert.Contains(
             FindVec2MemberTokens(reader, "X"),
             token => ContainsInstruction(directIl, 0x7D, token));
+        AssertNoCallsTo(reader, directIl, "ScriptDatum", "FromObject");
+        AssertNoCallsTo(reader, directIl, "ScriptDatum", "ToObject");
+        AssertNoCallsTo(reader, directIl, "TypedRuntimeOps", "ChangeByOne");
 
         // A receiver the compiler cannot prove keeps using the dynamic protocol.
         Assert.DoesNotContain(
@@ -191,7 +212,17 @@ public sealed class NativeObjectDirectCallTests
 
     private static int[] FindVec2MemberTokens(MetadataReader reader, string memberName)
     {
-        var tokens = reader.MemberReferences
+        var tokens = FindMemberTokens(reader, "Vec2", memberName);
+        Assert.NotEmpty(tokens);
+        return tokens;
+    }
+
+    private static int[] FindMemberTokens(
+        MetadataReader reader,
+        string typeName,
+        string memberName)
+    {
+        return reader.MemberReferences
             .Where(handle =>
             {
                 var reference = reader.GetMemberReference(handle);
@@ -199,12 +230,23 @@ public sealed class NativeObjectDirectCallTests
                     reference.Parent.Kind == HandleKind.TypeReference &&
                     reader.GetString(
                         reader.GetTypeReference(
-                            (TypeReferenceHandle)reference.Parent).Name) == "Vec2";
+                            (TypeReferenceHandle)reference.Parent).Name) == typeName;
             })
             .Select(handle => MetadataTokens.GetToken(handle))
             .ToArray();
-        Assert.NotEmpty(tokens);
-        return tokens;
+    }
+
+    private static void AssertNoCallsTo(
+        MetadataReader reader,
+        ReadOnlySpan<byte> il,
+        string typeName,
+        string memberName)
+    {
+        foreach (var token in FindMemberTokens(reader, typeName, memberName))
+        {
+            Assert.False(ContainsInstruction(il, 0x28, token));
+            Assert.False(ContainsInstruction(il, 0x6F, token));
+        }
     }
 
     private static bool ContainsInstruction(

@@ -618,6 +618,7 @@ namespace AuroraScript.Compiler.Backend.Code
                                     initializerStructuralType;
                             }
                             if (!_writtenLocals[slot.Value] &&
+                                !IsCaptured(slot) &&
                                 variable.Initializer != null &&
                                 _nativeObjectTypes.TryGetValue(
                                     variable.Initializer,
@@ -2378,6 +2379,10 @@ namespace AuroraScript.Compiler.Backend.Code
                     _names.TryGetValue(name, out var binding) &&
                     binding.IsLocal)
                 {
+                    if (IsCaptured(binding.Local))
+                    {
+                        nativeObjectType = null;
+                    }
                     InvalidateLocalFields(binding.Local);
                     InvalidateLocalArrayElements(binding.Local);
                     _writtenLocals[binding.Local.Value] = true;

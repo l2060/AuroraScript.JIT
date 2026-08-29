@@ -706,7 +706,11 @@ namespace AuroraScript.Compiler.Backend.Emission
             _parameterBooleans = new LocalBuilder[result.Length];
             for (var i = 0; i < result.Length; i++)
             {
-                var type = _code.LocalTypes[i] switch
+                var nativeObject = _capturedLocalBySlot == null ||
+                    !_capturedLocalBySlot.ContainsKey(i)
+                        ? _code.LocalNativeObjectTypes[i]
+                        : null;
+                var type = nativeObject?.ClrType ?? (_code.LocalTypes[i] switch
                 {
                     FlowValueType.Int32 => typeof(int),
                     FlowValueType.Int64 => typeof(long),
@@ -725,7 +729,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     FlowValueType.Int64Array => GetPackedLocalClrType(FlowValueType.Int64Array),
                     FlowValueType.UInt64Array => GetPackedLocalClrType(FlowValueType.UInt64Array),
                     _ => typeof(ScriptDatum),
-                };
+                });
                 result[i] = DeclareLocal(type);
                 _session.Builder.SetLocalSymInfo(result[i], _function.LocalSlots[i].Name);
                 if (!_directMode &&
@@ -1247,6 +1251,15 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
             var slot = _code.GetDeclarationSlot(variable);
             if (!slot.IsValid) throw new InvalidOperationException("Unbound local declaration.");
+
+            var nativeObject = _code.GetLocalNativeObjectType(slot);
+            if (nativeObject != null)
+            {
+                if (variable.Initializer == null) _il.Emit(OpCodes.Ldnull);
+                else EmitNativeObjectReference(variable.Initializer, nativeObject);
+                EmitStoreLocalFromStack(slot);
+                return;
+            }
 
             switch (_code.GetLocalType(slot))
             {
@@ -3886,6 +3899,10 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
 
             EmitLoadLocal(binding.Local);
+            if (_code.GetLocalNativeObjectType(binding.Local) != null)
+            {
+                return StackValueKind.Object;
+            }
             return _code.GetLocalType(binding.Local) switch
             {
                 FlowValueType.Int32 => StackValueKind.Int32,
@@ -4504,6 +4521,14 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
 
             var localType = _code.GetLocalType(binding.Local);
+            var nativeObject = _code.GetLocalNativeObjectType(binding.Local);
+            if (nativeObject != null)
+            {
+                EmitNativeObjectReference(assignment.Right, nativeObject);
+                _il.Emit(OpCodes.Dup);
+                _il.Emit(OpCodes.Stloc, _locals[binding.Local.Value]);
+                return StackValueKind.Object;
+            }
             if (localType == FlowValueType.Int32)
             {
                 EmitInt32Value(assignment.Right);
@@ -5042,6 +5067,15 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private StackValueKind EmitNumericMutation(UnaryExpression unary)
         {
+            if (unary.Expression is GetPropertyExpression property)
+            {
+                var nativeKind = TryEmitNativeFieldMutation(unary, property);
+                if (nativeKind.HasValue)
+                {
+                    return nativeKind.Value;
+                }
+                return EmitDynamicMutation(unary);
+            }
             if (unary.Expression is GetElementExpression element)
             {
                 var arrayType = _code.GetExpressionType(element.Object);

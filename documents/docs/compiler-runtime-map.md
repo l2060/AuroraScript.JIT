@@ -22,7 +22,9 @@ Use this map when changing language behavior.
 - Module const inlining: `src/Compiler/Backend/Analysis/ModuleConstInliningAnalyzer.cs`
 - Typed flow analysis: `src/Compiler/Backend/Code/TypedFunctionBuilder.cs`, `src/Compiler/Backend/Code/TypedModuleCode.cs`
 - Typed CIL emission: `src/Compiler/Backend/Emission/TypedCilEmitter.cs`
+- Native-object locals, field mutation, and direct CLR calls: `src/Compiler/Backend/Emission/TypedCilEmitter.NativeObjects.cs`
 - Generated host-export catalog and direct calls: `src/Compiler/Backend/HostExportCatalog.cs`, `src/Compiler/Backend/Emission/TypedCilEmitter.cs`
+- Hosting source generator (packed as an analyzer inside `AuroraScript.JIT`): `src/AuroraScript.Hosting.Generators`
 - Module and domain initialization: `src/Compiler/Backend/Emission/ModuleInitializerEmitter.cs`, `src/Compiler/Backend/Emission/BackendBuildEmitter.cs`
 
 ## Runtime
@@ -57,4 +59,5 @@ Use this map when changing language behavior.
 - Module graph and build errors: `tests/AuroraScript.Tests/ModuleCompilationTests.cs`
 - Regression coverage: `tests/AuroraScript.Tests/ReleaseRegressionTests.cs`, `tests/AuroraScript.Tests/CompilationModeTests.cs`
 - Host export generator and diagnostics: `tests/AuroraScript.Tests/HostExportGeneratorTests.cs`, `tests/AuroraScript.Tests/AuroraExportGeneratorDiagnosticTests.cs`
+- Native-object direct calls and CLR locals: `tests/AuroraScript.Tests/NativeObjectDirectCallTests.cs`
 

@@ -429,6 +429,18 @@ namespace AuroraScript.Compiler.Backend.Code
         }
 
         /// <summary>
+        /// The host native object type a local was proven to hold on every path, or
+        /// null when the local must keep its general script representation.
+        /// </summary>
+        public HostNativeObjectDescriptor GetLocalNativeObjectType(LocalSlotId slot)
+        {
+            return slot.IsValid &&
+                (uint)slot.Value < (uint)LocalNativeObjectTypes.Length
+                    ? LocalNativeObjectTypes[slot.Value]
+                    : null;
+        }
+
+        /// <summary>
         /// The host native object type an expression was proven to hold, or null when
         /// the value is only known to be a dynamic script object.
         /// </summary>

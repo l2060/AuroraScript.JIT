@@ -125,7 +125,41 @@ namespace AuroraScript.Compiler.Backend.Emission
             Expression expression,
             HostNativeObjectDescriptor descriptor)
         {
-            EmitObjectReference(expression);
+            if (expression is NameExpression name)
+            {
+                var binding = _code.GetName(name);
+                if (binding.IsLocal &&
+                    ReferenceEquals(
+                        _code.GetLocalNativeObjectType(binding.Local),
+                        descriptor))
+                {
+                    EmitLoadLocal(binding.Local);
+                    return;
+                }
+            }
+
+            EmitNativeObjectReference(expression, descriptor);
+        }
+
+        private void EmitNativeObjectReference(
+            Expression expression,
+            HostNativeObjectDescriptor descriptor)
+        {
+            var kind = EmitExpression(expression);
+            if (kind == StackValueKind.Object &&
+                ReferenceEquals(_code.GetNativeObjectType(expression), descriptor))
+            {
+                return;
+            }
+            if (kind == StackValueKind.Datum)
+            {
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumToObject);
+            }
+            else if (kind != StackValueKind.Object)
+            {
+                ConvertToDatum(kind);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumToObject);
+            }
             _il.Emit(OpCodes.Castclass, descriptor.ClrType);
         }
 
@@ -151,7 +185,20 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             kind = StackValueKind.Datum;
             if (!TryGetNativeField(expression.Object, memberName, out var owner, out var field) ||
-                field.IsReadOnly ||
+                field.IsReadOnly)
+            {
+                return false;
+            }
+            if (TryEmitNativeFieldCompoundWrite(
+                    expression,
+                    memberName,
+                    owner,
+                    field,
+                    out kind))
+            {
+                return true;
+            }
+            if (
                 !HostExportArgumentFacts.CanPass(
                     field.Kind,
                     field.Field.FieldType,
@@ -174,6 +221,136 @@ namespace AuroraScript.Compiler.Backend.Emission
             _il.Emit(OpCodes.Ldloc, valueLocal);
             kind = GetNativeStackKind(field.Kind);
             return true;
+        }
+
+        private bool TryEmitNativeFieldCompoundWrite(
+            SetPropertyExpression expression,
+            string memberName,
+            HostNativeObjectDescriptor owner,
+            HostNativeFieldDescriptor field,
+            out StackValueKind kind)
+        {
+            kind = StackValueKind.Datum;
+            if (field.Kind is not (AuroraExportValueKind.Number or AuroraExportValueKind.Int32) ||
+                expression.Value is not BinaryExpression binary ||
+                binary.Left is not GetPropertyExpression read ||
+                !ReferenceEquals(read.Object, expression.Object) ||
+                !TryGetStaticPropertyName(read.Property, out var readName) ||
+                !StringComparer.Ordinal.Equals(readName, memberName) ||
+                !IsNativeFieldCompoundOperator(field.Kind, binary.Operator) ||
+                !HostExportArgumentFacts.CanPass(
+                    field.Kind,
+                    field.Field.FieldType,
+                    _code.GetExpressionType(binary)))
+            {
+                return false;
+            }
+
+            var receiver = DeclareLocal(owner.ClrType);
+            EmitNativeReceiver(expression.Object, owner);
+            _il.Emit(OpCodes.Stloc, receiver);
+
+            var result = DeclareLocal(field.Field.FieldType);
+            _il.Emit(OpCodes.Ldloc, receiver);
+            _il.Emit(OpCodes.Ldfld, field.Field);
+            if (field.Kind == AuroraExportValueKind.Number)
+            {
+                EmitNumericBinaryRight(binary.Operator, binary.Right);
+            }
+            else
+            {
+                EmitNativeInt32BinaryRight(binary.Operator, binary.Right);
+            }
+            _il.Emit(OpCodes.Stloc, result);
+
+            _il.Emit(OpCodes.Ldloc, receiver);
+            _il.Emit(OpCodes.Ldloc, result);
+            _il.Emit(OpCodes.Stfld, field.Field);
+            _il.Emit(OpCodes.Ldloc, result);
+            kind = GetNativeStackKind(field.Kind);
+            return true;
+        }
+
+        private StackValueKind? TryEmitNativeFieldMutation(
+            UnaryExpression unary,
+            GetPropertyExpression property)
+        {
+            if (!TryGetStaticPropertyName(property.Property, out var memberName) ||
+                !TryGetNativeField(property.Object, memberName, out var owner, out var field) ||
+                field.IsReadOnly ||
+                field.Kind is not (AuroraExportValueKind.Number or AuroraExportValueKind.Int32))
+            {
+                return null;
+            }
+
+            var receiver = DeclareLocal(owner.ClrType);
+            EmitNativeReceiver(property.Object, owner);
+            _il.Emit(OpCodes.Stloc, receiver);
+
+            var previous = DeclareLocal(field.Field.FieldType);
+            _il.Emit(OpCodes.Ldloc, receiver);
+            _il.Emit(OpCodes.Ldfld, field.Field);
+            _il.Emit(OpCodes.Stloc, previous);
+
+            var current = DeclareLocal(field.Field.FieldType);
+            _il.Emit(OpCodes.Ldloc, previous);
+            if (field.Kind == AuroraExportValueKind.Int32)
+            {
+                _il.Emit(OpCodes.Ldc_I4_1);
+            }
+            else
+            {
+                _il.Emit(OpCodes.Ldc_R8, 1d);
+            }
+            _il.Emit(
+                unary.Operator == Operator.PreIncrement ||
+                    unary.Operator == Operator.PostIncrement
+                    ? OpCodes.Add
+                    : OpCodes.Sub);
+            _il.Emit(OpCodes.Stloc, current);
+
+            _il.Emit(OpCodes.Ldloc, receiver);
+            _il.Emit(OpCodes.Ldloc, current);
+            _il.Emit(OpCodes.Stfld, field.Field);
+
+            var postfix = unary.Operator == Operator.PostIncrement ||
+                unary.Operator == Operator.PostDecrement;
+            _il.Emit(OpCodes.Ldloc, postfix ? previous : current);
+            return GetNativeStackKind(field.Kind);
+        }
+
+        private static bool IsNativeFieldCompoundOperator(
+            AuroraExportValueKind kind,
+            Operator op)
+        {
+            if (kind == AuroraExportValueKind.Int32)
+            {
+                return op == Operator.Add || op == Operator.Subtract ||
+                    op == Operator.Multiply || op == Operator.BitwiseAnd ||
+                    op == Operator.BitwiseOr || op == Operator.BitwiseXor ||
+                    op == Operator.LeftShift || op == Operator.SignedRightShift;
+            }
+            return op == Operator.Add || op == Operator.Subtract ||
+                op == Operator.Multiply || op == Operator.Divide ||
+                op == Operator.Modulo || op == Operator.BitwiseAnd ||
+                op == Operator.BitwiseOr || op == Operator.BitwiseXor ||
+                op == Operator.LeftShift || op == Operator.SignedRightShift ||
+                op == Operator.UnSignedRightShift;
+        }
+
+        private void EmitNativeInt32BinaryRight(Operator op, Expression right)
+        {
+            EmitInt32Operand(right, truncateThroughInt64: false);
+            _il.Emit(op == Operator.Add ? OpCodes.Add :
+                op == Operator.Subtract ? OpCodes.Sub :
+                op == Operator.Multiply ? OpCodes.Mul :
+                op == Operator.BitwiseAnd ? OpCodes.And :
+                op == Operator.BitwiseOr ? OpCodes.Or :
+                op == Operator.BitwiseXor ? OpCodes.Xor :
+                op == Operator.LeftShift ? OpCodes.Shl :
+                op == Operator.SignedRightShift ? OpCodes.Shr :
+                throw new NotSupportedException(
+                    "Unsupported native Int32 field compound operator."));
         }
 
         private StackValueKind EmitNativeMethodCall(
@@ -202,7 +379,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
             if (method.ReturnKind == AuroraExportValueKind.Object)
             {
-                return BoxHostExportObjectResult();
+                return StackValueKind.Object;
             }
             return GetNativeStackKind(method.ReturnKind);
         }
@@ -218,8 +395,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 descriptor.Constructor.GetParameters(),
                 prefix: 0);
             _il.Emit(OpCodes.Newobj, descriptor.Constructor);
-            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
-            return StackValueKind.Datum;
+            return StackValueKind.Object;
         }
 
         private void EmitNativeArguments(
