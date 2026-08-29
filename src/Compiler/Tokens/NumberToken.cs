@@ -1,5 +1,4 @@
 ﻿using System;
-
 using System.Globalization;
 
 namespace AuroraScript.Tokens
@@ -8,8 +7,6 @@ namespace AuroraScript.Tokens
     {
         public readonly static NumberToken Zero = new NumberToken("0");
         public readonly static NumberToken One = new NumberToken("1");
-
-
 
         internal NumberToken(String value)
             : this(value.AsSpan())
@@ -20,8 +17,19 @@ namespace AuroraScript.Tokens
         internal NumberToken(ReadOnlySpan<char> value)
         {
             this.Type = ValueType.Number;
+            IsHexadecimal = NumericLiteralFacts.IsHexadecimal(value);
+            if (value.Length > 0 &&
+                NumericLiteralFacts.TryConsumeSuffix(
+                    value,
+                    value.Length - 1,
+                    IsHexadecimal,
+                    out var suffix))
+            {
+                Suffix = suffix;
+                value = value[..^1];
+            }
 
-            if (value.Length > 2 && value[0] == '0' && (value[1] == 'x' || value[1] == 'X'))
+            if (IsHexadecimal)
             {
                 ulong number = 0;
                 for (int i = 2; i < value.Length; i++)
@@ -34,6 +42,7 @@ namespace AuroraScript.Tokens
             }
             else
             {
+                HasFractionOrExponent = ContainsFractionOrExponent(value);
                 if (value.IndexOf('_') < 0)
                 {
                     this.NumberValue = Double.Parse(value, CultureInfo.InvariantCulture);
@@ -51,6 +60,18 @@ namespace AuroraScript.Tokens
                 }
             }
 
+            if (Suffix == NumericLiteralSuffix.Int32 &&
+                !NumericLiteralFacts.IsExactInt32(this.NumberValue))
+            {
+                throw new FormatException("Integer suffix I requires a 32-bit integer literal.");
+            }
+
+            if (Suffix == NumericLiteralSuffix.Int64 &&
+                !NumericLiteralFacts.IsExactInt64(this.NumberValue))
+            {
+                throw new FormatException("Integer suffix L requires a 64-bit integer literal.");
+            }
+
             // Only large numbers need their original spelling for TDoc's exact
             // Int64/UInt64 checks. Normal numeric tokens retain the existing lazy
             // Value allocation behavior.
@@ -64,6 +85,25 @@ namespace AuroraScript.Tokens
         {
             this.Type = ValueType.Number;
             this.NumberValue = value;
+        }
+
+        public NumericLiteralSuffix Suffix { get; }
+
+        public bool IsHexadecimal { get; }
+
+        public bool HasFractionOrExponent { get; }
+
+        private static bool ContainsFractionOrExponent(ReadOnlySpan<char> value)
+        {
+            for (var i = 0; i < value.Length; i++)
+            {
+                var c = value[i];
+                if (c == '.' || c == 'e' || c == 'E')
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         public override string Value

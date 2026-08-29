@@ -1883,7 +1883,7 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
                 i++;
             }
 
-            return i;
+            return ConsumeNumericSuffix(text, i, hexadecimal: true);
         }
 
         while (i < text.Length && (char.IsDigit(text[i]) || text[i] == '_'))
@@ -1900,7 +1900,31 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
             }
         }
 
-        return i;
+        return ConsumeNumericSuffix(text, i, hexadecimal: false);
+    }
+
+    private static int ConsumeNumericSuffix(string text, int index, bool hexadecimal)
+    {
+        if (index >= text.Length)
+        {
+            return index;
+        }
+
+        var current = text[index];
+        var suffix = current is 'L' or 'l' or 'I' or 'i' ||
+            (!hexadecimal && current is 'D' or 'd');
+        if (!suffix)
+        {
+            return index;
+        }
+
+        var next = index + 1;
+        if (next < text.Length && IsIdentifierPart(text[next]))
+        {
+            return index;
+        }
+
+        return index + 1;
     }
 
     private static bool IsIdentifierStart(char value)

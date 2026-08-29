@@ -38,12 +38,40 @@ public sealed class LexerTests
     [InlineData("1_000_000", 1_000_000d)]
     [InlineData("0xFF", 255d)]
     [InlineData("0Xabcdef", 11259375d)]
+    [InlineData("10000D", 10000d)]
+    [InlineData("1L", 1d)]
+    [InlineData("0xFFFF", 65535d)]
+    [InlineData("0xFFFFL", 65535d)]
     public void ParsesSupportedNumberFormats(string source, double expected)
     {
         using var lexer = CreateLexer(source);
         var number = Assert.IsType<NumberToken>(lexer.Next());
         Assert.Equal(expected, number.NumberValue);
         Assert.True(lexer.IsAtEnd);
+    }
+
+    [Fact]
+    public void DecimalIntegerSuffixesAndHexLiteralsKeepIntegerKinds()
+    {
+        using var unsuffixed = CreateLexer("100000");
+        var i = Assert.IsType<NumberToken>(unsuffixed.Next());
+        Assert.Equal(NumericLiteralSuffix.None, i.Suffix);
+        Assert.False(i.IsHexadecimal);
+
+        using var dbl = CreateLexer("10000D");
+        var d = Assert.IsType<NumberToken>(dbl.Next());
+        Assert.Equal(NumericLiteralSuffix.Number, d.Suffix);
+        Assert.Equal(10000d, d.NumberValue);
+
+        using var lng = CreateLexer("1L");
+        var l = Assert.IsType<NumberToken>(lng.Next());
+        Assert.Equal(NumericLiteralSuffix.Int64, l.Suffix);
+
+        using var hex = CreateLexer("0xFFFF");
+        var h = Assert.IsType<NumberToken>(hex.Next());
+        Assert.True(h.IsHexadecimal);
+        Assert.Equal(NumericLiteralSuffix.None, h.Suffix);
+        Assert.Equal(65535d, h.NumberValue);
     }
 
     [Theory]

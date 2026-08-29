@@ -175,7 +175,7 @@ Choose the narrowest type that matches the required semantics:
 
 ## Integer Kernels
 
-Use signed bitwise operations and `Int32Array`/`Int8Array` values when the algorithm is naturally 32-bit. The compiler keeps proven-safe integer literals, packed-array loads, signed bitwise results, and standard bounded loop induction variables as native CIL `int` values. It widens to `double` whenever JavaScript number semantics require it, including possible arithmetic overflow, division, unsigned right shift, negative zero, `NaN`, and infinity.
+Use signed bitwise operations and `Int32Array`/`Int8Array` values when the algorithm is naturally 32-bit. The compiler keeps proven-safe integer literals, packed-array loads, signed bitwise results, bounded loop induction variables, and straight-line integer locals whose `++`/`--`/`+=`/`-=` results still fit the same integer domain as native CIL `int` or `long` values. Integer remainder also stays native when inferred operand ranges exclude a zero divisor, negative zero, and the signed overflow case. It widens to `double` whenever script number semantics require it, including possible arithmetic overflow, division, unsafe remainder, unsigned right shift, negative zero, `NaN`, and infinity.
 
 This means an integer-oriented loop can avoid repeated `double` conversions without changing observable numeric behavior. Do not add manual casts solely for performance; keep values type-stable and let the flow analysis widen at the first operation that needs number semantics.
 

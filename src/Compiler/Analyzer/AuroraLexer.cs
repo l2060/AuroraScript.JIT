@@ -777,6 +777,11 @@ namespace AuroraScript.Compiler.Analyzer
                 return false;
             }
 
+            if (NumericLiteralFacts.TryConsumeSuffix(span, i, hexadecimal: true, out _))
+            {
+                i++;
+            }
+
             result = new RuleTestResult
             {
                 ColumnNumber = this.ColumnNumber + i,
@@ -790,6 +795,8 @@ namespace AuroraScript.Compiler.Analyzer
         private bool ScanNumber(ReadOnlySpan<char> span, out RuleTestResult result)
         {
             var i = 0;
+            var hadFraction = false;
+            var hadExponent = false;
             if (!ScanDecimalDigits(span, ref i, requireDigit: true))
             {
                 result = default;
@@ -804,6 +811,7 @@ namespace AuroraScript.Compiler.Analyzer
                     return false;
                 }
                 i++;
+                hadFraction = true;
                 if (!ScanDecimalDigits(span, ref i, requireDigit: false))
                 {
                     result = default;
@@ -820,6 +828,13 @@ namespace AuroraScript.Compiler.Analyzer
                     result = default;
                     return false;
                 }
+                hadExponent = true;
+            }
+
+            if (NumericLiteralFacts.TryConsumeSuffix(span, i, hexadecimal: false, out var suffix) &&
+                (suffix == NumericLiteralSuffix.Number || !hadFraction && !hadExponent))
+            {
+                i++;
             }
 
             result = new RuleTestResult
@@ -1292,7 +1307,7 @@ namespace AuroraScript.Compiler.Analyzer
                 LexTokenKind.Operator => new OperatorToken(),
                 LexTokenKind.String => new StringToken(),
                 LexTokenKind.StringTemplate => new StringTemplateToken(),
-                LexTokenKind.Number => new NumberToken(this.InputData.AsSpan(lexToken.Offset, lexToken.Length)),
+                LexTokenKind.Number => CreateNumberToken(in lexToken),
                 LexTokenKind.Regex => new RegexToken(value),
                 LexTokenKind.Boolean => new BooleanToken(symbol == Symbols.VALUE_TRUE),
                 LexTokenKind.Null => new NullToken(),
@@ -1310,6 +1325,23 @@ namespace AuroraScript.Compiler.Analyzer
             this.cachedTokenIndex = index;
             this.cachedToken = token;
             return token;
+        }
+
+        private NumberToken CreateNumberToken(in LexToken lexToken)
+        {
+            try
+            {
+                return new NumberToken(this.InputData.AsSpan(lexToken.Offset, lexToken.Length));
+            }
+            catch (FormatException exception)
+            {
+                throw new AuroraCompilationException(
+                    AuroraCompilationStage.Lexing,
+                    this.FullPath,
+                    lexToken.StartLine,
+                    lexToken.StartColumn,
+                    exception.Message);
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

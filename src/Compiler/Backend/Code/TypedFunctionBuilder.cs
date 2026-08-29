@@ -396,6 +396,10 @@ namespace AuroraScript.Compiler.Backend.Code
             private readonly HostNativeObjectDescriptor[] _localNativeObjectTypes;
             private readonly FlowValueType[] _forcedLocalTypes;
             private readonly bool[] _writtenLocals;
+            private readonly bool[] _localIntegerRangeValid;
+            private readonly long[] _localIntegerRangeMin;
+            private readonly long[] _localIntegerRangeMax;
+            private int _integerRangeLoopDepth;
             private readonly DirectParameterType[] _parameterTypes;
             private readonly IReadOnlyDictionary<FunctionId, FlowValueType> _directReturnTypes;
             private readonly IReadOnlyDictionary<FunctionId, FlowValueType> _universalReturnTypes;
@@ -441,6 +445,9 @@ namespace AuroraScript.Compiler.Backend.Code
                 _localNativeObjectTypes = new HostNativeObjectDescriptor[function.LocalSlots.Length];
                 _forcedLocalTypes = new FlowValueType[function.LocalSlots.Length];
                 _writtenLocals = new bool[function.LocalSlots.Length];
+                _localIntegerRangeValid = new bool[function.LocalSlots.Length];
+                _localIntegerRangeMin = new long[function.LocalSlots.Length];
+                _localIntegerRangeMax = new long[function.LocalSlots.Length];
                 _parameterTypes = parameterTypes;
                 _directReturnTypes = directReturnTypes;
                 _universalReturnTypes = universalReturnTypes;
@@ -608,6 +615,7 @@ namespace AuroraScript.Compiler.Backend.Code
                                 ? FlowValueType.Null
                                 : AnalyzeExpression(variable.Initializer);
                             MergeLocal(slot, initializerType);
+                            NoteIntegerWrite(slot, initializerType, variable.Initializer);
                             if (!_writtenLocals[slot.Value] &&
                                 variable.Initializer != null &&
                                 _structuralTypes.TryGetValue(
@@ -684,12 +692,14 @@ namespace AuroraScript.Compiler.Backend.Code
                         {
                             _safeInt32Mutations.Add(whileInt32Slots[i]);
                         }
+                        _integerRangeLoopDepth++;
                         try
                         {
                             AnalyzeStatement(@while.Body);
                         }
                         finally
                         {
+                            _integerRangeLoopDepth--;
                             for (var i = 0; i < whileInt32Slots.Count; i++)
                             {
                                 _safeInt32Mutations.Remove(whileInt32Slots[i]);
@@ -713,6 +723,7 @@ namespace AuroraScript.Compiler.Backend.Code
                             {
                                 _provenStringIndices[inductionSlot.Value] = stringSlot.Value;
                             }
+                            _integerRangeLoopDepth++;
                             try
                             {
                                 AnalyzeStatement(@for.Body);
@@ -720,6 +731,7 @@ namespace AuroraScript.Compiler.Backend.Code
                             }
                             finally
                             {
+                                _integerRangeLoopDepth--;
                                 if (hasStringIndex)
                                 {
                                     _provenStringIndices.Remove(inductionSlot.Value);
@@ -731,6 +743,7 @@ namespace AuroraScript.Compiler.Backend.Code
                         {
                             _countedLoops[@for] = new CountedLoop(countedSlot, countedBound);
                             _safeInt64Mutations.Add(countedSlot.Value);
+                            _integerRangeLoopDepth++;
                             try
                             {
                                 AnalyzeStatement(@for.Body);
@@ -738,14 +751,23 @@ namespace AuroraScript.Compiler.Backend.Code
                             }
                             finally
                             {
+                                _integerRangeLoopDepth--;
                                 _safeInt64Mutations.Remove(countedSlot.Value);
                             }
                         }
                         else
                         {
                             _countedLoops.Remove(@for);
-                            AnalyzeStatement(@for.Body);
-                            AnalyzeExpression(@for.Incrementor);
+                            _integerRangeLoopDepth++;
+                            try
+                            {
+                                AnalyzeStatement(@for.Body);
+                                AnalyzeExpression(@for.Incrementor);
+                            }
+                            finally
+                            {
+                                _integerRangeLoopDepth--;
+                            }
                         }
                         IntersectStructural(forBefore);
                         return;
@@ -758,7 +780,15 @@ namespace AuroraScript.Compiler.Backend.Code
                             MergeLocal(iterator.Local, FlowValueType.Dynamic);
                         }
                         var forInBefore = SnapshotStructural();
-                        AnalyzeStatement(forIn.Body);
+                        _integerRangeLoopDepth++;
+                        try
+                        {
+                            AnalyzeStatement(forIn.Body);
+                        }
+                        finally
+                        {
+                            _integerRangeLoopDepth--;
+                        }
                         IntersectStructural(forInBefore);
                         return;
                     case TryStatement @try:
@@ -827,6 +857,19 @@ namespace AuroraScript.Compiler.Backend.Code
                                 binary.Right,
                                 binaryLeft,
                                 binaryRight);
+                        if (type == FlowValueType.Number)
+                        {
+                            var ranged = TryKeepRangedIntegerArithmetic(
+                                binary.Operator,
+                                binary.Left,
+                                binary.Right,
+                                binaryLeft,
+                                binaryRight);
+                            if (ranged != FlowValueType.None)
+                            {
+                                type = ranged;
+                            }
+                        }
                         break;
                     case AssignmentExpression assignment:
                         type = AnalyzeExpression(assignment.Right);
@@ -843,6 +886,7 @@ namespace AuroraScript.Compiler.Backend.Code
                             type,
                             assignedStructuralType,
                             assignedNativeType);
+                        NoteIntegerWrite(assignment.Left, type, assignment.Right);
                         break;
                     case CompoundExpression compound:
                         var left = AnalyzeExpression(compound.Left);
@@ -861,17 +905,33 @@ namespace AuroraScript.Compiler.Backend.Code
                                 compound.Right,
                                 left,
                                 right);
+                        if (type == FlowValueType.Number)
+                        {
+                            var ranged = TryKeepRangedIntegerArithmetic(
+                                compound.Operator.SimplerOperator,
+                                compound.Left,
+                                compound.Right,
+                                left,
+                                right);
+                            if (ranged != FlowValueType.None)
+                            {
+                                type = ranged;
+                            }
+                        }
                         WriteTarget(compound.Left, type, null);
+                        NoteIntegerWrite(compound.Left, type, compound.Operator.SimplerOperator, compound.Right);
                         break;
                     case UnaryExpression unary:
                         var operand = AnalyzeExpression(unary.Expression);
                         type = AnalyzeUnary(unary, operand);
                         if (IsMutation(unary.Operator))
                         {
+                            var writeType = GetMutationWriteType(unary);
                             WriteTarget(
                                 unary.Expression,
-                                GetMutationWriteType(unary),
+                                writeType,
                                 null);
+                            NoteIntegerMutation(unary.Expression, writeType, unary.Operator);
                         }
                         break;
                     case GroupExpression group:
@@ -2401,6 +2461,10 @@ namespace AuroraScript.Compiler.Backend.Code
                         _changed = true;
                     }
                     MergeLocal(binding.Local, type);
+                    if (!IsExactIntegerStorage(type))
+                    {
+                        ClearLocalIntegerRange(binding.Local);
+                    }
                 }
                 else if (target is GetElementExpression element)
                 {
@@ -2433,6 +2497,10 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     _locals[slot.Value] = merged;
                     _changed = true;
+                }
+                if (!IsExactIntegerStorage(merged))
+                {
+                    ClearLocalIntegerRange(slot);
                 }
             }
 
@@ -3252,7 +3320,9 @@ namespace AuroraScript.Compiler.Backend.Code
                 switch (expression)
                 {
                     case LiteralExpression { Token: NumberToken number }
-                        when IsExactInt32(number.NumberValue):
+                        when number.Suffix != NumericLiteralSuffix.Number &&
+                            number.Suffix != NumericLiteralSuffix.Int64 &&
+                            NumericLiteralFacts.IsExactInt32(number.NumberValue):
                         value = (int)number.NumberValue;
                         return true;
                     case UnaryExpression unary:
@@ -3303,7 +3373,8 @@ namespace AuroraScript.Compiler.Backend.Code
                 switch (expression)
                 {
                     case LiteralExpression { Token: NumberToken number }
-                        when IsExactInt64(number.NumberValue):
+                        when number.Suffix != NumericLiteralSuffix.Number &&
+                            NumericLiteralFacts.IsExactInt64(number.NumberValue):
                         value = (long)number.NumberValue;
                         return true;
                     case UnaryExpression unary:
@@ -3351,17 +3422,12 @@ namespace AuroraScript.Compiler.Backend.Code
 
             private static bool IsExactInt32(double value)
             {
-                return value >= int.MinValue && value <= int.MaxValue &&
-                    value == Math.Truncate(value) &&
-                    (value != 0d || BitConverter.DoubleToInt64Bits(value) >= 0);
+                return NumericLiteralFacts.IsExactInt32(value);
             }
 
             private static bool IsExactInt64(double value)
             {
-                return value >= -9007199254740991d &&
-                    value <= 9007199254740991d &&
-                    value == Math.Truncate(value) &&
-                    (value != 0d || BitConverter.DoubleToInt64Bits(value) >= 0);
+                return NumericLiteralFacts.IsExactInt64(value);
             }
 
             private static bool IsExactScriptInteger(long value)
@@ -3394,10 +3460,370 @@ namespace AuroraScript.Compiler.Backend.Code
 
             private FlowValueType GetMutationWriteType(UnaryExpression expression)
             {
-                return GetInductionType(expression.Expression) is var induction &&
-                    induction != FlowValueType.None
-                        ? induction
-                        : FlowValueType.Number;
+                if (GetInductionType(expression.Expression) is var induction &&
+                    induction != FlowValueType.None)
+                {
+                    return induction;
+                }
+                if (_integerRangeLoopDepth > 0)
+                {
+                    return FlowValueType.Number;
+                }
+                if (!_expressionTypes.TryGetValue(expression.Expression, out var operand) ||
+                    !IsExactIntegerStorage(operand) ||
+                    !TryGetIntegerRange(expression.Expression, out var min, out var max))
+                {
+                    return FlowValueType.Number;
+                }
+                var delta = expression.Operator == Operator.PreIncrement ||
+                    expression.Operator == Operator.PostIncrement
+                        ? 1L
+                        : -1L;
+                if (!TryAddRange(min, max, delta, delta, out var nextMin, out var nextMax))
+                {
+                    return FlowValueType.Number;
+                }
+                if (operand == FlowValueType.Int32 && FitsInt32(nextMin, nextMax))
+                {
+                    return FlowValueType.Int32;
+                }
+                return operand == FlowValueType.Int64 && FitsInt64(nextMin, nextMax)
+                    ? FlowValueType.Int64
+                    : FlowValueType.Number;
+            }
+
+            private FlowValueType TryKeepRangedIntegerArithmetic(
+                Operator op,
+                Expression leftExpression,
+                Expression rightExpression,
+                FlowValueType left,
+                FlowValueType right)
+            {
+                if (_integerRangeLoopDepth > 0 ||
+                    (op != Operator.Add &&
+                        op != Operator.Subtract &&
+                        op != Operator.Modulo) ||
+                    !FlowValueTypeFacts.IsNumeric(left) ||
+                    !FlowValueTypeFacts.IsNumeric(right) ||
+                    left == FlowValueType.Number ||
+                    right == FlowValueType.Number)
+                {
+                    return FlowValueType.None;
+                }
+                if (!TryGetIntegerRange(leftExpression, out var leftMin, out var leftMax) ||
+                    !TryGetIntegerRange(rightExpression, out var rightMin, out var rightMax))
+                {
+                    return FlowValueType.None;
+                }
+                long min;
+                long max;
+                if (op == Operator.Modulo)
+                {
+                    // Integer rem is equivalent to script remainder only when
+                    // zero divisors, negative zero, and MinValue % -1 are
+                    // impossible. A non-negative dividend and a divisor range
+                    // wholly on either side of zero prove all three.
+                    if (leftMin < 0 || rightMin <= 0 && rightMax >= 0)
+                    {
+                        return FlowValueType.None;
+                    }
+                    min = 0;
+                    max = leftMax;
+                }
+                else if (op == Operator.Add
+                    ? !TryAddRange(leftMin, leftMax, rightMin, rightMax, out min, out max)
+                    : !TrySubtractRange(leftMin, leftMax, rightMin, rightMax, out min, out max))
+                {
+                    return FlowValueType.None;
+                }
+                if (left == FlowValueType.Int32 &&
+                    right == FlowValueType.Int32 &&
+                    FitsInt32(min, max))
+                {
+                    return FlowValueType.Int32;
+                }
+                return (left == FlowValueType.Int64 || right == FlowValueType.Int64) &&
+                    FitsInt64(min, max)
+                    ? FlowValueType.Int64
+                    : FlowValueType.None;
+            }
+
+            private void NoteIntegerWrite(
+                Expression target,
+                FlowValueType type,
+                Expression value)
+            {
+                if (target is not NameExpression name ||
+                    !_names.TryGetValue(name, out var binding) ||
+                    !binding.IsLocal)
+                {
+                    return;
+                }
+                NoteIntegerWrite(binding.Local, type, value);
+            }
+
+            private void NoteIntegerWrite(
+                Expression target,
+                FlowValueType type,
+                Operator op,
+                Expression right)
+            {
+                if (target is not NameExpression name ||
+                    !_names.TryGetValue(name, out var binding) ||
+                    !binding.IsLocal)
+                {
+                    return;
+                }
+                if (_integerRangeLoopDepth > 0)
+                {
+                    ClearLocalIntegerRange(binding.Local);
+                    return;
+                }
+                if (!IsExactIntegerStorage(type) ||
+                    (op != Operator.Add &&
+                        op != Operator.Subtract &&
+                        op != Operator.Modulo) ||
+                    !TryGetIntegerRange(target, out var leftMin, out var leftMax) ||
+                    !TryGetIntegerRange(right, out var rightMin, out var rightMax))
+                {
+                    if (!IsExactIntegerStorage(type))
+                    {
+                        ClearLocalIntegerRange(binding.Local);
+                    }
+                    return;
+                }
+                long min;
+                long max;
+                if (op == Operator.Modulo)
+                {
+                    if (leftMin < 0 || rightMin <= 0 && rightMax >= 0)
+                    {
+                        ClearLocalIntegerRange(binding.Local);
+                        return;
+                    }
+                    min = 0;
+                    max = leftMax;
+                }
+                else if (op == Operator.Add
+                    ? !TryAddRange(leftMin, leftMax, rightMin, rightMax, out min, out max)
+                    : !TrySubtractRange(leftMin, leftMax, rightMin, rightMax, out min, out max))
+                {
+                    ClearLocalIntegerRange(binding.Local);
+                    return;
+                }
+                MergeLocalIntegerRange(binding.Local, min, max);
+            }
+
+            private void NoteIntegerWrite(LocalSlotId slot, FlowValueType type, Expression value)
+            {
+                if (_integerRangeLoopDepth > 0)
+                {
+                    ClearLocalIntegerRange(slot);
+                    return;
+                }
+                if (!IsExactIntegerStorage(type) ||
+                    !TryGetIntegerRange(value, out var min, out var max))
+                {
+                    if (!IsExactIntegerStorage(type))
+                    {
+                        ClearLocalIntegerRange(slot);
+                    }
+                    return;
+                }
+                MergeLocalIntegerRange(slot, min, max);
+            }
+
+            private void NoteIntegerMutation(
+                Expression target,
+                FlowValueType type,
+                Operator op)
+            {
+                if (target is not NameExpression name ||
+                    !_names.TryGetValue(name, out var binding) ||
+                    !binding.IsLocal)
+                {
+                    return;
+                }
+                if (_integerRangeLoopDepth > 0)
+                {
+                    ClearLocalIntegerRange(binding.Local);
+                    return;
+                }
+                if (!IsExactIntegerStorage(type) ||
+                    !TryGetIntegerRange(target, out var min, out var max))
+                {
+                    if (!IsExactIntegerStorage(type))
+                    {
+                        ClearLocalIntegerRange(binding.Local);
+                    }
+                    return;
+                }
+                var delta = op == Operator.PreIncrement || op == Operator.PostIncrement
+                    ? 1L
+                    : -1L;
+                if (!TryAddRange(min, max, delta, delta, out var nextMin, out var nextMax))
+                {
+                    ClearLocalIntegerRange(binding.Local);
+                    return;
+                }
+                MergeLocalIntegerRange(binding.Local, nextMin, nextMax);
+            }
+
+            private bool TryGetIntegerRange(Expression expression, out long min, out long max)
+            {
+                if (TryEvaluateInt64Constant(expression, out var exact))
+                {
+                    min = max = exact;
+                    return true;
+                }
+                if (expression is BinaryExpression binary &&
+                    _expressionTypes.TryGetValue(binary, out var binaryType) &&
+                    IsExactIntegerStorage(binaryType) &&
+                    TryGetIntegerRange(binary.Left, out var leftMin, out var leftMax) &&
+                    TryGetIntegerRange(binary.Right, out var rightMin, out var rightMax))
+                {
+                    if (binary.Operator == Operator.Add)
+                    {
+                        return TryAddRange(
+                            leftMin,
+                            leftMax,
+                            rightMin,
+                            rightMax,
+                            out min,
+                            out max);
+                    }
+                    if (binary.Operator == Operator.Subtract)
+                    {
+                        return TrySubtractRange(
+                            leftMin,
+                            leftMax,
+                            rightMin,
+                            rightMax,
+                            out min,
+                            out max);
+                    }
+                    if (binary.Operator == Operator.Modulo &&
+                        leftMin >= 0 &&
+                        (rightMin > 0 || rightMax < 0))
+                    {
+                        min = 0;
+                        max = leftMax;
+                        return true;
+                    }
+                }
+                if (expression is NameExpression name &&
+                    _names.TryGetValue(name, out var binding) &&
+                    binding.IsLocal &&
+                    (uint)binding.Local.Value < (uint)_localIntegerRangeValid.Length &&
+                    _localIntegerRangeValid[binding.Local.Value] &&
+                    IsExactIntegerStorage(_locals[binding.Local.Value]))
+                {
+                    min = _localIntegerRangeMin[binding.Local.Value];
+                    max = _localIntegerRangeMax[binding.Local.Value];
+                    return true;
+                }
+                min = 0;
+                max = 0;
+                return false;
+            }
+
+            private void MergeLocalIntegerRange(LocalSlotId slot, long min, long max)
+            {
+                if (!slot.IsValid ||
+                    (uint)slot.Value >= (uint)_localIntegerRangeValid.Length ||
+                    IsCaptured(slot))
+                {
+                    return;
+                }
+                if (!_localIntegerRangeValid[slot.Value])
+                {
+                    _localIntegerRangeValid[slot.Value] = true;
+                    _localIntegerRangeMin[slot.Value] = min;
+                    _localIntegerRangeMax[slot.Value] = max;
+                    _changed = true;
+                    return;
+                }
+                if (min < _localIntegerRangeMin[slot.Value])
+                {
+                    _localIntegerRangeMin[slot.Value] = min;
+                    _changed = true;
+                }
+                if (max > _localIntegerRangeMax[slot.Value])
+                {
+                    _localIntegerRangeMax[slot.Value] = max;
+                    _changed = true;
+                }
+            }
+
+            private void ClearLocalIntegerRange(LocalSlotId slot)
+            {
+                if (!slot.IsValid ||
+                    (uint)slot.Value >= (uint)_localIntegerRangeValid.Length ||
+                    !_localIntegerRangeValid[slot.Value])
+                {
+                    return;
+                }
+                _localIntegerRangeValid[slot.Value] = false;
+                _changed = true;
+            }
+
+            private static bool IsExactIntegerStorage(FlowValueType type)
+            {
+                return type is FlowValueType.Int32 or FlowValueType.Int64;
+            }
+
+            private static bool FitsInt32(long min, long max)
+            {
+                return min >= int.MinValue && max <= int.MaxValue;
+            }
+
+            private static bool FitsInt64(long min, long max)
+            {
+                return IsExactScriptInteger(min) && IsExactScriptInteger(max);
+            }
+
+            private static bool TryAddRange(
+                long leftMin,
+                long leftMax,
+                long rightMin,
+                long rightMax,
+                out long min,
+                out long max)
+            {
+                try
+                {
+                    min = checked(leftMin + rightMin);
+                    max = checked(leftMax + rightMax);
+                    return true;
+                }
+                catch (OverflowException)
+                {
+                    min = 0;
+                    max = 0;
+                    return false;
+                }
+            }
+
+            private static bool TrySubtractRange(
+                long leftMin,
+                long leftMax,
+                long rightMin,
+                long rightMax,
+                out long min,
+                out long max)
+            {
+                try
+                {
+                    min = checked(leftMin - rightMax);
+                    max = checked(leftMax - rightMin);
+                    return true;
+                }
+                catch (OverflowException)
+                {
+                    min = 0;
+                    max = 0;
+                    return false;
+                }
             }
 
             private FlowValueType GetInductionCompoundType(CompoundExpression expression)
@@ -3458,17 +3884,29 @@ namespace AuroraScript.Compiler.Backend.Code
                     op == Operator.PreDecrement || op == Operator.PostDecrement;
             }
 
+            private static FlowValueType GetNumberLiteralType(NumberToken number)
+            {
+                return number.Suffix switch
+                {
+                    NumericLiteralSuffix.Number => FlowValueType.Number,
+                    NumericLiteralSuffix.Int32 => FlowValueType.Int32,
+                    NumericLiteralSuffix.Int64 => FlowValueType.Int64,
+                    _ when number.HasFractionOrExponent => FlowValueType.Number,
+                    _ => IsExactInt32(number.NumberValue)
+                        ? FlowValueType.Int32
+                        : IsExactInt64(number.NumberValue)
+                            ? FlowValueType.Int64
+                            : FlowValueType.Number
+                };
+            }
+
             private static FlowValueType GetLiteralType(LiteralExpression literal)
             {
                 return literal.Token switch
                 {
                     NullToken => FlowValueType.Null,
                     BooleanToken => FlowValueType.Boolean,
-                    NumberToken number => IsExactInt32(number.NumberValue)
-                        ? FlowValueType.Int32
-                        : IsExactInt64(number.NumberValue)
-                            ? FlowValueType.Int64
-                            : FlowValueType.Number,
+                    NumberToken number => GetNumberLiteralType(number),
                     StringToken => FlowValueType.String,
                     RegexToken => FlowValueType.Object,
                     _ => FlowValueType.Dynamic
@@ -3663,12 +4101,17 @@ namespace AuroraScript.Compiler.Backend.Code
                         case CompoundExpression compound:
                             var compoundLeft = AnalyzeExpression(compound.Left, locals);
                             var compoundRight = AnalyzeExpression(compound.Right, locals);
+                            var knownCompound = GetKnownType(compound);
                             var compoundType = AnalyzeBinary(
                                 compound.Operator.SimplerOperator,
                                 compound.Left,
                                 compound.Right,
                                 compoundLeft,
                                 compoundRight);
+                            if (knownCompound is FlowValueType.Int32 or FlowValueType.Int64)
+                            {
+                                compoundType = knownCompound;
+                            }
                             if (TryGetLocal(compound.Left, out var compoundSlot))
                             {
                                 locals[compoundSlot.Value] = compoundType;
@@ -3696,6 +4139,11 @@ namespace AuroraScript.Compiler.Backend.Code
                                     ? operand
                                     : FlowValueType.Number;
                         case BinaryExpression binary:
+                            var knownBinary = GetKnownType(binary);
+                            if (knownBinary is FlowValueType.Int32 or FlowValueType.Int64)
+                            {
+                                return knownBinary;
+                            }
                             return AnalyzeBinary(
                                 binary.Operator,
                                 binary.Left,

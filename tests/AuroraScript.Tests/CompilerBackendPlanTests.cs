@@ -406,6 +406,105 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
+    public void TypedFunctionCodeKeepsProvenIntegerLocalsThroughSafeIncrements()
+    {
+        var root = Path.GetTempPath();
+        var options = EngineOptions.Default
+            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var module = Parse(
+            """
+            @module(TEST);
+            export func run() {
+                var n = 1000000;
+                n++;
+                n--;
+                n += 15;
+                n -= 15;
+                ++n;
+                --n;
+                var divisor = 7;
+                var k = n % divisor;
+                var wide = 3000000000;
+                var wideK = wide % divisor;
+                var negative = -14;
+                var signedZero = negative % divisor;
+                var zero = 0;
+                var invalid = n % zero;
+                var v = n << 5;
+                var m = n >> 5;
+                var max = 2147483647;
+                var overflow = max + 1;
+                max += 1;
+            }
+            """,
+            root);
+        var session = new BackendCompiler(new DynamicBuilder(options), options)
+            .CreateModulePlans([module]);
+        var modulePlan = Assert.Single(session.Modules);
+        var run = Assert.Single(modulePlan.Functions, function => function.Name == "run");
+        var code = TypedModuleCode.Build(modulePlan).GetGeneric(run.Id);
+
+        FlowValueType LocalType(string name)
+        {
+            return code.GetLocalType(
+                run.LocalSlots.Single(slot => slot.Name == name).Id);
+        }
+
+        Assert.Equal(FlowValueType.Int32, LocalType("n"));
+        Assert.Equal(FlowValueType.Int32, LocalType("k"));
+        Assert.Equal(FlowValueType.Int64, LocalType("wideK"));
+        Assert.Equal(FlowValueType.Number, LocalType("signedZero"));
+        Assert.Equal(FlowValueType.Number, LocalType("invalid"));
+        Assert.Equal(FlowValueType.Int32, LocalType("v"));
+        Assert.Equal(FlowValueType.Int32, LocalType("m"));
+        Assert.Equal(FlowValueType.Number, LocalType("overflow"));
+        Assert.Equal(FlowValueType.Number, LocalType("max"));
+    }
+
+    [Fact]
+    public void TypedFunctionCodeHonorsNumericLiteralSuffixesAndHexIntegers()
+    {
+        var root = Path.GetTempPath();
+        var options = EngineOptions.Default
+            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var module = Parse(
+            """
+            @module(TEST);
+            export func run() {
+                var i = 100000;
+                var hex = 0xFFFF;
+                var wide = 3000000000;
+                var d = 10000D;
+                var longValue = 1L;
+                var real = 123.0;
+                var grouped = 123_456;
+                var fraction = 123_456.78;
+            }
+            """,
+            root);
+        var session = new BackendCompiler(new DynamicBuilder(options), options)
+            .CreateModulePlans([module]);
+        var modulePlan = Assert.Single(session.Modules);
+        var run = Assert.Single(modulePlan.Functions, function => function.Name == "run");
+        var code = TypedModuleCode.Build(modulePlan).GetGeneric(run.Id);
+
+        FlowValueType LocalType(string name)
+        {
+            return code.GetLocalType(
+                run.LocalSlots.Single(slot => slot.Name == name).Id);
+        }
+
+        Assert.Equal(FlowValueType.Int32, LocalType("i"));
+        Assert.Equal(FlowValueType.Int32, LocalType("hex"));
+        Assert.Equal(FlowValueType.Int64, LocalType("wide"));
+        Assert.Equal(FlowValueType.Number, LocalType("d"));
+        Assert.Equal(FlowValueType.Int64, LocalType("longValue"));
+        Assert.Equal(FlowValueType.Number, LocalType("real"));
+        Assert.Equal(FlowValueType.Int32, LocalType("grouped"));
+        Assert.Equal(FlowValueType.Number, LocalType("fraction"));
+    }
+
+    [Fact]
     public void TypedModuleCodeKeepsGuardedStringCodesAndWhileCountersAsInt32()
     {
         var root = Path.GetTempPath();

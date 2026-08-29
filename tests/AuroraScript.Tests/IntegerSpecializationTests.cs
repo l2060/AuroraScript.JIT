@@ -150,6 +150,43 @@ public sealed class IntegerSpecializationTests
 #if NET9_0_OR_GREATER
     [InlineData(CompilationMode.Persistence)]
 #endif
+    public async Task IntegerRemainderUsesInferredRangesWithoutChangingNumberSemantics(
+        CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func run() {
+                var value = 1000000;
+                value++;
+                value--;
+                var divisor = 7;
+                var narrow = value % divisor;
+
+                var wide = 3000000000;
+                var wideRemainder = wide % divisor;
+
+                var negative = -14;
+                var signedZero = negative % divisor;
+                var zero = 0;
+                var invalid = value % zero;
+                return [narrow, wideRemainder, 1 / signedZero, invalid];
+            }
+            """,
+            mode);
+
+        ScriptAssert.Equal(
+            new object?[] { 1, 4L, double.NegativeInfinity, double.NaN },
+            TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+    [InlineData(CompilationMode.OnlyRun)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
     public async Task ExactLargeIntegersUseInt64WhileFractionsUseDouble(CompilationMode mode)
     {
         using var workspace = new TestWorkspace();

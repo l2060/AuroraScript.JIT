@@ -145,7 +145,7 @@ a = { b: 1234 };
 
 Literals:
 
-- number: `1`, `1.5`, hexadecimal numeric literals are supported by the lexer
+- number: `1`, `1.5`, `10000D` (force `Number`), `1L` (force `Int64`), `100000` (inferred `Int32` when it fits), hexadecimal `0xFFFF` (integer by default)
 - string: `'text'`, `"text"`
 - template string: `` `value=${expr}` ``
 - regex literal

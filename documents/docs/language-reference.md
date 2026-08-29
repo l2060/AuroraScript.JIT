@@ -142,7 +142,8 @@ The source-level primitive and collection forms are:
 
 | Type | Script spelling and construction | Notes |
 | --- | --- | --- |
-| `number` | `42`, `3.14`, `6e2`, `0xFFF`, `100_00` | One double-precision numeric type. Decimal separators must be between digits; hexadecimal separators are not supported. |
+| `number` | `42`, `3.14`, `6e2`, `10000D`, `100_00` | Double-precision. Unsuffixed integers that fit `Int32` stay `Int32`; wider exact integers stay `Int64`. Suffix `D`/`d` forces `Number`. |
+| integer hex | `0xFFFF`, `0x100000000L` | Hexadecimal literals default to integer (`Int32` if they fit, otherwise `Int64`). Suffix `L`/`l` forces `Int64`; `I`/`i` forces `Int32`. `D` is a hex digit, so it is not a hex suffix. |
 | `string` | `'text'`, `"text"`, `` `value=${expr}` ``, `|> line` | Immutable UTF-16 text; templates interpolate expressions and block strings preserve physical newlines. |
 | `boolean` | `true`, `false` | Boolean value. |
 | `null` | `null` | Missing value. |

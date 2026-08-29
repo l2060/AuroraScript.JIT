@@ -2276,7 +2276,10 @@ namespace AuroraScript.Compiler.Analyzer
             // NumberToken.NumberValue is a double and may already have rounded a
             // valid 64-bit literal.  Only wide values need their original
             // spelling to be parsed exactly.
-            return TryParseExactTDocInt64(token.Value.AsSpan(), negative, out result);
+            return TryParseExactTDocInt64(
+                NumericLiteralFacts.WithoutSuffix(token.Value.AsSpan()),
+                negative,
+                out result);
         }
 
         private static bool TryGetExactTDocUInt64(Expression value, out ulong result)
@@ -2295,7 +2298,9 @@ namespace AuroraScript.Compiler.Analyzer
                 return true;
             }
 
-            return TryParseExactTDocUInt64(token.Value.AsSpan(), out result);
+            return TryParseExactTDocUInt64(
+                NumericLiteralFacts.WithoutSuffix(token.Value.AsSpan()),
+                out result);
         }
 
         private static bool TryParseExactTDocInt64(

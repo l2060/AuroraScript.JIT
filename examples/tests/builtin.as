@@ -36,3 +36,17 @@ func testNative() {
 	vec.x =10086;
 	return vec;
 }
+
+
+func testNativeScript(){
+	var n = 1000000;
+	n++;
+	n--;
+	n+= 15;
+	n-=15;
+	++n;
+	--n;
+	var k = n % 5;
+	var v = n << 5;
+	var m = n >> 5;
+}

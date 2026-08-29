@@ -3969,22 +3969,26 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return StackValueKind.Datum;
             }
 
-            if ((op == Operator.Add || op == Operator.Subtract || op == Operator.Multiply) &&
+            if ((op == Operator.Add || op == Operator.Subtract ||
+                    op == Operator.Multiply || op == Operator.Modulo) &&
                 _code.GetExpressionType(binary) == FlowValueType.Int32)
             {
                 EmitInt32Value(binary.Left);
                 EmitInt32Value(binary.Right);
                 _il.Emit(op == Operator.Add ? OpCodes.Add :
-                    op == Operator.Subtract ? OpCodes.Sub : OpCodes.Mul);
+                    op == Operator.Subtract ? OpCodes.Sub :
+                    op == Operator.Multiply ? OpCodes.Mul : OpCodes.Rem);
                 return StackValueKind.Int32;
             }
-            if ((op == Operator.Add || op == Operator.Subtract || op == Operator.Multiply) &&
+            if ((op == Operator.Add || op == Operator.Subtract ||
+                    op == Operator.Multiply || op == Operator.Modulo) &&
                 _code.GetExpressionType(binary) == FlowValueType.Int64)
             {
                 EmitInt64Value(binary.Left);
                 EmitInt64Value(binary.Right);
                 _il.Emit(op == Operator.Add ? OpCodes.Add :
-                    op == Operator.Subtract ? OpCodes.Sub : OpCodes.Mul);
+                    op == Operator.Subtract ? OpCodes.Sub :
+                    op == Operator.Multiply ? OpCodes.Mul : OpCodes.Rem);
                 return StackValueKind.Int64;
             }
 
@@ -4907,12 +4911,14 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitInt32Binary(Operator op, Expression left, Expression right)
         {
-            if (op == Operator.Add || op == Operator.Subtract || op == Operator.Multiply)
+            if (op == Operator.Add || op == Operator.Subtract ||
+                op == Operator.Multiply || op == Operator.Modulo)
             {
                 EmitInt32Value(left);
                 EmitInt32Value(right);
                 _il.Emit(op == Operator.Add ? OpCodes.Add :
-                    op == Operator.Subtract ? OpCodes.Sub : OpCodes.Mul);
+                    op == Operator.Subtract ? OpCodes.Sub :
+                    op == Operator.Multiply ? OpCodes.Mul : OpCodes.Rem);
                 return;
             }
             if (op == Operator.BitwiseAnd || op == Operator.BitwiseOr ||
@@ -4932,14 +4938,16 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitInt64Binary(Operator op, Expression left, Expression right)
         {
-            if (op != Operator.Add && op != Operator.Subtract && op != Operator.Multiply)
+            if (op != Operator.Add && op != Operator.Subtract &&
+                op != Operator.Multiply && op != Operator.Modulo)
             {
                 throw new NotSupportedException("Native Int64 compound operator.");
             }
             EmitInt64Value(left);
             EmitInt64Value(right);
             _il.Emit(op == Operator.Add ? OpCodes.Add :
-                op == Operator.Subtract ? OpCodes.Sub : OpCodes.Mul);
+                op == Operator.Subtract ? OpCodes.Sub :
+                op == Operator.Multiply ? OpCodes.Mul : OpCodes.Rem);
         }
 
         private void EmitStoreBoundName(BoundName binding, LocalBuilder value)

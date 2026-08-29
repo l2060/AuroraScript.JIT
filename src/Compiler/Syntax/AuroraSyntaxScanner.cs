@@ -1,4 +1,5 @@
 using AuroraScript.Common;
+using AuroraScript.Tokens;
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
@@ -260,6 +261,11 @@ namespace AuroraScript.Compiler.Syntax
                 return false;
             }
 
+            if (NumericLiteralFacts.TryConsumeSuffix(span, i, hexadecimal: true, out _))
+            {
+                i++;
+            }
+
             result = ScanResult.Token(SyntaxTokenKind.Number, i);
             return true;
         }
@@ -310,6 +316,12 @@ namespace AuroraScript.Compiler.Syntax
             {
                 result = default;
                 return false;
+            }
+
+            if (NumericLiteralFacts.TryConsumeSuffix(span, i, hexadecimal: false, out var suffix) &&
+                (suffix == NumericLiteralSuffix.Number || dot < 0))
+            {
+                i++;
             }
 
             result = ScanResult.Token(SyntaxTokenKind.Number, i);
