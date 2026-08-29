@@ -146,6 +146,12 @@ namespace AuroraScript.Compiler.Backend.Analysis
                         return TryEvaluateTemplateString(template, ref value);
                     case NameExpression name:
                         return TryEvaluateName(name, ref value);
+                    case GetPropertyExpression property:
+                        return TryResolvePropertyConstant(
+                            _session,
+                            _modulePlan,
+                            property,
+                            out value);
                     case UnaryExpression unary:
                         return TryEvaluateUnary(unary, ref value);
                     case BinaryExpression binary:
@@ -336,6 +342,148 @@ namespace AuroraScript.Compiler.Backend.Analysis
 
                 return TryEvaluate(rightExpression, ref value);
             }
+        }
+
+        public static bool TryResolvePropertyConstant(
+            CompileSession session,
+            ModulePlan modulePlan,
+            GetPropertyExpression property,
+            out ScriptDatum value)
+        {
+            value = default;
+            if (property?.Property is not NameExpression member ||
+                string.IsNullOrEmpty(member.Identifier?.Value))
+            {
+                return false;
+            }
+
+            if (property.Object is NameExpression owner)
+            {
+                var ownerName = owner.Identifier?.Value;
+                if (TryResolveEnumMember(
+                        session,
+                        modulePlan,
+                        ownerName,
+                        member.Identifier.Value,
+                        requireExport: false,
+                        out value))
+                {
+                    return true;
+                }
+
+                if (TryGetImportedModule(
+                        session,
+                        modulePlan,
+                        ownerName,
+                        out var imported) &&
+                    imported.TryGetSymbol(member.Identifier.Value, out var symbolId))
+                {
+                    var symbol = session.Symbols[symbolId];
+                    return symbol.Module.Equals(imported.Id) &&
+                        symbol.Kind == BackendSymbolKind.ModuleProperty &&
+                        symbol.HasFlag(BackendSymbolFlags.Const) &&
+                        symbol.HasFlag(BackendSymbolFlags.Exported) &&
+                        imported.TryGetInlineConstant(symbolId, out value);
+                }
+                return false;
+            }
+
+            if (property.Object is GetPropertyExpression
+                {
+                    Object: NameExpression alias,
+                    Property: NameExpression enumeration
+                } &&
+                TryGetImportedModule(
+                    session,
+                    modulePlan,
+                    alias.Identifier?.Value,
+                    out var enumModule))
+            {
+                return TryResolveEnumMember(
+                    session,
+                    enumModule,
+                    enumeration.Identifier?.Value,
+                    member.Identifier.Value,
+                    requireExport: true,
+                    out value);
+            }
+
+            return false;
+        }
+
+        private static bool TryResolveEnumMember(
+            CompileSession session,
+            ModulePlan modulePlan,
+            string enumName,
+            string memberName,
+            bool requireExport,
+            out ScriptDatum value)
+        {
+            value = default;
+            if (string.IsNullOrEmpty(enumName) ||
+                !modulePlan.TryGetSymbol(enumName, out var symbolId))
+            {
+                return false;
+            }
+
+            var symbol = session.Symbols[symbolId];
+            if (!symbol.Module.Equals(modulePlan.Id) ||
+                symbol.Kind != BackendSymbolKind.Enum ||
+                requireExport && !symbol.HasFlag(BackendSymbolFlags.Exported) ||
+                symbol.Declaration is not EnumDeclaration declaration)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < declaration.Elements.Count; i++)
+            {
+                var element = declaration.Elements[i];
+                if (StringComparer.Ordinal.Equals(element.Name?.Value, memberName))
+                {
+                    value = ScriptDatum.FromNumber(element.Value);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static bool TryGetImportedModule(
+            CompileSession session,
+            ModulePlan modulePlan,
+            string alias,
+            out ModulePlan imported)
+        {
+            imported = null;
+            if (string.IsNullOrEmpty(alias))
+            {
+                return false;
+            }
+
+            ImportDeclaration import = null;
+            for (var i = 0; i < modulePlan.Declaration.Imports.Count; i++)
+            {
+                var candidate = modulePlan.Declaration.Imports[i];
+                if (!candidate.Include &&
+                    StringComparer.Ordinal.Equals(candidate.Name?.Value, alias))
+                {
+                    import = candidate;
+                    break;
+                }
+            }
+            if (import?.Module == null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < session.Modules.Length; i++)
+            {
+                if (ReferenceEquals(session.Modules[i].Declaration, import.Module))
+                {
+                    imported = session.Modules[i];
+                    return true;
+                }
+            }
+            return false;
         }
     }
 }

@@ -23,6 +23,38 @@ public sealed class LanguageFeatureExecutionTests
     }
 
     [Fact]
+    public async Task ImportedConstAndEnumMembersAreCompileTimeValues()
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource(
+            "constant.as",
+            """
+            @module(constant);
+            export const BASE = 10;
+            export const COMPLEX = BASE * 3 + 5;
+            export enum Mode { Zero, Four = 4, Five }
+            """);
+        workspace.WriteSource(
+            "main.as",
+            """
+            @module(TEST);
+            import constant from 'constant';
+            export func run() {
+                var value = constant.COMPLEX + 666;
+                return [value, constant.Mode.Four, constant.Mode.Five];
+            }
+            """);
+        var engine = workspace.CreateEngine(enableModuleConstInlining: true);
+
+        await engine.BuildAsync(["main.as"]);
+        var domain = engine.CreateDomain();
+
+        ScriptAssert.Equal(
+            new object?[] { 701, 4, 5 },
+            TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
     public async Task ExpressionAndBlockLambdasCaptureArguments()
     {
         using var workspace = new TestWorkspace();

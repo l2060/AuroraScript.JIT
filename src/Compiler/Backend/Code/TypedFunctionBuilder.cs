@@ -1033,7 +1033,11 @@ namespace AuroraScript.Compiler.Backend.Code
                         break;
                     case GetPropertyExpression property:
                         var propertyObjectType = AnalyzeExpression(property.Object);
-                        type = (FlowValueTypeFacts.IsPackedArray(propertyObjectType) ||
+                        type = _function.CompileTimeProperties.TryGetValue(
+                                property,
+                                out var propertyConstant)
+                            ? FromDatum(propertyConstant)
+                            : (FlowValueTypeFacts.IsPackedArray(propertyObjectType) ||
                                 propertyObjectType == FlowValueType.Array ||
                                 propertyObjectType == FlowValueType.String) &&
                             IsStaticProperty(property.Property, "length")
@@ -3671,6 +3675,14 @@ namespace AuroraScript.Compiler.Backend.Code
 
             private bool TryGetIntegerRange(Expression expression, out long min, out long max)
             {
+                if (expression is GetPropertyExpression property &&
+                    _function.CompileTimeProperties.TryGetValue(property, out var constant) &&
+                    constant.Kind == ValueKind.Number &&
+                    IsExactInt64(constant.Number))
+                {
+                    min = max = (long)constant.Number;
+                    return true;
+                }
                 if (TryEvaluateInt64Constant(expression, out var exact))
                 {
                     min = max = exact;
@@ -4735,7 +4747,9 @@ namespace AuroraScript.Compiler.Backend.Code
                     ValueKind.Boolean => FlowValueType.Boolean,
                     ValueKind.Number => IsExactInt32(datum.Number)
                         ? FlowValueType.Int32
-                        : FlowValueType.Number,
+                        : IsExactInt64(datum.Number)
+                            ? FlowValueType.Int64
+                            : FlowValueType.Number,
                     ValueKind.String => FlowValueType.String,
                     _ => datum.Reference switch
                     {

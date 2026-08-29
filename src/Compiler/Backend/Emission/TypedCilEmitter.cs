@@ -1853,6 +1853,14 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private StackValueKind EmitGetProperty(GetPropertyExpression expression)
         {
+            if (_code.Function.CompileTimeProperties.TryGetValue(
+                    expression,
+                    out var constant))
+            {
+                return EmitConstant(
+                    constant,
+                    _code.GetExpressionType(expression));
+            }
             if (!TryGetStaticPropertyName(expression.Property, out var name))
             {
                 throw new NotSupportedException("Dynamic dot-property name.");
@@ -7258,6 +7266,10 @@ namespace AuroraScript.Compiler.Backend.Emission
                     case LambdaExpression lambda:
                         return allowRuntimeBoundary && lambda.Function?.Body != null;
                     case GetPropertyExpression property:
+                        if (code.Function.CompileTimeProperties.ContainsKey(property))
+                        {
+                            return true;
+                        }
                         var propertySupported = TryGetStaticPropertyName(property.Property, out var propertyName) &&
                             CanEmitExpression(code, property.Object, canDirectCall, allowRuntimeBoundary);
                         return propertySupported &&

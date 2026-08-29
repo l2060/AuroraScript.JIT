@@ -255,9 +255,40 @@ namespace AuroraScript.Compiler.Backend.Binding
                 {
                     TryBindImportedNativeCall(call);
                 }
+                if (node is GetPropertyExpression property)
+                {
+                    TryBindCompileTimeProperty(property);
+                }
 
                 var visitor = new ImportedNativeCallVisitor(this);
                 AstTraversal.VisitChildren(node, ref visitor);
+            }
+
+            private void TryBindCompileTimeProperty(GetPropertyExpression property)
+            {
+                if (!_session.Options.Optimization.EnableModuleConstInlining)
+                {
+                    return;
+                }
+                var root = property.Object;
+                while (root is GetPropertyExpression parent)
+                {
+                    root = parent.Object;
+                }
+                if (root is NameExpression owner &&
+                    HasLocal(owner.Identifier?.Value))
+                {
+                    return;
+                }
+
+                if (ModuleConstInliningAnalyzer.TryResolvePropertyConstant(
+                        _session,
+                        _modulePlan,
+                        property,
+                        out var value))
+                {
+                    _function.CompileTimeProperties[property] = value;
+                }
             }
 
             private void TryBindImportedNativeCall(
@@ -321,6 +352,10 @@ namespace AuroraScript.Compiler.Backend.Binding
 
             private bool HasLocal(string name)
             {
+                if (string.IsNullOrEmpty(name))
+                {
+                    return false;
+                }
                 for (var i = 0; i < _function.LocalSlots.Length; i++)
                 {
                     if (string.Equals(

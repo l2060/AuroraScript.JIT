@@ -619,7 +619,7 @@ namespace AuroraScript
 
         /// <summary>
         /// Gets a value indicating whether the compiler may inline proven module-level
-        /// const values at same-module use sites. Only side-effect-free literal expressions are eligible.
+        /// const and enum values. Only side-effect-free primitive expressions are eligible.
         /// </summary>
         public bool EnableModuleConstInlining { get; init; }
 

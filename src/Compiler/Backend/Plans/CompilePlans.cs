@@ -132,6 +132,9 @@ namespace AuroraScript.Compiler.Backend.Plans
             ImportedNativeCalls =
                 new Dictionary<FunctionCallExpression, FunctionPlan>(
                     ReferenceEqualityComparer.Instance);
+            CompileTimeProperties =
+                new Dictionary<GetPropertyExpression, ScriptDatum>(
+                    ReferenceEqualityComparer.Instance);
         }
 
         public FunctionId Id { get; }
@@ -158,6 +161,8 @@ namespace AuroraScript.Compiler.Backend.Plans
         public int ParentLocalScopeId { get; set; }
         public Dictionary<FunctionCallExpression, FunctionPlan>
             ImportedNativeCalls { get; }
+        public Dictionary<GetPropertyExpression, ScriptDatum>
+            CompileTimeProperties { get; }
         public bool IsLambda => Declaration?.Flags == FunctionFlags.Lambda;
         public bool IsNativeDeclared => Declaration?.IsNative == true;
         public MethodInfo NativeEntryMethod { get; set; }

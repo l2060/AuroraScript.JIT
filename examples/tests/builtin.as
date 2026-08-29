@@ -2,6 +2,8 @@
 
 import fs from 'fs';
 import http from 'http';
+import constant from 'constant';
+
 
 func testFileSystem() {
 	var text = (fs.readText('config.tdoc'));
@@ -10,7 +12,7 @@ func testFileSystem() {
 
 func testHttpGet() {
 
-	http.getAsync("https://www.baidu.com", null, (error, res) => {
+	http.getAsync("https://www.baidu.com", {}, (error, res) => {
 			console.log(error, res.status);
 		});
 }
@@ -32,13 +34,15 @@ func testNative() {
 	var vec = new Vec2(1000,2000);
 	var vx = vec.x;
 	vec.x++;
-	vec.x+=65;
-	vec.x =10086;
+	vec.x+=65L;
+	vec.x =10086L;
 	return vec;
 }
 
 
 func testNativeScript(){
+	var t = constant.COMPLEX + 666;
+
 	var n = 1000000;
 	n++;
 	n--;

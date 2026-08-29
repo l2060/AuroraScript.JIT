@@ -17,8 +17,11 @@ const prefix = "item";
 export const label = `${prefix}:42`;
 ```
 
-When module const inlining is enabled, eligible module-level constants can be folded into use sites.
-This reduces runtime reads and can remove repeated conversions.
+When module const inlining is enabled, eligible primitive `const` values and enum
+members are folded at same-module and imported-module use sites. For example,
+`constants.LIMIT + 1` loads the constant directly instead of resolving the module
+and reading a property at runtime. This also preserves the inferred primitive type
+through subsequent arithmetic.
 
 Do not assign to `const`. The compiler rejects `=`, `+=`, `-=`, `*=`, `/=`, `%=`, `++`, and `--` against constants.
 

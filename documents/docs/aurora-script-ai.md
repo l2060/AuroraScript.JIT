@@ -288,7 +288,8 @@ import http from "http";
 ## Performance Rules
 
 - Prefer `const` for compile-time constants.
-- Enable module const inlining for modules with stable exported constants.
+- When module const inlining is enabled, primitive module constants and enum members
+  can be folded through import aliases without runtime module/property reads.
 - Use normal template strings for small or medium formatting; the compiler already selects concat or builder paths.
 - Use `StringBuffer` for long loops or many incremental appends.
 - Use `typeof value == "Int8Array"` (or the matching constructor name) to distinguish packed arrays; they are not `"object"`.

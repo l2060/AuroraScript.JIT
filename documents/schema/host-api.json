@@ -386,7 +386,8 @@
         },
         "EnableModuleConstInlining": {
           "kind": "property",
-          "signature": "bool EnableModuleConstInlining"
+          "signature": "bool EnableModuleConstInlining",
+          "summary": "Folds primitive const and enum reads, including through import aliases."
         },
         "StackTrace": {
           "kind": "property",
