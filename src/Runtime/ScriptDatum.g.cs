@@ -245,6 +245,7 @@ namespace AuroraScript.Runtime
             return false;
         }
 
+
         /// <summary>
         /// Creates a copy of the datum.
         /// </summary>

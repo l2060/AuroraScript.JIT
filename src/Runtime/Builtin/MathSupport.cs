@@ -2,7 +2,7 @@
 using AuroraScript.Runtime.Types;
 using System;
 
-namespace AuroraScript.Runtime.Extensions
+namespace AuroraScript.Runtime.Builtin
 {
     /// <summary>
     /// Script Math global implemented through generated native exports.

@@ -1,6 +1,5 @@
 using AuroraScript.Core;
 using AuroraScript.Runtime;
-using AuroraScript.Runtime.Package;
 using AuroraScript.Runtime.Types;
 using AuroraScript.Tests.Infrastructure;
 using System;

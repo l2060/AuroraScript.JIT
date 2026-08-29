@@ -81,16 +81,14 @@
 
 	<ItemGroup>
 		<Compile Remove="AuroraScript.Hosting/**" />
-		<Compile Remove="AuroraScript.Hosting.Generators/**/*.cs" />
 		<None Remove="AuroraScript.Hosting/**" />
-		<None Remove="AuroraScript.Hosting.Generators/**" />
 		<Content Include="icon.ico" />
 		<InternalsVisibleTo Include="AuroraScript.LanguageServices" />
 		<InternalsVisibleTo Include="AuroraScript.LanguageServices.Tests" />
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="AuroraScript.Hosting.Generators\AuroraScript.Hosting.Generators.csproj">
+		<ProjectReference Include="..\language-tools\AuroraScript.Hosting.Generators\AuroraScript.Hosting.Generators.csproj">
 			<OutputItemType>Analyzer</OutputItemType>
 			<ReferenceOutputAssembly>false</ReferenceOutputAssembly>
 			<PrivateAssets>all</PrivateAssets>
@@ -103,7 +101,7 @@
 
 	<Target Name="_PackHostingGeneratorAnalyzer" DependsOnTargets="ResolveProjectReferences" Condition="$([MSBuild]::ValueOrDefault('$(TargetFrameworks)', '$(TargetFramework)').StartsWith('$(TargetFramework)'))">
 		<MSBuild
-			Projects="$(MSBuildThisFileDirectory)AuroraScript.Hosting.Generators\AuroraScript.Hosting.Generators.csproj"
+			Projects="$(MSBuildThisFileDirectory)..\language-tools\AuroraScript.Hosting.Generators\AuroraScript.Hosting.Generators.csproj"
 			Targets="GetTargetPath"
 			Properties="Configuration=$(Configuration);TargetFramework=netstandard2.0">
 			<Output TaskParameter="TargetOutputs" ItemName="_HostingGeneratorDll" />

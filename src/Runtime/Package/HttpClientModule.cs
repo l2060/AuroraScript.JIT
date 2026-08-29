@@ -238,6 +238,7 @@ namespace AuroraScript.Runtime.Package
             {
                 contentType = null;
             }
+            var responseHeaders = ReadBoolean(options, "responseHeaders", false);
 
             return new HttpRequestSpec(
                 apiName,
@@ -246,6 +247,7 @@ namespace AuroraScript.Runtime.Package
                 headers,
                 body,
                 contentType,
+                responseHeaders,
                 timeoutMilliseconds);
         }
 
@@ -366,6 +368,22 @@ namespace AuroraScript.Runtime.Package
 
             return (int)timeout.Number;
         }
+
+
+        private static Boolean ReadBoolean(ScriptObject options, string nameKey, bool defValue = false)
+        {
+            if (options == null)
+            {
+                return defValue;
+            }
+            var timeout = options.GetPropertyDatum(null, nameKey);
+            if (timeout.Kind == ValueKind.Null)
+            {
+                return defValue;
+            }
+            return ScriptDatum.IsTrue(timeout);
+        }
+
 
         private static string ReadOptionalString(ScriptObject options, string name, string apiName)
         {
@@ -588,12 +606,9 @@ namespace AuroraScript.Runtime.Package
             return request;
         }
 
-        private static ScriptObject CreateResponse(
-            HttpRequestSpec spec,
-            HttpResponseMessage response,
-            byte[] bytes)
+        private static ScriptObject CreateResponse(HttpRequestSpec spec, HttpResponseMessage response, byte[] bytes)
         {
-            var headers = CreateHeaders(response);
+
             var text = DecodeBody(bytes, response.Content.Headers);
             var result = new ScriptObject();
             result.Define("status", ScriptDatum.FromNumber((int)response.StatusCode), writeable: false, enumerable: true);
@@ -604,14 +619,14 @@ namespace AuroraScript.Runtime.Package
                 ScriptDatum.FromString(response.RequestMessage?.RequestUri?.ToString() ?? spec.Uri.ToString()),
                 writeable: false,
                 enumerable: true);
-            result.Define("headers", ScriptDatum.FromObject(headers), writeable: false, enumerable: true);
+            if (spec.ResponseHeader)
+            {
+                var headers = CreateHeaders(response);
+                result.Define("headers", ScriptDatum.FromObject(headers), writeable: false, enumerable: true);
+            }
             result.Define("body", ScriptDatum.FromString(text), writeable: false, enumerable: true);
             result.Define("text", ScriptDatum.FromString(text), writeable: false, enumerable: true);
-            result.Define(
-                "bytes",
-                ScriptDatum.FromObject(new ScriptUInt8Array(bytes)),
-                writeable: false,
-                enumerable: true);
+            result.Define("bytes", ScriptDatum.FromObject(new ScriptUInt8Array(bytes)), writeable: false, enumerable: true);
             result.Frozen();
             return result;
         }
@@ -759,6 +774,7 @@ namespace AuroraScript.Runtime.Package
                 List<RequestHeader> headers,
                 byte[] body,
                 string contentType,
+                bool responseHeader,
                 int? timeoutMilliseconds)
             {
                 ApiName = apiName;
@@ -767,6 +783,7 @@ namespace AuroraScript.Runtime.Package
                 Headers = headers;
                 Body = body;
                 ContentType = contentType;
+                ResponseHeader = responseHeader;
                 TimeoutMilliseconds = timeoutMilliseconds;
             }
 
@@ -783,6 +800,8 @@ namespace AuroraScript.Runtime.Package
             public string ContentType { get; }
 
             public int? TimeoutMilliseconds { get; }
+
+            public bool ResponseHeader { get; }
         }
 
         private readonly struct RequestHeader

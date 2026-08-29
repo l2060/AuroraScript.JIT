@@ -2,7 +2,7 @@ using AuroraScript.Hosting;
 using AuroraScript.Runtime.Serialization;
 using AuroraScript.Runtime.Types;
 
-namespace AuroraScript.Runtime.Extensions
+namespace AuroraScript.Runtime.Builtin
 {
     /// <summary>
     /// Exposes TDoc serialization through generated native exports.

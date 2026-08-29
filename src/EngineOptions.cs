@@ -1,11 +1,11 @@
 ﻿using AuroraScript.Runtime.Serialization;
-using AuroraScript.Runtime.Package;
 using AuroraScript.Source;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Reflection;
 using System.IO;
+using AuroraScript.Core;
 
 namespace AuroraScript
 {

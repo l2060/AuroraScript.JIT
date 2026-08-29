@@ -32,6 +32,7 @@ func testNative() {
 	var vec = new Vec2(1000,2000);
 	var vx = vec.x;
 	vec.x++;
+	vec.x+=65;
 	vec.x =10086;
-
+	return vec;
 }

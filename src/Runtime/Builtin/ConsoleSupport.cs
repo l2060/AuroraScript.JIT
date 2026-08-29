@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
 
-namespace AuroraScript.Runtime.Extensions
+namespace AuroraScript.Runtime.Builtin
 {
     internal class ConsoleSupport : ScriptObject
     {

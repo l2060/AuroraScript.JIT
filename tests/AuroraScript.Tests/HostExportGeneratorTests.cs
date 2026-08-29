@@ -18,7 +18,7 @@ public sealed class HostExportGeneratorTests
     [Fact]
     public void MathSupportExportsAreGeneratedAtBuildTime()
     {
-        var type = typeof(AuroraScript.Runtime.Extensions.MathSupport);
+        var type = typeof(AuroraScript.Runtime.Builtin.MathSupport);
         var constructor = type.GetConstructor(Type.EmptyTypes);
         var abs = type.GetMethod("ABS", BindingFlags.Public | BindingFlags.Static);
         var pow = type.GetMethod("POW", BindingFlags.Public | BindingFlags.Static);
@@ -201,7 +201,7 @@ public sealed class HostExportGeneratorTests
         {
             var member = reader.GetMemberReference(handle);
             if (reader.GetString(member.Name) == nameof(
-                    AuroraScript.Runtime.Extensions.MathSupport.PI))
+                    AuroraScript.Runtime.Builtin.MathSupport.PI))
             {
                 fieldToken = MetadataTokens.GetToken(handle);
                 break;

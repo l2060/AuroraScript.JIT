@@ -1,10 +1,11 @@
 using AuroraScript.Compiler;
-using AuroraScript.Core;
+using AuroraScript.Runtime;
+using AuroraScript.Runtime.Package;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 
-namespace AuroraScript.Runtime.Package
+namespace AuroraScript.Core
 {
     /// <summary>
     /// Describes a native module that may be enabled for an <see cref="AuroraEngine"/>.

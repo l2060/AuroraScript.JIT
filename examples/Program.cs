@@ -1,7 +1,6 @@
 using AuroraScript;
 using AuroraScript.Core;
 using AuroraScript.Runtime;
-using AuroraScript.Runtime.Package;
 using AuroraScript.Runtime.Serialization;
 using AuroraScript.Runtime.Types;
 using AuroraScript.Source;
@@ -36,7 +35,7 @@ namespace Examples
             compiler.SourceResolver = ScriptSources.Composite(memorySource, fileSystemSource);
             compiler.MaxDegreeOfParallelism = 0;
             compiler.ExtName = "as";
-            compiler.Mode = CompilationMode.Dynamic;
+            compiler.Mode = CompilationMode.Persistence;
         })
         .WithOutput(output =>
         {

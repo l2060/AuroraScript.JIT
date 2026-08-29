@@ -1,8 +1,8 @@
-using AuroraScript.Core;
+using AuroraScript.Runtime;
 using System;
 using System.Collections.Generic;
 
-namespace AuroraScript.Runtime.Package
+namespace AuroraScript.Core
 {
     /// <summary>
     /// Immutable engine-scoped index shared by source resolution and runtime globals.
