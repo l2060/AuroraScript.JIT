@@ -1,7 +1,15 @@
 @module(ASTAR);
+import fs from 'fs';
+
 
 export const ASTAR_SQRT2 = 1.4142135623730951;
 export const ASTAR_MAX_SEARCH_ID = 2147483646;
+
+export type Map {
+	Number width;
+	Number height;
+	Int8Array data;
+}
 
 export type Point {
 	Number x;
@@ -107,12 +115,12 @@ func astarClearSearchState(AStar astar) {
 	}
 }
 
-export func createAStar(Number width, Number height, Int8Array walkable, costs) AStar {
-	if (width <= 0 || height <= 0) {
+export func createAStar(Map map, costs) AStar {
+
+	if (map.width <= 0 || map.height <= 0) {
 		throw "width and height must be positive";
 	}
-
-	var size = width * height;
+	var size = map.width * map.height;
 	var walk = new Int8Array(size);
 	var moveCosts = new Float64Array(size);
 	var gScore = new Float64Array(size);
@@ -124,6 +132,7 @@ export func createAStar(Number width, Number height, Int8Array walkable, costs) 
 	var heapTies = new Float64Array(size);
 	var uniformCost = costs == null;
 	var minCost = 1;
+	var walkable = map.data;
 	if (walkable == null) {
 		walk.fill(1);
 	} else {
@@ -140,9 +149,8 @@ export func createAStar(Number width, Number height, Int8Array walkable, costs) 
 		moveCosts.fill(1);
 	} else {
 		minCost = Number.POSITIVE_INFINITY;
-		var costValues = costs as Float64Array;
 		for (var j = 0; j < size; j++) {
-			var cellCost = costValues[j];
+			var cellCost = costs[j];
 			if (cellCost <= 0) {
 				cellCost = 1;
 			}
@@ -154,8 +162,8 @@ export func createAStar(Number width, Number height, Int8Array walkable, costs) 
 	}
 
 	return {
-		width: width,
-		height: height,
+		width: map.width,
+		height: map.height,
 		size: size,
 		minCost: minCost,
 		uniformCost: uniformCost,
@@ -209,7 +217,7 @@ export func setWalkable(AStar astar, Number x, Number y, Boolean canWalk) Boolea
 	return true;
 }
 
-export  func setCost(AStar astar, Number x, Number y, Number cost) Boolean {
+export func setCost(AStar astar, Number x, Number y, Number cost) Boolean {
 	var index = toIndex(astar, x, y);
 	if (index < 0 || cost <= 0) {
 		return false;
@@ -626,7 +634,7 @@ const height = 1000;
 const blockRate = 0.28;
 const seed = 20250701;
 
-var map = [];
+var map = null;
 var astar = null;
 var pathBuffer = null;
 var startX = 0;
@@ -650,7 +658,7 @@ native func astarRand01(SeededRng rng) Number {
 	return(x % 1000000) / 1000000;
 }
 
-export func makeMap(Number w, Number h, Number rate, Number rngSeed) Int8Array {
+export func makeMap(Number w, Number h, Number rate, Number rngSeed) Map {
 	var n = w * h;
 	var _map = new Int8Array(n);
 	var rng = { seed: rngSeed } as SeededRng;
@@ -684,24 +692,19 @@ export func makeMap(Number w, Number h, Number rate, Number rngSeed) Int8Array {
 	_map[0] = ASTAR_WALKABLE;
 	_map[n - 1] = ASTAR_WALKABLE;
 
-	return _map;
+	return { width: w, height: h, data: _map  };
 }
 
 
 
 func init() {
 	console.log("generate map", width, height, "cells", width * height);
-
-	console.time("make 1000x1000 map");
-	map = makeMap(width, height, blockRate, seed);
-	console.timeEnd("make 1000x1000 map");
-
-	console.log("map generated, length =", map.length);
-
-	// fs.writeText('map.tdoc',TDoc.stringify(map,false));
-
+	// map = makeMap(width, height, blockRate, seed);
+	map = TDoc.parse( fs.readText('map.tdoc'));
+	console.log("map generated, length =", map.data.length);
+	// fs.writeText('map.tdoc', TDoc.stringify(map, false));
 	console.time("create astar");
-	astar = createAStar(width, height, map, null);
+	astar = createAStar(map as AStar, null);
 	pathBuffer = newPathBuffer(astar);
 	console.timeEnd("create astar");
 }

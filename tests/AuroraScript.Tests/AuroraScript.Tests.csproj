@@ -48,9 +48,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\AuroraScript.csproj" />
-    <ProjectReference Include="..\..\language-tools\AuroraScript.Hosting.Generators\AuroraScript.Hosting.Generators.csproj"
-                      OutputItemType="Analyzer"
-                      ReferenceOutputAssembly="true" />
+    <ProjectReference Include="..\..\language-tools\AuroraScript.Hosting.Generators\AuroraScript.Hosting.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="true" />
   </ItemGroup>
 
 </Project>

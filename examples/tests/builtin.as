@@ -26,29 +26,34 @@ func testNative() {
 
 
 	var v = Stats.PI;
-	var h = Stats.mean(c,d);
-	var h2 = Stats.mean(c,b);
+	var h = Stats.mean(c, d);
+	var h2 = Stats.mean(c, b);
 
-	var vh = Vec2.from(1234,1234);
+	var vh = Vec2.from(1234, 1234);
 
 
-	var vec = new Vec2(1000,2000);
+	var vec = new Vec2(1000, 2000);
 	var vx = vec.x;
 	vec.x++;
-	vec.x+=65L;
-	vec.x =10086L;
+	vec.x += 65L;
+	vec.x = 10086L;
+
+	var type = Vec2;
+	console.log(typeof type);
+
+
 	return vec;
 }
 
 
-func testNativeScript(){
+func testNativeScript() {
 	var t = constant.COMPLEX + 666;
 
 	var n = 1000000;
 	n++;
 	n--;
-	n+= 15;
-	n-=15;
+	n += 15;
+	n -= 15;
 	++n;
 	--n;
 	var k = n % 5;

@@ -3,9 +3,7 @@ using AuroraScript.Core;
 using AuroraScript.Source;
 using AuroraScript.Tokens;
 using System;
-using System.Buffers;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -116,7 +114,7 @@ namespace AuroraScript.Compiler.Analyzer
             {
                 this.chunkShift = GetShift(chunkSize);
                 this.chunkMask = chunkSize - 1;
-                this.chunks.Add(ArrayPool<LexToken>.Shared.Rent(chunkSize));
+                this.chunks.Add(new LexToken[chunkSize]);
             }
 
             public int Count => this.count;
@@ -132,7 +130,7 @@ namespace AuroraScript.Compiler.Analyzer
                 var chunkIndex = this.count >> this.chunkShift;
                 if (chunkIndex == this.chunks.Count)
                 {
-                    this.chunks.Add(ArrayPool<LexToken>.Shared.Rent(this.chunkMask + 1));
+                    this.chunks.Add(new LexToken[this.chunkMask + 1]);
                 }
 
                 this.chunks[chunkIndex][this.count & this.chunkMask] = token;
@@ -141,10 +139,10 @@ namespace AuroraScript.Compiler.Analyzer
 
             public void Dispose()
             {
-                for (int i = 0; i < this.chunks.Count; i++)
-                {
-                    ArrayPool<LexToken>.Shared.Return(this.chunks[i], clearArray: false);
-                }
+                //for (int i = 0; i < this.chunks.Count; i++)
+                //{
+                //    ArrayPool<LexToken>.Shared.Return(this.chunks[i], clearArray: false);
+                //}
                 this.chunks.Clear();
                 this.count = 0;
             }
