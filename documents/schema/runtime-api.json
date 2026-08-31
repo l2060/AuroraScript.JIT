@@ -1580,7 +1580,7 @@
       }
     },
     "console": {
-      "kind": "object",
+      "kind": "type",
       "members": {
         "log": {
           "kind": "method",
@@ -1667,7 +1667,7 @@
       }
     },
     "JSON": {
-      "kind": "object",
+      "kind": "type",
       "members": {
         "parse": {
           "kind": "method",
@@ -1721,7 +1721,7 @@
       }
     },
     "TDoc": {
-      "kind": "object",
+      "kind": "type",
       "members": {
         "parse": {
           "kind": "method",
@@ -1784,7 +1784,7 @@
       }
     },
     "Math": {
-      "kind": "object",
+      "kind": "type",
       "members": {
         "PI": {
           "kind": "constant",
@@ -2438,7 +2438,7 @@
       }
     },
     "HotPatch": {
-      "kind": "object",
+      "kind": "type",
       "members": {
         "replace": {
           "kind": "method",

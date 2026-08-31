@@ -28,7 +28,7 @@ namespace AuroraScript.Compiler.Backend.Code
         {
             return Build(
                 module,
-                new HostExportCatalog(Array.Empty<System.Reflection.Assembly>()));
+                new HostExportCatalog(Array.Empty<Type>()));
         }
 
         public static TypedModuleCode Build(

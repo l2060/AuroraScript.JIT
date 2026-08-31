@@ -19,7 +19,7 @@ namespace AuroraScript.Compiler.Backend
             Options = options ?? throw new ArgumentNullException(nameof(options));
             CancellationToken = cancellationToken;
             Capabilities = capabilities;
-            HostExports = new HostExportCatalog(options.Compiler.HostExportAssemblies);
+            HostExports = new HostExportCatalog(options.Compiler.NativeTypes);
             Scopes = new ScopeTable();
             Symbols = new SymbolTable();
             Modules = Array.Empty<ModulePlan>();

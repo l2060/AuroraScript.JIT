@@ -1,4 +1,5 @@
 using AuroraScript.Compiler.Ast.Expressions;
+using AuroraScript.Compiler.GlobalDeclarations;
 using AuroraScript.LanguageServices.Features.Completion;
 using AuroraScript.LanguageServices.Text;
 using System;
@@ -11,7 +12,8 @@ internal static class AuroraCompletionResolver
     public static CompletionResult GetCompletions(
         AuroraWorkspaceIndex index,
         string path,
-        TextPosition position)
+        TextPosition position,
+        AmbientContractCatalog? ambient = null)
     {
         var module = index.TryGetModule(path);
         if (module == null)
@@ -28,6 +30,7 @@ internal static class AuroraCompletionResolver
                 context.PropertyAccess.Object);
             CompletionResult objectCompletions = new CompletionResult(Array.Empty<CompletionItem>());
             CompletionResult importCompletions = new CompletionResult(Array.Empty<CompletionItem>());
+            CompletionResult ambientCompletions = new CompletionResult(Array.Empty<CompletionItem>());
             if (TryResolveOwnerName(context.PropertyAccess.Object, out var ownerName))
             {
                 objectCompletions = AuroraDefinitionResolver.GetObjectMemberCompletions(
@@ -36,23 +39,34 @@ internal static class AuroraCompletionResolver
                     ownerName,
                     position);
                 importCompletions = GetImportMemberCompletions(index, module, ownerName);
+                ambientCompletions = GetAmbientMemberCompletions(
+                    index,
+                    module,
+                    ownerName,
+                    position,
+                    ambient);
             }
 
-            var merged = Merge(shapeCompletions, objectCompletions, importCompletions);
+            var merged = Merge(shapeCompletions, objectCompletions, importCompletions, ambientCompletions);
             if (merged.Items.Count != 0 || context.IsAfterMemberAccessDot)
             {
                 return merged;
             }
         }
 
-        return GetGlobalCompletions(index, module, position);
+        return Merge(
+            GetGlobalCompletions(index, module, position),
+            ambient == null
+                ? new CompletionResult(Array.Empty<CompletionItem>())
+                : FilterShadowedAmbientRoots(index, module, position, ambient));
     }
 
     public static CompletionResult GetMemberCompletions(
         AuroraWorkspaceIndex index,
         string path,
         string ownerName,
-        TextPosition position)
+        TextPosition position,
+        AmbientContractCatalog? ambient = null)
     {
         var module = index.TryGetModule(path);
         if (module == null)
@@ -63,7 +77,8 @@ internal static class AuroraCompletionResolver
         return Merge(
             AuroraShapeQuery.GetFieldCompletionsForName(index, module, ownerName, position),
             AuroraDefinitionResolver.GetObjectMemberCompletions(index, module, ownerName, position),
-            GetImportMemberCompletions(index, module, ownerName));
+            GetImportMemberCompletions(index, module, ownerName),
+            GetAmbientMemberCompletions(index, module, ownerName, position, ambient));
     }
 
     private static CompletionResult GetGlobalCompletions(
@@ -123,6 +138,108 @@ internal static class AuroraCompletionResolver
         }
 
         return new CompletionResult(items);
+    }
+
+    private static CompletionResult GetAmbientMemberCompletions(
+        AuroraWorkspaceIndex index,
+        AuroraModuleIndex module,
+        string ownerName,
+        TextPosition position,
+        AmbientContractCatalog? ambient)
+    {
+        if (ambient == null)
+        {
+            return new CompletionResult(Array.Empty<CompletionItem>());
+        }
+
+        var localIndex = AuroraLocalSymbolIndex.Build(module);
+        if (StringComparer.Ordinal.Equals(ownerName, "global"))
+        {
+            return AmbientDeclarationQuery.IsShadowed(module, localIndex, position, "global")
+                ? new CompletionResult(Array.Empty<CompletionItem>())
+                : AmbientDeclarationQuery.GetRootCompletions(ambient);
+        }
+
+        if (!AmbientDeclarationQuery.IsShadowed(module, localIndex, position, ownerName) &&
+            ambient.TryGetRoot(ownerName, out _))
+        {
+            return AmbientDeclarationQuery.GetMemberCompletions(ambient, ownerName, instanceMembers: false);
+        }
+
+        if (AmbientDeclarationQuery.TryGetConstructedClassName(module, ownerName, position, out var className) &&
+            !AmbientDeclarationQuery.IsShadowed(module, localIndex, position, className) &&
+            ambient.TryGetRoot(className, out var classRoot) &&
+            classRoot.Kind == GlobalDeclarationKind.Type)
+        {
+            return AmbientDeclarationQuery.GetMemberCompletions(ambient, className, instanceMembers: true);
+        }
+
+        _ = index;
+        return new CompletionResult(Array.Empty<CompletionItem>());
+    }
+
+    private static CompletionResult FilterShadowedAmbientRoots(
+        AuroraWorkspaceIndex index,
+        AuroraModuleIndex module,
+        TextPosition position,
+        AmbientContractCatalog ambient)
+    {
+        var localIndex = AuroraLocalSymbolIndex.Build(module);
+        var items = new List<CompletionItem>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var item in AmbientDeclarationQuery.GetRootCompletions(ambient).Items)
+        {
+            if (AmbientDeclarationQuery.IsShadowed(module, localIndex, position, item.Label) ||
+                TryResolveIncludedExport(index, module, item.Label))
+            {
+                continue;
+            }
+
+            if (seen.Add(item.Label))
+            {
+                items.Add(item);
+            }
+        }
+
+        return new CompletionResult(items);
+    }
+
+    private static bool TryResolveIncludedExport(
+        AuroraWorkspaceIndex index,
+        AuroraModuleIndex module,
+        string name)
+    {
+        var visited = new HashSet<string>(PathComparer);
+        return ContainsIncludedExport(index, module, name, visited);
+    }
+
+    private static bool ContainsIncludedExport(
+        AuroraWorkspaceIndex index,
+        AuroraModuleIndex module,
+        string name,
+        HashSet<string> visited)
+    {
+        if (!visited.Add(module.Path))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < module.Includes.Count; i++)
+        {
+            var included = index.TryGetModule(module.Includes[i].TargetPath);
+            if (included == null)
+            {
+                continue;
+            }
+
+            if (included.Exports.ContainsKey(name) ||
+                ContainsIncludedExport(index, included, name, visited))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void AddIncludedExports(

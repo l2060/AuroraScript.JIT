@@ -278,7 +278,8 @@ namespace AuroraScript.Compiler.Backend.Code
             SymbolId.Invalid,
             FunctionId.Invalid,
             default,
-            hasConstant: false);
+            hasConstant: false,
+            isDeclaredOnly: false);
 
         public BoundName(
             string name,
@@ -287,7 +288,8 @@ namespace AuroraScript.Compiler.Backend.Code
             SymbolId moduleSymbol,
             FunctionId directFunction,
             ScriptDatum constant,
-            bool hasConstant)
+            bool hasConstant,
+            bool isDeclaredOnly = false)
         {
             Name = name;
             Local = local;
@@ -296,6 +298,7 @@ namespace AuroraScript.Compiler.Backend.Code
             DirectFunction = directFunction;
             Constant = constant;
             HasConstant = hasConstant;
+            IsDeclaredOnly = isDeclaredOnly;
         }
 
         public string Name { get; }
@@ -305,12 +308,13 @@ namespace AuroraScript.Compiler.Backend.Code
         public FunctionId DirectFunction { get; }
         public ScriptDatum Constant { get; }
         public bool HasConstant { get; }
+        public bool IsDeclaredOnly { get; }
         public bool IsLocal => Local.IsValid && !ModuleSymbol.IsValid;
         public bool IsUnshadowedGlobal =>
             !Local.IsValid &&
             !Upvalue.IsValid &&
-            !ModuleSymbol.IsValid &&
-            !HasConstant;
+            !HasConstant &&
+            (!ModuleSymbol.IsValid || IsDeclaredOnly);
     }
 
     /// <summary>

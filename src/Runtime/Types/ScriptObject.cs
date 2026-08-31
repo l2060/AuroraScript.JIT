@@ -506,7 +506,7 @@ namespace AuroraScript.Runtime.Types
             var type = GetType();
             if (type == typeof(ScriptObject) ||
                 type.Assembly == typeof(ScriptObject).Assembly ||
-                this is AuroraNativeObject)
+                this is IAuroraNativeInstance)
             {
                 return false;
             }

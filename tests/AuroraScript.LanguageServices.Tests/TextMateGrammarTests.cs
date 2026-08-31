@@ -29,6 +29,11 @@ public sealed class TextMateGrammarTests
             "declarations",
             "keyword.declaration.type.aurora",
             "export type Point {");
+        AssertPattern(
+            repository,
+            "declarations",
+            "keyword.declaration.type.aurora",
+            "declare type Stats {");
         AssertPattern(repository, "comments", "comment.line.double-slash.aurora", "// comment");
         AssertBeginPattern(repository, "comments", "comment.block.aurora", "/* comment */");
         AssertPattern(repository, "keywords", "keyword.operator.word.aurora", "typeof value in obj");
@@ -87,10 +92,13 @@ public sealed class TextMateGrammarTests
 
     private static void AssertPattern(JsonElement repository, string sectionName, string scopeName, string sample)
     {
-        var pattern = FindPattern(repository.GetProperty(sectionName), scopeName);
-        Assert.NotNull(pattern);
-        var match = Regex.Match(sample, pattern!.Value.GetProperty("match").GetString()!, RegexOptions.CultureInvariant);
-        Assert.True(match.Success, $"{scopeName} did not match '{sample}'.");
+        var patterns = FindPatterns(repository.GetProperty(sectionName), scopeName).ToList();
+        Assert.NotEmpty(patterns);
+        Assert.True(
+            patterns.Any(pattern =>
+                pattern.TryGetProperty("match", out var matchPattern) &&
+                Regex.Match(sample, matchPattern.GetString()!, RegexOptions.CultureInvariant).Success),
+            $"{scopeName} did not match '{sample}'.");
     }
 
     private static void AssertPatternDoesNotMatch(
@@ -153,9 +161,19 @@ public sealed class TextMateGrammarTests
 
     private static JsonElement? FindPattern(JsonElement section, string scopeName)
     {
+        foreach (var pattern in FindPatterns(section, scopeName))
+        {
+            return pattern;
+        }
+
+        return null;
+    }
+
+    private static IEnumerable<JsonElement> FindPatterns(JsonElement section, string scopeName)
+    {
         if (!section.TryGetProperty("patterns", out var patterns))
         {
-            return null;
+            yield break;
         }
 
         foreach (var pattern in patterns.EnumerateArray())
@@ -163,7 +181,8 @@ public sealed class TextMateGrammarTests
             if (pattern.TryGetProperty("name", out var name) &&
                 string.Equals(name.GetString(), scopeName, StringComparison.Ordinal))
             {
-                return pattern;
+                yield return pattern;
+                continue;
             }
 
             foreach (var capturePropertyName in new[] { "captures", "beginCaptures", "endCaptures" })
@@ -173,18 +192,24 @@ public sealed class TextMateGrammarTests
                     continue;
                 }
 
+                var matched = false;
                 foreach (var capture in captures.EnumerateObject())
                 {
                     if (capture.Value.TryGetProperty("name", out var captureName) &&
                         string.Equals(captureName.GetString(), scopeName, StringComparison.Ordinal))
                     {
-                        return pattern;
+                        yield return pattern;
+                        matched = true;
+                        break;
                     }
+                }
+
+                if (matched)
+                {
+                    break;
                 }
             }
         }
-
-        return null;
     }
 
     private static JsonElement? FindPatternRecursive(JsonElement section, string scopeName)

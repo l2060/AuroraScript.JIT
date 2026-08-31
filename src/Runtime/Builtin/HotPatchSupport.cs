@@ -1,41 +1,36 @@
 ﻿using AuroraScript.Core;
+using AuroraScript.Hosting;
 using AuroraScript.Runtime.Types;
 using System;
 
 namespace AuroraScript.Runtime.Builtin
 {
-    internal class HotPatchSupport : ScriptObject
+    /// <summary>
+    /// Script hot-patch Type implemented through generated native exports.
+    /// </summary>
+    [AuroraNativeType("HotPatch")]
+    internal sealed partial class HotPatchSupport : ScriptObject
     {
-        internal static HotPatchSupport INSTANCE = new HotPatchSupport();
-        public HotPatchSupport()
+        [AuroraExport("replace", MatchFailure.Throw)]
+        public static void ReplaceCore(ScriptContext ctx, params ScriptDatum[] args)
         {
-            Define("replace", ScriptDatum.FromBonding(REPLACE), writeable: false, enumerable: false);
-            Define("incremental", ScriptDatum.FromBonding(INCREMENTAL), writeable: false, enumerable: false);
-            Frozen();
-        }
-
-
-
-        internal static void REPLACE(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            ReadPatchArguments(ctx, args, out var modulePath, out var script, out var ignoreDepends);
-            HotPatchType patchType = HotPatchType.Replace;
+            ReadPatchArguments(ctx, args.AsSpan(), out var modulePath, out var script, out var ignoreDepends);
+            var patchType = HotPatchType.Replace;
             if (ignoreDepends)
             {
-                patchType = patchType | HotPatchType.IgnoreDepends;
+                patchType |= HotPatchType.IgnoreDepends;
             }
             ctx.Domain.DynamicPatch(modulePath, script, patchType);
         }
 
-
-
-        internal static void INCREMENTAL(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        [AuroraExport("incremental", MatchFailure.Throw)]
+        public static void IncrementalCore(ScriptContext ctx, params ScriptDatum[] args)
         {
-            ReadPatchArguments(ctx, args, out var modulePath, out var script, out var ignoreDepends);
-            HotPatchType patchType = HotPatchType.Incremental;
+            ReadPatchArguments(ctx, args.AsSpan(), out var modulePath, out var script, out var ignoreDepends);
+            var patchType = HotPatchType.Incremental;
             if (ignoreDepends)
             {
-                patchType = patchType | HotPatchType.IgnoreDepends;
+                patchType |= HotPatchType.IgnoreDepends;
             }
             ctx.Domain.DynamicPatch(modulePath, script, patchType);
         }

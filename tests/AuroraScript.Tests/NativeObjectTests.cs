@@ -11,6 +11,16 @@ namespace AuroraScript.Tests;
 public sealed class NativeObjectTests
 {
     [Fact]
+    public void GeneratedRegisterCanTargetAnyScriptObject()
+    {
+        var owner = new ScriptObject();
+
+        Vec2.Register(owner);
+
+        Assert.Same(Vec2.Type, owner.GetPropertyDatum(null!, "Vec2").Object);
+    }
+
+    [Fact]
     public async Task HostInstanceExposesNativeFieldsAndMethods()
     {
         using var workspace = new TestWorkspace();
@@ -89,6 +99,58 @@ public sealed class NativeObjectTests
             configureGlobal: global => Vec2.Register(global));
 
         ScriptAssert.Equal(10, TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
+    public async Task NativeConstructorExposesStaticExportsAndConstants()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func run() {
+                var vec = new Vec2(3, 4);
+                return [Vec2.length(6, 8), Vec2.DIMENSIONS, vec.length()];
+            }
+            """,
+            configureGlobal: global => Vec2.Register(global));
+
+        ScriptAssert.Equal(
+            new object?[] { 10D, 2D, 5D },
+            TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
+    public async Task StaticFactoryReturnsProvenNativeInstance()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func run() Number {
+                var vec = Vec2.from(3, 4);
+                return vec.factoryValue() + vec.length();
+            }
+            """,
+            nativeTypes: true);
+
+        ScriptAssert.Equal(12, TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
+    public async Task StaticFactoryKeepsDynamicFallbackWithoutHostMetadata()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func run() Number {
+                return Vec2.from(3, 4).factoryValue();
+            }
+            """,
+            configureGlobal: global => Vec2.Register(global));
+
+        ScriptAssert.Equal(7, TestWorkspace.Execute(domain, "run"));
     }
 
     [Fact]

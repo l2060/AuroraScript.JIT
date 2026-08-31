@@ -174,6 +174,7 @@ namespace AuroraScript.Compiler.Backend.Plans
         private readonly List<FunctionPlan> _functions;
         private readonly Dictionary<string, SymbolId> _symbolsByName;
         private Dictionary<SymbolId, ScriptDatum> _inlineConstants;
+        private HashSet<string> _declaredOnlyNames;
 
         public ModulePlan(ModuleId id, ModuleDeclaration declaration)
         {
@@ -207,6 +208,19 @@ namespace AuroraScript.Compiler.Backend.Plans
         public bool TryGetSymbol(string name, out SymbolId symbol)
         {
             return _symbolsByName.TryGetValue(name, out symbol);
+        }
+
+        public void MarkDeclaredOnly(string name)
+        {
+            _declaredOnlyNames ??= new HashSet<string>(StringComparer.Ordinal);
+            _declaredOnlyNames.Add(name);
+        }
+
+        public bool IsDeclaredOnly(string name)
+        {
+            return !string.IsNullOrEmpty(name) &&
+                _declaredOnlyNames != null &&
+                _declaredOnlyNames.Contains(name);
         }
 
         public void SetInlineConstant(SymbolId symbol, ScriptDatum value)

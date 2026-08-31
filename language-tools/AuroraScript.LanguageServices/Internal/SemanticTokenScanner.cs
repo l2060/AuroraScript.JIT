@@ -542,6 +542,7 @@ internal static class SemanticTokenScanner
         private readonly SemanticExternalSymbols _externalSymbols;
         private readonly SemanticTokenBuilder _builder;
         private readonly Stack<Dictionary<string, int>> _scopes = new();
+        private readonly Stack<Dictionary<string, string>> _constructedClasses = new();
         private readonly HashSet<string> _moduleEnums = new(StringComparer.Ordinal);
 
         public SemanticAstVisitor(
@@ -607,6 +608,11 @@ internal static class SemanticTokenScanner
                 for (var i = 0; i < node.Types.Count; i++)
                 {
                     node.Types[i].Accept(this);
+                }
+
+                for (var i = 0; i < node.AmbientDeclarations.Count; i++)
+                {
+                    node.AmbientDeclarations[i].Accept(this);
                 }
             }
             finally
@@ -733,6 +739,50 @@ internal static class SemanticTokenScanner
                 SemanticTokenPriority.Declaration);
         }
 
+        protected override void VisitAmbientDeclaration(AmbientDeclaration node)
+        {
+            if (node.Name != null)
+            {
+                _builder.AddToken(
+                    node.Name,
+                    AuroraSemanticTokenTypes.Type,
+                    SemanticTokenPriority.Declaration);
+            }
+
+            for (var i = 0; i < node.Members.Count; i++)
+            {
+                node.Members[i].Accept(this);
+            }
+        }
+
+        protected override void VisitAmbientMemberDeclaration(AmbientMemberDeclaration node)
+        {
+            if (node.ReturnType != null)
+            {
+                _builder.AddToken(
+                    node.ReturnType.Token,
+                    AuroraSemanticTokenTypes.Type,
+                    SemanticTokenPriority.Ast);
+            }
+
+            if (node.Name != null)
+            {
+                var type = node.Kind switch
+                {
+                    AmbientMemberKind.Function => AuroraSemanticTokenTypes.DeclaredGlobalFunction,
+                    AmbientMemberKind.Constructor => AuroraSemanticTokenTypes.Method,
+                    AmbientMemberKind.Const => AuroraSemanticTokenTypes.DeclaredGlobal,
+                    _ => AuroraSemanticTokenTypes.Property
+                };
+                _builder.AddToken(node.Name, type, SemanticTokenPriority.Declaration);
+            }
+
+            for (var i = 0; i < node.Parameters.Count; i++)
+            {
+                node.Parameters[i].Accept(this);
+            }
+        }
+
         protected override void VisitVarDeclaration(VariableDeclaration node)
         {
             if (node.Name != null)
@@ -741,6 +791,12 @@ internal static class SemanticTokenScanner
                     ? AuroraSemanticTokenTypes.DeclaredGlobal
                     : AuroraSemanticTokenTypes.Variable;
                 _builder.AddToken(node.Name, type, SemanticTokenPriority.Declaration);
+                if (TryGetConstructedClassName(node.Initializer, out var className) &&
+                    _externalSymbols.IsClass(className) &&
+                    _constructedClasses.Count != 0)
+                {
+                    _constructedClasses.Peek()[node.Name.Value] = className;
+                }
             }
 
             node.Pattern?.Accept(this);
@@ -889,7 +945,7 @@ internal static class SemanticTokenScanner
                 }
                 else if (!IsDeclared(value) && _builtins != null && _builtins.TryGetGlobal(value, out var global))
                 {
-                    type = global.Kind == BuiltinApiKind.Constructor
+                    type = global.Kind is BuiltinApiKind.Constructor or BuiltinApiKind.Type
                         ? AuroraSemanticTokenTypes.Type
                         : global.Kind == BuiltinApiKind.Object
                             ? AuroraSemanticTokenTypes.Object
@@ -967,6 +1023,18 @@ internal static class SemanticTokenScanner
             {
                 memberType = GetBuiltinMemberSemanticType(member, isCall);
             }
+            else if (owner is NameExpression ambientOwner &&
+                !IsDeclared(ambientOwner.Identifier.Value) &&
+                _externalSymbols.TryResolveMember(ambientOwner.Identifier.Value, propertyName.Identifier.Value, out var ambientMemberType))
+            {
+                memberType = isCall ? AuroraSemanticTokenTypes.MethodCall : ambientMemberType;
+            }
+            else if (owner is NameExpression constructedOwner &&
+                TryResolveConstructedClass(constructedOwner.Identifier.Value, out var className) &&
+                _externalSymbols.TryResolveInstanceMember(className, propertyName.Identifier.Value, out var instanceMemberType))
+            {
+                memberType = isCall ? AuroraSemanticTokenTypes.MethodCall : instanceMemberType;
+            }
 
             _builder.AddToken(propertyName.Identifier, memberType, SemanticTokenPriority.Ast);
         }
@@ -1007,11 +1075,13 @@ internal static class SemanticTokenScanner
         private void PushScope()
         {
             _scopes.Push(new Dictionary<string, int>(StringComparer.Ordinal));
+            _constructedClasses.Push(new Dictionary<string, string>(StringComparer.Ordinal));
         }
 
         private void PopScope()
         {
             _scopes.Pop();
+            _constructedClasses.Pop();
         }
 
         private void Declare(string name, int type)
@@ -1049,6 +1119,33 @@ internal static class SemanticTokenScanner
             return false;
         }
 
+        private bool TryResolveConstructedClass(string variableName, out string className)
+        {
+            foreach (var scope in _constructedClasses)
+            {
+                if (scope.TryGetValue(variableName, out className))
+                {
+                    return true;
+                }
+            }
+
+            className = string.Empty;
+            return false;
+        }
+
+        private static bool TryGetConstructedClassName(Expression? initializer, out string className)
+        {
+            className = string.Empty;
+            if (initializer is NewExpression { Expression.Target: NameExpression typeName } &&
+                !string.IsNullOrEmpty(typeName.Identifier.Value))
+            {
+                className = typeName.Identifier.Value;
+                return true;
+            }
+
+            return false;
+        }
+
         private static bool IsDeclaredExternalType(int type)
         {
             return type == AuroraSemanticTokenTypes.DeclaredGlobal ||
@@ -1070,6 +1167,7 @@ internal static class SemanticTokenScanner
             return global.Kind switch
             {
                 BuiltinApiKind.Constructor => AuroraSemanticTokenTypes.Type,
+                BuiltinApiKind.Type => AuroraSemanticTokenTypes.Type,
                 BuiltinApiKind.Object => AuroraSemanticTokenTypes.Object,
                 BuiltinApiKind.Function => AuroraSemanticTokenTypes.Function,
                 _ => AuroraSemanticTokenTypes.BuiltinVariable

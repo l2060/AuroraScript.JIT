@@ -556,6 +556,51 @@ public sealed class ModuleCompilationTests
         Assert.Contains("Duplicate global declaration 'VERSION'", error.ToString(), StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void GlobalScannerIndexesAmbientRootsAndMembers()
+    {
+        var index = AuroraScript.Compiler.GlobalDeclarations.GlobalDeclarationScanner.BuildIndex([
+            ("globals.as",
+            """
+            @global();
+            declare type Host {
+                static const VERSION;
+                static func invoke(value);
+            }
+            declare type Widget {
+                constructor(size);
+                var name;
+                static func create(size);
+            }
+            """)
+        ]);
+
+        Assert.Empty(index.Diagnostics);
+        Assert.Equal(2, index.Declarations.Count);
+        Assert.Equal(
+            AuroraScript.Compiler.GlobalDeclarations.GlobalDeclarationKind.Type,
+            index.Declarations["Host"].Kind);
+        Assert.Equal(["VERSION", "invoke"], index.Declarations["Host"].Members.Select(member => member.Name));
+        Assert.True(index.Declarations["Host"].Members.All(member => member.IsStatic));
+        Assert.Equal(
+            AuroraScript.Compiler.GlobalDeclarations.GlobalDeclarationKind.Type,
+            index.Declarations["Widget"].Kind);
+        Assert.Equal(["constructor", "name", "create"], index.Declarations["Widget"].Members.Select(member => member.Name));
+        Assert.True(index.Declarations["Widget"].Members[2].IsStatic);
+    }
+
+    [Fact]
+    public void GlobalScannerReportsDuplicateAmbientMembersAndRoots()
+    {
+        var index = AuroraScript.Compiler.GlobalDeclarations.GlobalDeclarationScanner.BuildIndex([
+            ("a.as", "@global(); declare type Host { const VALUE; var VALUE; }"),
+            ("b.as", "@global(); declare type Host { constructor(); }")
+        ]);
+
+        Assert.Contains(index.Diagnostics, diagnostic => diagnostic.Message.Contains("Duplicate ambient member 'VALUE'", StringComparison.Ordinal));
+        Assert.Contains(index.Diagnostics, diagnostic => diagnostic.Message.Contains("Duplicate global declaration 'Host'", StringComparison.Ordinal));
+    }
+
     private sealed class InMemoryResolver : IScriptSourceResolver
     {
         private readonly string _baseDirectory;

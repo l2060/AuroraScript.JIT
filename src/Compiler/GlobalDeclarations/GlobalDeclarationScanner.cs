@@ -21,7 +21,28 @@ namespace AuroraScript.Compiler.GlobalDeclarations
     {
         Const,
         Var,
-        Function
+        Function,
+        Type
+    }
+
+    internal sealed class GlobalDeclarationMemberInfo
+    {
+        public GlobalDeclarationMemberInfo(
+            string name,
+            GlobalDeclarationKind kind,
+            bool isStatic,
+            SourceSpan nameRange)
+        {
+            Name = name;
+            Kind = kind;
+            IsStatic = isStatic;
+            NameRange = nameRange;
+        }
+
+        public string Name { get; }
+        public GlobalDeclarationKind Kind { get; }
+        public bool IsStatic { get; }
+        public SourceSpan NameRange { get; }
     }
 
     internal sealed class GlobalDeclarationInfo
@@ -31,13 +52,15 @@ namespace AuroraScript.Compiler.GlobalDeclarations
             GlobalDeclarationKind kind,
             string filePath,
             SourceSpan nameRange,
-            SourceSpan declarationRange)
+            SourceSpan declarationRange,
+            IReadOnlyList<GlobalDeclarationMemberInfo> members = null)
         {
             Name = name;
             Kind = kind;
             FilePath = filePath;
             NameRange = nameRange;
             DeclarationRange = declarationRange;
+            Members = members ?? Array.Empty<GlobalDeclarationMemberInfo>();
         }
 
         public string Name { get; }
@@ -45,6 +68,7 @@ namespace AuroraScript.Compiler.GlobalDeclarations
         public string FilePath { get; }
         public SourceSpan NameRange { get; }
         public SourceSpan DeclarationRange { get; }
+        public IReadOnlyList<GlobalDeclarationMemberInfo> Members { get; }
     }
 
     internal sealed class GlobalDeclarationIndex
@@ -694,7 +718,7 @@ namespace AuroraScript.Compiler.GlobalDeclarations
                 SkipTrivia();
                 if (!TryReadIdentifier(out var kindText, out var kindRange))
                 {
-                    AddDiagnostic(CurrentSpan(1), "declare must be followed by const, var, or func.");
+                    AddDiagnostic(CurrentSpan(1), "declare must be followed by const, var, func, or type.");
                     SkipStatement();
                     return;
                 }
@@ -713,8 +737,293 @@ namespace AuroraScript.Compiler.GlobalDeclarations
                     return;
                 }
 
-                AddDiagnostic(kindRange, "declare must be followed by const, var, or func.");
+                if (string.Equals(kindText, "type", StringComparison.Ordinal))
+                {
+                    ParseDeclareContainer(statementStart, kindText);
+                    return;
+                }
+
+                AddDiagnostic(kindRange, "declare must be followed by const, var, func, or type.");
                 SkipStatement();
+            }
+
+            private void ParseDeclareContainer(SourcePosition statementStart, string kindText)
+            {
+                SkipTrivia();
+                if (!TryReadIdentifier(out var name, out var nameRange))
+                {
+                    AddDiagnostic(CurrentSpan(1), $"declare {kindText} requires a name.");
+                    SkipStatement();
+                    return;
+                }
+                SkipTrivia();
+                if (!ConsumeIf('{'))
+                {
+                    AddDiagnostic(CurrentSpan(1), $"declare {kindText} requires a member block.");
+                    SkipStatement();
+                    return;
+                }
+
+                var members = new List<GlobalDeclarationMemberInfo>();
+                var names = new HashSet<string>(StringComparer.Ordinal);
+                var hasConstructor = false;
+                while (true)
+                {
+                    SkipTrivia();
+                    if (IsAtEnd)
+                    {
+                        AddDiagnostic(CurrentSpan(1), $"declare {kindText} member block must be closed with '}}'.");
+                        return;
+                    }
+                    if (ConsumeIf('}'))
+                    {
+                        break;
+                    }
+
+                    var isStatic = false;
+                    SourceSpan memberKindRange;
+                    string memberKind;
+                    if (!TryReadIdentifier(out memberKind, out memberKindRange))
+                    {
+                        AddDiagnostic(CurrentSpan(1), $"Invalid member in declare {kindText}.");
+                        SkipContainerMember();
+                        continue;
+                    }
+                    if (string.Equals(memberKind, "static", StringComparison.Ordinal))
+                    {
+                        isStatic = true;
+                        SkipTrivia();
+                        if (!TryReadIdentifier(out memberKind, out memberKindRange))
+                        {
+                            AddDiagnostic(CurrentSpan(1), "static must be followed by const, var, or func.");
+                            SkipContainerMember();
+                            continue;
+                        }
+                    }
+
+                    if (string.Equals(memberKind, "constructor", StringComparison.Ordinal))
+                    {
+                        if (isStatic)
+                        {
+                            AddDiagnostic(memberKindRange, "Constructors are only valid as instance members of ambient types.");
+                            SkipContainerMember();
+                            continue;
+                        }
+                        SkipTrivia();
+                        if (!ConsumeIf('(') || !SkipBalancedParentheses())
+                        {
+                            AddDiagnostic(CurrentSpan(1), "Ambient constructor requires a closed parameter list.");
+                            SkipContainerMember();
+                            continue;
+                        }
+                        SkipTrivia();
+                        if (!ConsumeIf(';'))
+                        {
+                            AddDiagnostic(CurrentSpan(1), "Ambient constructor must end with ';' and cannot have a body.");
+                            SkipContainerMember();
+                            continue;
+                        }
+                        if (hasConstructor)
+                        {
+                            AddDiagnostic(memberKindRange, $"Duplicate constructor in ambient type '{name}'.");
+                            continue;
+                        }
+                        hasConstructor = true;
+                        members.Add(new GlobalDeclarationMemberInfo(
+                            "constructor",
+                            GlobalDeclarationKind.Function,
+                            false,
+                            memberKindRange));
+                        continue;
+                    }
+
+                    GlobalDeclarationKind memberDeclarationKind;
+                    if (string.Equals(memberKind, "const", StringComparison.Ordinal))
+                    {
+                        memberDeclarationKind = GlobalDeclarationKind.Const;
+                    }
+                    else if (string.Equals(memberKind, "var", StringComparison.Ordinal))
+                    {
+                        memberDeclarationKind = GlobalDeclarationKind.Var;
+                    }
+                    else if (string.Equals(memberKind, "func", StringComparison.Ordinal) ||
+                        string.Equals(memberKind, "function", StringComparison.Ordinal))
+                    {
+                        memberDeclarationKind = GlobalDeclarationKind.Function;
+                    }
+                    else
+                    {
+                        if (isStatic)
+                        {
+                            AddDiagnostic(
+                                memberKindRange,
+                                "Ambient types only allow constructors, fields, methods, and static const/var/func members.");
+                            SkipContainerMember();
+                            continue;
+                        }
+
+                        SkipTrivia();
+                        if (ConsumeIf('.'))
+                        {
+                            SkipTrivia();
+                            if (!TryReadIdentifier(out _, out _))
+                            {
+                                AddDiagnostic(CurrentSpan(1), "Ambient field type is incomplete.");
+                                SkipContainerMember();
+                                continue;
+                            }
+                            SkipTrivia();
+                        }
+
+                        if (!TryReadIdentifier(out var fieldName, out var fieldNameRange))
+                        {
+                            AddDiagnostic(CurrentSpan(1), "Ambient field requires a name.");
+                            SkipContainerMember();
+                            continue;
+                        }
+                        SkipTrivia();
+                        if (!ConsumeIf(';'))
+                        {
+                            AddDiagnostic(CurrentSpan(1), "Ambient fields must end with ';' and cannot have initializers.");
+                            SkipContainerMember();
+                            continue;
+                        }
+                        var fieldKey = AmbientMemberKey(false, fieldName);
+                        if (!names.Add(fieldKey))
+                        {
+                            AddDiagnostic(fieldNameRange, $"Duplicate ambient member '{fieldName}' in '{name}'.");
+                            continue;
+                        }
+                        members.Add(new GlobalDeclarationMemberInfo(
+                            fieldName,
+                            GlobalDeclarationKind.Var,
+                            false,
+                            fieldNameRange));
+                        continue;
+                    }
+
+                    SkipTrivia();
+                    if (!TryReadIdentifier(out var memberName, out var memberNameRange))
+                    {
+                        AddDiagnostic(CurrentSpan(1), $"Ambient {memberKind} requires a name.");
+                        SkipContainerMember();
+                        continue;
+                    }
+                    if (memberDeclarationKind != GlobalDeclarationKind.Function)
+                    {
+                        SkipTrivia();
+                        if (ConsumeIf('.'))
+                        {
+                            SkipTrivia();
+                            if (!TryReadIdentifier(out _, out _))
+                            {
+                                AddDiagnostic(CurrentSpan(1), "Ambient field type is incomplete.");
+                                SkipContainerMember();
+                                continue;
+                            }
+                            SkipTrivia();
+                        }
+                        if (TryReadIdentifier(out var typedName, out var typedNameRange))
+                        {
+                            memberName = typedName;
+                            memberNameRange = typedNameRange;
+                        }
+                    }
+                    SkipTrivia();
+                    if (memberDeclarationKind == GlobalDeclarationKind.Function)
+                    {
+                        if (!ConsumeIf('(') || !SkipBalancedParentheses())
+                        {
+                            AddDiagnostic(CurrentSpan(1), "Ambient function requires a closed parameter list.");
+                            SkipContainerMember();
+                            continue;
+                        }
+                        SkipTrivia();
+                        TrySkipReturnType();
+                        SkipTrivia();
+                    }
+                    if (!ConsumeIf(';'))
+                    {
+                        AddDiagnostic(
+                            CurrentSpan(1),
+                            memberDeclarationKind == GlobalDeclarationKind.Function
+                                ? "Ambient function must end with ';' and cannot have a body."
+                                : "Ambient fields must end with ';' and cannot have initializers.");
+                        SkipContainerMember();
+                        continue;
+                    }
+                    if (!names.Add(AmbientMemberKey(isStatic, memberName)))
+                    {
+                        AddDiagnostic(memberNameRange, $"Duplicate ambient member '{memberName}' in '{name}'.");
+                        continue;
+                    }
+                    members.Add(new GlobalDeclarationMemberInfo(
+                        memberName,
+                        memberDeclarationKind,
+                        isStatic,
+                        memberNameRange));
+                }
+
+                SkipTrivia();
+                ConsumeIf(';');
+                _declarations.Add(new GlobalDeclarationInfo(
+                    name,
+                    GlobalDeclarationKind.Type,
+                    _filePath,
+                    nameRange,
+                    SpanFrom(statementStart, CurrentPosition()),
+                    members));
+            }
+
+            private static string AmbientMemberKey(bool isStatic, string name)
+            {
+                return isStatic ? "static:" + name : name;
+            }
+
+            private void TrySkipReturnType()
+            {
+                var savedOffset = _offset;
+                var savedLine = _line;
+                var savedColumn = _column;
+                if (!TryReadIdentifier(out _, out _))
+                {
+                    return;
+                }
+                SkipTrivia();
+                if (ConsumeIf('.'))
+                {
+                    SkipTrivia();
+                    if (!TryReadIdentifier(out _, out _))
+                    {
+                        Restore(savedOffset, savedLine, savedColumn);
+                    }
+                }
+            }
+
+            private void SkipContainerMember()
+            {
+                var braceDepth = 0;
+                while (!IsAtEnd)
+                {
+                    var current = Peek();
+                    if (current == '{')
+                    {
+                        braceDepth++;
+                    }
+                    else if (current == '}')
+                    {
+                        if (braceDepth == 0)
+                        {
+                            return;
+                        }
+                        braceDepth--;
+                    }
+                    Advance();
+                    if (current == ';' && braceDepth == 0)
+                    {
+                        return;
+                    }
+                }
             }
 
             private void ParseDeclareFunction(SourcePosition statementStart)

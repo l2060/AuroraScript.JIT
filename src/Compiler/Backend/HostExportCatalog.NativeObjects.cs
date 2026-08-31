@@ -43,17 +43,23 @@ namespace AuroraScript.Compiler.Backend
             return _nativeObjectsByClrType.TryGetValue(clrType, out descriptor);
         }
 
-        private void AddNativeObjects(Assembly assembly)
+        private void AddNativeObjects(Assembly assembly, Type selectedType)
         {
             var pending = new List<HostNativeObjectDescriptor>();
             foreach (var attribute in
                 assembly.GetCustomAttributes<AuroraGeneratedNativeObjectAttribute>())
             {
-                if (!typeof(AuroraNativeObject).IsAssignableFrom(attribute.ObjectType))
+                if (selectedType != null && attribute.ObjectType != selectedType)
+                {
+                    continue;
+                }
+
+                if (!typeof(ScriptObject).IsAssignableFrom(attribute.ObjectType) ||
+                    !typeof(IAuroraNativeInstance).IsAssignableFrom(attribute.ObjectType))
                 {
                     throw new InvalidOperationException(
                         $"Generated Aurora native object '{attribute.TypeName}' does not " +
-                        $"resolve to an AuroraNativeObject type.");
+                        $"resolve to a generated ScriptObject native instance type.");
                 }
 
                 var constructor = attribute.Constructible
@@ -88,6 +94,11 @@ namespace AuroraScript.Compiler.Backend
             foreach (var attribute in
                 assembly.GetCustomAttributes<AuroraGeneratedNativeFieldAttribute>())
             {
+                if (selectedType != null && attribute.DeclaringType != selectedType)
+                {
+                    continue;
+                }
+
                 if (!_nativeObjects.TryGetValue(attribute.TypeName, out var owner) ||
                     owner.ClrType != attribute.DeclaringType)
                 {
@@ -115,6 +126,11 @@ namespace AuroraScript.Compiler.Backend
             foreach (var attribute in
                 assembly.GetCustomAttributes<AuroraGeneratedNativeMethodAttribute>())
             {
+                if (selectedType != null && attribute.DeclaringType != selectedType)
+                {
+                    continue;
+                }
+
                 if (!_nativeObjects.TryGetValue(attribute.TypeName, out var owner) ||
                     owner.ClrType != attribute.DeclaringType)
                 {

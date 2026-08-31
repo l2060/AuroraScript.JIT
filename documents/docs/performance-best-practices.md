@@ -68,13 +68,18 @@ their flexible Datum calling convention and remain hot-patchable.
 
 Keep hot helper arguments type-stable. Reassigning a parameter is fine when every assignment preserves its proven native type; assigning unrelated dynamic values forces that parameter back to the dynamic path.
 
-Host globals declared with `[AuroraNativeModule]` / `[AuroraExport]` use the same
+Host types declared with `[AuroraNativeType]` / `[AuroraExport]` use the same
 direct-call idea on the C# side. Unshadowed `Math.abs(x)` with a proven number
 calls `AbsCore` directly. Unshadowed `Math.PI` loads `MathSupport.PI` with
 `ldsfld`. `params` members such as `Math.max` stay on the generated adapter.
 Shadowing the global (`var Math = other`) disables both paths.
 
-Proven `[AuroraNativeObject]` locals use the same idea. Keep a `Vec2` (or similar) in a local that is never reassigned to an unproven value and never captured by a closure. The compiler then stores the CLR instance directly; field `++`/`+=` and method calls stay on `ldfld`/`stfld`/`callvirt` instead of boxing through `ScriptDatum`. Passing the object as an untyped parameter, assigning `other` into the local, or capturing it for a lambda forces the dynamic protocol.
+Proven native-instance locals use the same idea. Keep a `Vec2` (or similar) in
+a local that is never reassigned to an unproven value and never captured by a
+closure. This applies to both `new Vec2(...)` and static factories such as
+`Vec2.from(...)`. The compiler then stores the CLR instance directly; field
+`++`/`+=` and method calls stay on `ldfld`/`stfld`/`callvirt` instead of boxing
+through `ScriptDatum`.
 
 Use `native func` when the ABI itself must be explicit:
 

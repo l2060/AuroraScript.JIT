@@ -68,11 +68,11 @@ public sealed class SemanticTokensFeatureTests : IDisposable
         AssertToken(source, result, "\"text\"", AuroraSemanticTokenTypes.String);
         AssertToken(source, result, "\\n", AuroraSemanticTokenTypes.Character);
         Assert.Contains(result.Tokens, token => token.Type == AuroraSemanticTokenTypes.Number);
-        AssertToken(source, result, "console", AuroraSemanticTokenTypes.Object);
+        AssertToken(source, result, "console", AuroraSemanticTokenTypes.Type);
         AssertToken(source, result, "global", AuroraSemanticTokenTypes.BuiltinVariable);
-        AssertToken(source, result, "JSON", AuroraSemanticTokenTypes.Object);
-        AssertToken(source, result, "Math", AuroraSemanticTokenTypes.Object);
-        AssertToken(source, result, "HotPatch", AuroraSemanticTokenTypes.Object);
+        AssertToken(source, result, "JSON", AuroraSemanticTokenTypes.Type);
+        AssertToken(source, result, "Math", AuroraSemanticTokenTypes.Type);
+        AssertToken(source, result, "HotPatch", AuroraSemanticTokenTypes.Type);
         AssertToken(source, result, "$arg", AuroraSemanticTokenTypes.BuiltinVariable);
         AssertToken(source, result, "$state", AuroraSemanticTokenTypes.BuiltinVariable);
         AssertToken(source, result, "String", AuroraSemanticTokenTypes.Type);

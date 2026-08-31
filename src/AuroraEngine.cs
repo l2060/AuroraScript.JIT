@@ -6,6 +6,7 @@ using AuroraScript.Compiler.Backend.Builders;
 using AuroraScript.Compiler.Backend.Emission;
 using AuroraScript.Compiler.GlobalDeclarations;
 using AuroraScript.Core;
+using AuroraScript.Hosting;
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Builtin;
 using AuroraScript.Runtime.Interop;
@@ -109,14 +110,47 @@ namespace AuroraScript
             Global.Define("StringBuffer", StringBufferConstructor.INSTANCE, writeable: false, enumerable: false);
             Global.Define("Path", PathConstructor.INSTANCE, writeable: false, enumerable: false);
 
-            // Optional standard libraries
-            Global.Define("console", new ConsoleSupport(), writeable: false, enumerable: false);
-            Global.Define("JSON", new JsonSupport(), writeable: false, enumerable: false);
-            Global.Define("TDoc", new TDocSupport(), writeable: false, enumerable: false);
-            Global.Define("Math", new MathSupport(), writeable: false, enumerable: false);
+            // Built-in infrastructure
+            ConsoleSupport.Register(Global);
+            JsonSupport.Register(Global);
+            TDocSupport.Register(Global);
+            MathSupport.Register(Global);
+            HotPatchSupport.Register(Global);
+            RegisterNativeTypes(Options.Compiler.NativeTypes);
+        }
 
-            // Hot patch support
-            Global.Define("HotPatch", HotPatchSupport.INSTANCE, writeable: false, enumerable: false);
+        private void RegisterNativeTypes(IReadOnlyList<Type> nativeTypes)
+        {
+            for (var i = 0; i < nativeTypes.Count; i++)
+            {
+                var nativeType = nativeTypes[i];
+                if (nativeType.Assembly == typeof(AuroraEngine).Assembly)
+                {
+                    continue;
+                }
+
+                var attribute = nativeType.GetCustomAttribute<AuroraNativeTypeAttribute>();
+                if (attribute == null)
+                {
+                    throw new ArgumentException(
+                        $"Type '{nativeType.FullName}' is not marked with AuroraNativeTypeAttribute.",
+                        nameof(nativeTypes));
+                }
+
+                var register = nativeType.GetMethod(
+                    "Register",
+                    BindingFlags.Public | BindingFlags.Static,
+                    binder: null,
+                    types: new[] { typeof(ScriptObject), typeof(bool), typeof(bool) },
+                    modifiers: null);
+                if (register == null)
+                {
+                    throw new InvalidOperationException(
+                        $"Native type '{nativeType.FullName}' does not expose its generated Register method.");
+                }
+
+                register.Invoke(null, new object[] { Global, false, false });
+            }
         }
 
         /// <summary>

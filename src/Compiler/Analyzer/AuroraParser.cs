@@ -213,6 +213,17 @@ namespace AuroraScript.Compiler.Analyzer
                                 $"Duplicate type declaration '{typeDeclaration.Name.Value}'.");
                         }
                     }
+                    else if (node is AmbientDeclaration ambientDeclaration)
+                    {
+                        if (!this.Root.AddAmbientDeclaration(ambientDeclaration))
+                        {
+                            throw new AuroraCompilationException(
+                                AuroraCompilationStage.Parsing,
+                                Lexer.FullPath,
+                                ambientDeclaration.Name,
+                                $"Duplicate ambient declaration '{ambientDeclaration.Name.Value}'.");
+                        }
+                    }
                     else
                     {
                         RejectGlobalNonDeclareStatement(node);
@@ -399,7 +410,8 @@ namespace AuroraScript.Compiler.Analyzer
             }
 
             if (node is VariableDeclaration { IsDeclare: true } ||
-                node is FunctionDeclaration function && (function.Flags & FunctionFlags.Declare) != 0)
+                node is FunctionDeclaration function && (function.Flags & FunctionFlags.Declare) != 0 ||
+                node is AmbientDeclaration)
             {
                 return;
             }
@@ -1347,6 +1359,11 @@ namespace AuroraScript.Compiler.Analyzer
                 throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, start, "declare is only allowed inside @global() declaration files.");
             }
 
+            if (PeekToken(0) is IdentifierToken { Value: "type" })
+            {
+                return ParseAmbientDeclaration(start);
+            }
+
             if (this.Lexer.TestNext(Symbols.KW_FUNCTION) || this.Lexer.TestNext(Symbols.KW_FUNC))
             {
                 var funcName = this.Lexer.NextOfKind<IdentifierToken>();
@@ -1380,7 +1397,214 @@ namespace AuroraScript.Compiler.Analyzer
                 throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, declaration.Range, "Declare variables must use a single external variable name without an initializer.");
             }
 
-            throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, this.Lexer.LookAtHead(), "The Declare keyword only allows the declaration of external methods or variables");
+            throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, this.Lexer.LookAtHead(), "The Declare keyword only allows the declaration of external methods, variables, or types");
+        }
+
+        private AmbientDeclaration ParseAmbientDeclaration(SourceSpan start)
+        {
+            Lexer.NextOfKind<IdentifierToken>();
+            var name = Lexer.NextOfKind<IdentifierToken>();
+            Lexer.Expect(Symbols.PT_LEFTBRACE);
+            var members = new List<AmbientMemberDeclaration>();
+            var memberNames = new HashSet<string>(StringComparer.Ordinal);
+            var hasConstructor = false;
+            while (!Lexer.TestSymbol(Symbols.PT_RIGHTBRACE))
+            {
+                var member = ParseAmbientMember();
+                if (member.Kind == AmbientMemberKind.Constructor)
+                {
+                    if (hasConstructor)
+                    {
+                        throw new AuroraCompilationException(
+                            AuroraCompilationStage.Parsing,
+                            Lexer.FullPath,
+                            member.Range,
+                            $"Duplicate constructor in ambient type '{name.Value}'.");
+                    }
+                    hasConstructor = true;
+                }
+                else if (!memberNames.Add(AmbientMemberKey(member)))
+                {
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Parsing,
+                        Lexer.FullPath,
+                        member.Name,
+                        $"Duplicate ambient member '{member.Name.Value}' in '{name.Value}'.");
+                }
+                members.Add(member);
+            }
+
+            var close = Lexer.NextRangeOfKind(Symbols.PT_RIGHTBRACE);
+            Lexer.TestNext(Symbols.PT_SEMICOLON);
+            return SetRange(new AmbientDeclaration(AmbientDeclarationKind.Type, name, members), start, close);
+        }
+
+        private AmbientMemberDeclaration ParseAmbientMember()
+        {
+            var start = Lexer.LookAtHead().Range;
+            var isStatic = false;
+            if (PeekToken(0) is IdentifierToken { Value: "static" })
+            {
+                Lexer.Next();
+                isStatic = true;
+            }
+
+            if (PeekToken(0) is IdentifierToken { Value: "constructor" })
+            {
+                var constructor = Lexer.NextOfKind<IdentifierToken>();
+                if (isStatic)
+                {
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Parsing,
+                        Lexer.FullPath,
+                        constructor,
+                        "Constructors are only valid as instance members of ambient types.");
+                }
+                Lexer.Expect(Symbols.PT_LEFTPARENTHESIS);
+                var parameters = ParseAmbientFunctionArguments();
+                var end = Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
+                return SetRange(
+                    new AmbientMemberDeclaration(
+                        AmbientMemberKind.Constructor,
+                        constructor,
+                        false,
+                        parameters),
+                    start,
+                    end);
+            }
+
+            if (Lexer.TestNext(Symbols.KW_FUNCTION) || Lexer.TestNext(Symbols.KW_FUNC))
+            {
+                var name = NextAmbientMemberName();
+                Lexer.Expect(Symbols.PT_LEFTPARENTHESIS);
+                var parameters = ParseAmbientFunctionArguments();
+                TypeReference returnType = null;
+                if (IsTypeReferenceFollowedBy(Symbols.PT_SEMICOLON))
+                {
+                    returnType = ParseTypeReference();
+                }
+                if (Lexer.TestSymbol(Symbols.PT_LEFTBRACE))
+                {
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Parsing,
+                        Lexer.FullPath,
+                        Lexer.LookAtHead(),
+                        "Ambient functions cannot have bodies.");
+                }
+                var end = Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
+                return SetRange(
+                    new AmbientMemberDeclaration(
+                        AmbientMemberKind.Function,
+                        name,
+                        isStatic,
+                        parameters,
+                        returnType),
+                    start,
+                    end);
+            }
+
+            if (Lexer.TestSymbol(Symbols.KW_CONST) || Lexer.TestSymbol(Symbols.KW_VAR))
+            {
+                var isConst = Lexer.TestNext(Symbols.KW_CONST);
+                if (!isConst)
+                {
+                    Lexer.Expect(Symbols.KW_VAR);
+                }
+                TypeReference declaredType = null;
+                if (IsAmbientFieldType())
+                {
+                    declaredType = ParseTypeReference();
+                }
+                var name = NextAmbientMemberName();
+                if (Lexer.TestSymbol(Symbols.OP_ASSIGNMENT))
+                {
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Parsing,
+                        Lexer.FullPath,
+                        Lexer.LookAtHead(),
+                        "Ambient fields cannot have initializers.");
+                }
+                var end = Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
+                return SetRange(
+                    new AmbientMemberDeclaration(
+                        isConst ? AmbientMemberKind.Const : AmbientMemberKind.Var,
+                        name,
+                        isStatic,
+                        returnType: declaredType),
+                    start,
+                    end);
+            }
+
+            if (!isStatic &&
+                IsAmbientFieldType())
+            {
+                var declaredType = ParseTypeReference();
+                var name = NextAmbientMemberName();
+                if (Lexer.TestSymbol(Symbols.OP_ASSIGNMENT))
+                {
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Parsing,
+                        Lexer.FullPath,
+                        Lexer.LookAtHead(),
+                        "Ambient fields cannot have initializers.");
+                }
+                var end = Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
+                return SetRange(
+                    new AmbientMemberDeclaration(
+                        AmbientMemberKind.Var,
+                        name,
+                        false,
+                        returnType: declaredType),
+                    start,
+                    end);
+            }
+
+            throw new AuroraCompilationException(
+                AuroraCompilationStage.Parsing,
+                Lexer.FullPath,
+                Lexer.LookAtHead(),
+                "Ambient types only allow constructors, fields, methods, and static const/var/func members.");
+        }
+
+        private Token NextAmbientMemberName()
+        {
+            return Lexer.NextOfToken<IdentifierToken, KeywordToken>();
+        }
+
+        private IReadOnlyList<ParameterDeclaration> ParseAmbientFunctionArguments()
+        {
+            var parameters = ParseFunctionArguments();
+            for (var i = 0; i < parameters.Count; i++)
+            {
+                if (parameters[i].Initializer != null)
+                {
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Parsing,
+                        Lexer.FullPath,
+                        parameters[i].Range,
+                        "Ambient declarations do not allow parameter default initializers.");
+                }
+            }
+            return parameters;
+        }
+
+        private static string AmbientMemberKey(AmbientMemberDeclaration member)
+        {
+            return member.IsStatic ? "static:" + member.Name.Value : member.Name.Value;
+        }
+
+        private bool IsAmbientFieldType()
+        {
+            return IsTypeReferenceFollowedByIdentifier();
+        }
+
+        private bool IsTypeReferenceFollowedByIdentifier()
+        {
+            return PeekToken(0) is IdentifierToken &&
+                (PeekToken(1) is IdentifierToken ||
+                    (PeekSymbol(1) == Symbols.PT_DOT &&
+                        PeekToken(2) is IdentifierToken &&
+                        PeekToken(3) is IdentifierToken));
         }
 
         private Expression ParseObjectDestructuringPattern()

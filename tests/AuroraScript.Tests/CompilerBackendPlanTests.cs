@@ -666,6 +666,46 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
+    public void GlobalPredefineInjectsOnlyReadOnlyAmbientRoots()
+    {
+        var root = Path.GetTempPath();
+        var module = Parse("@module(TEST);", root);
+        var globals = AuroraScript.Compiler.GlobalDeclarations.GlobalDeclarationScanner.BuildIndex([
+            ("globals.as",
+            """
+            @global();
+            declare type Host {
+                static const VERSION;
+                static func invoke(value);
+            }
+            declare type Widget {
+                constructor();
+                static func create();
+            }
+            """)
+        ]);
+        var options = EngineOptions.Default
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
+            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var backend = new BackendCompiler(new DynamicBuilder(options), options, globals);
+
+        var session = backend.CreateModulePlans([module]);
+        var modulePlan = Assert.Single(session.Modules);
+
+        Assert.True(modulePlan.TryGetSymbol("Host", out var hostSymbol));
+        Assert.True(session.Symbols[hostSymbol].HasFlag(BackendSymbolFlags.DeclaredOnly));
+        Assert.True(session.Symbols[hostSymbol].HasFlag(BackendSymbolFlags.Const));
+        Assert.IsType<AmbientDeclaration>(session.Symbols[hostSymbol].Declaration);
+        Assert.True(modulePlan.TryGetSymbol("Widget", out var widgetSymbol));
+        Assert.True(session.Symbols[widgetSymbol].HasFlag(BackendSymbolFlags.DeclaredOnly));
+        Assert.True(session.Symbols[widgetSymbol].HasFlag(BackendSymbolFlags.Const));
+        Assert.False(modulePlan.TryGetSymbol("VERSION", out _));
+        Assert.False(modulePlan.TryGetSymbol("invoke", out _));
+        Assert.False(modulePlan.TryGetSymbol("create", out _));
+        Assert.Empty(Assert.IsType<AmbientDeclaration>(session.Symbols[widgetSymbol].Declaration).Members);
+    }
+
+    [Fact]
     public void GlobalPredefineRejectsDuplicateModuleSymbol()
     {
         var root = Path.GetTempPath();

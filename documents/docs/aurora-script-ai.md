@@ -50,7 +50,7 @@ For default code generation style, also read `docs/script-authoring-best-practic
 - Empty statement: `;`
 - Block: `{ statement* }`
 - Function: `func name(args) { ... }` or `function name(args) { ... }`
-- External declaration in an `@global()` file: `declare func name(args);`, `declare var name;`, `declare const name;`
+- External declaration in an `@global()` file: `declare func name(args);`, `declare var name;`, `declare const name;`, `declare type Name { ... }`
 - Variable: `var name;`, `var name = expr;`, `const name = expr;`
 - Destructuring: `var { a, b } = obj;`, `var [ first, ...rest ] = array;`
 - Enum: `enum Name { A, B = 3, C }`
@@ -66,6 +66,16 @@ External `declare` declarations are optional compile-time declarations for host-
 declare const APP_VERSION;
 declare var ONLINE_TOTAL;
 declare func HOST_LOG(message);
+
+declare type Stats {
+    static func mean(Number a, Number b) Number;
+}
+
+declare type Vec2 {
+    constructor(Number x, Number y);
+    Number x;
+    func length() Number;
+}
 ```
 
 Rules:
@@ -77,6 +87,13 @@ Rules:
 - `declare const` participates in compile-time const assignment checks, but reads still resolve from host-defined `global`.
 - `declare var` reads and writes resolve through `global` unless shadowed by a local variable.
 - Do not use `export const HOST_VALUE;` for host-provided values; that emits a module property initialized to `null` and can hide the host global.
+- `declare type` is the script contract for an `[AuroraNativeType]`. Static-only
+  types omit `constructor` and mark members `static`; constructible types include
+  one constructor. Application native types must be selected explicitly with
+  `EngineOptions.WithCompiler(compiler => compiler.WithNativeTypes(...))`; that
+  selection applies to every domain of the engine. Contracts are editor-only
+  and must not be treated as structural `type` declarations or as compiler
+  inference input. Generating `.as` from host assemblies is deferred.
 
 ## Functions
 
@@ -192,6 +209,7 @@ Assignments are right-associative.
 `typeof` results:
 
 - lowercase for primitives and privileged kinds: `"null"`, `"boolean"`, `"number"`, `"string"`, `"object"`, `"array"`, `"date"`, `"regex"`, `"function"`, `"type"`, `"error"`, `"clr:function"`, `"clr:bonding"`
+- `"type"` for infrastructure NativeTypes (`Math`, `JSON`, `TDoc`, `console`, `HotPatch`) and host types registered with `WithNativeTypes`
 - constructor names for native objects stored as `ValueKind.Object`: `"Int8Array"`, `"UInt8Array"`, `"Int16Array"`, `"UInt16Array"`, `"Int32Array"`, `"UInt32Array"`, `"Int64Array"`, `"UInt64Array"`, `"Float64Array"`, `"BooleanArray"`, `"StringBuffer"`, `"HashMap"`, `"Path"`
 - Do not assume JavaScript `typeof new Int8Array() === "object"`. Use `typeof bytes == "Int8Array"` or `check Int8Array bytes`.
 - Do not add a new `ValueKind` member for a native type; identity lives on the object (`TypeOfValue`).
@@ -216,7 +234,7 @@ Constructors and globals:
 - `Array`, `String`, `Boolean`, `Object`, `Number`, `Date`
 - `Error`, `HashMap`, `Regex`, `Proxy`, `StringBuffer`, `Path`
 - Packed arrays: `Int8Array`, `UInt8Array`, `Int16Array`, `UInt16Array`, `Int32Array`, `UInt32Array`, `Int64Array`, `UInt64Array`, `Float64Array`, `BooleanArray`
-- `console`, `JSON`, `TDoc`, `Math`, `HotPatch`
+- Infrastructure Types (`typeof` is `"type"`; `new` fails): `console`, `JSON`, `TDoc`, `Math`, `HotPatch`
 
 Common APIs:
 
@@ -324,7 +342,7 @@ Typical diagnostics:
 
 1. Read this file.
 2. If generating script code, read `docs/script-authoring-best-practices.md`.
-3. If generating host-side C# integration code, read `docs/host-integration.md` and `schema/host-api.json`. For typed script globals implemented in C#, use `[AuroraNativeModule]` / `[AuroraExport]` rather than `BondingFunction` unless you need a raw `ScriptDatum` span callback.
+3. If generating host-side C# integration code, read `docs/host-integration.md` and `schema/host-api.json`. For typed script globals implemented in C#, use `[AuroraNativeType]` / `[AuroraExport]` rather than `BondingFunction` unless you need a raw `ScriptDatum` span callback.
 4. Check examples in `examples/valid` for accepted syntax.
 5. If rejecting code, compare with `examples/invalid`.
 6. Use `aurora_search_runtime_api` or `aurora_get_runtime_api` before using runtime APIs that may be confused with JavaScript built-ins.

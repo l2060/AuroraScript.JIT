@@ -22,7 +22,7 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             using AuroraScript.Runtime.Types;
             namespace Test;
 
-            [AuroraNativeModule("Bad")]
+            [AuroraNativeType("Bad")]
             public sealed class Bad : ScriptObject
             {
                 [AuroraExport("value")]
@@ -45,7 +45,7 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             using System;
             namespace Test;
 
-            [AuroraNativeModule("Bad")]
+            [AuroraNativeType("Bad")]
             public sealed partial class Bad : ScriptObject
             {
                 [AuroraExport("value")]
@@ -66,7 +66,7 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             using AuroraScript.Runtime.Types;
             namespace Test;
 
-            [AuroraNativeModule("Bad")]
+            [AuroraNativeType("Bad")]
             public sealed partial class Bad : ScriptObject
             {
                 [AuroraExport("value")]
@@ -90,14 +90,14 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             using AuroraScript.Runtime.Types;
             namespace Test;
 
-            [AuroraNativeModule("Same")]
+            [AuroraNativeType("Same")]
             public sealed partial class First : ScriptObject
             {
                 [AuroraExport("first")]
                 public static double Value() => 1;
             }
 
-            [AuroraNativeModule("Same")]
+            [AuroraNativeType("Same")]
             public sealed partial class Second : ScriptObject
             {
                 [AuroraExport("second")]
@@ -108,12 +108,12 @@ public sealed class AuroraExportGeneratorDiagnosticTests
         Assert.Contains(diagnostics, diagnostic =>
             diagnostic.Id == "AURORAEXP001" &&
             diagnostic.GetMessage().Contains(
-                "more than one",
+                "more than",
                 StringComparison.Ordinal));
     }
 
     [Fact]
-    public void ReportsNativeObjectMustDeriveAuroraNativeObject()
+    public void ReportsNativeInstanceMustDeriveScriptObject()
     {
         var diagnostics = Run(
             """
@@ -121,8 +121,8 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             using AuroraScript.Runtime.Types;
             namespace Test;
 
-            [AuroraNativeObject("Bad")]
-            public sealed partial class Bad : ScriptObject
+            [AuroraNativeType("Bad")]
+            public sealed partial class Bad
             {
                 [AuroraExport("x")]
                 public double X;
@@ -132,7 +132,7 @@ public sealed class AuroraExportGeneratorDiagnosticTests
         Assert.Contains(diagnostics, diagnostic =>
             diagnostic.Id == "AURORAEXP001" &&
             diagnostic.GetMessage().Contains(
-                "AuroraNativeObject",
+                "ScriptObject",
                 StringComparison.Ordinal));
     }
 
@@ -146,12 +146,13 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             using System;
             namespace Test;
 
-            [AuroraNativeObject("Vec2")]
-            public sealed partial class Vec2 : AuroraNativeObject
+            [AuroraNativeType("Vec2")]
+            public sealed partial class Vec2 : ScriptObject
             {
                 [AuroraExport("x")]
                 public double X;
 
+                [AuroraExport]
                 public Vec2(double x)
                 {
                     X = x;
@@ -165,10 +166,98 @@ public sealed class AuroraExportGeneratorDiagnosticTests
 
         Assert.Contains(updated.SyntaxTrees, tree =>
             tree.FilePath.EndsWith(
-                "Test.Vec2.AuroraNativeObject.g.cs",
+                "Test.Vec2.AuroraNativeType.g.cs",
                 StringComparison.Ordinal));
         Assert.DoesNotContain(updated.GetDiagnostics(), diagnostic =>
             diagnostic.Severity == DiagnosticSeverity.Error);
+    }
+
+    [Fact]
+    public void NativeObjectGeneratesStaticRuntimeAndCompilerExports()
+    {
+        var updated = RunCore(
+            """
+            using AuroraScript.Hosting;
+            using AuroraScript.Runtime.Types;
+            namespace Test;
+
+            [AuroraNativeType("Widget")]
+            public sealed partial class Widget : ScriptObject
+            {
+                [AuroraExport("value")]
+                public double ValueCore() => 1;
+
+                [AuroraExport("value")]
+                public static double StaticValueCore() => 2;
+
+                [AuroraExport("COUNT")]
+                public static readonly double Count = 3;
+            }
+            """,
+            out var diagnostics);
+
+        Assert.DoesNotContain(diagnostics, diagnostic =>
+            diagnostic.Severity == DiagnosticSeverity.Error);
+        Assert.DoesNotContain(updated.GetDiagnostics(), diagnostic =>
+            diagnostic.Severity == DiagnosticSeverity.Error);
+        var generated = string.Join(
+            Environment.NewLine,
+            updated.SyntaxTrees.Select(tree => tree.ToString()));
+        Assert.Contains("Define(\"value\", ScriptDatum.FromBonding(__Static_VALUE)", generated);
+        Assert.Contains("Define(\"COUNT\", ScriptDatum.FromNumber(Count)", generated);
+        Assert.Contains("AuroraGeneratedExportAttribute(\"Widget\", \"value\"", generated);
+        Assert.Contains("AuroraGeneratedConstantAttribute(\"Widget\", \"COUNT\"", generated);
+    }
+
+    [Fact]
+    public void ReportsInvalidNativeObjectStaticConstant()
+    {
+        var diagnostics = Run(
+            """
+            using AuroraScript.Hosting;
+            using AuroraScript.Runtime.Types;
+            namespace Test;
+
+            [AuroraNativeType("Bad")]
+            public sealed partial class Bad : ScriptObject
+            {
+                [AuroraExport("COUNT")]
+                public static int Count = 3;
+            }
+            """);
+
+        Assert.Contains(diagnostics, diagnostic =>
+            diagnostic.Id == "AURORAEXP002" &&
+            diagnostic.GetMessage().Contains(
+                "public static readonly double",
+                StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ReportsMultipleExportedConstructors()
+    {
+        var diagnostics = Run(
+            """
+            using AuroraScript.Hosting;
+            using AuroraScript.Runtime.Types;
+            namespace Test;
+
+            [AuroraNativeType("Bad")]
+            public sealed partial class Bad : ScriptObject
+            {
+                [AuroraExport]
+                public Bad() { }
+
+                [AuroraExport]
+                public Bad(double value) { }
+            }
+            """);
+
+        Assert.Contains(diagnostics, diagnostic =>
+            diagnostic.Id == "AURORAEXP003" &&
+            diagnostic.GetMessage().Contains(
+                "constructor",
+                StringComparison.Ordinal));
     }
 
     private static ImmutableArray<Diagnostic> Run(string source)

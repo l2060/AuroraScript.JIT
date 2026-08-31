@@ -9,6 +9,14 @@ namespace AuroraScript.Hosting
     [AttributeUsage(AttributeTargets.Method | AttributeTargets.Field | AttributeTargets.Constructor, Inherited = false, AllowMultiple = false)]
     public sealed class AuroraExportAttribute : Attribute
     {
+        /// <summary>
+        /// Marks the sole constructor exposed through script <c>new</c>.
+        /// </summary>
+        public AuroraExportAttribute()
+            : this(null, MatchFailure.Default)
+        {
+        }
+
         /// <summary>Marks a Core method or constant field for generated script export.</summary>
         public AuroraExportAttribute(string scriptName)
             : this(scriptName, MatchFailure.Default)

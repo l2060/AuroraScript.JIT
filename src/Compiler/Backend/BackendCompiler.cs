@@ -318,7 +318,8 @@ namespace AuroraScript.Compiler.Backend
                 }
 
                 var flags = BackendSymbolFlags.DeclaredOnly | BackendSymbolFlags.ModuleVisible;
-                if (declaration.Kind == GlobalDeclarationKind.Const)
+                if (declaration.Kind == GlobalDeclarationKind.Const ||
+                    declaration.Kind == GlobalDeclarationKind.Type)
                 {
                     flags |= BackendSymbolFlags.Const;
                 }
@@ -333,6 +334,7 @@ namespace AuroraScript.Compiler.Backend
                         : BackendSymbolKind.ModuleProperty,
                     flags,
                     CreateAmbientDeclarationNode(declaration));
+                modulePlan.MarkDeclaredOnly(declaration.Name);
                 count++;
             }
 
@@ -341,6 +343,16 @@ namespace AuroraScript.Compiler.Backend
 
         private static AstNode CreateAmbientDeclarationNode(GlobalDeclarationInfo declaration)
         {
+            if (declaration.Kind == GlobalDeclarationKind.Type)
+            {
+                var ambient = new AmbientDeclaration(
+                    AmbientDeclarationKind.Type,
+                    CreateIdentifier(declaration.Name, declaration.NameRange),
+                    Array.Empty<AmbientMemberDeclaration>());
+                ambient.Range = declaration.DeclarationRange;
+                return ambient;
+            }
+
             if (declaration.Kind == GlobalDeclarationKind.Function)
             {
                 var function = new FunctionDeclaration(

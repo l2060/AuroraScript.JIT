@@ -3,7 +3,8 @@ using System;
 namespace AuroraScript.Hosting
 {
     /// <summary>
-    /// Compiler metadata emitted for an <see cref="AuroraNativeObjectAttribute"/> type.
+    /// Compiler metadata emitted for an <see cref="AuroraNativeTypeAttribute"/> type
+    /// that has native instances.
     /// Host code should not apply this attribute directly.
     /// </summary>
     [AttributeUsage(AttributeTargets.Assembly, AllowMultiple = true)]

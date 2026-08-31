@@ -7,15 +7,9 @@ namespace AuroraScript.Tests.Host;
 /// <summary>
 /// Script global used to validate <see cref="AuroraExportAttribute"/> source generation.
 /// </summary>
-[AuroraNativeModule("Stats")]
+[AuroraNativeType("Stats")]
 public sealed partial class StatsSupport : ScriptObject
 {
-    /// <summary>Defines the Stats global on a domain or engine global.</summary>
-    public static void Register(ScriptGlobal global)
-    {
-        global.Define("Stats", new StatsSupport(), writeable: false, enumerable: false);
-    }
-
     /// <summary>Returns the arithmetic mean of two numbers.</summary>
     [AuroraExport("mean", MatchFailure.ReturnNaN)]
     public static double MeanCore(double a, double b) => (a + b) / 2D;

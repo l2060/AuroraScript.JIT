@@ -6,6 +6,7 @@ namespace AuroraScript.Hosting
     /// Marks a partial script-global object implementation whose script exports are
     /// generated from <see cref="AuroraExportAttribute"/> core methods.
     /// </summary>
+    [Obsolete("Use AuroraNativeTypeAttribute. Static-only native types omit an exported constructor.")]
     [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
     public sealed class AuroraNativeModuleAttribute : Attribute
     {

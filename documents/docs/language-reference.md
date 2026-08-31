@@ -290,6 +290,28 @@ declare var ONLINE_TOTAL;
 declare func HOST_LOG(message);
 ```
 
+Native host types use `declare type`. A type containing only static members is
+a non-constructible Type; adding a `constructor` describes a Type that supports
+`new`. These names are for editor assistance only; they do not change compiler
+inference. Do not use structural `type` declarations for host types.
+
+```as
+@global();
+
+declare type Stats {
+    static const Number PI;
+    static func mean(Number a, Number b) Number;
+}
+
+declare type Vec2 {
+    constructor(Number x, Number y);
+    Number x;
+    func length() Number;
+    static const Number DIMENSIONS;
+    static func from(Number x, Number y) Vec2;
+}
+```
+
 An `@global()` file may contain only `declare` statements and cannot also contain `@module`, imports, includes, or exports. Declarations do not create runtime values; the host must define them on the script domain. `CompileBlock` accepts only a function body with host-supplied parameters and rejects all module-only syntax.
 
 > **Authoring rule of thumb:** use a full module for imports, exports, shared helpers, and host-called entry points; use a `CompileBlock` for a small one-off body; use packed arrays and stable locals for numeric hot paths; use ordinary arrays/objects for flexible application data.
@@ -357,11 +379,15 @@ External declarations:
 declare func HOST_LOG(message);
 declare const APP_VERSION;
 declare var ONLINE_TOTAL;
+
+declare type Stats {
+    static func mean(Number a, Number b) Number;
+}
 ```
 
 `declare` is compile-time only and is only valid inside `@global()` files. A global declaration file must start with `@global();` after only comments or blank lines, cannot also use `@module`, cannot be imported or included, and is not compiled as a module. The compiler scans resolver-visible project `.as` files and loads these optional declarations before module analysis when they exist. Host-provided globals still work at runtime without an `@global()` file; the file exists to improve editor assistance and static diagnostics.
 
-Global declarations create compiler symbols for binding, duplicate checks, and `const` assignment checks, but do not emit module initialization code or create runtime module properties. `declare var/const` must use one simple name and cannot have an initializer or destructuring pattern. Reads and writes of declared external variables resolve through the script domain `global` unless a local variable shadows the name. Duplicate global names across `@global()` files are rejected; functions do not support overloads.
+Global declarations create compiler symbols for binding, duplicate checks, and `const` assignment checks, but do not emit module initialization code or create runtime module properties. `declare var/const` must use one simple name and cannot have an initializer or destructuring pattern. Reads and writes of declared external variables resolve through the script domain `global` unless a local variable shadows the name. Duplicate global names across `@global()` files are rejected; functions do not support overloads. `declare type` member signatures are not used for type inference.
 
 ## Scope
 
@@ -461,6 +487,8 @@ var block = () => { return 1; };
 typeof 1;                      // "number"
 typeof [];                     // "array"
 typeof {};                     // "object"
+typeof Math;                   // "type"
+typeof console;                // "type"
 typeof new Int8Array(2);       // "Int8Array"
 typeof new StringBuffer("");   // "StringBuffer"
 typeof new HashMap();          // "HashMap"
@@ -498,6 +526,7 @@ Object values:
 - string buffer (`typeof` → `"StringBuffer"`)
 - path (`typeof` → `"Path"`)
 - packed arrays (`typeof` → `"Int8Array"`, `"UInt8Array"`, `"Int16Array"`, `"UInt16Array"`, `"Int32Array"`, `"UInt32Array"`, `"Int64Array"`, `"UInt64Array"`, `"Float64Array"`, `"BooleanArray"`)
+- infrastructure and host NativeTypes (`typeof` → `"type"`): `Math`, `JSON`, `TDoc`, `console`, `HotPatch`, and types selected with `WithNativeTypes`
 - CLR interop objects exposed by the host
 
 ## Runtime Constructors

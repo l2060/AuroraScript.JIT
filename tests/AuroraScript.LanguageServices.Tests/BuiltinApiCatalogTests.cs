@@ -15,7 +15,7 @@ public sealed class BuiltinApiCatalogTests
         var catalog = LoadCatalog();
 
         Assert.True(catalog.TryGetGlobal("Math", out var math));
-        Assert.Equal(BuiltinApiKind.Object, math.Kind);
+        Assert.Equal(BuiltinApiKind.Type, math.Kind);
         Assert.True(math.TryGetMember("abs", out var abs));
         Assert.Equal(BuiltinApiKind.Method, abs.Kind);
         Assert.Equal("number", abs.ReturnType);
@@ -179,11 +179,12 @@ public sealed class BuiltinApiCatalogTests
         var registrations = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["global"] = Path.Combine(runtimeRoot, "ScriptGlobal.cs"),
-            ["console"] = Path.Combine(runtimeRoot, "Extensions", "ConsoleSupport.cs"),
-            ["JSON"] = Path.Combine(runtimeRoot, "Extensions", "JsonSupport.cs"),
-            ["Math"] = Path.Combine(runtimeRoot, "Extensions", "MathSupport.cs"),
+            ["console"] = Path.Combine(runtimeRoot, "Builtin", "ConsoleSupport.cs"),
+            ["JSON"] = Path.Combine(runtimeRoot, "Builtin", "JsonSupport.cs"),
+            ["TDoc"] = Path.Combine(runtimeRoot, "Builtin", "TDocSupport.cs"),
+            ["Math"] = Path.Combine(runtimeRoot, "Builtin", "MathSupport.cs"),
             ["Path"] = Path.Combine(runtimeRoot, "Types", "TypeConstruct", "PathConstructor.cs"),
-            ["HotPatch"] = Path.Combine(runtimeRoot, "Extensions", "HotPatchSupport.cs"),
+            ["HotPatch"] = Path.Combine(runtimeRoot, "Builtin", "HotPatchSupport.cs"),
             ["Array"] = Path.Combine(runtimeRoot, "Types", "TypeConstruct", "ArrayConstructor.cs"),
             ["String"] = Path.Combine(runtimeRoot, "Types", "TypeConstruct", "StringConstructor.cs"),
             ["Boolean"] = Path.Combine(runtimeRoot, "Types", "TypeConstruct", "BooleanConstructor.cs"),
@@ -196,7 +197,7 @@ public sealed class BuiltinApiCatalogTests
         {
             Assert.True(catalog.TryGetGlobal(registration.Key, out var global), $"runtime-api.json is missing global '{registration.Key}'.");
             var source = File.ReadAllText(registration.Value);
-            var memberNames = registration.Key is "Math"
+            var memberNames = registration.Key is "console" or "JSON" or "TDoc" or "Math" or "HotPatch"
                 ? ExtractAuroraExportNames(source)
                 : ExtractDefineNames(source, null);
             foreach (var memberName in memberNames)

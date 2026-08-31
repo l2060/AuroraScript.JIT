@@ -7,7 +7,7 @@ namespace AuroraScript.Runtime.Builtin
     /// <summary>
     /// Script Math global implemented through generated native exports.
     /// </summary>
-    [AuroraNativeModule("Math")]
+    [AuroraNativeType("Math")]
     public sealed partial class MathSupport : ScriptObject
     {
         /// <summary>Circle constant pi.</summary>

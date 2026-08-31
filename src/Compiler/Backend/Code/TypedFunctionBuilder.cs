@@ -21,7 +21,7 @@ namespace AuroraScript.Compiler.Backend.Code
             return Build(
                 module,
                 function,
-                new HostExportCatalog(Array.Empty<System.Reflection.Assembly>()));
+                new HostExportCatalog(Array.Empty<Type>()));
         }
 
         public static TypedFunctionCode Build(
@@ -303,7 +303,16 @@ namespace AuroraScript.Compiler.Backend.Code
                     : FunctionId.Invalid;
                 var constant = default(ScriptDatum);
                 var hasConstant = moduleSymbol.IsValid && _module.TryGetInlineConstant(moduleSymbol, out constant);
-                return new BoundName(name, local, upvalue, moduleSymbol, directFunction, constant, hasConstant);
+                var isDeclaredOnly = _module.IsDeclaredOnly(name);
+                return new BoundName(
+                    name,
+                    local,
+                    upvalue,
+                    moduleSymbol,
+                    directFunction,
+                    constant,
+                    hasConstant,
+                    isDeclaredOnly);
             }
 
             private LocalSlotId ResolveLocal(string name)
@@ -1172,6 +1181,13 @@ namespace AuroraScript.Compiler.Backend.Code
                             method.ReturnKind == AuroraExportValueKind.Object &&
                             _hostExports.TryGetNativeObject(
                                 method.Method.ReturnType,
+                                out var returned):
+                        return returned;
+                    case FunctionCallExpression call
+                        when TryGetHostExport(call, out var export) &&
+                            export.ReturnKind == AuroraExportValueKind.Object &&
+                            _hostExports.TryGetNativeObject(
+                                export.Method.ReturnType,
                                 out var returned):
                         return returned;
                     case AssignmentExpression assignment:

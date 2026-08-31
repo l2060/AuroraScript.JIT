@@ -307,9 +307,9 @@ public sealed class BuiltinLanguageFeatureTests
 
         var completions = service.GetCompletions("test.as", source, PositionOf(source, "Ma"));
 
-        Assert.Contains(completions.Items, item => item.Label == "Math" && item.Kind == CompletionItemKind.Object);
+        Assert.Contains(completions.Items, item => item.Label == "Math" && item.Kind == CompletionItemKind.Type);
         Assert.Contains(completions.Items, item => item.Label == "Path" && item.Kind == CompletionItemKind.Constructor);
-        Assert.Contains(completions.Items, item => item.Label == "console" && item.Kind == CompletionItemKind.Object);
+        Assert.Contains(completions.Items, item => item.Label == "console" && item.Kind == CompletionItemKind.Type);
         Assert.Contains(completions.Items, item => item.Label == "global" && item.Kind == CompletionItemKind.Object);
         Assert.DoesNotContain(completions.Items, item => item.Label is "fs" or "http");
     }
@@ -461,7 +461,7 @@ public sealed class BuiltinLanguageFeatureTests
         Assert.Contains(completions.Items, item => item.Label == "input" && item.Kind == CompletionItemKind.Variable);
         Assert.Contains(completions.Items, item => item.Label == "helper" && item.Kind == CompletionItemKind.Function);
         Assert.Contains(completions.Items, item => item.Label == "moduleConst" && item.Kind == CompletionItemKind.Constant);
-        Assert.Contains(completions.Items, item => item.Label == "Math" && item.Kind == CompletionItemKind.Object);
+        Assert.Contains(completions.Items, item => item.Label == "Math" && item.Kind == CompletionItemKind.Type);
     }
 
     [Fact]

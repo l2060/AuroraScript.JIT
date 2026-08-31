@@ -28,7 +28,7 @@ namespace AuroraScript.Hosting.Generators
     public sealed partial class AuroraExportGenerator : IIncrementalGenerator
     {
         private const string BuiltinGlobalAttribute = "AuroraScript.Hosting.AuroraNativeModuleAttribute";
-        private const string NativeObjectAttribute = "AuroraScript.Hosting.AuroraNativeObjectAttribute";
+        private const string NativeTypeAttribute = "AuroraScript.Hosting.AuroraNativeTypeAttribute";
         private const string ExportAttribute = "AuroraScript.Hosting.AuroraExportAttribute";
         private const string ParamAttribute = "AuroraScript.Hosting.AuroraParamAttribute";
         private static readonly DiagnosticDescriptor InvalidGlobal = new(
@@ -66,10 +66,11 @@ namespace AuroraScript.Hosting.Generators
                 BuiltinGlobalAttribute,
                 static (node, _) => node is TypeDeclarationSyntax,
                 static (context, cancellationToken) => ParseBuiltinGlobal(context, cancellationToken));
-            var nativeObjects = context.SyntaxProvider.ForAttributeWithMetadataName(
-                NativeObjectAttribute,
+            var nativeTypes = context.SyntaxProvider.ForAttributeWithMetadataName(
+                NativeTypeAttribute,
                 static (node, _) => node is TypeDeclarationSyntax,
                 static (context, cancellationToken) => ParseNativeObject(context, cancellationToken));
+            var allNativeTypes = nativeTypes.Collect();
 
             context.RegisterSourceOutput(
                 candidates.Collect(),
@@ -78,13 +79,13 @@ namespace AuroraScript.Hosting.Generators
                 candidates.Collect(),
                 static (productionContext, models) =>
                     EmitCompilerCatalog(productionContext, models));
-        context.RegisterSourceOutput(
-            nativeObjects.Collect(),
-            static (productionContext, models) => ExecuteNativeObjects(productionContext, models));
-        context.RegisterSourceOutput(
-            nativeObjects.Collect(),
-            static (productionContext, models) =>
-                EmitNativeObjectCatalog(productionContext, models));
+            context.RegisterSourceOutput(
+                allNativeTypes,
+                static (productionContext, models) => ExecuteNativeObjects(productionContext, models));
+            context.RegisterSourceOutput(
+                allNativeTypes,
+                static (productionContext, models) =>
+                    EmitNativeObjectCatalog(productionContext, models));
         }
 
         private static BuiltinGlobalModel? ParseBuiltinGlobal(
@@ -140,6 +141,14 @@ namespace AuroraScript.Hosting.Generators
                     InvalidGlobal,
                     GetLocation(typeSymbol),
                     $"Type '{typeSymbol.ToDisplayString()}' must derive from ScriptObject."));
+            }
+            if (typeSymbol.GetAttributes().Any(
+                    attribute => attribute.AttributeClass?.ToDisplayString() == NativeTypeAttribute))
+            {
+                diagnostics.Add(Diagnostic.Create(
+                    InvalidGlobal,
+                    GetLocation(typeSymbol),
+                    $"Type '{typeSymbol.ToDisplayString()}' cannot be both AuroraNativeModule and AuroraNativeType."));
             }
             if (typeSymbol.InstanceConstructors.Any(
                     static constructor => !constructor.IsImplicitlyDeclared))
@@ -277,7 +286,8 @@ namespace AuroraScript.Hosting.Generators
         private static ExportModel? ParseExport(
             INamedTypeSymbol containingType,
             IMethodSymbol methodSymbol,
-            AttributeData exportAttribute)
+            AttributeData exportAttribute,
+            string adapterPrefix = "")
         {
             if (methodSymbol.TypeParameters.Length != 0 ||
                 methodSymbol.ReturnsByRef ||
@@ -381,7 +391,7 @@ namespace AuroraScript.Hosting.Generators
             return new ExportModel(
                 scriptName!,
                 methodSymbol.Name,
-                BuildAdapterName(scriptName!),
+                adapterPrefix + BuildAdapterName(scriptName!),
                 containingType.ToDisplayString(),
                 canDirectCall,
                 failure,

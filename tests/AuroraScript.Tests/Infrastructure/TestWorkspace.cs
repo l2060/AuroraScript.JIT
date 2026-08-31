@@ -7,6 +7,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using AuroraScript.Source;
+using AuroraScript.Tests.Host;
 
 namespace AuroraScript.Tests.Infrastructure;
 
@@ -47,7 +48,7 @@ internal sealed class TestWorkspace : IDisposable
         bool enableModuleConstInlining = false,
         bool stackTrace = true,
         string? dateTimeFormat = null,
-        bool hostExports = false)
+        bool nativeTypes = false)
     {
         var options = EngineOptions.Default
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(Root))
@@ -70,10 +71,10 @@ internal sealed class TestWorkspace : IDisposable
         {
             options = options.WithOutput(output => output.AssemblyFile = assemblyOut);
         }
-        if (hostExports)
+        if (nativeTypes)
         {
             options = options.WithCompiler(compiler =>
-                compiler.WithHostExportAssemblies(typeof(TestWorkspace).Assembly));
+                compiler.WithNativeTypes(typeof(Vec2), typeof(StatsSupport)));
         }
         return new AuroraEngine(options);
     }
@@ -87,7 +88,7 @@ internal sealed class TestWorkspace : IDisposable
         int maxDegreeOfParallelism = 4,
         CancellationToken cancellationToken = default,
         string? dateTimeFormat = null,
-        bool hostExports = false)
+        bool nativeTypes = false)
     {
         var assemblyOut = mode == CompilationMode.Persistence ? Path.Combine(Root, "test-output.dll") : null;
         var engine = CreateEngine(
@@ -97,7 +98,7 @@ internal sealed class TestWorkspace : IDisposable
             maxDegreeOfParallelism,
             assemblyOut,
             dateTimeFormat: dateTimeFormat,
-            hostExports: hostExports);
+            nativeTypes: nativeTypes);
         WriteSource("main.as", source);
         await engine.BuildAsync(["main.as"], cancellationToken);
         var domain = configureGlobal == null ? engine.CreateDomain() : engine.CreateDomain(configureGlobal);

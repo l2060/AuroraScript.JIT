@@ -499,6 +499,32 @@ declare var ONLINE_TOTAL;
 
 `declare` is compile-time only and is only valid in `@global()` files. These files cannot be imported or included, are not compiled as modules, and are loaded by scanning resolver-visible project `.as` files before module analysis. If no `@global()` file exists, the host globals still work at runtime; the project simply lacks those optional compile-time symbols. Do not write `export declare`; it is invalid. Reads and writes go to the domain `global` unless a local variable shadows the name. Do not model host globals as `export const NAME;` or `export var NAME;`; those forms create module properties and can hide the host-defined value.
 
+Hand-write `declare type` for `[AuroraNativeType]` host types. A type without a
+`constructor` is a static-only type such as `Stats` or `Math`; a type with a
+`constructor` can be used with `new`. These contracts are editor-only:
+completion, hover, definition, signatures, and coloring. They do not drive
+compiler inference or direct calls. Inference still uses the real
+engine-scoped `CompilerOptions.NativeTypes` catalog. Do not use script `type` for host objects;
+`type` remains a compile-time structural shape.
+
+```as
+@global();
+
+declare type Stats {
+    static const Number PI;
+    static func mean(Number a, Number b) Number;
+}
+
+declare type Vec2 {
+    constructor(Number x, Number y);
+    Number x;
+    Number y;
+    func length() Number;
+    static const Number DIMENSIONS;
+    static func from(Number x, Number y) Vec2;
+}
+```
+
 `ClrMarshaller` converts common values:
 
 - CLR to script: `null`, numbers, `bool`, `string`, `DateTime`, `DateTimeOffset`, `Enum`, `Delegate`, `IDictionary`, `IEnumerable`, `ScriptObject`, `ScriptDatum`, registered CLR objects.
@@ -508,18 +534,23 @@ Use `ScriptDatum` when you need exact runtime values and minimum conversion over
 
 ## Native Host Exports
 
-Use generated native exports when a host global should be a `ScriptObject` with typed Core methods instead of `BondingFunction` or a CLR delegate. Referencing the `AuroraScript.JIT` package (or the `AuroraScript` project in this repo) brings in the hosting source generator automatically. There is no separate generator package. The analyzer turns `[AuroraExport]` members into Datum adapters and compiler catalog metadata.
+Use `[AuroraNativeType]` when a host global should be a script Type with typed
+static members and optional native instances. Referencing the
+`AuroraScript.JIT` package (or the `AuroraScript` project in this repo) brings
+in the hosting source generator automatically. The analyzer turns
+`[AuroraExport]` members into Datum adapters and compiler catalog metadata.
 
 This is distinct from script `native func` (a module ABI) and from opt-in `BuiltInModules` such as `fs` and `http`.
 
-Declare a public sealed partial class that derives from `ScriptObject`:
+Declare a sealed partial class. Static-only types may derive `ScriptObject` and
+omit an exported constructor:
 
 ```csharp
 using AuroraScript.Hosting;
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Types;
 
-[AuroraNativeModule("Stats")]
+[AuroraNativeType("Stats")]
 public sealed partial class StatsSupport : ScriptObject
 {
     [AuroraExport("mean", MatchFailure.ReturnNaN)]
@@ -530,24 +561,47 @@ public sealed partial class StatsSupport : ScriptObject
 }
 ```
 
-Register the instance on a domain or engine global. Runtime visibility still comes from `Define`; the generator only emits adapters, constructors, and assembly catalog attributes.
+`Register` is optional when the type is listed in `WithNativeTypes`. Call it
+only to attach the Type to a nested object, or to register a type that is not
+in the engine catalog:
 
 ```csharp
-global.Define("Stats", new StatsSupport(), writeable: false, enumerable: false);
+StatsSupport.Register(global);
 ```
 
-The engine already defines `Math` and `TDoc` this way. `JSON`, `console`, `HotPatch`, and prototype methods remain Bonding-style implementations.
+Normally, select application native types once on the engine instead. The
+engine registers them on its shared global, so every domain created by that
+engine sees the same set:
 
-### Instantiable native objects
+```csharp
+var options = EngineOptions.Default.WithCompiler(compiler =>
+    compiler.WithNativeTypes(
+        typeof(StatsSupport),
+        typeof(Vec2)));
+```
 
-Use `[AuroraNativeObject]` when the host needs many instances of a fixed-shape object. The type must be a sealed partial class that derives `AuroraNativeObject`. Native fields stay as CLR storage. Methods are dispatched from generated property overrides. The instance uses the ordinary `Object` prototype (`toString`, and so on); there is no per-type native prototype.
+`Register` accepts any `ScriptObject` when a Type needs to be exposed under a
+nested object instead. Types selected through the compiler options are global,
+engine-scoped registrations.
+
+The engine always registers `Math`, `JSON`, `TDoc`, `console`, and `HotPatch`.
+`typeof Math` and `typeof console` are `"type"`; `new Math()` and `new console()`
+fail because those Types have no exported constructor.
+
+### Native instances
+
+The same `[AuroraNativeType]` supports fixed-shape native instances. A type with
+instance exports must derive `ScriptObject`. Generated code adds the native
+instance marker and property overrides, so unannotated CLR members are not
+exposed through reflection. Native fields stay as CLR storage. Instances use
+the ordinary `Object` prototype.
 
 ```csharp
 using AuroraScript.Hosting;
 using AuroraScript.Runtime.Types;
 
-[AuroraNativeObject("Vec2")]
-public sealed partial class Vec2 : AuroraNativeObject
+[AuroraNativeType("Vec2")]
+public sealed partial class Vec2 : ScriptObject
 {
     [AuroraExport("x")]
     public double X;
@@ -555,6 +609,7 @@ public sealed partial class Vec2 : AuroraNativeObject
     [AuroraExport("y")]
     public double Y;
 
+    [AuroraExport]
     public Vec2(double x, double y)
     {
         X = x;
@@ -566,7 +621,9 @@ public sealed partial class Vec2 : AuroraNativeObject
 }
 ```
 
-Register the generated constructor on a domain or engine global:
+When `typeof(Vec2)` is included in `WithNativeTypes`, the engine already
+registers the constructor Type. Call `Vec2.Register` only for a nested object
+or a type outside that catalog:
 
 ```csharp
 Vec2.Register(global);
@@ -583,11 +640,21 @@ Host code can also `new Vec2(3, 4)` and pass the instance as `ScriptDatum.FromOb
 
 When flow analysis proves a local always holds one native object type, the compiler stores that local as the CLR type (`Vec2`) instead of `ScriptDatum`. Proven `new`, field reads/writes, `++`/`--`, compound assignments such as `+=`, and method calls bind to CLR constructors, fields, and methods (`newobj` / `ldfld` / `stfld` / `callvirt`) without boxing through `ScriptDatum`. Locals captured by closures, values reassigned to an unproven type, and receivers the compiler cannot prove (for example a function parameter) stay on the dynamic property protocol.
 
+Static `[AuroraExport]` methods and `public static readonly double` constants
+live on the generated Type (`Vec2.Type`), like JavaScript class statics.
+Instance members stay on native instances. A static factory returning `Vec2`
+preserves the concrete native type proof, so subsequent instance access can
+remain on direct CLR calls.
+
 Rules:
 
 - Instance fields must be public `double`, `int`, `bool`, or `string`.
-- Instance methods use the same Core signatures as `[AuroraNativeModule]`, without a `thisObject` parameter.
-- Hand-written constructors do not need a special `base(...)` call. Mark one public constructor with `[AuroraExport]` when several exist.
+- Instance methods use the same Core signatures as static exports, without a `thisObject` parameter.
+- Script construction requires exactly one public constructor marked
+  `[AuroraExport]`. With no marked constructor the Type is not constructible.
+- Exported static methods remain methods of the instance CLR class and may
+  access its private fields. Only members called directly from generated script
+  IL must themselves be public.
 - Do not store native fields in HiddenClass slots. Extra script properties still use the normal object path.
 
 
@@ -619,11 +686,15 @@ When argument types are proven, the compiler calls the Core method directly. Req
 - Unshadowed global receiver (`Math.abs(x)`, not `var m = Math; m.abs(x)`).
 - Public Core method without `params`.
 - Compatible proven argument types, including optional trailing defaults.
-- Catalog metadata present. The engine assembly is always scanned. Additional host assemblies must be listed on `CompilerOptions.HostExportAssemblies`.
+- Catalog metadata present. Infrastructure native types in the engine assembly
+  are always included. Application types must be selected explicitly with
+  `CompilerOptionsBuilder.WithNativeTypes`.
 
 ```csharp
 var options = EngineOptions.Default.WithCompiler(compiler =>
-    compiler.WithHostExportAssemblies(typeof(MyExports).Assembly));
+    compiler.WithNativeTypes(
+        typeof(Vec2),
+        typeof(StatsSupport)));
 ```
 
 `params` exports, spread arguments, shadowed globals, and unproven argument types stay on the generated Datum adapter.
@@ -687,7 +758,7 @@ Patch types:
 For AI-assisted development:
 
 1. Read `host-integration` for .NET host usage, including native host exports.
-2. Read `host-api` for a structured API index (`AuroraNativeModule`, `AuroraExport`, `CompilerOptions.HostExportAssemblies`).
+2. Read `host-api` for a structured API index (`AuroraNativeType`, `AuroraExport`, `CompilerOptionsBuilder.WithNativeTypes`).
 3. Use `aurora_search_runtime_api` or `aurora_get_runtime_api` before using runtime APIs that look like JavaScript built-ins.
 4. Use `aurora_check_script` to validate generated in-memory script text.
 5. Use `aurora_run_script` to execute a small module or block and inspect `stdout`, `stderr`, and `result`.

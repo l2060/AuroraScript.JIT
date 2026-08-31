@@ -418,12 +418,35 @@ public sealed class BuiltInLibraryTests
         var engine = workspace.CreateEngine(output: output);
         await engine.BuildAsync(workspace.MemorySource(
             "main.as",
-            "@module(TEST); export func run() { console.log('value', 42); console.error('failure'); }"));
+            "@module(TEST); export func run() { console.log('value', 42); console.error('failure'); console.time('timer'); console.timeEnd('timer'); }"));
 
         TestWorkspace.Execute(engine.CreateDomain(), "run");
 
         Assert.Contains("value", output.ToString());
         Assert.Contains("42", output.ToString());
         Assert.Contains("failure", output.ToString());
+        Assert.Contains("timer Used ", output.ToString());
+    }
+
+    [Fact]
+    public async Task ConsoleAndHotPatchAreStaticOnlyNativeTypes()
+    {
+        using var workspace = new TestWorkspace();
+        var engine = workspace.CreateEngine();
+        await engine.BuildAsync(workspace.MemorySource(
+            "main.as",
+            """
+            @module(TEST);
+            export func names() { return [typeof console, typeof HotPatch]; }
+            export func newConsole() { return new console(); }
+            export func newHotPatch() { return new HotPatch(); }
+            """));
+        using var domain = engine.CreateDomain();
+
+        ScriptAssert.Equal(
+            new object?[] { "type", "type" },
+            TestWorkspace.Execute(domain, "names"));
+        Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, "newConsole"));
+        Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, "newHotPatch"));
     }
 }

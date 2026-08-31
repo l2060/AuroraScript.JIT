@@ -29,6 +29,7 @@ func testNative() {
 	var h = Stats.mean(c,d);
 	var h2 = Stats.mean(c,b);
 
+	var vh = Vec2.from(1234,1234);
 
 
 	var vec = new Vec2(1000,2000);

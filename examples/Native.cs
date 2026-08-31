@@ -5,11 +5,15 @@ using System;
 
 namespace Examples
 {
-    [AuroraNativeObject("Vec2")]
-    public sealed partial class Vec2 : AuroraNativeObject
+    [AuroraNativeType("Vec2")]
+    public sealed partial class Vec2 : ScriptObject
     {
         [AuroraExport("x")] public double X;
         [AuroraExport("y")] public double Y;
+        [AuroraExport("DIMENSIONS")]
+        public static readonly double Dimensions = 2;
+
+        [AuroraExport]
         public Vec2(double x, double y)
         {
             X = x;
@@ -17,6 +21,17 @@ namespace Examples
         }
         [AuroraExport("length")]
         public double LengthCore() => Math.Sqrt((X * X) + (Y * Y));
+
+        [AuroraExport("length")]
+        public static double StaticLengthCore(double x, double y) =>
+            Math.Sqrt((x * x) + (y * y));
+
+
+
+        [AuroraExport("from")]
+        public static Vec2 FromCore(double x, double y) => new Vec2(x, y);
+
+
     }
 
 
@@ -24,7 +39,7 @@ namespace Examples
     /// <summary>
     /// Experimental script global used to validate <see cref="AuroraExportAttribute"/> source generation.
     /// </summary>
-    [AuroraNativeModule("Stats")]
+    [AuroraNativeType("Stats")]
     public sealed partial class StatsSupport : ScriptObject
     {
 

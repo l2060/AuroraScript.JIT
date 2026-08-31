@@ -74,8 +74,7 @@ public sealed class NativeObjectDirectCallTests
             }
             """,
             mode,
-            configureGlobal: global => Vec2.Register(global),
-            hostExports: true);
+            nativeTypes: true);
 
         ScriptAssert.Equal(10, TestWorkspace.Execute(domain, "construct"));
         ScriptAssert.Equal(12, TestWorkspace.Execute(domain, "writeField"));
@@ -123,8 +122,7 @@ public sealed class NativeObjectDirectCallTests
                 return Vec2;
             }
             """,
-            configureGlobal: global => Vec2.Register(global),
-            hostExports: true);
+            nativeTypes: true);
 
         ScriptAssert.Equal(
             3,
@@ -135,11 +133,156 @@ public sealed class NativeObjectDirectCallTests
         ScriptAssert.Equal(1, TestWorkspace.Execute(domain, "shadowed"));
     }
 
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+    [InlineData(CompilationMode.OnlyRun)]
+    public async Task AmbientDeclareTypeDoesNotBlockNativeDirectCalls(CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource(
+            "global.as",
+            """
+            @global();
+            declare type Vec2 {
+                constructor(Number x, Number y);
+                Number x;
+                Number y;
+                func length() Number;
+                static const Number DIMENSIONS;
+                static func from(Number x, Number y) Vec2;
+                static func length(Number x, Number y) Number;
+            }
+            """);
+        workspace.WriteSource(
+            "main.as",
+            """
+            @module(TEST);
+            export func run() Number {
+                var constructed = new Vec2(6, 8);
+                var factory = Vec2.from(3, 4);
+                return constructed.length() + factory.x + Vec2.DIMENSIONS + Vec2.length(6, 8);
+            }
+            """);
+        var assemblyPath = mode == CompilationMode.Persistence
+            ? Path.Combine(workspace.Root, "ambient-output.dll")
+            : null;
+        var engine = workspace.CreateEngine(mode, assemblyOut: assemblyPath, nativeTypes: true);
+        await engine.BuildAsync(["main.as"]);
+        using var domain = engine.CreateDomain();
+        ScriptAssert.Equal(10D + 3D + 2D + 10D, TestWorkspace.Execute(domain, "run"));
+    }
+
 #if NET9_0_OR_GREATER
+    [Fact]
+    public async Task NativeObjectStaticsBindFromHostExportMetadata()
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource(
+            "global.as",
+            """
+            @global();
+            declare type Vec2 {
+                constructor(Number x, Number y);
+                Number x;
+                static const Number DIMENSIONS;
+                static func from(Number x, Number y) Vec2;
+                static func length(Number x, Number y) Number;
+            }
+            """);
+        workspace.WriteSource(
+            "main.as",
+            """
+            @module(TEST);
+            export func direct() Number {
+                return Vec2.length(6, 8) + Vec2.DIMENSIONS;
+            }
+            export func factory() Number {
+                var vec = Vec2.from(3, 4);
+                return vec.factoryValue() + vec.x;
+            }
+            """);
+        var assemblyPath = Path.Combine(workspace.Root, "static-output.dll");
+        var engine = workspace.CreateEngine(
+            CompilationMode.Persistence,
+            assemblyOut: assemblyPath,
+            nativeTypes: true);
+        await engine.BuildAsync(["main.as"]);
+        using var domain = engine.CreateDomain();
+        ScriptAssert.Equal(12D, TestWorkspace.Execute(domain, "direct"));
+        ScriptAssert.Equal(10D, TestWorkspace.Execute(domain, "factory"));
+
+        using var stream = File.OpenRead(assemblyPath);
+        using var peReader = new PEReader(stream);
+        var reader = peReader.GetMetadataReader();
+        var direct = FindMethod(reader, "direct$typed");
+        var factory = FindMethod(reader, "factory$typed");
+        var il = peReader.GetMethodBody(
+            reader.GetMethodDefinition(direct).RelativeVirtualAddress).GetILBytes();
+        var factoryIl = peReader.GetMethodBody(
+            reader.GetMethodDefinition(factory).RelativeVirtualAddress).GetILBytes();
+
+        Assert.Contains(
+            FindVec2MemberTokens(reader, nameof(Vec2.StaticLengthCore)),
+            token => ContainsInstruction(il, 0x28, token));
+        Assert.Contains(
+            FindVec2MemberTokens(reader, nameof(Vec2.Dimensions)),
+            token => ContainsInstruction(il, 0x7E, token));
+        Assert.Contains(
+            FindVec2MemberTokens(reader, nameof(Vec2.FromCore)),
+            token => ContainsInstruction(factoryIl, 0x28, token));
+        Assert.Contains(
+            FindVec2MemberTokens(reader, nameof(Vec2.FactoryValueCore)),
+            token => ContainsInstruction(factoryIl, 0x6F, token));
+        Assert.Contains(
+            FindVec2MemberTokens(reader, nameof(Vec2.X)),
+            token => ContainsInstruction(factoryIl, 0x7B, token));
+        AssertNoCallsTo(reader, factoryIl, "ScriptDatum", "FromObject");
+        AssertNoCallsTo(reader, factoryIl, "ScriptDatum", "ToObject");
+    }
+
+    [Fact]
+    public async Task NativeObjectStaticsStayDynamicWithoutHostExportMetadata()
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource(
+            "main.as",
+            """
+            @module(TEST);
+            export func dynamic() Number {
+                return Vec2.length(6, 8) + Vec2.DIMENSIONS;
+            }
+            """);
+        var assemblyPath = Path.Combine(workspace.Root, "dynamic-static-output.dll");
+        var engine = workspace.CreateEngine(
+            CompilationMode.Persistence,
+            assemblyOut: assemblyPath);
+        await engine.BuildAsync(["main.as"]);
+        using var domain = engine.CreateDomain(global => Vec2.Register(global));
+        ScriptAssert.Equal(12D, TestWorkspace.Execute(domain, "dynamic"));
+
+        using var stream = File.OpenRead(assemblyPath);
+        using var peReader = new PEReader(stream);
+        var reader = peReader.GetMetadataReader();
+
+        Assert.Empty(FindMemberTokens(reader, "Vec2", nameof(Vec2.StaticLengthCore)));
+        Assert.Empty(FindMemberTokens(reader, "Vec2", nameof(Vec2.Dimensions)));
+    }
+
     [Fact]
     public async Task ProvenNativeObjectsBindDirectlyToClrMembers()
     {
         using var workspace = new TestWorkspace();
+        workspace.WriteSource(
+            "global.as",
+            """
+            @global();
+            declare type Vec2 {
+                constructor(Number x, Number y);
+                Number x;
+                Number y;
+                func length() Number;
+            }
+            """);
         workspace.WriteSource(
             "main.as",
             """
@@ -159,9 +302,9 @@ public sealed class NativeObjectDirectCallTests
         var engine = workspace.CreateEngine(
             CompilationMode.Persistence,
             assemblyOut: assemblyPath,
-            hostExports: true);
+            nativeTypes: true);
         await engine.BuildAsync(["main.as"]);
-        using var domain = engine.CreateDomain(global => Vec2.Register(global));
+        using var domain = engine.CreateDomain();
         // length() runs after the field write, so it measures (3, 8).
         ScriptAssert.Equal(6D + Math.Sqrt(73D) + 8D, TestWorkspace.Execute(domain, "direct"));
 

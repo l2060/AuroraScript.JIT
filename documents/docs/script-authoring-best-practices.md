@@ -378,7 +378,8 @@ When scripts are called from .NET hosts:
 - Return values that serialize cleanly: number, string, boolean, null, arrays, and plain objects.
 - Keep console output separate from return values.
 - Avoid relying on ambient globals unless the host explicitly defines them.
-- When the host defines globals, an `@global()` file is optional but recommended for the compile-time contract: `declare const NAME;`, `declare var NAME;`, or `declare func NAME(args);`.
+- When the host defines globals, an `@global()` file is optional but recommended for the compile-time contract: `declare const NAME;`, `declare var NAME;`, `declare func NAME(args);`, or `declare type Name { ... }`.
+- Use `declare type` for `[AuroraNativeType]` globals. Static-only Types omit `constructor` and mark members `static`. Do not write `declare class`, `declare module`, or a structural `type` for host Types. Member signatures are editor-only and do not drive compiler inference.
 - Do not put `declare` inside `@module` files, and do not write `export declare`.
 - Do not use plain `export const NAME;` or `export var NAME;` for host-provided values; those create module properties and can hide the host global.
 - When using host-defined services, keep access behind a small function so tests can replace it.
@@ -390,6 +391,10 @@ Example:
 @global();
 
 declare func hostLog(message);
+
+declare type Stats {
+    static func mean(Number a, Number b) Number;
+}
 ```
 
 ```as

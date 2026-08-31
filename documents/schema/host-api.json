@@ -100,7 +100,7 @@
     "EngineOptions": {
       "kind": "record",
       "namespace": "AuroraScript",
-      "summary": "Immutable root configuration for compiler, runtime, optimization, output, opt-in native modules, and extra host-export assemblies.",
+      "summary": "Immutable root configuration for compiler, runtime, optimization, output, opt-in native modules, and engine-scoped native types.",
       "members": {
         "Default": {
           "kind": "field",
@@ -320,13 +320,10 @@
           "signature": "IScriptSourceResolver SourceResolver",
           "summary": "Resolver used to locate and load entry, import, and include sources."
         },
-        "HostExportAssemblies": {
+        "NativeTypes": {
           "kind": "property",
-          "signature": "IReadOnlyList<Assembly> HostExportAssemblies",
-          "summary": "Additional assemblies whose generated AuroraGeneratedExport/Constant attributes participate in compiler direct-call. The engine assembly is always scanned. Runtime globals must still be Define'd separately.",
-          "notes": [
-            "Default is empty. Set with EngineOptions.Default.WithCompiler(compiler => compiler.WithHostExportAssemblies(typeof(MyExports).Assembly))."
-          ]
+          "signature": "IReadOnlyList<Type> NativeTypes",
+          "summary": "Application native types explicitly enabled for compilation and registered on the engine global. Infrastructure native types are always available."
         }
       }
     },
@@ -355,9 +352,9 @@
           "kind": "property",
           "signature": "IScriptSourceResolver SourceResolver"
         },
-        "HostExportAssemblies": {
+        "NativeTypes": {
           "kind": "property",
-          "signature": "IReadOnlyList<Assembly> HostExportAssemblies"
+          "signature": "IReadOnlyList<Type> NativeTypes"
         },
         "WithMethods": {
           "kind": "method",
@@ -366,7 +363,7 @@
             "CompilerOptionsBuilder WithExtName(string value)",
             "CompilerOptionsBuilder WithMaxDegreeOfParallelism(int value)",
             "CompilerOptionsBuilder WithSourceResolver(IScriptSourceResolver value)",
-            "CompilerOptionsBuilder WithHostExportAssemblies(params Assembly[] value)"
+            "CompilerOptionsBuilder WithNativeTypes(params Type[] nativeTypes)"
           ]
         }
       }
@@ -2192,14 +2189,14 @@
         "For simple host functions, passing a normal CLR delegate to ScriptGlobal.Define is usually easier."
       ]
     },
-    "AuroraNativeObjectAttribute": {
+    "AuroraNativeTypeAttribute": {
       "kind": "class",
       "namespace": "AuroraScript.Hosting",
-      "summary": "Marks a public sealed partial AuroraNativeObject subclass whose instance fields and methods become an instantiable script type.",
+      "summary": "Marks a sealed partial CLR class whose exported static members form a script Type and whose optional exported instance surface uses native CLR storage.",
       "members": {
         "Constructor": {
           "kind": "constructor",
-          "signature": "AuroraNativeObjectAttribute(string typeName)"
+          "signature": "AuroraNativeTypeAttribute(string typeName)"
         },
         "TypeName": {
           "kind": "property",
@@ -2207,26 +2204,21 @@
         }
       },
       "notes": [
-            "The declaring type must derive AuroraNativeObject and be a non-generic top-level sealed partial class in a namespace. Hand-written constructors use the generated prototype automatically.",
-        "Register the generated constructor with Type.Register(global) or Define(typeName, Type).",
-        "Instance fields stay as CLR storage; methods are dispatched from generated overrides. Instances use the ordinary Object prototype."
+        "A type with instance exports or an exported constructor must derive ScriptObject. Generated code adds the native-instance marker.",
+        "Exactly one public constructor may be marked [AuroraExport] to enable script new. With no exported constructor the script Type is not constructible.",
+        "Register the generated Type with Type.Register(ScriptObject target) on the engine global, or Define(typeName, Type).",
+        "Static factory returns of a native instance preserve concrete type inference and direct instance member calls."
       ]
     },
-    "AuroraNativeObject": {
-      "kind": "class",
+    "IAuroraNativeInstance": {
+      "kind": "interface",
       "namespace": "AuroraScript.Runtime.Types",
-      "summary": "Base type for host-defined instantiable native script objects.",
-      "members": {
-            "Constructor": {
-              "kind": "constructor",
-              "signature": "protected AuroraNativeObject()"
-            }
-      }
+      "summary": "Marker implemented by generated native-type instances so unannotated CLR members are not exposed through reflection fallback."
     },
     "AuroraNativeModuleAttribute": {
       "kind": "class",
       "namespace": "AuroraScript.Hosting",
-      "summary": "Marks a public sealed partial ScriptObject subclass whose [AuroraExport] members become a generated script global.",
+      "summary": "Deprecated compatibility attribute. Use AuroraNativeTypeAttribute.",
       "members": {
         "Constructor": {
           "kind": "constructor",
@@ -2246,18 +2238,19 @@
         }
       },
       "notes": [
-        "The declaring type must be a non-generic top-level partial class in a namespace and must derive from ScriptObject.",
-        "If an instance constructor is written by hand, it must call RegisterAuroraExports()."
+        "Compatibility alias only. New host Types must use AuroraNativeTypeAttribute.",
+        "Do not use this attribute for Math, JSON, TDoc, console, HotPatch, or application native Types."
       ]
     },
     "AuroraExportAttribute": {
       "kind": "class",
       "namespace": "AuroraScript.Hosting",
-      "summary": "Marks a public static Core method or public static readonly double field for generated script export.",
+      "summary": "Marks a Core method, constructor, or public static readonly double field for generated script export.",
       "members": {
         "Constructor": {
           "kind": "constructor",
           "overloads": [
+            "AuroraExportAttribute()",
             "AuroraExportAttribute(string scriptName)",
             "AuroraExportAttribute(string scriptName, MatchFailure failure)"
           ]
@@ -2272,7 +2265,8 @@
         }
       },
       "notes": [
-        "Core methods may prefix ScriptContext ctx and ScriptObject thisObject. Script parameters support double, int, bool, string, ScriptDatum, ScriptObject subclasses, trailing defaults, and params double[] or params ScriptDatum[].",
+        "Use the parameterless constructor on at most one public constructor to enable script new.",
+        "Core methods may be static Type members or instance members. They may prefix ScriptContext ctx and ScriptObject thisObject. Script parameters support double, int, bool, string, ScriptDatum, ScriptObject subclasses, trailing defaults, and params double[] or params ScriptDatum[].",
         "params exports generate Datum adapters only; they are not compiler direct-call candidates."
       ]
     },
@@ -2403,8 +2397,8 @@
     },
     {
       "id": "interop.native-host-exports",
-      "summary": "Implement a ScriptObject global with [AuroraNativeModule] and [AuroraExport] Core methods, or an instantiable [AuroraNativeObject] type. The AuroraScript.JIT package includes the hosting source generator; do not reference a separate generator package. Define/register at runtime, and list extra host assemblies on CompilerOptions.HostExportAssemblies for compiler direct-call.",
-      "apis": ["AuroraNativeModuleAttribute", "AuroraNativeObjectAttribute", "AuroraNativeObject", "AuroraExportAttribute", "AuroraParamAttribute", "CompilerOptions.HostExportAssemblies", "ScriptGlobal.Define"]
+      "summary": "Implement static-only and constructible host Types with [AuroraNativeType] and [AuroraExport]. Select exact application types with CompilerOptionsBuilder.WithNativeTypes; they are registered once on the engine global and available to every domain. Hand-write matching declare type contracts in an @global() file for editor assistance.",
+      "apis": ["AuroraNativeTypeAttribute", "AuroraExportAttribute", "AuroraParamAttribute", "CompilerOptions.NativeTypes", "CompilerOptionsBuilder.WithNativeTypes"]
     },
     {
       "id": "interop.register-clr-type",

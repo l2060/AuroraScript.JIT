@@ -98,6 +98,20 @@ internal static class AuroraDefinitionResolver
             {
                 return ToLocation(includedOwner);
             }
+
+            if (!module.Symbols.ContainsKey(ownerName) &&
+                !module.ImportsByAlias.ContainsKey(ownerName) &&
+                globalDeclarations.TryGet(ownerName, out var ambientOwner))
+            {
+                return ToLocation(ambientOwner);
+            }
+        }
+
+        if (context.PropertyAccess != null &&
+            context.IsOnPropertyName &&
+            TryResolveAmbientMember(module, localIndex, context.PropertyAccess, globalDeclarations, position, out var ambientMemberDefinition))
+        {
+            return ambientMemberDefinition;
         }
 
         if (context.PropertyAccess != null && context.IsOnPropertyName)
@@ -166,6 +180,71 @@ internal static class AuroraDefinitionResolver
 
         definition = ToLocation(declaration);
         return true;
+    }
+
+    private static bool TryResolveAmbientMember(
+        AuroraModuleIndex module,
+        AuroraLocalSymbolIndex localIndex,
+        GetPropertyExpression propertyAccess,
+        GlobalDeclarationIndex globalDeclarations,
+        TextPosition position,
+        out DefinitionLocation definition)
+    {
+        definition = null!;
+        if (propertyAccess.Object is not NameExpression owner ||
+            propertyAccess.Property is not NameExpression property)
+        {
+            return false;
+        }
+
+        var ownerName = owner.Identifier.Value;
+        var memberName = property.Identifier.Value;
+        if (!AmbientDeclarationQuery.IsShadowed(module, localIndex, position, ownerName) &&
+            globalDeclarations.TryGet(ownerName, out var ownerDeclaration) &&
+            TryFindAmbientMember(ownerDeclaration, memberName, instanceMembers: false, out var member))
+        {
+            definition = new DefinitionLocation(ownerDeclaration.FilePath, TextRange.FromSourceSpan(member.NameRange));
+            return true;
+        }
+
+        if (AmbientDeclarationQuery.TryGetConstructedClassName(module, ownerName, position, out var className) &&
+            globalDeclarations.TryGet(className, out var classDeclaration) &&
+            TryFindAmbientMember(classDeclaration, memberName, instanceMembers: true, out member))
+        {
+            definition = new DefinitionLocation(classDeclaration.FilePath, TextRange.FromSourceSpan(member.NameRange));
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryFindAmbientMember(
+        GlobalDeclarationInfo owner,
+        string memberName,
+        bool instanceMembers,
+        out GlobalDeclarationMemberInfo member)
+    {
+        member = null!;
+        for (var i = 0; i < owner.Members.Count; i++)
+        {
+            var candidate = owner.Members[i];
+            if (StringComparer.Ordinal.Equals(candidate.Name, "constructor"))
+            {
+                continue;
+            }
+
+            var ownerSpace = candidate.IsStatic;
+            if (ownerSpace == instanceMembers ||
+                !StringComparer.Ordinal.Equals(candidate.Name, memberName))
+            {
+                continue;
+            }
+
+            member = candidate;
+            return true;
+        }
+
+        return false;
     }
 
     private static bool TryResolveImportDefinition(

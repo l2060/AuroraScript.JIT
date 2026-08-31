@@ -3424,7 +3424,10 @@ namespace AuroraScript.Compiler.Backend.Emission
                 AuroraExportValueKind.Int32 => StackValueKind.Int32,
                 AuroraExportValueKind.Boolean => StackValueKind.Boolean,
                 AuroraExportValueKind.String => StackValueKind.String,
-                AuroraExportValueKind.Object => BoxHostExportObjectResult(),
+                AuroraExportValueKind.Object =>
+                    _code.GetNativeObjectType(call) != null
+                        ? StackValueKind.Object
+                        : BoxHostExportObjectResult(),
                 AuroraExportValueKind.Datum => StackValueKind.Datum,
                 _ => throw new NotSupportedException(
                     "Unsupported generated host export return type.")

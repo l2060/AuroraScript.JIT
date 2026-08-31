@@ -18,11 +18,16 @@ namespace AuroraScript.Compiler.Ast
         private List<ImportDeclaration> _imports;
         private List<TypeDeclaration> _types;
         private Dictionary<string, TypeDeclaration> _typesByName;
+        private List<AmbientDeclaration> _ambientDeclarations;
+        private Dictionary<string, AmbientDeclaration> _ambientDeclarationsByName;
 
         public IReadOnlyList<ImportDeclaration> Imports => _imports ?? (IReadOnlyList<ImportDeclaration>)Array.Empty<ImportDeclaration>();
 
         public IReadOnlyList<TypeDeclaration> Types =>
             _types ?? (IReadOnlyList<TypeDeclaration>)Array.Empty<TypeDeclaration>();
+
+        public IReadOnlyList<AmbientDeclaration> AmbientDeclarations =>
+            _ambientDeclarations ?? (IReadOnlyList<AmbientDeclaration>)Array.Empty<AmbientDeclaration>();
 
 
         internal ModuleDeclaration(ScriptSourceReference source)
@@ -78,6 +83,20 @@ namespace AuroraScript.Compiler.Ast
             return false;
         }
 
+        public bool AddAmbientDeclaration(AmbientDeclaration declaration)
+        {
+            ArgumentNullException.ThrowIfNull(declaration);
+            _ambientDeclarationsByName ??= new Dictionary<string, AmbientDeclaration>(StringComparer.Ordinal);
+            if (!_ambientDeclarationsByName.TryAdd(declaration.Name.Value, declaration))
+            {
+                return false;
+            }
+            _ambientDeclarations ??= new List<AmbientDeclaration>();
+            _ambientDeclarations.Add(declaration);
+            AttachParent(declaration, this);
+            return true;
+        }
+
         public bool TryResolveType(
             TypeReference reference,
             out TypeDeclaration declaration)
@@ -119,7 +138,10 @@ namespace AuroraScript.Compiler.Ast
 
         public Boolean IsEmpty()
         {
-            return Functions.Count == 0 && Statements.Count == 0 && Types.Count == 0;
+            return Functions.Count == 0 &&
+                Statements.Count == 0 &&
+                Types.Count == 0 &&
+                AmbientDeclarations.Count == 0;
         }
     }
 

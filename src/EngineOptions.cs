@@ -3,7 +3,6 @@ using AuroraScript.Source;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Reflection;
 using System.IO;
 using AuroraScript.Core;
 
@@ -177,7 +176,6 @@ namespace AuroraScript
             configure(builder);
             return this with { BuiltIns = builder.ToDefinitions() };
         }
-
 
         private static RuntimeOptions ConfigureRuntime(RuntimeOptions options, Action<RuntimeOptionsBuilder> configure)
         {
@@ -401,6 +399,8 @@ namespace AuroraScript
     /// </summary>
     public sealed record CompilerOptions
     {
+        private readonly IReadOnlyList<Type> _nativeTypes = Array.Empty<Type>();
+
         /// <summary>
         /// Provides default compiler behavior.
         /// </summary>
@@ -429,36 +429,40 @@ namespace AuroraScript
         public IScriptSourceResolver SourceResolver { get; init; } = FileScriptSourceResolver.Instance;
 
         /// <summary>
-        /// Gets additional assemblies whose source-generated host exports may be bound
-        /// directly by compiled scripts. The engine assembly is always scanned, and
-        /// runtime globals must still be registered separately.
+        /// Gets the host native types enabled for this engine. Built-in native types
+        /// are always available and do not need to be listed.
         /// </summary>
-        public IReadOnlyList<Assembly> HostExportAssemblies
+        public IReadOnlyList<Type> NativeTypes
         {
-            get => _hostExportAssemblies;
-            init => _hostExportAssemblies = CreateSnapshot(value);
+            get => _nativeTypes;
+            init => _nativeTypes = CreateNativeTypeSnapshot(value);
         }
 
-        private readonly IReadOnlyList<Assembly> _hostExportAssemblies = Array.Empty<Assembly>();
-
-        internal static IReadOnlyList<Assembly> CreateSnapshot(IReadOnlyList<Assembly> value)
+        internal static IReadOnlyList<Type> CreateNativeTypeSnapshot(IReadOnlyList<Type> value)
         {
             ArgumentNullException.ThrowIfNull(value);
             if (value.Count == 0)
             {
-                return Array.Empty<Assembly>();
+                return Array.Empty<Type>();
             }
 
-            var copy = new Assembly[value.Count];
+            var copy = new Type[value.Count];
+            var seen = new HashSet<Type>();
             for (var i = 0; i < copy.Length; i++)
             {
-                copy[i] = value[i] ??
+                var type = value[i] ??
+                    throw new ArgumentException("Native types cannot contain null.", nameof(value));
+                if (!seen.Add(type))
+                {
                     throw new ArgumentException(
-                        "Host export assemblies cannot contain null.",
+                        $"Native type '{type.FullName}' is listed more than once.",
                         nameof(value));
+                }
+                copy[i] = type;
             }
-            return new ReadOnlyCollection<Assembly>(copy);
+            return new ReadOnlyCollection<Type>(copy);
         }
+
     }
 
     /// <summary>
@@ -469,7 +473,7 @@ namespace AuroraScript
         private string _extName;
         private int _maxDegreeOfParallelism;
         private IScriptSourceResolver _sourceResolver;
-        private IReadOnlyList<Assembly> _hostExportAssemblies;
+        private IReadOnlyList<Type> _nativeTypes;
 
         /// <summary>
         /// Creates a mutable compiler-options builder from an immutable options snapshot.
@@ -482,7 +486,7 @@ namespace AuroraScript
             _extName = options.ExtName;
             _maxDegreeOfParallelism = options.MaxDegreeOfParallelism;
             _sourceResolver = options.SourceResolver ?? FileScriptSourceResolver.Instance;
-            _hostExportAssemblies = options.HostExportAssemblies;
+            _nativeTypes = options.NativeTypes;
         }
 
         /// <summary>
@@ -534,13 +538,12 @@ namespace AuroraScript
         }
 
         /// <summary>
-        /// Gets or sets additional assemblies whose source-generated host exports may be
-        /// bound directly by compiled scripts.
+        /// Gets or sets the host native types enabled for this engine.
         /// </summary>
-        public IReadOnlyList<Assembly> HostExportAssemblies
+        public IReadOnlyList<Type> NativeTypes
         {
-            get => _hostExportAssemblies;
-            set => _hostExportAssemblies = CompilerOptions.CreateSnapshot(value);
+            get => _nativeTypes;
+            set => _nativeTypes = CompilerOptions.CreateNativeTypeSnapshot(value);
         }
 
         /// <summary>
@@ -580,12 +583,11 @@ namespace AuroraScript
         }
 
         /// <summary>
-        /// Sets additional assemblies whose source-generated host exports may be bound
-        /// directly by compiled scripts.
+        /// Selects the exact host native types available to the compiler and engine.
         /// </summary>
-        public CompilerOptionsBuilder WithHostExportAssemblies(params Assembly[] value)
+        public CompilerOptionsBuilder WithNativeTypes(params Type[] nativeTypes)
         {
-            HostExportAssemblies = value;
+            NativeTypes = nativeTypes;
             return this;
         }
 
@@ -597,7 +599,7 @@ namespace AuroraScript
                 ExtName = ExtName,
                 MaxDegreeOfParallelism = MaxDegreeOfParallelism,
                 SourceResolver = SourceResolver,
-                HostExportAssemblies = HostExportAssemblies
+                NativeTypes = NativeTypes
             };
         }
     }

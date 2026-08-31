@@ -183,6 +183,15 @@
     "declarations": {
       "patterns": [
         {
+          "name": "meta.declaration.ambient-type.aurora",
+          "match": "\\b(declare)\\s+(type)\\s+([\\p{L}_$][\\p{L}\\p{N}_$]*)(?=\\s*\\{)",
+          "captures": {
+            "1": { "name": "keyword.declaration.declare.aurora" },
+            "2": { "name": "keyword.declaration.type.aurora" },
+            "3": { "name": "entity.name.type.aurora" }
+          }
+        },
+        {
           "name": "meta.declaration.type.aurora",
           "match": "\\b(?:(export)\\s+)?(type)\\s+([\\p{L}_$][\\p{L}\\p{N}_$]*)(?=\\s*\\{)",
           "captures": {
@@ -366,7 +375,7 @@
         },
         {
           "name": "keyword.declaration.aurora",
-          "match": "\\b(?:const|declare|enum|func|function|var|readonly)\\b"
+          "match": "\\b(?:const|constructor|declare|enum|func|function|module|static|var|readonly)\\b"
         },
         {
           "name": "keyword.operator.type-check.aurora",

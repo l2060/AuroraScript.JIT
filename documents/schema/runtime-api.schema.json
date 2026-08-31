@@ -44,7 +44,7 @@
       "type": "object",
       "required": ["kind"],
       "properties": {
-        "kind": { "enum": ["constructor", "object", "function", "constant"] },
+        "kind": { "enum": ["constructor", "type", "object", "function", "constant"] },
         "callable": { "type": "boolean" },
         "constructors": {
           "type": "array",

@@ -6,7 +6,7 @@ using System.Text.Json;
 namespace AuroraScript.Runtime.Builtin
 {
 
-    [AuroraNativeModule("JSON")]
+    [AuroraNativeType("JSON")]
     internal sealed partial class JsonSupport : ScriptObject
     {
 

@@ -15,23 +15,23 @@ namespace AuroraScript.Compiler.Backend
         private readonly Dictionary<ExportKey, HostExportDescriptor> _exports;
         private readonly Dictionary<ExportKey, FieldInfo> _constants;
 
-        public HostExportCatalog(IReadOnlyList<Assembly> hostAssemblies)
+        public HostExportCatalog(IReadOnlyList<Type> nativeTypes)
         {
-            ArgumentNullException.ThrowIfNull(hostAssemblies);
+            ArgumentNullException.ThrowIfNull(nativeTypes);
             _exports = new Dictionary<ExportKey, HostExportDescriptor>();
             _constants = new Dictionary<ExportKey, FieldInfo>();
             _nativeObjects = new Dictionary<string, HostNativeObjectDescriptor>(StringComparer.Ordinal);
             _nativeObjectsByClrType = new Dictionary<Type, HostNativeObjectDescriptor>();
             AddAssembly(typeof(AuroraEngine).Assembly);
-            for (var i = 0; i < hostAssemblies.Count; i++)
+            for (var i = 0; i < nativeTypes.Count; i++)
             {
-                var assembly = hostAssemblies[i] ??
+                var nativeType = nativeTypes[i] ??
                     throw new ArgumentException(
-                        "Host export assemblies cannot contain null.",
-                        nameof(hostAssemblies));
-                if (assembly != typeof(AuroraEngine).Assembly)
+                        "Native types cannot contain null.",
+                        nameof(nativeTypes));
+                if (nativeType.Assembly != typeof(AuroraEngine).Assembly)
                 {
-                    AddAssembly(assembly);
+                    AddAssembly(nativeType.Assembly, nativeType);
                 }
             }
         }
@@ -56,11 +56,16 @@ namespace AuroraScript.Compiler.Backend
                 out field);
         }
 
-        private void AddAssembly(Assembly assembly)
+        private void AddAssembly(Assembly assembly, Type selectedType = null)
         {
-            AddNativeObjects(assembly);
+            AddNativeObjects(assembly, selectedType);
             foreach (var attribute in assembly.GetCustomAttributes<AuroraGeneratedConstantAttribute>())
             {
+                if (selectedType != null && attribute.DeclaringType != selectedType)
+                {
+                    continue;
+                }
+
                 var field = attribute.DeclaringType.GetField(
                     attribute.FieldName,
                     BindingFlags.Public | BindingFlags.Static);
@@ -87,6 +92,11 @@ namespace AuroraScript.Compiler.Backend
                 .GetCustomAttributes<AuroraGeneratedExportAttribute>();
             foreach (var attribute in attributes)
             {
+                if (selectedType != null && attribute.DeclaringType != selectedType)
+                {
+                    continue;
+                }
+
                 var method = ResolveCoreMethod(attribute);
                 if (method == null)
                 {

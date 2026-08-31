@@ -72,6 +72,29 @@
       "notes": ["Only valid in @global() declaration files.", "Optional compile-time host global contract; host globals still resolve at runtime without it.", "No function body or runtime module property is emitted.", "Function overloads are not allowed; duplicate global declarations are rejected across the project."]
     },
     {
+      "id": "declaration.external-type",
+      "syntax": "@global(); declare type Name { static func member(); constructor(args); TypeName field; }",
+      "scope": "global-declaration-file",
+      "notes": [
+        "Only valid in @global() declaration files.",
+        "Editor-only script contract for an [AuroraNativeType]; member signatures are not used for compiler inference.",
+        "Do not use declare class, declare module, or a structural type declaration for host Types.",
+        "Static-only Types omit constructor and mark members static; at most one constructor describes a constructible Type.",
+        "Application native types are selected with CompilerOptionsBuilder.WithNativeTypes; Math, JSON, TDoc, console, and HotPatch are always available.",
+        "typeof of these globals is \"type\"; new fails when the Type has no exported constructor."
+      ]
+    },
+    {
+      "id": "declaration.type-shape",
+      "syntax": "type Point { Number x; Number y; } | export type Point { Number x; Number y; }",
+      "scope": "module",
+      "notes": [
+        "Compile-time object shape for native field derivation.",
+        "Not a host NativeType contract and not a runtime structure check.",
+        "Fields only; constructors and methods belong on declare type, not on type."
+      ]
+    },
+    {
       "id": "function.declaration",
       "syntax": "func name(parameters) { statements }",
       "scope": "module-or-block",
@@ -97,6 +120,7 @@
         "Returns an interned type-name string.",
         "Primitives and privileged kinds use lowercase names: null, boolean, number, string, object, array, date, regex, function, type, error, clr:function, clr:bonding.",
         "Native objects stored as ValueKind.Object report constructor names: Int8Array, UInt8Array, Int16Array, UInt16Array, Int32Array, UInt32Array, Int64Array, UInt64Array, Float64Array, BooleanArray, StringBuffer, HashMap, Path.",
+        "Infrastructure NativeTypes (Math, JSON, TDoc, console, HotPatch) and host NativeTypes report \"type\".",
         "Do not add ValueKind members for new native types; override ScriptObject.TypeOfValue instead.",
         "check TypeName value is a separate exact runtime assertion used by the typed backend."
       ]

@@ -5,6 +5,7 @@ using AuroraScript.Source;
 using AuroraScript.Tests.Infrastructure;
 using System;
 using System.IO;
+using System.Linq;
 using Xunit;
 
 namespace AuroraScript.Tests;
@@ -204,6 +205,59 @@ public sealed class ParserSyntaxTests
         var function = Assert.Single(module.Functions);
         Assert.Equal("HOST_ADD", function.Name.Value);
         Assert.Equal(FunctionFlags.Declare, function.Flags);
+    }
+
+    [Fact]
+    public void ParsesAmbientTypeDeclarations()
+    {
+        var module = Parse(
+            """
+            @global();
+            declare type Host {
+                static const VERSION;
+                static var state;
+                static func invoke(string value) number;
+            }
+            declare type Widget {
+                constructor(number size);
+                var name;
+                func render() string;
+                static const DEFAULT_SIZE;
+                static var current;
+                static func create(number size) Widget;
+                static func from(number size) Widget;
+            }
+            """);
+
+        var host = module.AmbientDeclarations[0];
+        Assert.Equal(AmbientDeclarationKind.Type, host.Kind);
+        Assert.Equal(["VERSION", "state", "invoke"], host.Members.Select(member => member.Name.Value));
+        Assert.True(host.Members[2].IsStatic);
+        Assert.Equal("string", host.Members[2].Parameters[0].DeclaredType.Name);
+        Assert.Equal("number", host.Members[2].ReturnType.Name);
+
+        var widget = module.AmbientDeclarations[1];
+        Assert.Equal(AmbientDeclarationKind.Type, widget.Kind);
+        Assert.Equal(AmbientMemberKind.Constructor, widget.Members[0].Kind);
+        Assert.True(widget.Members[3].IsStatic);
+        Assert.True(widget.Members[4].IsStatic);
+        Assert.True(widget.Members[5].IsStatic);
+        Assert.Equal("from", widget.Members[6].Name.Value);
+        Assert.True(widget.Members[6].IsStatic);
+    }
+
+    [Theory]
+    [InlineData("@module(TEST);\ndeclare type Host { const VALUE; }", "only allowed inside @global")]
+    [InlineData("@global();\ndeclare type Host { const VALUE = 1; }", "cannot have initializers")]
+    [InlineData("@global();\ndeclare type Host { func run() { } }", "cannot have bodies")]
+    [InlineData("@global();\ndeclare class Host { constructor(); }", "only allows")]
+    [InlineData("@global();\ndeclare module Host { const VALUE; }", "only allows")]
+    [InlineData("@global();\ndeclare type Host { constructor(); constructor(); }", "Duplicate constructor")]
+    [InlineData("@global();\ndeclare type Host { var value; func value(); }", "Duplicate ambient member")]
+    public void RejectsInvalidAmbientDeclarations(string source, string message)
+    {
+        var parse = Assert.Throws<AuroraCompilationException>(() => Parse(source));
+        Assert.Contains(message, parse.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]

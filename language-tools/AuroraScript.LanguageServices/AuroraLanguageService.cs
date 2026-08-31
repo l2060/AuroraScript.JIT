@@ -37,6 +37,8 @@ public sealed class AuroraLanguageService
     private readonly AuroraWorkspaceIndexCache _workspaceIndexCache = new();
     private GlobalDeclarationIndex _globalDeclarationIndex = GlobalDeclarationIndex.Empty;
     private long _globalDeclarationIndexSignature;
+    private AmbientContractCatalog _ambientCatalog = AmbientContractCatalog.Empty;
+    private long _ambientCatalogSignature;
 
     public AuroraLanguageService(BuiltinApiCatalog builtins)
         : this(new AuroraLanguageServiceOptions(builtins))
@@ -86,6 +88,8 @@ public sealed class AuroraLanguageService
             _workspaceIndexCache.Clear();
             _globalDeclarationIndex = GlobalDeclarationIndex.Empty;
             _globalDeclarationIndexSignature = 0;
+            _ambientCatalog = AmbientContractCatalog.Empty;
+            _ambientCatalogSignature = 0;
         }
     }
 
@@ -195,6 +199,12 @@ public sealed class AuroraLanguageService
 
         var snapshot = CreateWorkspaceSnapshot(sourceName, sourceText, null, out var normalizedSource);
         var index = AuroraWorkspaceIndex.Build(_parseService, snapshot, normalizedSource);
+        var ambient = AmbientContractCatalog.Build(BuildGlobalDeclarationIndex(snapshot), snapshot, _parseService);
+        if (TryGetAmbientHover(ambient, index, normalizedSource, context, position, out var ambientHover))
+        {
+            return ambientHover;
+        }
+
         if (AuroraShapeQuery.TryGetFieldHover(
             parseResult.Module,
             context,
@@ -268,6 +278,16 @@ public sealed class AuroraLanguageService
             return structuralHover;
         }
 
+        AmbientContractCatalog ambient;
+        lock (_indexLock)
+        {
+            ambient = GetAmbientCatalog(CreateIndexSnapshot());
+        }
+        if (TryGetAmbientHover(ambient, index, normalizedPath, context, position, out var ambientHover))
+        {
+            return ambientHover;
+        }
+
         if (AuroraShapeQuery.TryGetFieldHover(
             parseResult.Module,
             context,
@@ -292,9 +312,11 @@ public sealed class AuroraLanguageService
     {
         var completionSourceText = GetCompletionSourceText(sourceText, position);
         var parseResult = ParseText(sourceName, completionSourceText, baseDirectory);
+        var indexText = completionSourceText;
         if (parseResult.Module == null && !string.Equals(completionSourceText, sourceText, StringComparison.Ordinal))
         {
             parseResult = ParseText(sourceName, sourceText, baseDirectory);
+            indexText = sourceText;
         }
 
         if (parseResult.Module == null)
@@ -308,7 +330,7 @@ public sealed class AuroraLanguageService
             parseResult.Module,
             context,
             DocumentationLocale);
-        var scriptCompletions = GetScriptCompletions(sourceName, completionSourceText, position, baseDirectory);
+        var scriptCompletions = GetScriptCompletions(sourceName, indexText, position, baseDirectory);
         return MergeCompletions(scriptCompletions, builtinCompletions);
     }
 
@@ -325,9 +347,11 @@ public sealed class AuroraLanguageService
             completionText,
             _workspace.BaseDirectory,
             _workspace.CreateSnapshot());
+        var indexText = completionText;
         if (parseResult.Module == null && !string.Equals(completionText, text, StringComparison.Ordinal))
         {
             parseResult = _parseService.ParseText(normalizedPath, text, _workspace.BaseDirectory, _workspace.CreateSnapshot());
+            indexText = text;
         }
 
         if (parseResult.Module == null)
@@ -341,8 +365,18 @@ public sealed class AuroraLanguageService
             parseResult.Module,
             context,
             DocumentationLocale);
-        var workspaceIndex = GetWorkspaceCompletionIndex(normalizedPath, completionText);
-        var scriptCompletions = AuroraCompletionResolver.GetCompletions(workspaceIndex, normalizedPath, position);
+        var workspaceIndex = GetWorkspaceCompletionIndex(normalizedPath, indexText);
+        AmbientContractCatalog ambient;
+        lock (_indexLock)
+        {
+            ambient = GetAmbientCatalog(CreateIndexSnapshot());
+        }
+
+        var scriptCompletions = AuroraCompletionResolver.GetCompletions(
+            workspaceIndex,
+            normalizedPath,
+            position,
+            ambient);
         return MergeCompletions(scriptCompletions, builtinCompletions);
     }
 
@@ -365,17 +399,54 @@ public sealed class AuroraLanguageService
             parseResult.Module,
             context,
             position,
-            DocumentationLocale) ?? GetScriptSignatureHelp(sourceName, sourceText, position, baseDirectory, parseResult.Module, context);
+            DocumentationLocale) ??
+            GetAmbientSignatureHelp(sourceName, sourceText, position, baseDirectory, parseResult.Module, context) ??
+            GetScriptSignatureHelp(sourceName, sourceText, position, baseDirectory, parseResult.Module, context);
     }
 
     public SignatureHelpResult? GetSignatureHelp(string path, TextPosition position)
     {
-        if (!TryGetWorkspaceText(path, out _, out var text))
+        if (!TryGetWorkspaceText(path, out var normalizedPath, out var text))
         {
             return null;
         }
 
-        return GetSignatureHelp(path, text, position, _workspace.BaseDirectory);
+        var parseResult = _parseService.ParseText(normalizedPath, text, _workspace.BaseDirectory, _workspace.CreateSnapshot());
+        if (parseResult.Module == null)
+        {
+            return null;
+        }
+
+        var context = AstQuery.Find(parseResult.Module, position);
+        if (context == null)
+        {
+            return null;
+        }
+
+        var builtin = BuiltinQuery.GetSignatureHelp(
+            _builtins,
+            parseResult.Module,
+            context,
+            position,
+            DocumentationLocale);
+        if (builtin != null)
+        {
+            return builtin;
+        }
+
+        AuroraWorkspaceIndex index;
+        AmbientContractCatalog ambient;
+        lock (_indexLock)
+        {
+            var snapshot = CreateIndexSnapshot();
+            ambient = GetAmbientCatalog(snapshot);
+            index = AuroraWorkspaceIndex.Build(_parseService, snapshot, normalizedPath, _workspaceIndexCache);
+        }
+
+        var indexed = index.TryGetModule(normalizedPath) ??
+            new AuroraModuleIndex(normalizedPath, text, parseResult.Module);
+        return AmbientDeclarationQuery.TryGetSignatureHelp(ambient, indexed, context, position) ??
+            ScriptSignatureQuery.TryGetSignatureHelp(index, normalizedPath, parseResult.Module, text, context, position);
     }
 
     public DefinitionLocation? GetDefinition(
@@ -604,7 +675,24 @@ public sealed class AuroraLanguageService
     {
         var snapshot = CreateWorkspaceSnapshot(sourceName, sourceText, null, out var normalizedSource, baseDirectory);
         var index = AuroraWorkspaceIndex.Build(_parseService, snapshot, normalizedSource);
-        return AuroraCompletionResolver.GetCompletions(index, normalizedSource, position);
+        var ambient = AmbientContractCatalog.Build(BuildGlobalDeclarationIndex(snapshot), snapshot, _parseService);
+        return AuroraCompletionResolver.GetCompletions(index, normalizedSource, position, ambient);
+    }
+
+    private SignatureHelpResult? GetAmbientSignatureHelp(
+        string sourceName,
+        string sourceText,
+        TextPosition position,
+        string? baseDirectory,
+        ModuleDeclaration module,
+        AstQueryContext context)
+    {
+        var snapshot = CreateWorkspaceSnapshot(sourceName, sourceText, null, out var normalizedSource, baseDirectory);
+        var index = AuroraWorkspaceIndex.Build(_parseService, snapshot, normalizedSource);
+        var ambient = AmbientContractCatalog.Build(BuildGlobalDeclarationIndex(snapshot), snapshot, _parseService);
+        var indexed = index.TryGetModule(normalizedSource) ??
+            new AuroraModuleIndex(normalizedSource, sourceText, module);
+        return AmbientDeclarationQuery.TryGetSignatureHelp(ambient, indexed, context, position);
     }
 
     private SignatureHelpResult? GetScriptSignatureHelp(
@@ -791,6 +879,32 @@ public sealed class AuroraLanguageService
         _globalDeclarationIndex = BuildGlobalDeclarationIndex(snapshot);
         _globalDeclarationIndexSignature = signature;
         return _globalDeclarationIndex;
+    }
+
+    private AmbientContractCatalog GetAmbientCatalog(AuroraWorkspaceSnapshot snapshot)
+    {
+        var index = GetGlobalDeclarationIndex(snapshot);
+        if (_ambientCatalogSignature == _globalDeclarationIndexSignature)
+        {
+            return _ambientCatalog;
+        }
+
+        _ambientCatalog = AmbientContractCatalog.Build(index, snapshot, _parseService);
+        _ambientCatalogSignature = _globalDeclarationIndexSignature;
+        return _ambientCatalog;
+    }
+
+    private static bool TryGetAmbientHover(
+        AmbientContractCatalog catalog,
+        AuroraWorkspaceIndex index,
+        string path,
+        AstQueryContext context,
+        TextPosition position,
+        out HoverResult hover)
+    {
+        hover = null!;
+        var module = index.TryGetModule(path);
+        return module != null && AmbientDeclarationQuery.TryGetHover(catalog, module, context, position, out hover);
     }
 
     private static long ComputeGlobalDeclarationSnapshotSignature(AuroraWorkspaceSnapshot snapshot)

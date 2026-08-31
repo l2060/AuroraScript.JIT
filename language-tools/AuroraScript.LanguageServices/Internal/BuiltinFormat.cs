@@ -127,6 +127,7 @@ internal static class BuiltinFormat
         return kind switch
         {
             BuiltinApiKind.Constructor => CompletionItemKind.Constructor,
+            BuiltinApiKind.Type => CompletionItemKind.Type,
             BuiltinApiKind.Object => CompletionItemKind.Object,
             BuiltinApiKind.Function => CompletionItemKind.Function,
             BuiltinApiKind.Method => CompletionItemKind.Method,
@@ -169,6 +170,7 @@ internal static class BuiltinFormat
         return kind switch
         {
             BuiltinApiKind.Constructor => "constructor",
+            BuiltinApiKind.Type => "type",
             BuiltinApiKind.Object => "object",
             BuiltinApiKind.Function => "func",
             BuiltinApiKind.Method => "method",

@@ -233,6 +233,7 @@ public static class BuiltinApiLoader
         return kindElement.GetString() switch
         {
             "constructor" => BuiltinApiKind.Constructor,
+            "type" => BuiltinApiKind.Type,
             "object" => BuiltinApiKind.Object,
             "function" => BuiltinApiKind.Function,
             "method" => BuiltinApiKind.Method,

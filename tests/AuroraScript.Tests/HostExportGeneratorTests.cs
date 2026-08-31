@@ -1,5 +1,7 @@
 using AuroraScript.Tests.Host;
 using AuroraScript.Tests.Infrastructure;
+using AuroraScript.Compiler.Backend;
+using AuroraScript.Runtime.Types;
 using System;
 using System.Buffers.Binary;
 using System.IO;
@@ -14,21 +16,49 @@ namespace AuroraScript.Tests;
 
 public sealed class HostExportGeneratorTests
 {
+    [Fact]
+    public void CompilerCatalogIncludesBuiltinsAndOnlySelectedApplicationTypes()
+    {
+        var catalog = new HostExportCatalog([typeof(Vec2)]);
+
+        Assert.True(catalog.TryGetNativeObject("Vec2", out _));
+        Assert.True(catalog.TryGetGlobal("Vec2", "from", out _));
+        Assert.False(catalog.TryGetGlobal("Stats", "mean", out _));
+        Assert.True(catalog.TryGetGlobal("Math", "abs", out _));
+    }
 
     [Fact]
     public void MathSupportExportsAreGeneratedAtBuildTime()
     {
         var type = typeof(AuroraScript.Runtime.Builtin.MathSupport);
-        var constructor = type.GetConstructor(Type.EmptyTypes);
-        var abs = type.GetMethod("ABS", BindingFlags.Public | BindingFlags.Static);
-        var pow = type.GetMethod("POW", BindingFlags.Public | BindingFlags.Static);
-        var max = type.GetMethod("MAX", BindingFlags.Public | BindingFlags.Static);
+        var scriptType = type.GetField(
+            "Type",
+            BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
 
-        Assert.NotNull(constructor);
-        Assert.NotNull(abs);
-        Assert.NotNull(pow);
-        Assert.NotNull(max);
+        Assert.IsAssignableFrom<ScriptType>(scriptType);
+        Assert.NotNull(type.GetMethod("Register", BindingFlags.Public | BindingFlags.Static));
+        Assert.NotNull(type.GetMethod("__Static_ABS", BindingFlags.Public | BindingFlags.Static));
         Assert.NotNull(type.GetField("PI", BindingFlags.Public | BindingFlags.Static));
+    }
+
+    [Fact]
+    public async Task StaticOnlyNativeTypeIsATypeButNotConstructible()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func typeName() String {
+                return typeof Math;
+            }
+            export func construct() {
+                return new Math();
+            }
+            """);
+
+        ScriptAssert.Equal("type", TestWorkspace.Execute(domain, "typeName"));
+        Assert.Throws<AuroraRuntimeException>(() =>
+            TestWorkspace.Execute(domain, "construct"));
     }
 
     [Fact]
@@ -76,8 +106,7 @@ public sealed class HostExportGeneratorTests
                 return [parsed, invalid != invalid];
             }
             """,
-            configureGlobal: StatsSupport.Register,
-            hostExports: true);
+            nativeTypes: true);
 
         ScriptAssert.Equal(new object?[] { 4D, true }, TestWorkspace.Execute(domain, "run"));
     }
@@ -93,8 +122,7 @@ public sealed class HostExportGeneratorTests
                 return Stats.sumExact(2, 5);
             }
             """,
-            configureGlobal: StatsSupport.Register,
-            hostExports: true);
+            nativeTypes: true);
 
         ScriptAssert.Equal(7D, TestWorkspace.Execute(domain, "run"));
     }
@@ -110,8 +138,7 @@ public sealed class HostExportGeneratorTests
                 return Stats.sumExact("2", 5);
             }
             """,
-            configureGlobal: StatsSupport.Register,
-            hostExports: true);
+            nativeTypes: true);
 
         Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, "run"));
     }
@@ -134,9 +161,9 @@ public sealed class HostExportGeneratorTests
         var engine = workspace.CreateEngine(
             CompilationMode.Persistence,
             assemblyOut: assemblyPath,
-            hostExports: true);
+            nativeTypes: true);
         await engine.BuildAsync(["main.as"]);
-        using var domain = engine.CreateDomain(StatsSupport.Register);
+        using var domain = engine.CreateDomain();
         ScriptAssert.Equal(4D, TestWorkspace.Execute(domain, "run"));
 
         using var stream = File.OpenRead(assemblyPath);
@@ -240,8 +267,7 @@ public sealed class HostExportGeneratorTests
                 return Stats.identity(value).answer;
             }
             """,
-            configureGlobal: StatsSupport.Register,
-            hostExports: true);
+            nativeTypes: true);
 
         ScriptAssert.Equal(42D, TestWorkspace.Execute(domain, "run"));
     }
@@ -258,8 +284,7 @@ public sealed class HostExportGeneratorTests
                 return Stats.mean(3, 5);
             }
             """,
-            configureGlobal: StatsSupport.Register,
-            hostExports: true);
+            nativeTypes: true);
 
         ScriptAssert.Equal(99D, TestWorkspace.Execute(domain, "run"));
     }
@@ -291,8 +316,7 @@ public sealed class HostExportGeneratorTests
                 return Stats.chat("piece-", 7);
             }
             """,
-            configureGlobal: StatsSupport.Register,
-            hostExports: true);
+            nativeTypes: true);
 
         ScriptAssert.Equal("piece-7", TestWorkspace.Execute(domain, "run"));
     }
@@ -312,8 +336,7 @@ public sealed class HostExportGeneratorTests
                 ];
             }
             """,
-            configureGlobal: StatsSupport.Register,
-            hostExports: true);
+            nativeTypes: true);
 
         ScriptAssert.Equal(new object?[] { 42D, "ok", 7D }, TestWorkspace.Execute(domain, "run"));
     }
@@ -332,8 +355,7 @@ public sealed class HostExportGeneratorTests
                 ];
             }
             """,
-            configureGlobal: StatsSupport.Register,
-            hostExports: true);
+            nativeTypes: true);
 
         ScriptAssert.Equal(new object?[] { true, true }, TestWorkspace.Execute(domain, "run"));
     }
@@ -386,9 +408,8 @@ public sealed class HostExportGeneratorTests
                 return Stats.path({});
             }
             """,
-            configureGlobal: StatsSupport.Register,
             dateTimeFormat: "yyyy-MM-dd",
-            hostExports: true);
+            nativeTypes: true);
 
         ScriptAssert.Equal(
             new object?[]
@@ -415,8 +436,7 @@ public sealed class HostExportGeneratorTests
                 return Stats.sameThis(Stats);
             }
             """,
-            configureGlobal: StatsSupport.Register,
-            hostExports: true);
+            nativeTypes: true);
 
         ScriptAssert.Equal(false, TestWorkspace.Execute(domain, "run"));
     }

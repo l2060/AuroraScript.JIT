@@ -7,7 +7,7 @@ namespace AuroraScript.Runtime.Builtin
     /// <summary>
     /// Exposes TDoc serialization through generated native exports.
     /// </summary>
-    [AuroraNativeModule("TDoc")]
+    [AuroraNativeType("TDoc")]
     public sealed partial class TDocSupport : ScriptObject
     {
         /// <summary>Deserializes TDoc text.</summary>

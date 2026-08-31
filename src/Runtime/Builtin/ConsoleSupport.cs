@@ -1,34 +1,39 @@
+using AuroraScript.Hosting;
 using AuroraScript.Runtime.Types;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace AuroraScript.Runtime.Builtin
 {
-    internal class ConsoleSupport : ScriptObject
-    {
-        private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
-        private readonly Dictionary<string, long> _times = new();
 
-        public ConsoleSupport()
+    /// <summary>
+    /// Script console Type implemented through generated native exports.
+    /// </summary>
+    [AuroraNativeType("console")]
+    internal sealed partial class ConsoleSupport : ScriptObject
+    {
+        private sealed class TimerState
         {
-            Define("log", ScriptDatum.FromBonding(LOG), writeable: false, enumerable: false);
-            Define("error", ScriptDatum.FromBonding(ERROR), writeable: false, enumerable: false);
-            Define("time", ScriptDatum.FromBonding(TIME), writeable: false, enumerable: false);
-            Define("timeEnd", ScriptDatum.FromBonding(TIMEEND), writeable: false, enumerable: false);
+            internal readonly Stopwatch Stopwatch = Stopwatch.StartNew();
+            internal readonly Dictionary<string, long> Times = new();
         }
 
-        public static void LOG(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        private static readonly ConditionalWeakTable<AuroraEngine, TimerState> TimerStates = new();
+
+        [AuroraExport("log", MatchFailure.Throw)]
+        public static void LogCore(ScriptContext ctx, params ScriptDatum[] args)
         {
             if (args.Length > 0)
             {
-                ctx.Domain.Engine.Options.Runtime.ConsoleStdOut?.WriteLine(FormatArguments(ctx, args));
+                ctx.Engine.Options.Runtime.ConsoleStdOut?.WriteLine(FormatArguments(ctx, args));
             }
         }
 
-
-        public static void ERROR(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        [AuroraExport("error", MatchFailure.Throw)]
+        public static void ErrorCore(ScriptContext ctx, params ScriptDatum[] args)
         {
             if (args.Length > 0)
             {
@@ -36,7 +41,7 @@ namespace AuroraScript.Runtime.Builtin
             }
         }
 
-        private static string FormatArguments(ScriptContext ctx, Span<ScriptDatum> args)
+        private static string FormatArguments(ScriptContext ctx, ReadOnlySpan<ScriptDatum> args)
         {
             if (args.Length == 1)
             {
@@ -55,11 +60,11 @@ namespace AuroraScript.Runtime.Builtin
             return builder.ToString();
         }
 
-        private static String DatumToString(ScriptContext ctx, ScriptDatum datum)
+        private static string DatumToString(ScriptContext ctx, ScriptDatum datum)
         {
             if (ScriptDatum.TryGetError(in datum, out var error))
             {
-                StringBuilder sb = new StringBuilder();
+                var sb = new StringBuilder();
                 sb.Append("Error: ");
                 sb.AppendLine(error.Message);
                 foreach (var frame in error.StackTrace)
@@ -77,24 +82,38 @@ namespace AuroraScript.Runtime.Builtin
             return ScriptDatum.ToString(datum);
         }
 
-
-        public static void TIME(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        [AuroraExport("time", MatchFailure.Throw)]
+        public static void TimeCore(ScriptContext ctx, params ScriptDatum[] args)
         {
-            if (args.TryGetString(0, out var label))
+            if (args.Length > 0 &&
+                ScriptDatum.TryGetString(in args[0], out var label))
             {
-                var console = (ConsoleSupport)thisObject;
-                console._times[label] = console._stopwatch.ElapsedMilliseconds;
+                var state = TimerStates.GetValue(ctx.Engine, static _ => new TimerState());
+                lock (state.Times)
+                {
+                    state.Times[label.Value] = state.Stopwatch.ElapsedMilliseconds;
+                }
             }
         }
 
-        public static void TIMEEND(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        [AuroraExport("timeEnd", MatchFailure.Throw)]
+        public static void TimeEndCore(ScriptContext ctx, params ScriptDatum[] args)
         {
-            var console = (ConsoleSupport)thisObject;
-            if (args.TryGetString(0, out var label) && console._times.TryGetValue(label, out var start))
+            if (args.Length == 0 ||
+                !ScriptDatum.TryGetString(in args[0], out var label))
             {
+                return;
+            }
 
-                var elapsed = console._stopwatch.ElapsedMilliseconds - start;
-                console._times.Remove(label);
+            var state = TimerStates.GetValue(ctx.Engine, static _ => new TimerState());
+            lock (state.Times)
+            {
+                if (!state.Times.TryGetValue(label.Value, out var start))
+                {
+                    return;
+                }
+                var elapsed = state.Stopwatch.ElapsedMilliseconds - start;
+                state.Times.Remove(label.Value);
                 ctx.Engine.Options.Runtime.ConsoleStdOut?.WriteLine($"{label} Used {elapsed}ms");
             }
         }

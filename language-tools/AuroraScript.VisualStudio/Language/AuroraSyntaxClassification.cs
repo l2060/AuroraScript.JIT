@@ -105,10 +105,6 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
 
     private static readonly HashSet<string> BuiltinObjects = new(StringComparer.Ordinal)
     {
-        "console",
-        "HotPatch",
-        "JSON",
-        "Math"
     };
 
     private static readonly HashSet<string> BuiltinTypes = new(StringComparer.Ordinal)
@@ -125,8 +121,13 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
         "Int32Array",
         "Int64Array",
         "Int8Array",
+        "JSON",
+        "Math",
         "Number",
         "Object",
+        "console",
+        "HotPatch",
+        "TDoc",
         "Path",
         "Proxy",
         "Regex",
@@ -151,7 +152,8 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
     {
         Local,
         DeclaredGlobal,
-        DeclaredGlobalFunction
+        DeclaredGlobalFunction,
+        DeclaredType
     }
 
     private sealed class LightweightScope
@@ -307,7 +309,8 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
         {
             if (!string.IsNullOrEmpty(name) &&
                 (kind == LightweightSymbolKind.DeclaredGlobal ||
-                    kind == LightweightSymbolKind.DeclaredGlobalFunction))
+                    kind == LightweightSymbolKind.DeclaredGlobalFunction ||
+                    kind == LightweightSymbolKind.DeclaredType))
             {
                 _ambientSymbols[name] = kind;
             }
@@ -324,6 +327,12 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
             if (kind == LightweightSymbolKind.DeclaredGlobalFunction)
             {
                 classification = AuroraSyntaxClassificationTypes.DeclaredGlobalFunction;
+                return true;
+            }
+
+            if (kind == LightweightSymbolKind.DeclaredType)
+            {
+                classification = AuroraSyntaxClassificationTypes.Type;
                 return true;
             }
 
@@ -893,6 +902,19 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
             {
                 name = declaredName;
                 kind = LightweightSymbolKind.DeclaredGlobal;
+                return true;
+            }
+
+            return false;
+        }
+
+        if (string.Equals(keyword, "type", StringComparison.Ordinal))
+        {
+            var nameStart = SkipTrivia(text, keywordEnd);
+            if (TryReadIdentifier(text, nameStart, out _, out _, out var declaredName))
+            {
+                name = declaredName;
+                kind = LightweightSymbolKind.DeclaredType;
                 return true;
             }
         }

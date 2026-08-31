@@ -1,5 +1,8 @@
 using AuroraScript.Core;
+using AuroraScript.Runtime;
+using AuroraScript.Runtime.Types;
 using AuroraScript.Source;
+using AuroraScript.Tests.Host;
 using AuroraScript.Tests.Infrastructure;
 using System;
 using System.Collections.Generic;
@@ -47,6 +50,36 @@ public sealed class EngineOptionsAndSourceTests
         Assert.Equal(".aurora", configured.Compiler.ExtName);
         Assert.Equal(StringPoolingStrategy.None, configured.Runtime.StringPooling);
         Assert.Equal(3, configured.Compiler.MaxDegreeOfParallelism);
+    }
+
+    [Fact]
+    public void NativeTypesArePreciselySelectedAndSharedByEngineEnvironments()
+    {
+        var options = EngineOptions.Default.WithCompiler(compiler =>
+            compiler.WithNativeTypes(typeof(Vec2)));
+        var engine = new AuroraEngine(options);
+        var first = engine.NewEnvironment();
+        var second = engine.NewEnvironment();
+
+        Assert.Empty(EngineOptions.Default.Compiler.NativeTypes);
+        Assert.Equal([typeof(Vec2)], options.Compiler.NativeTypes);
+        Assert.Equal(ValueKind.Type, first.GetPropertyDatum(null!, "Vec2").Kind);
+        Assert.Equal(ValueKind.Type, second.GetPropertyDatum(null!, "Vec2").Kind);
+        Assert.Equal(ValueKind.Null, first.GetPropertyDatum(null!, "Stats").Kind);
+        Assert.Equal(ValueKind.Type, first.GetPropertyDatum(null!, "Math").Kind);
+        Assert.Equal(ValueKind.Type, first.GetPropertyDatum(null!, "JSON").Kind);
+        Assert.Equal(ValueKind.Type, first.GetPropertyDatum(null!, "TDoc").Kind);
+    }
+
+    [Fact]
+    public void NativeTypesRejectDuplicatesAndUnannotatedTypes()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            EngineOptions.Default.WithCompiler(compiler =>
+                compiler.WithNativeTypes(typeof(Vec2), typeof(Vec2))));
+        Assert.Throws<ArgumentException>(() =>
+            new AuroraEngine(EngineOptions.Default.WithCompiler(compiler =>
+                compiler.WithNativeTypes(typeof(string)))));
     }
 
 

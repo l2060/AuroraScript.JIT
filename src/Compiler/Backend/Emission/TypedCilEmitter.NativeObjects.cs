@@ -7,8 +7,8 @@ using System.Reflection.Emit;
 namespace AuroraScript.Compiler.Backend.Emission
 {
     /// <summary>
-    /// Direct CIL for host native objects. Once the typed analyzer proves a receiver
-    /// holds a specific <c>AuroraNativeObject</c>, member access bypasses the dynamic
+    /// Direct CIL for host native instances. Once the typed analyzer proves a receiver
+    /// holds a generated <c>IAuroraNativeInstance</c>, member access bypasses the dynamic
     /// property protocol and binds straight to the CLR field, method, or constructor.
     /// </summary>
     internal sealed partial class TypedCilEmitter
