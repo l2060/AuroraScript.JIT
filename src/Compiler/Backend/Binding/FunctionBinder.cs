@@ -2,6 +2,7 @@ using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Compiler.Backend.Analysis;
+using AuroraScript.Compiler.Backend.Code;
 using AuroraScript.Compiler.Backend.Plans;
 using AuroraScript.Compiler.Backend.Traversal;
 using AuroraScript.Runtime;
@@ -413,6 +414,10 @@ namespace AuroraScript.Compiler.Backend.Binding
                         declaration,
                         $"Native function '{declaration.Name.Value}' requires a declared return type.");
                 }
+                if (TypeReferenceFacts.IsVoid(declaration.ReturnType))
+                {
+                    NativeVoidReturnValidator.Validate(declaration);
+                }
                 ValidateNativeDefaults(declaration);
                 if (_function.UsesArgumentsObject)
                 {
@@ -430,6 +435,56 @@ namespace AuroraScript.Compiler.Backend.Binding
                             AuroraCompilationStage.Binding,
                             parameter,
                             $"Native function '{declaration.Name.Value}' cannot declare spread parameters.");
+                    }
+                }
+            }
+
+            private sealed class NativeVoidReturnValidator
+            {
+                private readonly FunctionDeclaration _function;
+
+                private NativeVoidReturnValidator(FunctionDeclaration function)
+                {
+                    _function = function;
+                }
+
+                public static void Validate(FunctionDeclaration function)
+                {
+                    new NativeVoidReturnValidator(function).Visit(function.Body);
+                }
+
+                private void Visit(AstNode node)
+                {
+                    if (node == null ||
+                        (node is FunctionDeclaration nested &&
+                            !ReferenceEquals(nested, _function)) ||
+                        node is LambdaExpression)
+                    {
+                        return;
+                    }
+                    if (node is ReturnStatement { Expression: not null } statement)
+                    {
+                        throw new AuroraCompilationException(
+                            AuroraCompilationStage.Binding,
+                            statement,
+                            $"Native void function '{_function.Name.Value}' cannot return a value.");
+                    }
+                    var visitor = new ChildVisitor(this);
+                    AstTraversal.VisitChildren(node, ref visitor);
+                }
+
+                private readonly struct ChildVisitor : IAstChildVisitor
+                {
+                    private readonly NativeVoidReturnValidator _owner;
+
+                    public ChildVisitor(NativeVoidReturnValidator owner)
+                    {
+                        _owner = owner;
+                    }
+
+                    public void Visit(AstNode node)
+                    {
+                        _owner.Visit(node);
                     }
                 }
             }

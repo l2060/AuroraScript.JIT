@@ -97,14 +97,14 @@ native func astarHeapPush(Int32Array heapNodes, Float64Array heapScores, Float64
 		heapTies[i] = parentTie;
 		i = parent;
 	}
-
+	
 	heapNodes[i] = node;
 	heapScores[i] = score;
 	heapTies[i] = tie;
 	return heapLength;
 }
 
-func astarClearSearchState(AStar astar) {
+native func astarClearSearchState(AStar astar) void {
 	var opened = astar.opened;
 	var closed = astar.closed;
 	var size = astar.size;
@@ -115,7 +115,7 @@ func astarClearSearchState(AStar astar) {
 	}
 }
 
-export func createAStar(Map map, costs) AStar {
+export native func createAStar(Map map, Float64Array costs) AStar {
 
 	if (map.width <= 0 || map.height <= 0) {
 		throw "width and height must be positive";
@@ -700,10 +700,11 @@ export func makeMap(Number w, Number h, Number rate, Number rngSeed) Map {
 func init() {
 	console.log("generate map", width, height, "cells", width * height);
 	// map = makeMap(width, height, blockRate, seed);
-	map = TDoc.parse( fs.readText('map.tdoc'));
+	map = TDoc.parse(fs.readText('map.tdoc'));
 	console.log("map generated, length =", map.data.length);
 	// fs.writeText('map.tdoc', TDoc.stringify(map, false));
 	console.time("create astar");
+
 	astar = createAStar(map as AStar, null);
 	pathBuffer = newPathBuffer(astar);
 	console.timeEnd("create astar");

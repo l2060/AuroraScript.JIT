@@ -25,9 +25,9 @@ public sealed class BuiltinLanguageFeatureTests
         var hover = service.GetHover("test.as", source, PositionOf(source, "abs"));
 
         Assert.NotNull(hover);
-        Assert.Contains("Math.abs", hover!.Contents, StringComparison.Ordinal);
+        Assert.Contains("declare type Math", hover!.Contents, StringComparison.Ordinal);
         Assert.Contains("```aurorascript", hover.Contents, StringComparison.Ordinal);
-        Assert.Contains("Math.abs(value: Number): Number;", hover.Contents, StringComparison.Ordinal);
+        Assert.Contains("static func abs(Number value) Number", hover.Contents, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -46,7 +46,7 @@ public sealed class BuiltinLanguageFeatureTests
 
         Assert.NotNull(hover);
         Assert.Contains("```aurorascript", hover!.Contents, StringComparison.Ordinal);
-        Assert.Contains("console;", hover.Contents, StringComparison.Ordinal);
+        Assert.Contains("declare type console;", hover.Contents, StringComparison.Ordinal);
         Assert.Contains("Console logging and timing API.", hover.Contents, StringComparison.Ordinal);
         Assert.DoesNotContain("console.log", hover.Contents, StringComparison.Ordinal);
     }
@@ -67,7 +67,7 @@ public sealed class BuiltinLanguageFeatureTests
 
         Assert.NotNull(hover);
         Assert.Contains("```aurorascript", hover!.Contents, StringComparison.Ordinal);
-        Assert.Contains("console.log(...values: Object[]): void;", hover.Contents, StringComparison.Ordinal);
+        Assert.Contains("static func log(...Object values) void", hover.Contents, StringComparison.Ordinal);
         Assert.Contains("Writes values to standard output.", hover.Contents, StringComparison.Ordinal);
         Assert.DoesNotContain("readonly func", hover.Contents, StringComparison.Ordinal);
         Assert.DoesNotContain("any[]): null", hover.Contents, StringComparison.Ordinal);
@@ -387,11 +387,11 @@ public sealed class BuiltinLanguageFeatureTests
         var signature = service.GetSignatureHelp("test.as", source, PositionOf(source, "response"));
 
         Assert.NotNull(hover);
-        Assert.Contains("http.getAsync", hover!.Contents, StringComparison.Ordinal);
+        Assert.Contains("static func getAsync", hover!.Contents, StringComparison.Ordinal);
         Assert.Contains("callback(null, response)", hover.Contents, StringComparison.Ordinal);
         Assert.NotNull(signature);
         Assert.Equal(
-            "http.getAsync(url: String, options: HttpRequestOptions | null, callback: Function): Boolean",
+            "static func getAsync(String url, HttpRequestOptions | Null options, Function callback) Boolean",
             Assert.Single(signature!.Signatures).Label);
     }
 
@@ -433,7 +433,7 @@ public sealed class BuiltinLanguageFeatureTests
         Assert.Equal("aurora-builtin:/fs.as", definition!.Path);
         var document = service.GetBuiltinDocument(definition.Path);
         Assert.NotNull(document);
-        Assert.Contains("fs.readText(path: String | Path): String;", document!.Text, StringComparison.Ordinal);
+        Assert.Contains("static func readText(String | Path path) String", document!.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -552,7 +552,7 @@ public sealed class BuiltinLanguageFeatureTests
 
         Assert.NotNull(signatureHelp);
         var signature = Assert.Single(signatureHelp!.Signatures);
-        Assert.Equal("Math.pow(x: Number, y: Number): Number", signature.Label);
+        Assert.Equal("static func pow(Number x, Number y) Number", signature.Label);
         Assert.Equal(1, signatureHelp.ActiveParameter);
         Assert.Equal(2, signature.Parameters.Count);
     }
@@ -573,7 +573,7 @@ public sealed class BuiltinLanguageFeatureTests
 
         Assert.NotNull(signatureHelp);
         var signature = Assert.Single(signatureHelp!.Signatures);
-        Assert.Equal("new Path(root: String | Path | null, ...segments: (String | Path)[]): Path", signature.Label);
+        Assert.Equal("constructor(String | Path | Null root, ...String | Path segments)", signature.Label);
         Assert.Equal(1, signatureHelp.ActiveParameter);
         Assert.Equal(2, signature.Parameters.Count);
     }
@@ -594,7 +594,7 @@ public sealed class BuiltinLanguageFeatureTests
 
         Assert.NotNull(signatureHelp);
         var signature = Assert.Single(signatureHelp!.Signatures);
-        Assert.Equal("String(value: Object | null): String", signature.Label);
+        Assert.Equal("constructor(Object | Null value)", signature.Label);
         Assert.Equal(0, signatureHelp.ActiveParameter);
     }
 
@@ -614,7 +614,7 @@ public sealed class BuiltinLanguageFeatureTests
 
         Assert.Contains(completions.Items, item =>
             item.Label == "Path" &&
-            item.Detail == "new Path(root: String | Path | null, ...segments: (String | Path)[]): Path");
+            item.Detail == "constructor(String | Path | Null root, ...String | Path segments)");
     }
 
     [Fact]
@@ -659,6 +659,25 @@ public sealed class BuiltinLanguageFeatureTests
 
         Assert.NotNull(hover);
         Assert.Contains("func add(Number left, Number right) Number", hover!.Contents, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void HoverPreservesExportNativeKeywordOrder()
+    {
+        const string source =
+            """
+            @module(TEST);
+            export native func createAStar(Number width) Number {
+                return width;
+            }
+            """;
+        var service = CreateService();
+
+        var hover = service.GetHover("test.as", source, PositionOf(source, "createAStar"));
+
+        Assert.NotNull(hover);
+        Assert.Contains("export native func createAStar(Number width) Number", hover!.Contents, StringComparison.Ordinal);
+        Assert.DoesNotContain("native export", hover.Contents, StringComparison.Ordinal);
     }
 
     [Fact]

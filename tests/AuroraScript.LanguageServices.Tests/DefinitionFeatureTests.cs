@@ -452,8 +452,8 @@ public sealed class DefinitionFeatureTests : IDisposable
         Assert.Equal("aurora-builtin:/Math.as", definition!.Path);
         var document = service.GetBuiltinDocument(definition.Path);
         Assert.NotNull(document);
-        Assert.Contains("Math.abs(value: Number): Number;", document!.Text, StringComparison.Ordinal);
-        Assert.Contains("Math.PI: Number;", document.Text, StringComparison.Ordinal);
+        Assert.Contains("static func abs(Number value) Number", document!.Text, StringComparison.Ordinal);
+        Assert.Contains("static const Number PI", document.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -487,7 +487,7 @@ public sealed class DefinitionFeatureTests : IDisposable
         Assert.Equal("aurora-builtin:/console.as", definition!.Path);
         var document = service.GetBuiltinDocument(definition.Path);
         Assert.NotNull(document);
-        Assert.Contains("console.log(...values: Object[]): void;", document!.Text, StringComparison.Ordinal);
+        Assert.Contains("static func log(...Object values) void", document!.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -526,12 +526,12 @@ public sealed class DefinitionFeatureTests : IDisposable
         Assert.Equal("aurora-builtin:/console.as", consoleDefinition!.Path);
         var consoleDocument = service.GetBuiltinDocument(consoleDefinition.Path);
         Assert.NotNull(consoleDocument);
-        Assert.Contains("console;", consoleDocument!.Text, StringComparison.Ordinal);
+        Assert.Contains("declare type console", consoleDocument!.Text, StringComparison.Ordinal);
         Assert.NotNull(logDefinition);
         Assert.Equal("aurora-builtin:/console.as", logDefinition!.Path);
         var document = service.GetBuiltinDocument(logDefinition.Path);
         Assert.NotNull(document);
-        Assert.Contains("console.log(...values: Object[]): void;", document!.Text, StringComparison.Ordinal);
+        Assert.Contains("static func log(...Object values) void", document!.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -781,7 +781,7 @@ public sealed class DefinitionFeatureTests : IDisposable
         Assert.Equal("aurora-builtin:/Math.as", definition!.Path);
         var document = service.GetBuiltinDocument(definition.Path);
         Assert.NotNull(document);
-        Assert.Contains("Math;", document!.Text, StringComparison.Ordinal);
+        Assert.Contains("declare type Math", document!.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -822,7 +822,7 @@ public sealed class DefinitionFeatureTests : IDisposable
         Assert.Equal("aurora-builtin:/String.as", definition!.Path);
         var document = service.GetBuiltinDocument(definition.Path);
         Assert.NotNull(document);
-        Assert.Contains("String.fromCharCode(charCode: Number): String;", document!.Text, StringComparison.Ordinal);
+        Assert.Contains("static func fromCharCode(Number charCode) String", document!.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -863,8 +863,8 @@ public sealed class DefinitionFeatureTests : IDisposable
         Assert.Equal("aurora-builtin:/global.as", getModuleDefinition!.Path);
         var document = service.GetBuiltinDocument(modulesDefinition.Path);
         Assert.NotNull(document);
-        Assert.Contains("global.modules: Object;", document!.Text, StringComparison.Ordinal);
-        Assert.Contains("global.getModule(moduleName: String): Object | void;", document.Text, StringComparison.Ordinal);
+        Assert.Contains("static const Object modules", document!.Text, StringComparison.Ordinal);
+        Assert.Contains("static func getModule(String moduleName) Object | Null", document.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -906,8 +906,8 @@ public sealed class DefinitionFeatureTests : IDisposable
         var document = service.GetBuiltinDocument("aurora-builtin:/Array.as");
 
         Assert.NotNull(document);
-        Assert.Contains("Array.prototype.push(...values: Object[]): Number;", document!.Text, StringComparison.Ordinal);
-        Assert.Contains("Array.prototype.length: Number;", document.Text, StringComparison.Ordinal);
+        Assert.Contains("func push(...Object values) Number", document!.Text, StringComparison.Ordinal);
+        Assert.Contains("Number length", document.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -918,8 +918,7 @@ public sealed class DefinitionFeatureTests : IDisposable
         var document = service.GetBuiltinDocument("aurora-builtin:/Path.as");
 
         Assert.NotNull(document);
-        Assert.Contains("// Constructors", document!.Text, StringComparison.Ordinal);
-        Assert.Contains("new Path(root: String | Path | null, ...segments: (String | Path)[]): Path;", document.Text, StringComparison.Ordinal);
+        Assert.Contains("constructor(String | Path | Null root, ...String | Path segments)", document.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -936,7 +935,7 @@ public sealed class DefinitionFeatureTests : IDisposable
         Assert.Equal("aurora-builtin:/Function.as", definition!.Path);
         var functionDocument = service.GetBuiltinDocument(definition.Path);
         Assert.NotNull(functionDocument);
-        Assert.Contains("Function;", functionDocument!.Text, StringComparison.Ordinal);
+        Assert.Contains("declare type Function", functionDocument!.Text, StringComparison.Ordinal);
     }
 
     [Fact]

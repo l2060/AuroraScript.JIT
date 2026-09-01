@@ -16,6 +16,10 @@ namespace AuroraScript.LanguageServer.Protocol;
 
 internal static class LspMapper
 {
+    private const int ContainerElementStyleStacked = 1;
+    private const string AuroraTypeClassification = "AuroraScript.Type";
+    private const string AuroraFunctionClassification = "AuroraScript.FunctionCall";
+
     public static JsonObject Position(TextPosition position)
     {
         return new JsonObject
@@ -104,7 +108,65 @@ internal static class LspMapper
                 ["kind"] = "markdown",
                 ["value"] = hover.Contents
             },
-            ["range"] = Range(hover.Range)
+            ["range"] = Range(hover.Range),
+            ["_vs_rawContent"] = VisualStudioHoverContent(hover.Contents)
+        };
+    }
+
+    /// <summary>
+    /// Visual Studio's LSP client renders hover as plain text and only colorizes content supplied
+    /// through the <c>_vs_rawContent</c> extension, so the markdown is republished as classified runs.
+    /// </summary>
+    private static JsonObject VisualStudioHoverContent(string markdown)
+    {
+        var elements = new JsonArray();
+        var lines = HoverMarkup.Parse(markdown);
+        for (var i = 0; i < lines.Count; i++)
+        {
+            var runs = new JsonArray();
+            for (var j = 0; j < lines[i].Runs.Count; j++)
+            {
+                var run = lines[i].Runs[j];
+                runs.Add(new JsonObject
+                {
+                    ["ClassificationTypeName"] = ClassificationName(run.Kind),
+                    ["Text"] = run.Text,
+                    ["MarkerTagType"] = null,
+                    ["Style"] = 0,
+                    ["Tooltip"] = null,
+                    ["NavigationAction"] = null,
+                    ["_vs_type"] = "ClassifiedTextRun"
+                });
+            }
+
+            elements.Add(new JsonObject
+            {
+                ["Runs"] = runs,
+                ["_vs_type"] = "ClassifiedTextElement"
+            });
+        }
+
+        return new JsonObject
+        {
+            ["Elements"] = elements,
+            ["Style"] = ContainerElementStyleStacked,
+            ["_vs_type"] = "ContainerElement"
+        };
+    }
+
+    private static string ClassificationName(HoverRunKind kind)
+    {
+        return kind switch
+        {
+            HoverRunKind.Keyword => "keyword",
+            HoverRunKind.Type => AuroraTypeClassification,
+            HoverRunKind.Function => AuroraFunctionClassification,
+            HoverRunKind.Identifier => "identifier",
+            HoverRunKind.Number => "number",
+            HoverRunKind.String => "string",
+            HoverRunKind.Comment => "comment",
+            HoverRunKind.Operator => "operator",
+            _ => "text"
         };
     }
 

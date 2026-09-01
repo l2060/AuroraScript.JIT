@@ -11,8 +11,6 @@ namespace AuroraScript.LanguageServices.Internal;
 
 internal static class ScriptDocumentationQuery
 {
-    private const string MarkdownLanguageId = "aurorascript";
-
     public static bool TryGetHover(ModuleDeclaration module, string sourceName, string sourceText, TextPosition position, out HoverResult hover)
     {
         hover = null!;
@@ -158,15 +156,15 @@ internal static class ScriptDocumentationQuery
         var documentationLine = GetDocumentationAnchorLine(function);
         var comments = ReadLeadingComments(sourceText, documentationLine);
         var builder = new StringBuilder();
-        builder.Append("```").Append(MarkdownLanguageId).Append('\n');
-        if (function.IsNative)
-        {
-            builder.Append("native ");
-        }
-
+        builder.Append("```").Append(BuiltinTypeFormatter.MarkdownLanguageId).Append('\n');
         if (function.Access == MemberAccess.Export)
         {
             builder.Append("export ");
+        }
+
+        if (function.IsNative)
+        {
+            builder.Append("native ");
         }
 
         AppendFunctionSignature(
@@ -380,7 +378,7 @@ internal static class ScriptDocumentationQuery
         hover = null!;
         var comments = ReadLeadingComments(sourceText, declarationStartLine);
         var builder = new StringBuilder();
-        builder.Append("```").Append(MarkdownLanguageId).Append('\n');
+        builder.Append("```").Append(BuiltinTypeFormatter.MarkdownLanguageId).Append('\n');
         if (value is LambdaExpression lambda)
         {
             AppendFunctionSignature(
@@ -544,7 +542,7 @@ internal static class ScriptDocumentationQuery
         hover = null!;
         var comments = ReadLeadingComments(sourceText, declarationStartLine);
         var builder = new StringBuilder();
-        builder.Append("```").Append(MarkdownLanguageId).Append('\n').Append(kind).Append(' ').Append(name).Append("\n```");
+        builder.Append("```").Append(BuiltinTypeFormatter.MarkdownLanguageId).Append('\n').Append(kind).Append(' ').Append(name).Append("\n```");
         AppendComments(builder, comments);
         hover = new HoverResult(builder.ToString(), range);
         return true;
@@ -566,7 +564,7 @@ internal static class ScriptDocumentationQuery
         }
 
         var builder = new StringBuilder();
-        builder.Append("```").Append(MarkdownLanguageId).Append("\n@module");
+        builder.Append("```").Append(BuiltinTypeFormatter.MarkdownLanguageId).Append("\n@module");
         if (!string.IsNullOrEmpty(module.Value.Argument))
         {
             builder.Append('(').Append(module.Value.Argument).Append(')');

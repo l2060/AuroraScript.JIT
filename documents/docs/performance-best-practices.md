@@ -101,8 +101,10 @@ calls use the native entry whenever their arguments are proven compatible;
 unproven calls use the shell and preserve exact parameter checks. Qualified
 cross-module calls also use the imported native entry directly when its
 native arguments are proven; dynamic arguments keep the exported shell path.
-Native
-functions require a declared return type. Trailing defaults are supported only
+Native functions require a declared return type. Use `void` for a procedure
+that does not return a value. Its native entry has a CLR `void` return and
+native-to-native statement calls do not create or discard a `ScriptDatum`;
+exported and other dynamic calls still observe `null`. Trailing defaults are supported only
 when the compiler can fold them to primitive constants; an explicitly typed
 parameter requires an exact matching default type. Native functions still reject
 rest parameters, `$args`, assignment, and all hot patches. Rebuild the module
@@ -167,6 +169,13 @@ for (var i = 0; i < nodeCount; i++) {
 ```
 
 These arrays have primitive CLR backing storage and rely on CLR zero initialization. When the exact array type remains visible to flow analysis, generated code uses native `ldelem`/`stelem` instructions and keeps numeric and boolean values unboxed through the loop.
+
+Packed-array parameters are nullable. A literal `null` is inferred from the
+declared parameter type, so call `nativeWork(null)` without adding an `as`
+assertion. Native-to-native calls continue to pass the raw CLR array reference.
+When storage crosses an object or other dynamic boundary, the runtime restores
+its script wrapper without copying and preserves wrapper identity; that work
+occurs only at the boundary, not on element access.
 
 `typeof` reports the constructor name (`"Int8Array"`, `"Float64Array"`, …). The datum `Kind` stays `Object`; do not treat `ValueKind` as the packed-array type registry.
 

@@ -375,7 +375,7 @@
         },
         {
           "name": "keyword.declaration.aurora",
-          "match": "\\b(?:const|constructor|declare|enum|func|function|module|static|var|readonly)\\b"
+          "match": "\\b(?:const|constructor|declare|enum|func|function|module|native|static|var|readonly)\\b"
         },
         {
           "name": "keyword.operator.type-check.aurora",
@@ -556,7 +556,7 @@
       "patterns": [
         {
           "name": "support.type.aurora",
-          "match": "\\b(?:Any|Array|Boolean|BooleanArray|Date|Error|Float64Array|Function|HashMap|Int16Array|Int32Array|Int64Array|Int8Array|Null|Number|Object|Proxy|Regex|String|StringBuffer|UInt16Array|UInt32Array|UInt64Array|UInt8Array|Void)\\b"
+          "match": "\\b(?:Any|Array|Boolean|BooleanArray|Date|Error|Float64Array|Function|HashMap|Int16Array|Int32Array|Int64Array|Int8Array|Null|Number|Object|Proxy|Regex|String|StringBuffer|UInt16Array|UInt32Array|UInt64Array|UInt8Array|void|Void)\\b"
         }
       ]
     }

@@ -121,6 +121,7 @@ namespace AuroraScript.Runtime
         /// <summary>Validates an exact Int32Array value.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum CheckInt32Array(ScriptDatum value) =>
+            value.Kind == ValueKind.Null ||
             value.Reference is ScriptInt32Array
                 ? value
                 : Mismatch(CheckedType.Int32Array, value);
@@ -128,6 +129,7 @@ namespace AuroraScript.Runtime
         /// <summary>Validates an exact Int8Array value.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum CheckInt8Array(ScriptDatum value) =>
+            value.Kind == ValueKind.Null ||
             value.Reference is ScriptInt8Array
                 ? value
                 : Mismatch(CheckedType.Int8Array, value);
@@ -135,6 +137,7 @@ namespace AuroraScript.Runtime
         /// <summary>Validates an exact Float64Array value.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum CheckFloat64Array(ScriptDatum value) =>
+            value.Kind == ValueKind.Null ||
             value.Reference is ScriptFloat64Array
                 ? value
                 : Mismatch(CheckedType.Float64Array, value);
@@ -142,6 +145,7 @@ namespace AuroraScript.Runtime
         /// <summary>Validates an exact BooleanArray value.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum CheckBooleanArray(ScriptDatum value) =>
+            value.Kind == ValueKind.Null ||
             value.Reference is ScriptBooleanArray
                 ? value
                 : Mismatch(CheckedType.BooleanArray, value);
@@ -149,6 +153,7 @@ namespace AuroraScript.Runtime
         /// <summary>Validates an exact UInt8Array value.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum CheckUInt8Array(ScriptDatum value) =>
+            value.Kind == ValueKind.Null ||
             value.Reference is ScriptUInt8Array
                 ? value
                 : Mismatch(CheckedType.UInt8Array, value);
@@ -156,6 +161,7 @@ namespace AuroraScript.Runtime
         /// <summary>Validates an exact Int16Array value.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum CheckInt16Array(ScriptDatum value) =>
+            value.Kind == ValueKind.Null ||
             value.Reference is ScriptInt16Array
                 ? value
                 : Mismatch(CheckedType.Int16Array, value);
@@ -163,6 +169,7 @@ namespace AuroraScript.Runtime
         /// <summary>Validates an exact UInt16Array value.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum CheckUInt16Array(ScriptDatum value) =>
+            value.Kind == ValueKind.Null ||
             value.Reference is ScriptUInt16Array
                 ? value
                 : Mismatch(CheckedType.UInt16Array, value);
@@ -170,6 +177,7 @@ namespace AuroraScript.Runtime
         /// <summary>Validates an exact UInt32Array value.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum CheckUInt32Array(ScriptDatum value) =>
+            value.Kind == ValueKind.Null ||
             value.Reference is ScriptUInt32Array
                 ? value
                 : Mismatch(CheckedType.UInt32Array, value);
@@ -177,6 +185,7 @@ namespace AuroraScript.Runtime
         /// <summary>Validates an exact Int64Array value.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum CheckInt64Array(ScriptDatum value) =>
+            value.Kind == ValueKind.Null ||
             value.Reference is ScriptInt64Array
                 ? value
                 : Mismatch(CheckedType.Int64Array, value);
@@ -184,6 +193,7 @@ namespace AuroraScript.Runtime
         /// <summary>Validates an exact UInt64Array value.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum CheckUInt64Array(ScriptDatum value) =>
+            value.Kind == ValueKind.Null ||
             value.Reference is ScriptUInt64Array
                 ? value
                 : Mismatch(CheckedType.UInt64Array, value);

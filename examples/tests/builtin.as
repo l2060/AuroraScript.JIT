@@ -60,3 +60,23 @@ func testNativeScript() {
 	var v = n << 5;
 	var m = n >> 5;
 }
+
+
+native func testPacketArray() void{
+	packetArrayInit(null);
+}
+
+native func packetArrayInit(Float64Array array) void{
+	if(!array){
+		array = new Float64Array(128);
+	}
+	packetArrayWork(array);
+}
+
+native func packetArrayWork(Float64Array array) void{
+	if(array){
+
+		console.log(array);
+	}
+
+}

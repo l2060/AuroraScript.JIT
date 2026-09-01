@@ -24,8 +24,14 @@ using System.Threading;
 using System.Threading.Tasks;
 
 [assembly: InternalsVisibleTo("AuroraScript.Generated")]
+[assembly: InternalsVisibleTo("AuroraScript.VisualStudio")]
+[assembly: InternalsVisibleTo("AuroraScript.LanguageServer")]
+[assembly: InternalsVisibleTo("AuroraScript.LanguageServices")]
+
 [assembly: InternalsVisibleTo("Benchmark")]
 [assembly: InternalsVisibleTo("AuroraScript.Tests")]
+
+
 
 namespace AuroraScript
 {

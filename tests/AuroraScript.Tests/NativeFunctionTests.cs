@@ -337,6 +337,134 @@ public sealed class NativeFunctionTests
             frame => frame.Method.Contains("run", StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+    [InlineData(CompilationMode.OnlyRun)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
+    public async Task NativeVoidFunctionsUseVoidAbiAndExposeNullToScript(
+        CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+
+            var state = 0;
+
+            export native func setState(Number value) void {
+                state = value;
+            }
+
+            native func relay(Number value) void {
+                setState(value);
+                return;
+            }
+
+            native func returnFromFinally() void {
+                try {
+                    return;
+                } finally {
+                    state += 1;
+                }
+            }
+
+            export func run() {
+                var result = relay(41);
+                returnFromFinally();
+                return [
+                    state,
+                    result == null,
+                    setState(5) == null,
+                    state
+                ];
+            }
+            """,
+            mode);
+
+        ScriptAssert.Equal(
+            new object?[] { 42, true, true, 5 },
+            TestWorkspace.Execute(domain, "run"));
+        ScriptAssert.Equal(
+            null,
+            TestWorkspace.Execute(
+                domain,
+                "setState",
+                arguments: [ScriptDatum.FromNumber(9)]));
+
+#if NET9_0_OR_GREATER
+        if (mode == CompilationMode.Persistence)
+        {
+            var assemblyPath = Path.Combine(workspace.Root, "test-output.dll");
+            using var stream = File.OpenRead(assemblyPath);
+            using var peReader = new PEReader(stream);
+            var reader = peReader.GetMetadataReader();
+            MethodDefinitionHandle relay = default;
+            MethodDefinitionHandle setState = default;
+            foreach (var handle in reader.MethodDefinitions)
+            {
+                var method = reader.GetMethodDefinition(handle);
+                var name = reader.GetString(method.Name);
+                if (name == "relay$native") relay = handle;
+                else if (name == "setState$native") setState = handle;
+            }
+
+            Assert.False(relay.IsNil);
+            Assert.False(setState.IsNil);
+            var relayMethod = reader.GetMethodDefinition(relay);
+            var signature = reader.GetBlobBytes(relayMethod.Signature);
+            Assert.Equal(0x01, signature[2]); // ELEMENT_TYPE_VOID
+            var il = peReader.GetMethodBody(
+                relayMethod.RelativeVirtualAddress).GetILBytes()!;
+            Assert.True(
+                ContainsCall(il, MetadataTokens.GetToken(setState)));
+            Assert.DoesNotContain((byte)0x7e, il); // ldsfld (no materialized null)
+        }
+#endif
+    }
+
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+    [InlineData(CompilationMode.OnlyRun)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
+    public async Task ImportedNativeVoidFunctionMaterializesNullOnlyAsValue(
+        CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource(
+            "worker.as",
+            """
+            export native func notify() void {
+            }
+            """);
+        workspace.WriteSource(
+            "main.as",
+            """
+            @module(TEST);
+            import worker from './worker';
+
+            export func run() {
+                worker.notify();
+                return worker.notify() == null;
+            }
+            """);
+        var assemblyPath = mode == CompilationMode.Persistence
+            ? Path.Combine(workspace.Root, "test-output.dll")
+            : null;
+        var engine = workspace.CreateEngine(
+            mode,
+            assemblyOut: assemblyPath);
+        await engine.BuildAsync(["main.as"]);
+        using var domain = engine.CreateDomain();
+
+        ScriptAssert.Equal(
+            true,
+            TestWorkspace.Execute(domain, "run"));
+    }
+
     [Fact]
     public async Task NativeFunctionAssignmentIsRejected()
     {
@@ -365,6 +493,38 @@ public sealed class NativeFunctionTests
         Assert.Contains(
             "requires a declared return type",
             missingReturn.Message,
+            StringComparison.Ordinal);
+
+        var returnedValue = await Assert.ThrowsAsync<AuroraCompilationException>(
+            () => workspace.CompileModuleAsync(
+                "native func value() void { return 1; }"));
+        Assert.Contains(
+            "cannot return a value",
+            returnedValue.Message,
+            StringComparison.Ordinal);
+
+        var ordinaryVoid = await Assert.ThrowsAsync<AuroraCompilationException>(
+            () => workspace.CompileModuleAsync(
+                "func value() void { return; }"));
+        Assert.Contains(
+            "Unknown type 'void'",
+            ordinaryVoid.Message,
+            StringComparison.Ordinal);
+
+        var voidParameter = await Assert.ThrowsAsync<AuroraCompilationException>(
+            () => workspace.CompileModuleAsync(
+                "native func value(void input) Number { return 1; }"));
+        Assert.Contains(
+            "Unknown type 'void'",
+            voidParameter.Message,
+            StringComparison.Ordinal);
+
+        var voidType = await Assert.ThrowsAsync<AuroraCompilationException>(
+            () => workspace.CompileModuleAsync(
+                "type void { Number value; }"));
+        Assert.Contains(
+            "Type declaration 'void' conflicts with a built-in type",
+            voidType.Message,
             StringComparison.Ordinal);
 
         var nonConstantDefault = await Assert.ThrowsAsync<AuroraCompilationException>(

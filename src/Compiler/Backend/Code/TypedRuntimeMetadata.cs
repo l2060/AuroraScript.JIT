@@ -234,6 +234,14 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly FieldInfo ScriptInt64ArrayItems = Field(typeof(ScriptInt64Array), "_items");
         public static readonly FieldInfo ScriptUInt64ArrayItems = Field(typeof(ScriptUInt64Array), "_items");
 
+        public static MethodInfo PackedArrayBoundary(
+            string methodName,
+            Type parameterType) =>
+            Method(
+                typeof(PackedArrayBoundaryOps),
+                methodName,
+                parameterType);
+
         public static readonly MethodInfo EnterModuleFrame = Method(typeof(CallFrameOps), nameof(CallFrameOps.EnterModule), typeof(ScriptContext), typeof(ScriptModule));
         public static readonly MethodInfo LeaveFrame = Method(typeof(CallFrameOps), nameof(CallFrameOps.Leave), typeof(ScriptContext), typeof(int));
         public static readonly MethodInfo GetArgument = Method(typeof(CallFrameOps), nameof(CallFrameOps.GetArgument), typeof(Span<ScriptDatum>), typeof(int));

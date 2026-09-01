@@ -10,6 +10,7 @@ using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Reflection.Metadata;
+using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
 using System.Threading.Tasks;
 using Xunit;
@@ -255,6 +256,133 @@ public sealed class PackedArrayTests
             mode);
 
         ScriptAssert.Equal(5050, TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+    [InlineData(CompilationMode.OnlyRun)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
+    public async Task NullPackedArraysFlowThroughTypedLocalsAndParameters(
+        CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+
+            native func size(Float64Array values) Number {
+                if (values == null) return -1;
+                return values.length;
+            }
+
+            func typedParameter(Float64Array values) Number {
+                return size(values);
+            }
+
+            func typedLocal() Number {
+                var pending = null as Float64Array;
+                return size(pending);
+            }
+
+            export func run() {
+                var real = new Float64Array(3);
+                var assigned = real;
+                assigned = null as Float64Array;
+                return [
+                    typedLocal(),
+                    typedParameter(null),
+                    size(assigned),
+                    typedParameter(real),
+                    size(real)
+                ];
+            }
+            """,
+            mode);
+
+        ScriptAssert.Equal(
+            new object?[] { -1, -1, -1, 3, 3 },
+            TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+    [InlineData(CompilationMode.OnlyRun)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
+    public async Task NativePackedArraysAcceptInferredNullAndPreserveBoundaryIdentity(
+        CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+
+            type MaybePacked { }
+
+            export native func optional(Float64Array values) MaybePacked {
+                if (values == null) return null;
+                values[0] += 1;
+                return values;
+            }
+
+            native func package(Float64Array values) Object {
+                var created = new Float64Array(1);
+                created[0] = 9;
+                return {
+                    first: values,
+                    second: values,
+                    created: created
+                };
+            }
+
+            native func nullInt32(Int32Array value) Boolean { return value == null; }
+            native func nullInt8(Int8Array value) Boolean { return value == null; }
+            native func nullBoolean(BooleanArray value) Boolean { return value == null; }
+            native func nullUInt8(UInt8Array value) Boolean { return value == null; }
+            native func nullInt16(Int16Array value) Boolean { return value == null; }
+            native func nullUInt16(UInt16Array value) Boolean { return value == null; }
+            native func nullUInt32(UInt32Array value) Boolean { return value == null; }
+            native func nullInt64(Int64Array value) Boolean { return value == null; }
+            native func nullUInt64(UInt64Array value) Boolean { return value == null; }
+
+            export func run() {
+                var values = new Float64Array(1);
+                values[0] = 4;
+                var returned = optional(values);
+                var holder = package(values);
+                return [
+                    optional(null) == null &&
+                        nullInt32(null) &&
+                        nullInt8(null) &&
+                        nullBoolean(null) &&
+                        nullUInt8(null) &&
+                        nullInt16(null) &&
+                        nullUInt16(null) &&
+                        nullUInt32(null) &&
+                        nullInt64(null) &&
+                        nullUInt64(null),
+                    returned == values,
+                    holder.first == values,
+                    holder.first == holder.second,
+                    values[0],
+                    holder.created[0]
+                ];
+            }
+            """,
+            mode);
+
+        ScriptAssert.Equal(
+            new object?[] { true, true, true, true, 5, 9 },
+            TestWorkspace.Execute(domain, "run"));
+        ScriptAssert.Equal(
+            null,
+            TestWorkspace.Execute(
+                domain,
+                "optional",
+                arguments: [ScriptDatum.Null]));
     }
 
     [Theory]
@@ -663,6 +791,14 @@ public sealed class PackedArrayTests
         Assert.Contains(OpCodes.Ldelem_R8, opcodes);
         Assert.Contains(OpCodes.Stelem_R8, opcodes);
         Assert.DoesNotContain(OpCodes.Ldfld, opcodes);
+        Assert.Equal(
+            0,
+            CountCalls(
+                peReader.GetMethodBody(method.RelativeVirtualAddress).GetILBytes().AsSpan(),
+                GetMemberReferenceTokens(
+                    reader,
+                    nameof(PackedArrayBoundaryOps),
+                    nameof(PackedArrayBoundaryOps.ToFloat64Storage))));
     }
 
     [Fact]
@@ -741,6 +877,57 @@ public sealed class PackedArrayTests
         }
 
         return result;
+    }
+
+    private static int CountCalls(ReadOnlySpan<byte> il, int[] metadataTokens)
+    {
+        var tokens = metadataTokens.ToHashSet();
+        var count = 0;
+        var offset = 0;
+        while (offset < il.Length)
+        {
+            ushort value = il[offset++];
+            if (value == 0xfe)
+            {
+                value = (ushort)(0xfe00 | il[offset++]);
+            }
+            var opcode = CilOpCodes[value];
+            if (opcode == OpCodes.Call &&
+                tokens.Contains(BinaryPrimitives.ReadInt32LittleEndian(il.Slice(offset, 4))))
+            {
+                count++;
+            }
+            offset += GetOperandSize(opcode.OperandType, il.Slice(offset));
+        }
+        return count;
+    }
+
+    private static int[] GetMemberReferenceTokens(
+        MetadataReader reader,
+        string typeName,
+        string methodName)
+    {
+        return reader.MemberReferences
+            .Where(handle =>
+            {
+                var member = reader.GetMemberReference(handle);
+                if (!string.Equals(
+                        reader.GetString(member.Name),
+                        methodName,
+                        StringComparison.Ordinal) ||
+                    member.Parent.Kind != HandleKind.TypeReference)
+                {
+                    return false;
+                }
+                var type = reader.GetTypeReference(
+                    (TypeReferenceHandle)member.Parent);
+                return string.Equals(
+                    reader.GetString(type.Name),
+                    typeName,
+                    StringComparison.Ordinal);
+            })
+            .Select(handle => MetadataTokens.GetToken(handle))
+            .ToArray();
     }
 
     private static int GetOperandSize(OperandType operandType, ReadOnlySpan<byte> remaining)

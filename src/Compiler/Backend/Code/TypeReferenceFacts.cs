@@ -18,6 +18,11 @@ namespace AuroraScript.Compiler.Backend.Code
                 return FlowValueType.None;
             }
 
+            if (IsVoid(type))
+            {
+                return FlowValueType.Null;
+            }
+
             var builtin = FlowValueTypeFacts.FromCheckedTypeName(type.Name);
             if (builtin != FlowValueType.None)
             {
@@ -38,6 +43,13 @@ namespace AuroraScript.Compiler.Backend.Code
             return type != null &&
                 module != null &&
                 module.TryResolveType(type, out declaration);
+        }
+
+        public static bool IsVoid(TypeReference type)
+        {
+            return type != null &&
+                type.Qualifier == null &&
+                string.Equals(type.Name, "void", System.StringComparison.Ordinal);
         }
     }
 }

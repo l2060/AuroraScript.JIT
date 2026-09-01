@@ -125,8 +125,23 @@ locally; they do not disable native storage in the rest of the function.
 Exported functions and private functions used as values also receive a
 Datum-compatible closure shell. A qualified call to an imported exported
 native function calls its native entry directly when every native argument is
-proven compatible; otherwise it uses that shell. Native functions require a return contract,
-may use trailing primitive defaults that the compiler can evaluate as constants,
+proven compatible; otherwise it uses that shell. Native functions require a
+return contract. Use the contextual return type `void` for procedures:
+
+```as
+native func clear(Cache cache) void {
+    cache.size = 0;
+}
+```
+
+The CLR native entry then returns `void`; falling through and bare `return;`
+are valid, while `return expression;` is rejected. A direct native call used
+as a statement does not materialize a result. Dynamic, exported, or
+value-producing calls observe `null`, matching a host `[AuroraExport]` method
+whose CLR return type is `void`. `void` is not an alias for `Null` and is not
+valid on ordinary functions, parameters, fields, or assertions.
+
+Native functions may use trailing primitive defaults that the compiler can evaluate as constants,
 but the default must exactly match an explicit `Number`, `Boolean`, `String`, or
 `Null` parameter type. They cannot use rest parameters or `$args`, and cannot be assigned. Apply
 them only through a normal build: neither incremental nor replacement hot
@@ -177,7 +192,10 @@ coercion (for example arithmetic becomes `NaN`); they are not rejected as a
 `Point` mismatch. Runtime exact checks remain only on builtin native types
 (`Number`, `Boolean`, packed arrays, and the other `CheckedType` names) at
 typed parameters, declared native returns that are not already proven, and
-`value as Number`.
+`value as Number`. Packed-array checks are nullable:
+`null as Float64Array` returns `null`, and a `null` argument is inferred from
+a declared `Float64Array` parameter without requiring `as`. Non-null values
+must still match the exact packed-array type.
 
 Exported shapes can be referenced through an imported module alias:
 

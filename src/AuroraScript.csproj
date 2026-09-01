@@ -92,6 +92,9 @@
 			<OutputItemType>Analyzer</OutputItemType>
 			<ReferenceOutputAssembly>false</ReferenceOutputAssembly>
 			<PrivateAssets>all</PrivateAssets>
+			<!-- The analyzer targets netstandard2.0, so publish settings from a self-contained
+			     single-file host build must not flow into it. -->
+			<UndefineProperties>PublishTrimmed;TrimMode;PublishSingleFile;SelfContained;PublishSelfContained;RuntimeIdentifier;PublishDir;EnableCompressionInSingleFile</UndefineProperties>
 		</ProjectReference>
 	</ItemGroup>
 
@@ -103,7 +106,8 @@
 		<MSBuild
 			Projects="$(MSBuildThisFileDirectory)..\language-tools\AuroraScript.Hosting.Generators\AuroraScript.Hosting.Generators.csproj"
 			Targets="GetTargetPath"
-			Properties="Configuration=$(Configuration);TargetFramework=netstandard2.0">
+			Properties="Configuration=$(Configuration);TargetFramework=netstandard2.0"
+			RemoveProperties="PublishTrimmed;TrimMode;PublishSingleFile;SelfContained;PublishSelfContained;RuntimeIdentifier;PublishDir;EnableCompressionInSingleFile">
 			<Output TaskParameter="TargetOutputs" ItemName="_HostingGeneratorDll" />
 		</MSBuild>
 		<ItemGroup>

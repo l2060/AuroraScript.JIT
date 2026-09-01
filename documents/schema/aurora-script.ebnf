@@ -47,7 +47,7 @@ annotation         = "@" identifier [ "(" [ annotation-argument { "," annotation
 annotation-argument = identifier | string-literal | number-literal | boolean-literal ;
 annotated-function = annotation+ function-declaration ;
 
-function-declaration = ( "func" | "function" ) identifier parameter-list block ;
+function-declaration = [ "native" ] ( "func" | "function" ) identifier parameter-list [ type-reference ] block ;
 declare-function     = "declare" ( "func" | "function" ) identifier parameter-list [ type-reference ] ";" ;
 declare-variable     = "declare" ( "var" | "const" ) identifier ";" ;
 declare-type         = "declare" "type" identifier "{" ambient-member* "}" ;

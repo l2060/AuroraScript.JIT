@@ -211,6 +211,8 @@ namespace AuroraScript.Compiler.Backend.Code
                 return true;
             }
             return parameterType == argumentType ||
+                (IsPackedArray(parameterType) &&
+                    argumentType == FlowValueType.Null) ||
                 (parameterType == FlowValueType.Number &&
                     argumentType is FlowValueType.Int32 or FlowValueType.Int64) ||
                 (parameter.IsInt32Coercion && IsNumeric(argumentType));

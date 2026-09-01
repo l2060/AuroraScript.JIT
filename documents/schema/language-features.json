@@ -101,6 +101,18 @@
       "notes": ["function is also accepted as a keyword."]
     },
     {
+      "id": "function.native-void",
+      "syntax": "native func name(parameters) void { statements; return; }",
+      "scope": "module",
+      "notes": [
+        "void is a contextual return contract for native functions only; it is not an alias for Null.",
+        "The native CLR entry returns void. Falling through and bare return are valid; return expression is rejected.",
+        "Direct native calls used as statements do not materialize a result.",
+        "Exported, dynamic, or otherwise value-producing calls observe null.",
+        "void is invalid on ordinary functions, parameters, fields, and type assertions."
+      ]
+    },
+    {
       "id": "lambda",
       "syntax": "x => x + 1; (a, b = 1) => { return a + b; }",
       "scope": "expression",

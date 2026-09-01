@@ -2,7 +2,9 @@ using AuroraScript.LanguageServer;
 using AuroraScript.LanguageServices.Builtins;
 using AuroraScript.LanguageServices.Features.SemanticTokens;
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Xunit;
@@ -171,7 +173,52 @@ public sealed class AuroraLanguageServerTests
         Assert.Equal("markdown", contents["kind"]!.GetValue<string>());
         var value = contents["value"]!.GetValue<string>();
         Assert.Contains("```aurorascript", value, StringComparison.Ordinal);
-        Assert.Contains("Math.abs(value: Number): Number;", value, StringComparison.Ordinal);
+        Assert.Contains("static func abs(Number value) Number", value, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task HoverPublishesClassifiedContentForVisualStudio()
+    {
+        var server = CreateServer();
+        const string source =
+            """
+            @module(TEST);
+            export func run() {
+                return Math.abs(-1);
+            }
+            """;
+        await DidOpen(server, source);
+
+        var result = await Request(server, 2, "textDocument/hover", new JsonObject
+        {
+            ["textDocument"] = TextDocument(),
+            ["position"] = Position(source, "abs")
+        });
+
+        var rawContent = result.Response!.Result!.AsObject()["_vs_rawContent"]!.AsObject();
+        Assert.Equal("ContainerElement", rawContent["_vs_type"]!.GetValue<string>());
+        Assert.Equal(1, rawContent["Style"]!.GetValue<int>());
+
+        var elements = rawContent["Elements"]!.AsArray();
+        Assert.NotEmpty(elements);
+
+        var runs = elements[0]!.AsObject()["Runs"]!.AsArray();
+        Assert.Equal("ClassifiedTextElement", elements[0]!.AsObject()["_vs_type"]!.GetValue<string>());
+
+        var text = new StringBuilder();
+        var classifications = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var run in runs)
+        {
+            var entry = run!.AsObject();
+            Assert.Equal("ClassifiedTextRun", entry["_vs_type"]!.GetValue<string>());
+            var runText = entry["Text"]!.GetValue<string>();
+            text.Append(runText);
+            classifications[runText] = entry["ClassificationTypeName"]!.GetValue<string>();
+        }
+
+        Assert.DoesNotContain("```", text.ToString(), StringComparison.Ordinal);
+        Assert.Equal("keyword", classifications["declare"]);
+        Assert.Equal("AuroraScript.Type", classifications["Math"]);
     }
 
     [Fact]
@@ -193,7 +240,7 @@ public sealed class AuroraLanguageServerTests
             ["position"] = Position(source, "console")
         });
         var ownerValue = ownerResult.Response!.Result!.AsObject()["contents"]!.AsObject()["value"]!.GetValue<string>();
-        Assert.Contains("console;", ownerValue, StringComparison.Ordinal);
+        Assert.Contains("declare type console;", ownerValue, StringComparison.Ordinal);
         Assert.DoesNotContain("console.log", ownerValue, StringComparison.Ordinal);
 
         var memberResult = await Request(server, 24, "textDocument/hover", new JsonObject
@@ -202,7 +249,7 @@ public sealed class AuroraLanguageServerTests
             ["position"] = Position(source, "log")
         });
         var memberValue = memberResult.Response!.Result!.AsObject()["contents"]!.AsObject()["value"]!.GetValue<string>();
-        Assert.Contains("console.log(...values: Object[]): void;", memberValue, StringComparison.Ordinal);
+        Assert.Contains("static func log(...Object values) void", memberValue, StringComparison.Ordinal);
         Assert.DoesNotContain("readonly func", memberValue, StringComparison.Ordinal);
     }
 
@@ -313,7 +360,7 @@ public sealed class AuroraLanguageServerTests
         var signatureNode = Assert.Single(signatureHelp["signatures"]!.AsArray());
         Assert.NotNull(signatureNode);
         var signature = signatureNode!.AsObject();
-        Assert.Equal("Math.pow(x: Number, y: Number): Number", signature["label"]!.GetValue<string>());
+        Assert.Equal("static func pow(Number x, Number y) Number", signature["label"]!.GetValue<string>());
     }
 
     [Fact]
@@ -390,8 +437,8 @@ public sealed class AuroraLanguageServerTests
         var document = documentResult.Response!.Result!.AsObject();
         Assert.Equal("aurora", document["languageId"]!.GetValue<string>());
         var text = document["text"]!.GetValue<string>();
-        Assert.Contains("Math.abs(value: Number): Number;", text, StringComparison.Ordinal);
-        Assert.Contains("Math.PI: Number;", text, StringComparison.Ordinal);
+        Assert.Contains("static func abs(Number value) Number", text, StringComparison.Ordinal);
+        Assert.Contains("static const Number PI", text, StringComparison.Ordinal);
     }
 
     [Fact]

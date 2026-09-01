@@ -7,6 +7,8 @@ namespace AuroraScript.LanguageServices.Internal;
 
 internal static class BuiltinTypeFormatter
 {
+    public const string MarkdownLanguageId = "aurorascript";
+
     public enum TypeUsage
     {
         Value,
@@ -18,7 +20,7 @@ internal static class BuiltinTypeFormatter
         var type = FormatTypeCore(rawType, usage);
         if (optional && !ContainsNullType(rawType) && !string.Equals(type, "void", StringComparison.Ordinal))
         {
-            type += " | null";
+            type += " | Null";
         }
 
         if (!variadic)
@@ -26,9 +28,7 @@ internal static class BuiltinTypeFormatter
             return type;
         }
 
-        return type.Contains(" | ", StringComparison.Ordinal)
-            ? "(" + type + ")[]"
-            : type + "[]";
+        return type;
     }
 
     public static string SafeParameterName(string name, int index)
@@ -57,87 +57,104 @@ internal static class BuiltinTypeFormatter
             }
 
             builder
-                .Append(SafeParameterName(parameter.Name, i))
-                .Append(": ")
-                .Append(FormatType(parameter.Type, TypeUsage.Value, parameter.Optional, parameter.Variadic));
+                .Append(FormatType(parameter.Type, TypeUsage.Value, parameter.Optional, variadic: false))
+                .Append(' ')
+                .Append(SafeParameterName(parameter.Name, i));
         }
     }
 
-    public static string FormatMemberSignature(BuiltinApiMember member)
+    public static string FormatMemberSignature(BuiltinApiMember member, bool instanceMember = false)
     {
         var builder = new StringBuilder();
-        builder.Append(member.FullName);
-        if (member.Kind == BuiltinApiKind.Method || member.Kind == BuiltinApiKind.Function)
+        if (!instanceMember)
         {
-            builder.Append('(');
+            builder.Append("static ");
+        }
+
+        if (member.Kind is BuiltinApiKind.Method or BuiltinApiKind.Function)
+        {
+            builder.Append("func ").Append(member.Name).Append('(');
             AppendMappedParameters(builder, member.Parameters);
-            builder.Append("): ").Append(FormatType(member.ReturnType, TypeUsage.Return, optional: false, variadic: false));
-        }
-        else
-        {
-            builder.Append(": ").Append(FormatType(member.ReturnType, TypeUsage.Value, optional: false, variadic: false));
+            builder.Append(") ").Append(FormatType(member.ReturnType, TypeUsage.Return, optional: false, variadic: false));
+            return builder.ToString();
         }
 
+        if (member.Kind == BuiltinApiKind.Constant || member.ReadOnly)
+        {
+            builder.Append("const ");
+        }
+
+        builder
+            .Append(FormatType(member.ReturnType, TypeUsage.Value, optional: false, variadic: false))
+            .Append(' ')
+            .Append(member.Name);
         return builder.ToString();
     }
 
-    public static string FormatConstructorSignature(BuiltinApiMember constructor, bool includeNewKeyword)
+    public static string FormatConstructorSignature(BuiltinApiMember constructor, bool includeNewKeyword = false)
     {
         var builder = new StringBuilder();
-        if (includeNewKeyword)
-        {
-            builder.Append("new ");
-        }
-
-        builder.Append(constructor.Name).Append('(');
+        builder.Append("constructor(");
         AppendMappedParameters(builder, constructor.Parameters);
-        builder.Append("): ").Append(FormatType(constructor.ReturnType, TypeUsage.Return, optional: false, variadic: false));
+        builder.Append(')');
         return builder.ToString();
     }
 
-    public static void AppendJsDoc(
-        StringBuilder builder,
-        IReadOnlyList<string> notes,
-        IReadOnlyList<BuiltinApiParameter>? parameters,
-        string? returnType)
+    public static string FormatHover(string code, IReadOnlyList<string>? notes = null)
     {
-        var hasParameters = parameters != null && parameters.Count != 0;
-        var hasReturnType = !string.IsNullOrWhiteSpace(returnType);
-        if (notes.Count == 0 && !hasParameters && !hasReturnType)
+        var builder = new StringBuilder();
+        AppendCodeFence(builder, code);
+        AppendMarkdownNotes(builder, notes);
+        return builder.ToString();
+    }
+
+    public static void AppendCodeFence(StringBuilder builder, string code)
+    {
+        builder.Append("```").Append(MarkdownLanguageId).Append('\n');
+        builder.Append(code);
+        if (code.Length == 0 || code[code.Length - 1] != '\n')
+        {
+            builder.Append('\n');
+        }
+
+        builder.Append("```");
+    }
+
+    public static void AppendMarkdownNotes(StringBuilder builder, IReadOnlyList<string>? notes)
+    {
+        if (notes == null || notes.Count == 0)
         {
             return;
         }
 
-        builder.Append("/**\n");
         for (var i = 0; i < notes.Count; i++)
         {
-            builder.Append("* ").Append(notes[i]).Append('\n');
-        }
-
-        if (hasParameters)
-        {
-            for (var i = 0; i < parameters!.Count; i++)
+            if (string.IsNullOrWhiteSpace(notes[i]))
             {
-                var parameter = parameters[i];
-                builder
-                    .Append("* @param ")
-                    .Append(SafeParameterName(parameter.Name, i))
-                    .Append(' ')
-                    .Append(FormatType(parameter.Type, TypeUsage.Value, parameter.Optional, parameter.Variadic))
-                    .Append(".\n");
+                continue;
             }
-        }
 
-        if (hasReturnType)
+            builder.Append("\n\n").Append(notes[i]);
+        }
+    }
+
+    public static string FormatDeclareType(string typeName, params string[] members)
+    {
+        var builder = new StringBuilder();
+        builder.Append("declare type ").Append(typeName);
+        if (members == null || members.Length == 0)
         {
-            var type = FormatType(returnType!, TypeUsage.Return, optional: false, variadic: false);
-            if (!string.Equals(type, "void", StringComparison.Ordinal))
-            {
-                builder.Append("* @returns ").Append(type).Append(".\n");
-            }
+            return builder.ToString();
         }
 
-        builder.Append("*/\n");
+        builder.Append(" {\n");
+        for (var i = 0; i < members.Length; i++)
+        {
+            builder.Append("    ").Append(members[i]).Append(";\n");
+        }
+
+        builder.Append('}');
+        return builder.ToString();
     }
 
     private static string FormatTypeCore(string rawType, TypeUsage usage)
@@ -148,30 +165,30 @@ internal static class BuiltinTypeFormatter
         }
 
         var parts = rawType.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (parts.Length > 1)
+        if (parts.Length == 1)
         {
-            var mapped = new List<string>(parts.Length);
-            for (var i = 0; i < parts.Length; i++)
-            {
-                var part = MapSingleType(parts[i], usage);
-                if (!mapped.Contains(part))
-                {
-                    mapped.Add(part);
-                }
-            }
-
-            return string.Join(" | ", mapped);
+            return MapSingleType(parts[0], usage, wholeType: true);
         }
 
-        return MapSingleType(rawType, usage);
+        var mapped = new List<string>(parts.Length);
+        for (var i = 0; i < parts.Length; i++)
+        {
+            var part = MapSingleType(parts[i], TypeUsage.Value, wholeType: false);
+            if (!mapped.Contains(part))
+            {
+                mapped.Add(part);
+            }
+        }
+
+        return string.Join(" | ", mapped);
     }
 
-    private static string MapSingleType(string rawType, TypeUsage usage)
+    private static string MapSingleType(string rawType, TypeUsage usage, bool wholeType)
     {
         var trimmed = rawType.Trim();
         if (trimmed.EndsWith("[]", StringComparison.Ordinal))
         {
-            return MapSingleType(trimmed.Substring(0, trimmed.Length - 2), usage) + "[]";
+            return MapSingleType(trimmed.Substring(0, trimmed.Length - 2), usage, wholeType) + "[]";
         }
 
         return trimmed.ToLowerInvariant() switch
@@ -188,8 +205,8 @@ internal static class BuiltinTypeFormatter
             "regexp" => "Regex",
             "function" => "Function",
             "func" => "Function",
-            "null" => usage == TypeUsage.Return ? "void" : "null",
-            "undefined" => usage == TypeUsage.Return ? "void" : "null",
+            "null" => usage == TypeUsage.Return && wholeType ? "void" : "Null",
+            "undefined" => usage == TypeUsage.Return && wholeType ? "void" : "Null",
             "void" => "void",
             _ => trimmed
         };

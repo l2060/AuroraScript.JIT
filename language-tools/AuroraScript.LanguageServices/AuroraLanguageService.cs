@@ -1145,7 +1145,7 @@ public sealed class AuroraLanguageService
         }
 
         var builder = new StringBuilder();
-        builder.Append("```aurorascript\n");
+        builder.Append("```").Append(BuiltinTypeFormatter.MarkdownLanguageId).Append('\n');
         if (declaration.Access == MemberAccess.Export)
         {
             builder.Append("export ");

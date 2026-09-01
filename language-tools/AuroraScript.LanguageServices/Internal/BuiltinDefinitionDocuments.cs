@@ -193,39 +193,29 @@ internal sealed class BuiltinDefinitionDocuments
         builder.AppendLine();
 
         AppendDocumentation(builder, uri, symbol.Documentation.GetNotes(_locale), null, null, builtinReferences);
-        var globalRange = AppendGlobalDeclaration(builder, uri, symbol);
+        builder.Append("declare type ");
+        var globalRange = builder.AppendToken(uri, symbol.Name);
+        builder.AppendLine(" {");
 
-        if (symbol.Constructors.Count != 0)
+        for (var i = 0; i < symbol.Constructors.Count; i++)
         {
-            builder.AppendLine();
-            builder.AppendLine("// Constructors");
-            for (var i = 0; i < symbol.Constructors.Count; i++)
-            {
-                AppendConstructor(builder, uri, symbol.Constructors[i], builtinReferences);
-            }
+            AppendConstructor(builder, uri, symbol.Constructors[i], builtinReferences);
         }
 
-        if (symbol.Members.Count != 0)
+        if (prototypeMembers != null)
         {
-            builder.AppendLine();
+            foreach (var memberPair in prototypeMembers)
+            {
+                AppendMember(builder, uri, memberPair.Value, instanceMember: true, memberRanges, builtinReferences);
+            }
         }
 
         foreach (var memberPair in symbol.Members)
         {
-            var member = memberPair.Value;
-            AppendMember(builder, uri, symbol.Name, member, includePrototype: false, memberRanges, builtinReferences);
+            AppendMember(builder, uri, memberPair.Value, instanceMember: false, memberRanges, builtinReferences);
         }
 
-        if (prototypeMembers != null && prototypeMembers.Count != 0)
-        {
-            builder.AppendLine();
-            builder.AppendLine("// Prototype members");
-            foreach (var memberPair in prototypeMembers)
-            {
-                var member = memberPair.Value;
-                AppendMember(builder, uri, symbol.Name, member, includePrototype: true, memberRanges: null, builtinReferences);
-            }
-        }
+        builder.AppendLine("}");
 
         return new DocumentInfo(uri, builder.ToString(), globalRange, memberRanges, builtinReferences);
     }
@@ -249,6 +239,9 @@ internal sealed class BuiltinDefinitionDocuments
         if (module.Members.Count != 0)
         {
             builder.AppendLine();
+            builder.Append("declare type ");
+            builder.AppendToken(uri, module.Name);
+            builder.AppendLine(" {");
         }
 
         foreach (var memberPair in module.Members)
@@ -256,11 +249,15 @@ internal sealed class BuiltinDefinitionDocuments
             AppendMember(
                 builder,
                 uri,
-                module.Name,
                 memberPair.Value,
-                includePrototype: false,
+                instanceMember: false,
                 memberRanges,
                 builtinReferences);
+        }
+
+        if (module.Members.Count != 0)
+        {
+            builder.AppendLine("}");
         }
 
         return new DocumentInfo(
@@ -284,26 +281,11 @@ internal sealed class BuiltinDefinitionDocuments
         builder.AppendLine("/**");
         builder.Append("* Built-in ").Append(typeName).AppendLine(" type used by runtime API declarations.");
         builder.AppendLine("*/");
+        builder.Append("declare type ");
         var globalRange = builder.AppendToken(uri, typeName);
         builder.AppendLine(";");
 
         return new DocumentInfo(uri, builder.ToString(), globalRange, memberRanges, builtinReferences);
-    }
-
-    private static TextRange AppendGlobalDeclaration(
-        DocumentTextBuilder builder,
-        string uri,
-        BuiltinApiSymbol symbol)
-    {
-        var range = builder.AppendToken(uri, symbol.Name);
-
-        if (symbol.Kind == BuiltinApiKind.Function)
-        {
-            builder.Append("(): Object");
-        }
-
-        builder.AppendLine(";");
-        return range;
     }
 
     private void AppendConstructor(
@@ -313,51 +295,60 @@ internal sealed class BuiltinDefinitionDocuments
         List<BuiltinReference> builtinReferences)
     {
         AppendDocumentation(builder, uri, constructor.Documentation.GetNotes(_locale), constructor.Parameters, constructor.ReturnType, builtinReferences);
-        builder.Append("new ");
-        var constructorRange = builder.AppendToken(uri, constructor.Name);
-        if (_knownTypes.Contains(constructor.Name))
-        {
-            builtinReferences.Add(new BuiltinReference(constructor.Name, constructorRange));
-        }
-
-        builder.Append("(");
+        builder.Append("    constructor(");
         AppendParameters(builder, uri, constructor.Parameters, builtinReferences);
-        builder.Append("): ");
-        AppendType(builder, uri, constructor.ReturnType, BuiltinTypeFormatter.TypeUsage.Return, optional: false, variadic: false, builtinReferences);
-        builder.AppendLine(";");
+        builder.AppendLine(");");
     }
 
     private void AppendMember(
         DocumentTextBuilder builder,
         string uri,
-        string ownerName,
         BuiltinApiMember member,
-        bool includePrototype,
+        bool instanceMember,
         Dictionary<string, TextRange>? memberRanges,
         List<BuiltinReference> builtinReferences)
     {
         AppendDocumentation(builder, uri, member.Documentation.GetNotes(_locale), member.Parameters, member.ReturnType, builtinReferences);
-        AppendBuiltinReference(builder, uri, ownerName, builtinReferences);
-        builder.Append(includePrototype ? ".prototype." : ".");
-        var memberRange = builder.AppendToken(uri, member.Name);
-        if (memberRanges != null)
+        builder.Append("    ");
+        if (!instanceMember)
         {
-            memberRanges[member.Name] = memberRange;
+            builder.Append("static ");
         }
 
         if (member.Kind == BuiltinApiKind.Method || member.Kind == BuiltinApiKind.Function)
         {
+            builder.Append("func ");
+            var memberRange = builder.AppendToken(uri, member.Name);
+            RecordMemberRange(memberRanges, member.Name, memberRange);
             builder.Append("(");
             AppendParameters(builder, uri, member.Parameters, builtinReferences);
-            builder.Append("): ");
+            builder.Append(") ");
             AppendType(builder, uri, member.ReturnType, BuiltinTypeFormatter.TypeUsage.Return, optional: false, variadic: false, builtinReferences);
             builder.AppendLine(";");
             return;
         }
 
-        builder.Append(": ");
+        if (member.Kind == BuiltinApiKind.Constant || member.ReadOnly)
+        {
+            builder.Append("const ");
+        }
+
         AppendType(builder, uri, member.ReturnType, BuiltinTypeFormatter.TypeUsage.Value, optional: false, variadic: false, builtinReferences);
+        builder.Append(" ");
+        var fieldRange = builder.AppendToken(uri, member.Name);
+        RecordMemberRange(memberRanges, member.Name, fieldRange);
         builder.AppendLine(";");
+    }
+
+    private static void RecordMemberRange(
+        Dictionary<string, TextRange>? memberRanges,
+        string name,
+        TextRange range)
+    {
+        if (memberRanges != null && !memberRanges.ContainsKey(name))
+        {
+            memberRanges[name] = range;
+        }
     }
 
     private void AppendParameters(
@@ -379,8 +370,8 @@ internal sealed class BuiltinDefinitionDocuments
                 builder.Append("...");
             }
 
-            builder.Append(BuiltinTypeFormatter.SafeParameterName(parameter.Name, i)).Append(": ");
-            AppendType(builder, uri, parameter.Type, BuiltinTypeFormatter.TypeUsage.Value, parameter.Optional, parameter.Variadic, builtinReferences);
+            AppendType(builder, uri, parameter.Type, BuiltinTypeFormatter.TypeUsage.Value, parameter.Optional, variadic: false, builtinReferences);
+            builder.Append(" ").Append(BuiltinTypeFormatter.SafeParameterName(parameter.Name, i));
         }
     }
 
@@ -455,19 +446,6 @@ internal sealed class BuiltinDefinitionDocuments
             builtinReferences.Add(new BuiltinReference(
                 token,
                 Range(uri, startLine, startCharacter + match.Index, match.Length)));
-        }
-    }
-
-    private void AppendBuiltinReference(
-        DocumentTextBuilder builder,
-        string uri,
-        string targetName,
-        List<BuiltinReference> builtinReferences)
-    {
-        var range = builder.AppendToken(uri, targetName);
-        if (_knownTypes.Contains(targetName))
-        {
-            builtinReferences.Add(new BuiltinReference(targetName, range));
         }
     }
 

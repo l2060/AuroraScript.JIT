@@ -17,6 +17,35 @@ internal sealed class BuiltinDocumentManager
 {
     public const string BuiltinScheme = "aurora-builtin";
 
+    /// <summary>
+    /// Directory holding the generated read-only copies of built-in declaration documents.
+    /// </summary>
+    public static readonly string CacheRootDirectory = Path.Combine(
+        Path.GetTempPath(),
+        "AuroraScript.VisualStudio",
+        "Builtins");
+
+    /// <summary>
+    /// Indicates whether a file path points at a generated built-in declaration document.
+    /// </summary>
+    public static bool IsCachedDocumentPath(string? filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            return false;
+        }
+
+        try
+        {
+            var full = Path.GetFullPath(filePath);
+            return full.StartsWith(CacheRootDirectory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
     private readonly JoinableTaskContext _joinableTaskContext;
     private readonly Dictionary<string, string> _filePathsByBuiltinUri = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _builtinUrisByFilePath = new(StringComparer.OrdinalIgnoreCase);
@@ -169,10 +198,12 @@ internal sealed class BuiltinDocumentManager
         File.WriteAllText(tempPath, text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         if (File.Exists(path))
         {
+            File.SetAttributes(path, FileAttributes.Normal);
             File.Delete(path);
         }
 
         File.Move(tempPath, path);
+        File.SetAttributes(path, FileAttributes.ReadOnly);
 
         lock (_gate)
         {
@@ -213,10 +244,6 @@ internal sealed class BuiltinDocumentManager
             name = "builtin.as";
         }
 
-        return Path.Combine(
-            Path.GetTempPath(),
-            "AuroraScript.VisualStudio",
-            "Builtins",
-            name);
+        return Path.Combine(CacheRootDirectory, name);
     }
 }

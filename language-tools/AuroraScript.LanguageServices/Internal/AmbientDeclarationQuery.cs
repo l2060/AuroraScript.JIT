@@ -421,7 +421,7 @@ internal static class AmbientDeclarationQuery
         }
 
         var label = callable.Kind == AmbientMemberKind.Constructor
-            ? FormatConstructor(ownerName, callable)
+            ? FormatConstructor(callable)
             : FormatFunction(callableName, callable);
         var parameters = new List<SignatureParameter>(callable.Parameters.Count);
         for (var i = 0; i < callable.Parameters.Count; i++)
@@ -620,7 +620,13 @@ internal static class AmbientDeclarationQuery
     {
         if (member.Kind == AmbientMemberKind.Constructor)
         {
-            return WrapCode(FormatConstructor(ownerName, member));
+            var constructor = FormatConstructor(member);
+            if (string.IsNullOrEmpty(ownerName))
+            {
+                return WrapCode(constructor);
+            }
+
+            return WrapCode(BuiltinTypeFormatter.FormatDeclareType(ownerName, constructor));
         }
 
         if (member.Kind == AmbientMemberKind.Function)
@@ -668,10 +674,10 @@ internal static class AmbientDeclarationQuery
         return builder.ToString();
     }
 
-    private static string FormatConstructor(string name, AmbientMemberDeclaration member)
+    private static string FormatConstructor(AmbientMemberDeclaration member)
     {
         var builder = new StringBuilder();
-        builder.Append("new ").Append(name).Append('(');
+        builder.Append("constructor(");
         for (var i = 0; i < member.Parameters.Count; i++)
         {
             if (i > 0)
@@ -717,7 +723,7 @@ internal static class AmbientDeclarationQuery
 
     private static string WrapCode(string signature)
     {
-        return "```aurorascript\n" + signature + "\n```";
+        return "```" + BuiltinTypeFormatter.MarkdownLanguageId + "\n" + signature + "\n```";
     }
 
     private static bool TryGetNewClassName(

@@ -1,5 +1,6 @@
 using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
+using AuroraScript.Compiler.Backend.Code;
 using AuroraScript.Runtime;
 using System;
 using System.Collections.Generic;
@@ -31,7 +32,10 @@ namespace AuroraScript.Compiler.Analyzer
 
         protected override void VisitFunction(FunctionDeclaration node)
         {
-            ValidateReference(node.ReturnType);
+            if (!node.IsNative || !TypeReferenceFacts.IsVoid(node.ReturnType))
+            {
+                ValidateReference(node.ReturnType);
+            }
             for (var i = 0; i < node.Parameters.Count; i++)
             {
                 ValidateReference(node.Parameters[i].DeclaredType);

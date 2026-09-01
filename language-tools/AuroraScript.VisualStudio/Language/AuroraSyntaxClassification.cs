@@ -140,13 +140,51 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
     };
 
     private const int MaxWorkspaceDeclareFiles = 2000;
+
+    private static readonly string[] ExcludedFolderTrees = BuildFolderList(
+        Path.GetTempPath(),
+        Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+        Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+        Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86));
+
+    private static readonly string[] ExcludedFolders = BuildFolderList(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData));
+
     private static readonly IReadOnlyDictionary<string, LightweightSymbolKind> EmptyAmbientDeclarations =
         new Dictionary<string, LightweightSymbolKind>(StringComparer.Ordinal);
     private static readonly AmbientDeclareCache WorkspaceAmbientDeclarations = new();
+    private static readonly DeclarationFileCache DeclarationFiles = new();
 
     private readonly ITextBuffer _buffer;
     private readonly ITextDocumentFactoryService? _textDocuments;
     private readonly Dictionary<string, ClassificationTag> _tags;
+    private ITextSnapshot? _analyzedSnapshot;
+    private DocumentAnalysis? _analysis;
+
+    private sealed class DocumentAnalysis
+    {
+        public DocumentAnalysis(
+            string text,
+            bool isTypedDocument,
+            Dictionary<string, bool> enumNames,
+            LightweightSymbolIndex symbols)
+        {
+            Text = text;
+            IsTypedDocument = isTypedDocument;
+            EnumNames = enumNames;
+            Symbols = symbols;
+        }
+
+        public string Text { get; }
+
+        public bool IsTypedDocument { get; }
+
+        public Dictionary<string, bool> EnumNames { get; }
+
+        public LightweightSymbolIndex Symbols { get; }
+    }
 
     private enum LightweightSymbolKind
     {
@@ -343,7 +381,7 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
 
     private sealed class AmbientDeclareCache
     {
-        private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(1);
+        private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(5);
         private readonly object _gate = new();
         private readonly Dictionary<string, AmbientDeclareCacheEntry> _entries = new(StringComparer.OrdinalIgnoreCase);
 
@@ -389,6 +427,81 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
             }
 
             return declarations;
+        }
+    }
+
+    /// <summary>
+    /// Keeps parsed ambient declarations per file so a workspace rescan only re-reads changed files.
+    /// </summary>
+    private sealed class DeclarationFileCache
+    {
+        private static readonly KeyValuePair<string, LightweightSymbolKind>[] Empty =
+            new KeyValuePair<string, LightweightSymbolKind>[0];
+
+        private readonly object _gate = new();
+        private readonly Dictionary<string, Entry> _entries = new(StringComparer.OrdinalIgnoreCase);
+
+        public IReadOnlyList<KeyValuePair<string, LightweightSymbolKind>> Get(string file)
+        {
+            DateTime writeTimeUtc;
+            long length;
+            try
+            {
+                var info = new FileInfo(file);
+                writeTimeUtc = info.LastWriteTimeUtc;
+                length = info.Length;
+            }
+            catch (Exception ex) when (IsFileReadFailure(ex))
+            {
+                return Empty;
+            }
+
+            lock (_gate)
+            {
+                if (_entries.TryGetValue(file, out var cached) &&
+                    cached.WriteTimeUtc == writeTimeUtc &&
+                    cached.Length == length)
+                {
+                    return cached.Declarations;
+                }
+            }
+
+            var declarations = new Dictionary<string, LightweightSymbolKind>(StringComparer.Ordinal);
+            try
+            {
+                CollectAmbientDeclarationsFromText(File.ReadAllText(file), declarations);
+            }
+            catch (Exception ex) when (IsFileReadFailure(ex))
+            {
+                return Empty;
+            }
+
+            var result = declarations.Count == 0 ? Empty : declarations.ToArray();
+            lock (_gate)
+            {
+                _entries[file] = new Entry(writeTimeUtc, length, result);
+            }
+
+            return result;
+        }
+
+        private sealed class Entry
+        {
+            public Entry(
+                DateTime writeTimeUtc,
+                long length,
+                IReadOnlyList<KeyValuePair<string, LightweightSymbolKind>> declarations)
+            {
+                WriteTimeUtc = writeTimeUtc;
+                Length = length;
+                Declarations = declarations;
+            }
+
+            public DateTime WriteTimeUtc { get; }
+
+            public long Length { get; }
+
+            public IReadOnlyList<KeyValuePair<string, LightweightSymbolKind>> Declarations { get; }
         }
     }
 
@@ -450,10 +563,11 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
         }
 
         var snapshot = spans[0].Snapshot;
-        var text = snapshot.GetText();
-        var isTypedDocument = IsTypedDocumentFile();
-        var enumNames = CollectEnumNames(text);
-        var symbols = CollectSymbolIndex(text, WorkspaceAmbientDeclarations.Get(GetBufferFilePath()));
+        var analysis = GetAnalysis(snapshot);
+        var text = analysis.Text;
+        var isTypedDocument = analysis.IsTypedDocument;
+        var enumNames = analysis.EnumNames;
+        var symbols = analysis.Symbols;
         var lastIdentifier = string.Empty;
         var lastSignificant = '\0';
 
@@ -634,6 +748,40 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
                 yield return stringTag;
             }
         }
+    }
+
+    /// <summary>
+    /// Scanning the whole buffer is linear in document size, while the editor requests tags many
+    /// times per snapshot. Analyzing once per snapshot keeps classification off the hot path.
+    /// </summary>
+    private DocumentAnalysis GetAnalysis(ITextSnapshot snapshot)
+    {
+        var cached = _analysis;
+        if (cached != null && ReferenceEquals(_analyzedSnapshot, snapshot))
+        {
+            return cached;
+        }
+
+        var text = snapshot.GetText();
+        var analysis = new DocumentAnalysis(
+            text,
+            IsTypedDocumentFile(),
+            CollectEnumNames(text),
+            CollectSymbolIndex(text, GetWorkspaceAmbientDeclarations()));
+        _analyzedSnapshot = snapshot;
+        _analysis = analysis;
+        return analysis;
+    }
+
+    private IReadOnlyDictionary<string, LightweightSymbolKind> GetWorkspaceAmbientDeclarations()
+    {
+        var path = GetBufferFilePath();
+        if (BuiltinDocumentManager.IsCachedDocumentPath(path))
+        {
+            return EmptyAmbientDeclarations;
+        }
+
+        return WorkspaceAmbientDeclarations.Get(path);
     }
 
     private string? GetBufferFilePath()
@@ -1318,7 +1466,7 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
     private static string FindWorkspaceRoot(string filePath)
     {
         var directory = Path.GetDirectoryName(filePath);
-        if (string.IsNullOrWhiteSpace(directory))
+        if (string.IsNullOrWhiteSpace(directory) || IsOutsideWorkspaceArea(directory))
         {
             return string.Empty;
         }
@@ -1326,6 +1474,11 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
         var current = directory;
         while (!string.IsNullOrWhiteSpace(current))
         {
+            if (IsOutsideWorkspaceArea(current))
+            {
+                break;
+            }
+
             if (HasWorkspaceMarker(current))
             {
                 return current;
@@ -1342,6 +1495,69 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
         }
 
         return directory;
+    }
+
+    /// <summary>
+    /// Guards against promoting a shell folder such as the temp or profile directory to a workspace
+    /// root, which would turn ambient declaration discovery into a full disk crawl.
+    /// </summary>
+    private static bool IsOutsideWorkspaceArea(string directory)
+    {
+        string full;
+        try
+        {
+            full = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar);
+        }
+        catch (Exception ex) when (IsFileReadFailure(ex))
+        {
+            return true;
+        }
+
+        if (string.Equals(full, Path.GetPathRoot(full)?.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        foreach (var folder in ExcludedFolderTrees)
+        {
+            if (string.Equals(full, folder, StringComparison.OrdinalIgnoreCase) ||
+                full.StartsWith(folder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        foreach (var folder in ExcludedFolders)
+        {
+            if (string.Equals(full, folder, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string[] BuildFolderList(params string?[] paths)
+    {
+        var folders = new List<string>();
+        foreach (var path in paths)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                continue;
+            }
+
+            try
+            {
+                folders.Add(Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar));
+            }
+            catch (Exception ex) when (IsFileReadFailure(ex))
+            {
+            }
+        }
+
+        return folders.ToArray();
     }
 
     private static bool HasWorkspaceMarker(string directory)
@@ -1428,12 +1644,9 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
                     return declarations.Count == 0 ? EmptyAmbientDeclarations : declarations;
                 }
 
-                try
+                foreach (var declaration in DeclarationFiles.Get(file))
                 {
-                    CollectAmbientDeclarationsFromText(File.ReadAllText(file), declarations);
-                }
-                catch (Exception ex) when (IsFileReadFailure(ex))
-                {
+                    declarations[declaration.Key] = declaration.Value;
                 }
             }
         }

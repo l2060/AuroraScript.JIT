@@ -8,32 +8,29 @@ namespace AuroraScript.LanguageServices.Internal;
 
 internal static class BuiltinFormat
 {
-    private const string MarkdownLanguageId = "aurorascript";
-
     public static string FormatGlobal(BuiltinApiSymbol symbol, string? locale = null)
     {
-        var builder = new StringBuilder();
-        builder.Append("```").Append(MarkdownLanguageId).Append('\n');
-        BuiltinTypeFormatter.AppendJsDoc(builder, symbol.Documentation.GetNotes(locale), null, null);
+        string code;
         if (symbol.Kind == BuiltinApiKind.Constructor && symbol.Constructors.Count != 0)
         {
+            var members = new string[symbol.Constructors.Count];
             for (var i = 0; i < symbol.Constructors.Count; i++)
             {
-                builder.Append(BuiltinTypeFormatter.FormatConstructorSignature(symbol.Constructors[i], includeNewKeyword: true));
-                builder.Append(";\n");
+                members[i] = BuiltinTypeFormatter.FormatConstructorSignature(symbol.Constructors[i]);
             }
+
+            code = BuiltinTypeFormatter.FormatDeclareType(symbol.Name, members);
+        }
+        else if (symbol.Kind == BuiltinApiKind.Function)
+        {
+            code = "func " + symbol.Name + "() Object;";
         }
         else
         {
-            builder.Append(symbol.Name);
-            if (symbol.Kind == BuiltinApiKind.Function)
-            {
-                builder.Append("(): Object");
-            }
-            builder.Append(";\n");
+            code = BuiltinTypeFormatter.FormatDeclareType(symbol.Name) + ";";
         }
-        builder.Append("```");
-        return builder.ToString();
+
+        return BuiltinTypeFormatter.FormatHover(code, symbol.Documentation.GetNotes(locale));
     }
 
     public static string FormatModule(
@@ -41,34 +38,24 @@ internal static class BuiltinFormat
         string? alias = null,
         string? locale = null)
     {
-        var builder = new StringBuilder();
-        builder.Append("```").Append(MarkdownLanguageId).Append('\n');
-        BuiltinTypeFormatter.AppendJsDoc(builder, module.Documentation.GetNotes(locale), null, null);
-        builder
-            .Append("import ").Append(string.IsNullOrWhiteSpace(alias) ? module.Name : alias)
-            .Append(" from \"").Append(module.ModulePath).Append("\";\n")
-            .Append("```");
-        return builder.ToString();
+        var code = "import " + (string.IsNullOrWhiteSpace(alias) ? module.Name : alias) +
+            " from \"" + module.ModulePath + "\";";
+        return BuiltinTypeFormatter.FormatHover(code, module.Documentation.GetNotes(locale));
     }
 
-    public static string FormatMember(BuiltinApiMember member, string? locale = null)
+    public static string FormatMember(BuiltinApiMember member, string? locale = null, bool instanceMember = false)
     {
-        var builder = new StringBuilder();
-        builder.Append("```").Append(MarkdownLanguageId).Append('\n');
-        var notes = member.Documentation.GetNotes(locale);
-        var parameters = member.Kind is BuiltinApiKind.Method or BuiltinApiKind.Function
-            ? member.Parameters
-            : null;
-        BuiltinTypeFormatter.AppendJsDoc(builder, notes, parameters, member.ReturnType);
-        builder.Append(BuiltinTypeFormatter.FormatMemberSignature(member)).Append(";\n```");
-        return builder.ToString();
+        var code = BuiltinTypeFormatter.FormatDeclareType(
+            member.OwnerName,
+            BuiltinTypeFormatter.FormatMemberSignature(member, instanceMember));
+        return BuiltinTypeFormatter.FormatHover(code, member.Documentation.GetNotes(locale));
     }
 
     public static string FormatCompletionDetail(BuiltinApiSymbol symbol)
     {
         if (symbol.Kind == BuiltinApiKind.Constructor && symbol.Constructors.Count != 0)
         {
-            return BuiltinTypeFormatter.FormatConstructorSignature(symbol.Constructors[0], includeNewKeyword: true);
+            return BuiltinTypeFormatter.FormatConstructorSignature(symbol.Constructors[0]);
         }
 
         return (symbol.ReadOnly ? "readonly " : string.Empty) + FormatKind(symbol.Kind);
@@ -116,9 +103,10 @@ internal static class BuiltinFormat
                 BuiltinTypeFormatter.FormatType(parameter.Type, BuiltinTypeFormatter.TypeUsage.Value, parameter.Optional, parameter.Variadic)));
         }
 
+        var signature = BuiltinTypeFormatter.FormatConstructorSignature(constructor);
         return new SignatureInformation(
-            BuiltinTypeFormatter.FormatConstructorSignature(constructor, includeNewKeyword),
-            FormatConstructor(constructor, locale, includeNewKeyword),
+            signature,
+            FormatConstructor(constructor, locale),
             parameters);
     }
 
@@ -137,17 +125,12 @@ internal static class BuiltinFormat
         };
     }
 
-    private static string FormatConstructor(BuiltinApiMember constructor, string? locale, bool includeNewKeyword)
+    private static string FormatConstructor(BuiltinApiMember constructor, string? locale)
     {
-        var builder = new StringBuilder();
-        builder.Append("```").Append(MarkdownLanguageId).Append('\n');
-        BuiltinTypeFormatter.AppendJsDoc(
-            builder,
-            constructor.Documentation.GetNotes(locale),
-            constructor.Parameters,
-            constructor.ReturnType);
-        builder.Append(BuiltinTypeFormatter.FormatConstructorSignature(constructor, includeNewKeyword)).Append(";\n```");
-        return builder.ToString();
+        var code = BuiltinTypeFormatter.FormatDeclareType(
+            constructor.OwnerName,
+            BuiltinTypeFormatter.FormatConstructorSignature(constructor));
+        return BuiltinTypeFormatter.FormatHover(code, constructor.Documentation.GetNotes(locale));
     }
 
     private static string FormatMappedParameter(BuiltinApiParameter parameter, int index)
@@ -159,9 +142,9 @@ internal static class BuiltinFormat
         }
 
         builder
-            .Append(BuiltinTypeFormatter.SafeParameterName(parameter.Name, index))
-            .Append(": ")
-            .Append(BuiltinTypeFormatter.FormatType(parameter.Type, BuiltinTypeFormatter.TypeUsage.Value, parameter.Optional, parameter.Variadic));
+            .Append(BuiltinTypeFormatter.FormatType(parameter.Type, BuiltinTypeFormatter.TypeUsage.Value, parameter.Optional, variadic: false))
+            .Append(' ')
+            .Append(BuiltinTypeFormatter.SafeParameterName(parameter.Name, index));
         return builder.ToString();
     }
 

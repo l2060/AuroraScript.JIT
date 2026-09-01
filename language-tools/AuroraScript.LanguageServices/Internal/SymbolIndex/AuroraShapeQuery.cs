@@ -5,6 +5,7 @@ using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.LanguageServices.Features.Completion;
 using AuroraScript.LanguageServices.Features.Definition;
 using AuroraScript.LanguageServices.Features.Hover;
+using AuroraScript.LanguageServices.Internal;
 using AuroraScript.LanguageServices.Text;
 using System;
 using System.Collections.Generic;
@@ -99,7 +100,7 @@ internal static class AuroraShapeQuery
             : TextRange.FromSourceSpan(context.PropertyAccess.Property.Range);
         var builder = new StringBuilder();
         builder
-            .Append("```aurorascript\n")
+            .Append("```").Append(BuiltinTypeFormatter.MarkdownLanguageId).Append('\n')
             .Append(field.Type.DisplayName)
             .Append(' ')
             .Append(field.Name.Value)

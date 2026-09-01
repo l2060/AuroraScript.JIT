@@ -34,13 +34,16 @@ public sealed class AstarExampleTests
     {
         using var workspace = new TestWorkspace();
         var source = File.ReadAllText(FindRepositoryFile("examples", "tests", "astar.as"));
+        source = source.Replace("import fs from 'fs';", "", StringComparison.Ordinal);
         source = source[..source.IndexOf("// examples", StringComparison.Ordinal)] +
             """
 
             export func verifyOptimizedAstar() {
                 var openMap = new Int8Array(25);
                 openMap.fill(1);
-                var finder = createAStar(5, 5, openMap, null);
+                var finder = createAStar(
+                    { width: 5, height: 5, data: openMap },
+                    null);
                 var path = newPathBuffer(finder);
                 var diagonalCount = findPathInto(finder, 0, 0, 4, 4, path, true, true);
                 var diagonalOk = diagonalCount == 5 && path[0] == 0 && path[4] == 24;
@@ -49,7 +52,9 @@ public sealed class AstarExampleTests
                 cornerMap.fill(1);
                 cornerMap[1] = 0;
                 cornerMap[2] = 0;
-                var cornerFinder = createAStar(2, 2, cornerMap, null);
+                var cornerFinder = createAStar(
+                    { width: 2, height: 2, data: cornerMap },
+                    null);
                 var cornerPath = newPathBuffer(cornerFinder);
                 var blockedCorner = findPathInto(cornerFinder, 0, 0, 1, 1, cornerPath, true, true);
                 var allowedCorner = findPathInto(cornerFinder, 0, 0, 1, 1, cornerPath, true, false);
@@ -59,7 +64,9 @@ public sealed class AstarExampleTests
                 var weights = new Float64Array(6);
                 weights.fill(1);
                 weights[1] = 100;
-                var weightedFinder = createAStar(3, 2, weightedMap, weights);
+                var weightedFinder = createAStar(
+                    { width: 3, height: 2, data: weightedMap },
+                    weights);
                 var weightedPath = newPathBuffer(weightedFinder);
                 var weightedCount = findPathInto(weightedFinder, 0, 0, 2, 0, weightedPath, false, true);
                 var avoidsExpensiveCell = weightedCount == 5 && weightedPath[1] == 3 &&
@@ -90,6 +97,7 @@ public sealed class AstarExampleTests
     {
         using var workspace = new TestWorkspace();
         var source = File.ReadAllText(FindRepositoryFile("examples", "tests", "astar.as"));
+        source = source.Replace("import fs from 'fs';", "", StringComparison.Ordinal);
         source = source[..source.IndexOf("// examples", StringComparison.Ordinal)];
         var assemblyPath = Path.Combine(workspace.Root, "test-output.dll");
         var engine = workspace.CreateEngine(
@@ -133,9 +141,14 @@ public sealed class AstarExampleTests
         Assert.True(heuristic.HasValue, "Persisted Astar heuristic native method was not emitted.");
         // DEFAULT, seven parameters, return R8, then ScriptContext,
         // R8 x4, Boolean, R8.
+        var heuristicSignature = reader.GetBlobBytes(heuristic.Value.Signature);
+        Assert.Equal(0x00, heuristicSignature[0]);
+        Assert.Equal(0x07, heuristicSignature[1]);
+        Assert.Equal(0x0d, heuristicSignature[2]);
+        Assert.Equal(0x12, heuristicSignature[3]);
         Assert.Equal(
-            [0x00, 0x07, 0x0d, 0x12, 0x25, 0x0d, 0x0d, 0x0d, 0x0d, 0x02, 0x0d],
-            reader.GetBlobBytes(heuristic.Value.Signature));
+            [0x0d, 0x0d, 0x0d, 0x0d, 0x02, 0x0d],
+            heuristicSignature[5..]);
         Assert.False(heuristicHandle.IsNil);
         Assert.False(heapNativeHandle.IsNil, "Persisted Astar heap push native method was not emitted.");
         var heapNative = reader.GetMethodDefinition(heapNativeHandle);

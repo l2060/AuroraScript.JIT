@@ -80,7 +80,7 @@ public sealed class GlobalDeclarationLanguageFeatureTests : IDisposable
 
         var ctorHelp = service.GetSignatureHelp(mainPath, PositionOf(main, "3, 4"));
         Assert.NotNull(ctorHelp);
-        Assert.Contains("new Vec2(Number x, Number y)", ctorHelp!.Signatures[0].Label, StringComparison.Ordinal);
+        Assert.Contains("constructor(Number x, Number y)", ctorHelp!.Signatures[0].Label, StringComparison.Ordinal);
 
         var meanHelp = service.GetSignatureHelp(mainPath, PositionOf(main, "1, 2"));
         Assert.NotNull(meanHelp);

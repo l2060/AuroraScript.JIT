@@ -1275,7 +1275,8 @@ namespace AuroraScript.Compiler.Analyzer
 
             var start = Lexer.NextOfKind<IdentifierToken>();
             var name = Lexer.NextOfKind<IdentifierToken>();
-            if (IsCheckTypeName(name.Value))
+            if (IsCheckTypeName(name.Value) ||
+                string.Equals(name.Value, "void", StringComparison.Ordinal))
             {
                 throw new AuroraCompilationException(
                     AuroraCompilationStage.Parsing,
@@ -1404,6 +1405,14 @@ namespace AuroraScript.Compiler.Analyzer
         {
             Lexer.NextOfKind<IdentifierToken>();
             var name = Lexer.NextOfKind<IdentifierToken>();
+            if (string.Equals(name.Value, "void", StringComparison.Ordinal))
+            {
+                throw new AuroraCompilationException(
+                    AuroraCompilationStage.Parsing,
+                    Lexer.FullPath,
+                    name,
+                    "Type declaration 'void' conflicts with a built-in type.");
+            }
             Lexer.Expect(Symbols.PT_LEFTBRACE);
             var members = new List<AmbientMemberDeclaration>();
             var memberNames = new HashSet<string>(StringComparer.Ordinal);
@@ -3133,7 +3142,16 @@ namespace AuroraScript.Compiler.Analyzer
 
             protected override void VisitFunction(FunctionDeclaration node)
             {
-                Validate(node.ReturnType);
+                if (!(node.IsNative &&
+                    node.ReturnType != null &&
+                    node.ReturnType.Qualifier == null &&
+                    string.Equals(
+                        node.ReturnType.Name,
+                        "void",
+                        StringComparison.Ordinal)))
+                {
+                    Validate(node.ReturnType);
+                }
                 for (var i = 0; i < node.Parameters.Count; i++)
                 {
                     Validate(node.Parameters[i].DeclaredType);
@@ -3156,8 +3174,20 @@ namespace AuroraScript.Compiler.Analyzer
 
             private void Validate(TypeReference type)
             {
-                if (type == null ||
-                    IsCheckTypeName(type.Name) ||
+                if (type == null)
+                {
+                    return;
+                }
+                if (type.Qualifier == null &&
+                    string.Equals(type.Name, "void", StringComparison.Ordinal))
+                {
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Parsing,
+                        _sourceName,
+                        type.Token,
+                        "Unknown type 'void'.");
+                }
+                if (IsCheckTypeName(type.Name) ||
                     type.Qualifier != null ||
                     _module.TryGetType(type.Name, out _))
                 {

@@ -7,7 +7,7 @@
   <PropertyGroup>
     <TargetFramework>net472</TargetFramework>
     <LangVersion>latest</LangVersion>
-    <Nullable>enable</Nullable>
+    <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <RootNamespace>AuroraScript.VisualStudio</RootNamespace>
     <AssemblyName>AuroraScript.VisualStudio</AssemblyName>
@@ -73,6 +73,10 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
     <Content Include="Grammars\AuroraScript.tmLanguage.json">
+      <IncludeInVSIX>true</IncludeInVSIX>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Grammars\markdown-aurora.tmLanguage.json">
       <IncludeInVSIX>true</IncludeInVSIX>
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
