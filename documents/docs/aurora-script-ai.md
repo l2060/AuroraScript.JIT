@@ -114,6 +114,7 @@ Rules:
 - A rest parameter cannot have a default value.
 - Function declarations inside a block are local to that block.
 - Lambdas use `=>` and may have expression or block bodies.
+- `native func` requires a return contract. Use `void` for a procedure; it is not an alias for `Null`.
 
 ```as
 var inc = x => x + 1;

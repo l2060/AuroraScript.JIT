@@ -2267,6 +2267,7 @@
       "notes": [
         "Use the parameterless constructor on at most one public constructor to enable script new.",
         "Core methods may be static Type members or instance members. They may prefix ScriptContext ctx and ScriptObject thisObject. Script parameters support double, int, bool, string, ScriptDatum, ScriptObject subclasses, trailing defaults, and params double[] or params ScriptDatum[].",
+        "A CLR void return is a procedure. Direct native calls used as statements do not materialize a result; dynamic or exported calls observe script null, matching native func ... void.",
         "params exports generate Datum adapters only; they are not compiler direct-call candidates."
       ]
     },
@@ -2304,7 +2305,10 @@
       "kind": "enum",
       "namespace": "AuroraScript.Hosting",
       "values": ["Void", "Number", "Int32", "Boolean", "String", "Object", "Datum"],
-      "summary": "Native representations recorded on generated assembly catalog attributes."
+      "summary": "Native representations recorded on generated assembly catalog attributes.",
+      "notes": [
+        "Void is a CLR void procedure. Direct native calls used as statements do not materialize a result; dynamic or exported calls observe script null."
+      ]
     },
     "AuroraGeneratedExportAttribute": {
       "kind": "class",

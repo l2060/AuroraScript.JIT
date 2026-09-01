@@ -663,6 +663,7 @@ Rules:
 Supported Core parameter and return types:
 
 - `double`, `int`, `bool`, `string`
+- `void` returns: a CLR `void` method is a procedure. Direct native calls used as statements do not materialize a result. Dynamic, exported, or otherwise value-producing calls observe script `null`, matching script `native func work(...) void`.
 - `ScriptDatum`
 - any `ScriptObject` subclass (`ScriptArray`, packed arrays, `Path`, `Proxy`, `Regex`, `Date`, `HashMap`, `Error`, `ClosureFunction`, wrappers)
 

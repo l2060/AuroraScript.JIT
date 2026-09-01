@@ -340,6 +340,8 @@ Use these defaults unless the user asks for a different style:
 - Use `const` for module constants and local values that do not change.
 - Use `StringBuffer` for large loop-built strings.
 - Distinguish packed arrays with `typeof value == "Int8Array"` or `check Int8Array value`; do not compare `typeof` to `"object"` for those values.
+- Packed-array parameters accept `null`. Call `work(null)` without `as Float64Array`; non-null values still require the exact packed-array type.
+- Use `native func name(...) ReturnType { ... }` only for a stable ABI. Use `void` as the return contract for a procedure: fall through or `return;` is valid, `return expression;` is not. Direct native statement calls use a CLR `void` ABI; dynamic calls evaluate to `null`.
 - Keep `console.log` and `console.error` out of hot paths.
 - Avoid array methods such as `map`, `filter`, or `reduce` in performance-sensitive examples unless clarity matters more and the API is known in `runtime-api.json`.
 
@@ -482,3 +484,5 @@ When validating loop code, use the recommended cached-bound form:
 - Do not return console output as the only result when the host expects a value.
 - Do not generate a full JavaScript program. Generate AuroraScript syntax and validate it with AuroraScript tooling.
 - Do not use broad runtime APIs until they are confirmed in `schema/runtime-api.json`.
+- Do not put `void` on ordinary `func`, parameters, fields, or `as` assertions; it is a native-function return contract only.
+- Do not write `return expression;` from `native func ... void`.
