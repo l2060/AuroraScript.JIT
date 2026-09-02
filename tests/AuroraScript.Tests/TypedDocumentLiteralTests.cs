@@ -274,6 +274,62 @@ public sealed class TypedDocumentLiteralTests
         Assert.Contains("$.bytes[0]", nestedError.ToString(), System.StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task TDocLiteralBuildsNativeTypedDocumentsAndKeepsDirectFields()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func run() {
+                var origin = tdoc Vec2 { x 0, y 0 };
+                var named = tdoc Vec2 { x 3, y 4 };
+                var packed = tdoc Vec2 [6, 8];
+                return [origin.x, named.x, named.y, named.length(), packed.x, packed.y, packed.length()];
+            }
+            """,
+            nativeTypes: true);
+
+        ScriptAssert.Equal(
+            new object?[] { 0, 3, 4, 5, 6, 8, 10 },
+            TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
+    public async Task TDocLiteralBindsInterpolatedNativeTypedDocuments()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func run(x, y) {
+                var named = tdoc Vec2 { x $(x), y $(y) };
+                var packed = tdoc Vec2 [$(x), $(y)];
+                return [named.length(), packed.length(), packed.x, packed.y];
+            }
+            """,
+            nativeTypes: true);
+
+        ScriptAssert.Equal(new object?[] { 5d, 5d, 3d, 4d }, TestWorkspace.Execute(domain, "run", "TEST", 3d, 4d));
+    }
+
+    [Fact]
+    public async Task ModuleConstTDocLiteralBuildsNativeTypedDocuments()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            const origin = tdoc Vec2 [3, 4];
+            export func run() {
+                return origin.length();
+            }
+            """,
+            nativeTypes: true);
+
+        ScriptAssert.Equal(5d, TestWorkspace.Execute(domain, "run"));
+    }
+
     private static void AssertPackedValues(ScriptArray values)
     {
         Assert.Equal(int.MinValue, Assert.IsType<ScriptInt32Array>(values.GetElement(0).Object).GetElement(0));

@@ -19,6 +19,12 @@ namespace AuroraScript.Runtime.Serialization
         /// <summary>Gets the data path associated with the error.</summary>
         public string DataPath { get; }
 
+        /// <summary>Creates a TDoc error with a data path and no source location.</summary>
+        public TypedDocumentException(string message, string dataPath = "$")
+            : this(message, "<tdoc>", 0, 0, dataPath)
+        {
+        }
+
         internal TypedDocumentException(
             string message,
             string sourceName,

@@ -9,7 +9,7 @@ using System.Text;
 
 namespace AuroraScript.Runtime.Serialization
 {
-    internal ref struct TypedDocumentWriter
+    internal struct TypedDocumentWriter
     {
         private const int MaxRetainedCapacity = 1024 * 1024;
         private const int MaxRetainedVisitedCount = 4096;
@@ -237,6 +237,9 @@ namespace AuroraScript.Runtime.Serialization
                 case ClrInstanceObject clrInstance:
                     WriteClrObject(clrInstance, clrRegistration);
                     return;
+                case INativeTypedDocument typedDocument:
+                    WriteNativeTypedDocument(typedDocument);
+                    return;
                 default:
                     if (scriptObject.GetType() == typeof(ScriptObject))
                     {
@@ -314,6 +317,72 @@ namespace AuroraScript.Runtime.Serialization
                 WriteIndent();
             }
             _builder.Append('}');
+        }
+
+        internal bool TryWriteNativeMember(string name, ScriptDatum value, bool writable, bool writeLeadingLine)
+        {
+            return TryWriteMember(name, value, writable, writeLeadingLine);
+        }
+
+        internal bool TryWriteNativeElement(ScriptDatum value, int index, bool writeLeadingLine)
+        {
+            _path.PushIndex(index);
+            try
+            {
+                EnterValue();
+                try
+                {
+                    if (!TryResolveTypeName(value, out var typeName, out var clrRegistration) ||
+                        !TryTrackReference(value))
+                    {
+                        return false;
+                    }
+
+                    if (writeLeadingLine) WriteNewLine();
+                    WriteIndent();
+                    if (typeName != null && ShouldWriteTypeName(typeName)) _builder.Append(typeName).Append(' ');
+                    WriteRawValue(value, clrRegistration);
+                    WriteItemEnd();
+                    return true;
+                }
+                finally
+                {
+                    _valueDepth--;
+                }
+            }
+            finally
+            {
+                _path.Pop();
+            }
+        }
+
+        internal void BeginNativeBody(char opening)
+        {
+            _builder.Append(opening);
+            _depth++;
+        }
+
+        internal void EndNativeBody(char closing, int writtenCount)
+        {
+            _depth--;
+            if (writtenCount != 0)
+            {
+                RemoveTrailingComma();
+                WriteIndent();
+            }
+            _builder.Append(closing);
+        }
+
+        internal void WriteEmptyNativeObject()
+        {
+            _builder.Append("{}");
+        }
+
+        private void WriteNativeTypedDocument(INativeTypedDocument document)
+        {
+            var output = new TypedDocumentOutput(ref this);
+            document.WriteTypedDocument(ref output);
+            output.Complete();
         }
 
         private void WriteArray(ScriptArray value)
@@ -901,6 +970,10 @@ namespace AuroraScript.Runtime.Serialization
                         return false;
                     }
                     typeName = alias;
+                    return true;
+                case INativeTypedDocument typedDocument
+                    when _engine.TypedDocuments.TryGet(typedDocument.GetType(), out var native):
+                    typeName = native.TypeName;
                     return true;
                 case ScriptObject when scriptObject.GetType() == typeof(ScriptObject):
                     typeName = "Object";

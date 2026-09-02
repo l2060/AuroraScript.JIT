@@ -34,7 +34,8 @@ export func testTypedDocument() {
 		readonly age 32,
 		readonly name 'Hanks',
 		Date Birthday '2026-08-22 12:34:56',
-		StringBuffer buff 'Hello '
+		StringBuffer buff 'Hello ',
+		Vec2 vec [1000,2000]
 	};
 	doc.buff.append('Hanks');
 	console.log(JSON.stringify(doc));

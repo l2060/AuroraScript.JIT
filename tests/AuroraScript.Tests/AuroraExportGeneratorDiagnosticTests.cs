@@ -260,6 +260,50 @@ public sealed class AuroraExportGeneratorDiagnosticTests
                 StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void EmitsTypedDocumentFactoryWhenUserConstructorExists()
+    {
+        var compilation = RunCore(
+            """
+            using AuroraScript.Hosting;
+            using AuroraScript.Runtime;
+            using AuroraScript.Runtime.Serialization;
+            using AuroraScript.Runtime.Types;
+            namespace Test;
+
+            [AuroraNativeType("Vec2")]
+            public sealed partial class Vec2 : ScriptObject, INativeTypedDocument
+            {
+                [AuroraExport("x")] public double X;
+                [AuroraExport("y")] public double Y;
+
+                [AuroraExport]
+                public Vec2(double x, double y)
+                {
+                    X = x;
+                    Y = y;
+                }
+
+                public void WriteTypedDocument(ref TypedDocumentOutput output)
+                {
+                    output.WriteElement(X);
+                    output.WriteElement(Y);
+                }
+
+                public void ReadTypedDocument(ref TypedDocumentInput input) { }
+            }
+            """,
+            out var diagnostics);
+
+        Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        var generated = string.Join(
+            Environment.NewLine,
+            compilation.SyntaxTrees.Select(tree => tree.ToString()));
+        Assert.Contains(
+            "CreateTypedDocument() => new Vec2(default(__AuroraTypedDocumentConstruction))",
+            generated);
+    }
+
     private static ImmutableArray<Diagnostic> Run(string source)
     {
         RunCore(source, out var diagnostics);

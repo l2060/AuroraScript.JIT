@@ -37,7 +37,8 @@ Use this map when changing language behavior.
 - Storage tags (not the script type-name registry): `src/Runtime/ValueKind.cs`
 - Interned `typeof` strings: `src/Runtime/TypeNames.cs`
 - Object identity for `typeof` / `GetTypeName`: `ScriptObject.TypeOfValue` in `src/Runtime/Types/ScriptObject.cs`
-- Exact `check TypeName` assertions: `src/Runtime/TypeCheckOps.cs`
+- TDoc binder, reader, and writer: `src/Runtime/Serialization`
+- NativeType TDoc contract: `src/Runtime/Serialization/INativeTypedDocument.cs`, `TypedDocumentNativeCatalog.cs`
 - Packed-array wrapper restore at object/dynamic boundaries: `src/Runtime/PackedArrayBoundaryOps.cs`
 - Primitive dynamic boundaries: `src/Runtime/ValueOps.cs`
 - Object and collection boundaries: `src/Runtime/ObjectOps.cs`, `src/Runtime/IterationOps.cs`

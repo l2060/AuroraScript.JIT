@@ -1296,6 +1296,24 @@ namespace AuroraScript.Compiler.Backend.Emission
                     return;
             }
 
+            if (!IsBuiltInTDocTypeName(typeName) &&
+                _session.CompileSession.HostExports.TryGetNativeObject(typeName, out var native) &&
+                typeof(INativeTypedDocument).IsAssignableFrom(native.ClrType))
+            {
+                if (expression.Value is MapExpression nativeObject)
+                {
+                    EmitTypedNativeDocument(typeName, nativeObject);
+                    return;
+                }
+
+                if (expression.Value is ArrayLiteralExpression nativeArray &&
+                    !HasSpread(nativeArray.Elements))
+                {
+                    EmitTypedNativeDocument(typeName, nativeArray);
+                    return;
+                }
+            }
+
             if (!IsBuiltInTDocTypeName(typeName) && expression.Value is MapExpression clrObject)
             {
                 EmitTypedClrObject(typeName, clrObject);
@@ -1342,6 +1360,62 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
 
             _il.Emit(OpCodes.Ldloc, target);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
+        }
+
+        private void EmitTypedNativeDocument(string typeName, MapExpression expression)
+        {
+            var target = DeclareLocal(typeof(INativeTypedDocument));
+            _il.Emit(OpCodes.Ldarg_0);
+            _session.Builder.LoadStringConstant(_il, typeName);
+            _session.Builder.LoadStringConstant(_il, _typedDocumentPath ?? "$");
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CreateTypedDocumentNativeObject);
+            _il.Emit(OpCodes.Stloc, target);
+
+            for (var i = 0; i < expression.Entries.Count; i++)
+            {
+                if (expression.Entries[i] is not MapKeyValueExpression entry)
+                {
+                    throw new NotSupportedException("TDoc native types require named members.");
+                }
+
+                _il.Emit(OpCodes.Ldloc, target);
+                _session.Builder.LoadStringConstant(_il, entry.Key.Value);
+                _il.Emit(entry.ReadOnly ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
+                EmitExpressionAtTDocProperty(entry.Value, entry.Key.Value);
+                _session.Builder.LoadStringConstant(
+                    _il,
+                    AppendTDocPropertyPath(_typedDocumentPath ?? "$", entry.Key.Value));
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ReadTypedDocumentNativeMember);
+            }
+
+            _il.Emit(OpCodes.Ldloc, target);
+            _il.Emit(OpCodes.Castclass, typeof(ScriptObject));
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
+        }
+
+        private void EmitTypedNativeDocument(string typeName, ArrayLiteralExpression expression)
+        {
+            var target = DeclareLocal(typeof(INativeTypedDocument));
+            _il.Emit(OpCodes.Ldarg_0);
+            _session.Builder.LoadStringConstant(_il, typeName);
+            _session.Builder.LoadStringConstant(_il, _typedDocumentPath ?? "$");
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CreateTypedDocumentNativeObject);
+            _il.Emit(OpCodes.Stloc, target);
+
+            for (var i = 0; i < expression.Elements.Count; i++)
+            {
+                _il.Emit(OpCodes.Ldloc, target);
+                _il.Emit(OpCodes.Ldc_I4, i);
+                EmitExpressionAtTDocIndex(expression.Elements[i], i);
+                _session.Builder.LoadStringConstant(
+                    _il,
+                    (_typedDocumentPath ?? "$") + "[" + i + "]");
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ReadTypedDocumentNativeElement);
+            }
+
+            _il.Emit(OpCodes.Ldloc, target);
+            _il.Emit(OpCodes.Castclass, typeof(ScriptObject));
             _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
         }
 

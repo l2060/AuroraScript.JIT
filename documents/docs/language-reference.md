@@ -491,6 +491,8 @@ func createProfile(user) {
 
 The `tdoc` prefix is valid only in script expressions. It accepts optional explicit type names, `readonly` object members, arrays, objects, and `$(expression)` in value positions. Property names and type names are static. Standalone `.tdoc` documents start directly with the root value and do not allow the prefix or interpolation. Use `TDoc.parse` and `TDoc.stringify` to convert between text and runtime values.
 
+Host NativeTypes participate when the CLR class implements `INativeTypedDocument` and is listed in `WithNativeTypes`. Then `tdoc Vec2 { x 3, y 4 }` and `tdoc Vec2 [3, 4]` both construct the native instance directly. `WriteTypedDocument` chooses the canonical stored shape (object members or array elements); deserialize and literals accept the shapes that type implements.
+
 Lambdas:
 
 ```as

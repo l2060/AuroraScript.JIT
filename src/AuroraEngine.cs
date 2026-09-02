@@ -10,6 +10,7 @@ using AuroraScript.Hosting;
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Builtin;
 using AuroraScript.Runtime.Interop;
+using AuroraScript.Runtime.Serialization;
 using AuroraScript.Runtime.Types;
 using AuroraScript.Runtime.Types.TypeConstruct;
 using AuroraScript.Source;
@@ -57,6 +58,11 @@ namespace AuroraScript
         internal readonly EngineOptions Options;
 
         /// <summary>
+        /// Native types that opted into TDoc through <see cref="INativeTypedDocument"/>.
+        /// </summary>
+        internal readonly TypedDocumentNativeCatalog TypedDocuments;
+
+        /// <summary>
         /// Engine-scoped index of the native modules selected through <see cref="EngineOptions.BuiltIns"/>.
         /// </summary>
         internal readonly BuiltinModuleRegistry BuiltInRegistry;
@@ -87,6 +93,7 @@ namespace AuroraScript
                 ? options
                 : options.WithCompiler(compiler => compiler.SourceResolver =
                     new BuiltinScriptSourceResolver(sourceResolver, BuiltInRegistry));
+            TypedDocuments = new TypedDocumentNativeCatalog(Options.Compiler.NativeTypes);
             StringValue.ConfigurePooling(Options.Runtime.StringPooling);
             Global = new ScriptGlobal(this);
 

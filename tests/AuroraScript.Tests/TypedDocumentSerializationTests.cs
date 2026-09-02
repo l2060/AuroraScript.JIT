@@ -2,6 +2,7 @@ using AuroraScript.Runtime;
 using AuroraScript.Runtime.Interop;
 using AuroraScript.Runtime.Serialization;
 using AuroraScript.Runtime.Types;
+using AuroraScript.Tests.Host;
 using AuroraScript.Tests.Infrastructure;
 using System;
 using System.Collections.Generic;
@@ -428,6 +429,45 @@ public sealed class TypedDocumentSerializationTests
         var restoredWithAllTypes = Assert.IsType<ClrInstanceObject>(
             TypedDocumentSerializer.Deserialize(engine, allTypes).Object);
         Assert.IsType<HostProfile>(restoredWithAllTypes.Instance);
+    }
+
+    [Fact]
+    public void NativeTypedDocumentsRoundTripWithoutClrWrappers()
+    {
+        var engine = new AuroraEngine(EngineOptions.Default.WithCompiler(compiler =>
+            compiler.WithNativeTypes(typeof(Vec2))));
+        var vector = new Vec2(3, 4);
+        var text = TypedDocumentSerializer.Serialize(
+            engine,
+            ScriptDatum.FromObject(vector),
+            new TypedDocumentOptions { Indented = false });
+        Assert.Equal("Vec2 [3,4]", text);
+
+        var restored = Assert.IsType<Vec2>(
+            TypedDocumentSerializer.Deserialize(engine, text).Object);
+        Assert.Equal(3d, restored.X);
+        Assert.Equal(4d, restored.Y);
+        Assert.Equal(5d, restored.LengthCore());
+
+        var fromObject = Assert.IsType<Vec2>(
+            TypedDocumentSerializer.Deserialize(engine, "Vec2 {x 3,y 4}").Object);
+        Assert.Equal(3d, fromObject.X);
+        Assert.Equal(4d, fromObject.Y);
+
+        var nested = Assert.IsType<ScriptObject>(
+            TypedDocumentSerializer.Deserialize(engine, "{Vec2 vec [1000,2000]}").Object);
+        var nestedVector = Assert.IsType<Vec2>(nested.GetPropertyDatum(null, "vec").Object);
+        Assert.Equal(1000d, nestedVector.X);
+        Assert.Equal(2000d, nestedVector.Y);
+
+        var otherEngine = new AuroraEngine(EngineOptions.Default);
+        Assert.Equal("null", TypedDocumentSerializer.Serialize(otherEngine, ScriptDatum.FromObject(vector)));
+        Assert.Throws<TypedDocumentException>(() =>
+            TypedDocumentSerializer.Deserialize(otherEngine, "Vec2 { x 1, y 2 }"));
+        Assert.Throws<TypedDocumentException>(() =>
+            TypedDocumentSerializer.Deserialize(engine, "Vec2 { x 1, z 2 }"));
+        Assert.Throws<TypedDocumentException>(() =>
+            TypedDocumentSerializer.Deserialize(engine, "Vec2 [1, 2, 3]"));
     }
 
     [Fact]

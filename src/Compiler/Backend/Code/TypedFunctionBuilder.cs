@@ -5,6 +5,7 @@ using AuroraScript.Compiler.Backend.Plans;
 using AuroraScript.Compiler.Backend.Traversal;
 using AuroraScript.Hosting;
 using AuroraScript.Runtime;
+using AuroraScript.Runtime.Serialization;
 using AuroraScript.Tokens;
 using System;
 using System.Collections.Generic;
@@ -1173,6 +1174,11 @@ namespace AuroraScript.Compiler.Backend.Code
                         return TryGetNativeConstruction(@new, out var constructed)
                             ? constructed
                             : null;
+                    case TypedDocumentExpression tdoc
+                        when !string.IsNullOrEmpty(tdoc.TypeName) &&
+                            _hostExports.TryGetNativeObject(tdoc.TypeName, out var documentType) &&
+                            typeof(INativeTypedDocument).IsAssignableFrom(documentType.ClrType):
+                        return documentType;
                     case NameExpression name
                         when _names.TryGetValue(name, out var binding) && binding.IsLocal:
                         return _localNativeObjectTypes[binding.Local.Value];

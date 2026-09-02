@@ -638,6 +638,87 @@ return vec.length();
 
 Host code can also `new Vec2(3, 4)` and pass the instance as `ScriptDatum.FromObject(vec)`.
 
+### Native types in TDoc
+
+Implement `INativeTypedDocument` on a native instance class so script `tdoc Type { ... }` / `tdoc Type [ ... ]` literals and host `TDoc.parse` / `TDoc.stringify` construct that NativeType directly. The engine indexes only `WithNativeTypes` classes that implement the interface and derive `ScriptObject`. There is no CLR wrapper and no property-slot reflection on this path.
+
+`WriteTypedDocument` chooses the canonical stored shape. The first `WriteMember` call emits an object body (`Vec2 {x 3,y 4}`); the first `WriteElement` call emits an array body (`Vec2 [3,4]`). Do not mix both on one write. `ReadTypedDocument` handles both shapes through one input: inspect `IsMember` / `IsElement`, then get `MemberName` or `ElementIndex` and `Value`. Array form is the compact NativeType-friendly layout for vectors, colors, and similar fixed tuples.
+
+Construction is automatic. If the type has no user constructor, the NativeType generator already emits a parameterless constructor. If the type has a script constructor such as `Vec2(double x, double y)`, the generator emits `CreateTypedDocument()` so TDoc does not call that constructor with dummy arguments. Write a factory yourself only when construction needs extra setup. Member and element assignment receive `ScriptDatum` (numbers and booleans do not allocate). Serialization writes through `TypedDocumentOutput`, a ref struct that must not be stored.
+
+```csharp
+using AuroraScript.Hosting;
+using AuroraScript.Runtime;
+using AuroraScript.Runtime.Serialization;
+using AuroraScript.Runtime.Types;
+
+[AuroraNativeType("Vec2")]
+public sealed partial class Vec2 : ScriptObject, INativeTypedDocument
+{
+    [AuroraExport("x")] public double X;
+    [AuroraExport("y")] public double Y;
+
+    [AuroraExport]
+    public Vec2(double x, double y)
+    {
+        X = x;
+        Y = y;
+    }
+
+    public void WriteTypedDocument(ref TypedDocumentOutput output)
+    {
+        output.WriteElement(X);
+        output.WriteElement(Y);
+    }
+
+    public void ReadTypedDocument(ref TypedDocumentInput input)
+    {
+        if (input.IsElement)
+        {
+            switch (input.ElementIndex)
+            {
+                case 0: X = ReadNumber(ref input); return;
+                case 1: Y = ReadNumber(ref input); return;
+                default:
+                    throw input.Error("Vec2 array form requires exactly two numbers.");
+            }
+        }
+
+        if (input.IsReadOnly)
+        {
+            throw input.Error("readonly is not supported by Vec2 TDoc members.");
+        }
+
+        switch (input.MemberName)
+        {
+            case "x": X = ReadNumber(ref input); return;
+            case "y": Y = ReadNumber(ref input); return;
+            default:
+                throw input.Error($"Unknown field '{input.MemberName}' for native type 'Vec2'.");
+        }
+    }
+
+    private static double ReadNumber(ref TypedDocumentInput input)
+    {
+        var value = input.Value;
+        if (value.Kind != ValueKind.Number || !double.IsFinite(value.Number))
+        {
+            throw input.Error("Vec2 values require a finite number.");
+        }
+
+        return value.Number;
+    }
+}
+```
+
+```as
+var named = tdoc Vec2 { x 3, y 4 };
+var packed = tdoc Vec2 [3, 4];
+return packed.length();
+```
+
+The TDoc type-name prefix comes from `[AuroraNativeType]` through the engine catalog, so the implementation never declares its own script name. A NativeType that does not implement `INativeTypedDocument` is omitted from TDoc output (serialized as `null`) and is not a valid TDoc type name.
+
 When flow analysis proves a local always holds one native object type, the compiler stores that local as the CLR type (`Vec2`) instead of `ScriptDatum`. Proven `new`, field reads/writes, `++`/`--`, compound assignments such as `+=`, and method calls bind to CLR constructors, fields, and methods (`newobj` / `ldfld` / `stfld` / `callvirt`) without boxing through `ScriptDatum`. Locals captured by closures, values reassigned to an unproven type, and receivers the compiler cannot prove (for example a function parameter) stay on the dynamic property protocol.
 
 Static `[AuroraExport]` methods and `public static readonly double` constants
@@ -704,6 +785,7 @@ var options = EngineOptions.Default.WithCompiler(compiler =>
 
 - The class must be a non-abstract, non-generic, top-level `partial` class in a namespace.
 - If you write an instance constructor, call `RegisterAuroraExports()` from it; otherwise the generator emits a constructor. Missing that call is `AURORAEXP004`.
+- Implementing `INativeTypedDocument` does not require a factory. The generator emits construction for TDoc. Write `CreateTypedDocument()` only when the empty instance needs extra setup.
 - Invalid globals are `AURORAEXP001`; unsupported members/signatures are `AURORAEXP002`; duplicate script names are `AURORAEXP003`.
 - Unsupported: `async`, `Span`/`ref`/`out`/`in`, generic methods, nested types, records, empty export names, `params` with `[AuroraParam]`, `ctx`/`thisObject` after script parameters.
 

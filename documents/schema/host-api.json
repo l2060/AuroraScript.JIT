@@ -1920,6 +1920,84 @@
         "Most host code should expose CLR types through AuroraEngine.RegisterType instead of subclassing ScriptType."
       ]
     },
+    "INativeTypedDocument": {
+      "kind": "interface",
+      "namespace": "AuroraScript.Runtime.Serialization",
+      "summary": "Opt-in TDoc contract for host NativeType instances. Script tdoc literals and host serialize/deserialize construct the native object directly instead of reflecting a ClrInstanceObject.",
+      "members": {
+        "WriteTypedDocument": {
+          "kind": "method",
+          "signature": "void WriteTypedDocument(ref TypedDocumentOutput output)"
+        },
+        "ReadTypedDocument": {
+          "kind": "method",
+          "signature": "void ReadTypedDocument(ref TypedDocumentInput input)"
+        }
+      },
+      "notes": [
+        "Implement on an AuroraNativeType ScriptObject. Register the type with CompilerOptionsBuilder.WithNativeTypes.",
+        "Construction is supplied by the NativeType generator: a parameterless constructor when the type has none, otherwise CreateTypedDocument(). Host code may still write that factory to customize construction. Factories are compiled once per engine.",
+        "WriteTypedDocument chooses the canonical body: WriteMember for Vec2 {x 3,y 4}, WriteElement for Vec2 [3,4]. Do not mix both on one write.",
+        "ReadTypedDocument handles both object members and array elements through one TypedDocumentInput.",
+        "The TDoc type-name prefix comes from AuroraNativeTypeAttribute through the engine catalog; the implementation does not declare its own script name.",
+        "Number and boolean ScriptDatum values do not allocate."
+      ]
+    },
+    "TypedDocumentOutput": {
+      "kind": "struct",
+      "namespace": "AuroraScript.Runtime.Serialization",
+      "summary": "Ref-struct TDoc member writer used by INativeTypedDocument. Do not store the value.",
+      "members": {
+        "WriteMember": {
+          "kind": "method",
+          "overloads": [
+            "void WriteMember(string name, double value, bool readOnly = false)",
+            "void WriteMember(string name, bool value, bool readOnly = false)",
+            "void WriteMember(string name, string value, bool readOnly = false)",
+            "void WriteMember(string name, ScriptDatum value, bool readOnly = false)",
+            "void WriteElement(double value)",
+            "void WriteElement(bool value)",
+            "void WriteElement(string value)",
+            "void WriteElement(ScriptDatum value)"
+          ]
+        }
+      }
+    },
+    "TypedDocumentInput": {
+      "kind": "struct",
+      "namespace": "AuroraScript.Runtime.Serialization",
+      "summary": "Ref-struct input for one object member or array element read by INativeTypedDocument. Do not store the value.",
+      "members": {
+        "IsMember": {
+          "kind": "property",
+          "signature": "bool IsMember"
+        },
+        "IsElement": {
+          "kind": "property",
+          "signature": "bool IsElement"
+        },
+        "MemberName": {
+          "kind": "property",
+          "signature": "string MemberName"
+        },
+        "ElementIndex": {
+          "kind": "property",
+          "signature": "int ElementIndex"
+        },
+        "IsReadOnly": {
+          "kind": "property",
+          "signature": "bool IsReadOnly"
+        },
+        "Value": {
+          "kind": "property",
+          "signature": "ScriptDatum Value"
+        },
+        "Error": {
+          "kind": "method",
+          "signature": "TypedDocumentException Error(string message)"
+        }
+      }
+    },
     "AuroraTypedDocument": {
       "kind": "class",
       "namespace": "AuroraScript.Runtime.Serialization",
@@ -2401,8 +2479,8 @@
     },
     {
       "id": "interop.native-host-exports",
-      "summary": "Implement static-only and constructible host Types with [AuroraNativeType] and [AuroraExport]. Select exact application types with CompilerOptionsBuilder.WithNativeTypes; they are registered once on the engine global and available to every domain. Hand-write matching declare type contracts in an @global() file for editor assistance.",
-      "apis": ["AuroraNativeTypeAttribute", "AuroraExportAttribute", "AuroraParamAttribute", "CompilerOptions.NativeTypes", "CompilerOptionsBuilder.WithNativeTypes"]
+      "summary": "Implement static-only and constructible host Types with [AuroraNativeType] and [AuroraExport]. Select exact application types with CompilerOptionsBuilder.WithNativeTypes; they are registered once on the engine global and available to every domain. Hand-write matching declare type contracts in an @global() file for editor assistance. Implement INativeTypedDocument on a native instance type so script tdoc literals and host TDoc serialize/deserialize construct that NativeType directly.",
+      "apis": ["AuroraNativeTypeAttribute", "AuroraExportAttribute", "AuroraParamAttribute", "CompilerOptions.NativeTypes", "CompilerOptionsBuilder.WithNativeTypes", "INativeTypedDocument", "TypedDocumentOutput", "TypedDocumentInput"]
     },
     {
       "id": "interop.register-clr-type",

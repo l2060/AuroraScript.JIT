@@ -29,6 +29,7 @@ namespace AuroraScript.Hosting.Generators
     {
         private const string BuiltinGlobalAttribute = "AuroraScript.Hosting.AuroraNativeModuleAttribute";
         private const string NativeTypeAttribute = "AuroraScript.Hosting.AuroraNativeTypeAttribute";
+        private const string TypedDocumentInterface = "AuroraScript.Runtime.Serialization.INativeTypedDocument";
         private const string ExportAttribute = "AuroraScript.Hosting.AuroraExportAttribute";
         private const string ParamAttribute = "AuroraScript.Hosting.AuroraParamAttribute";
         private static readonly DiagnosticDescriptor InvalidGlobal = new(

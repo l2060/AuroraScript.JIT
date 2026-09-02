@@ -185,8 +185,166 @@ namespace AuroraScript.Runtime.Serialization
                 case "UInt64Array":
                     return BindPacked(typeName, value, path);
                 default:
+                    if (engine.TypedDocuments.TryGet(typeName, out _))
+                    {
+                        return BindNativeTypedDocument(engine, typeName, value, path);
+                    }
+
                     return BindClrAlias(engine, typeName, value, path);
             }
+        }
+
+        public static INativeTypedDocument CreateNativeTypedDocument(
+            ScriptContext context,
+            string typeName,
+            string path)
+        {
+            if (context == null) throw new ArgumentNullException(nameof(context));
+            return CreateNativeTypedDocument(context.Engine, typeName, path);
+        }
+
+        public static void ReadNativeTypedDocument(
+            INativeTypedDocument target,
+            string name,
+            bool readOnly,
+            ScriptDatum value,
+            string path)
+        {
+            if (target == null) throw new ArgumentNullException(nameof(target));
+            try
+            {
+                var input = new TypedDocumentInput(name, -1, readOnly, value, path);
+                target.ReadTypedDocument(ref input);
+            }
+            catch (TypedDocumentException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                throw Error(
+                    $"Native TDoc member '{name}' read failed.",
+                    ErrorPath(path, name, pathIncludesMember: true),
+                    exception);
+            }
+        }
+
+        public static void ReadNativeTypedDocument(
+            INativeTypedDocument target,
+            int index,
+            ScriptDatum value,
+            string path)
+        {
+            if (target == null) throw new ArgumentNullException(nameof(target));
+            try
+            {
+                var input = new TypedDocumentInput(null, index, false, value, path);
+                target.ReadTypedDocument(ref input);
+            }
+            catch (TypedDocumentException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                throw Error(
+                    $"Native TDoc element [{index}] read failed.",
+                    string.IsNullOrEmpty(path) ? ElementPath("$", index) : path,
+                    exception);
+            }
+        }
+
+        internal static INativeTypedDocument CreateNativeTypedDocument(
+            AuroraEngine engine,
+            string typeName,
+            string path)
+        {
+            ArgumentNullException.ThrowIfNull(engine);
+            if (!engine.TypedDocuments.TryGet(typeName, out var entry))
+            {
+                throw Error($"Unknown type '{typeName}'.", path);
+            }
+
+            INativeTypedDocument document;
+            try
+            {
+                document = entry.Create();
+            }
+            catch (Exception exception)
+            {
+                throw Error($"Could not construct native type '{typeName}'.", path, exception);
+            }
+
+            if (document is not ScriptObject)
+            {
+                throw Error($"Native type '{typeName}' must construct a ScriptObject.", path);
+            }
+
+            return document;
+        }
+
+        private static ScriptDatum BindNativeTypedDocument(
+            AuroraEngine engine,
+            string typeName,
+            ScriptDatum value,
+            string path)
+        {
+            if (!engine.TypedDocuments.TryGet(typeName, out var entry))
+            {
+                throw Error($"Unknown type '{typeName}'.", path);
+            }
+
+            if (value.Object is INativeTypedDocument existing &&
+                entry.ClrType.IsInstanceOfType(existing))
+            {
+                return value;
+            }
+
+            var source = value.Object;
+            if (source is ScriptArray array)
+            {
+                var arrayTarget = CreateNativeTypedDocument(engine, typeName, path);
+                var length = array.Length;
+                for (var i = 0; i < length; i++)
+                {
+                    ReadNativeTypedDocument(
+                        arrayTarget,
+                        i,
+                        array.GetElement(i),
+                        ElementPath(path, i));
+                }
+
+                return ScriptDatum.FromObject((ScriptObject)arrayTarget);
+            }
+
+            if (source == null || source.GetType() != typeof(ScriptObject))
+            {
+                throw Error($"Type '{typeName}' requires an object or array value.", path);
+            }
+
+            var target = CreateNativeTypedDocument(engine, typeName, path);
+            var properties = source.OwnProperties;
+            for (var i = 0; i < properties.Length; i++)
+            {
+                ref readonly var metadata = ref properties[i];
+                if (!metadata.Meta.Enumerable) continue;
+                var descriptor = source.GetOwnProperty(metadata.Meta.Slot);
+                if (descriptor.IsAccessor)
+                {
+                    throw Error(
+                        $"Native TDoc member '{metadata.Name}' is not writable.",
+                        MemberPath(path, metadata.Name));
+                }
+
+                ReadNativeTypedDocument(
+                    target,
+                    metadata.Name,
+                    readOnly: !metadata.Meta.Writable,
+                    descriptor.Datum,
+                    MemberPath(path, metadata.Name));
+            }
+
+            return ScriptDatum.FromObject((ScriptObject)target);
         }
 
         public static ClrInstanceObject CreateClrObject(

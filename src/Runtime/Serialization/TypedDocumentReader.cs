@@ -3,6 +3,7 @@ using AuroraScript.Runtime.Pool;
 using AuroraScript.Runtime.Types;
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
 namespace AuroraScript.Runtime.Serialization
@@ -195,6 +196,10 @@ namespace AuroraScript.Runtime.Serialization
             if (TypeEquals(typeToken, "UInt64Array")) return ReadPackedArray(TypedDocumentPackedKind.UInt64);
 
             var alias = _scanner.GetIdentifier(typeToken);
+            if (_engine.TypedDocuments.TryGet(alias, out var native))
+            {
+                return ReadNativeTypedDocument(alias, native, typeToken);
+            }
             if (!_engine.ClrRegistry.TryGetClrType(alias, out var registration))
             {
                 throw Error(typeToken, $"Unknown type '{alias}'.");
@@ -1488,6 +1493,131 @@ namespace AuroraScript.Runtime.Serialization
             }
 
             return ScriptDatum.FromObject(new ClrInstanceObject(registration._descriptor, instance));
+        }
+
+        private ScriptDatum ReadNativeTypedDocument(
+            string alias,
+            TypedDocumentNativeCatalog.Entry entry,
+            TypedDocumentToken typeToken)
+        {
+            INativeTypedDocument document;
+            try
+            {
+                document = entry.Create();
+            }
+            catch (Exception exception)
+            {
+                throw Error(typeToken, $"Could not construct native type '{alias}'.", exception);
+            }
+
+            if (document is not ScriptObject scriptObject)
+            {
+                throw Error(typeToken, $"Native type '{alias}' must construct a ScriptObject.");
+            }
+
+            if (Match(TypedDocumentTokenKind.LeftBracket))
+            {
+                ReadNativeTypedDocumentArray(alias, document, typeToken);
+                return ScriptDatum.FromObject(scriptObject);
+            }
+
+            Expect(TypedDocumentTokenKind.LeftBrace, $"Native type '{alias}' requires an object or array value.");
+            if (!Match(TypedDocumentTokenKind.RightBrace))
+            {
+                var seen = new HashSet<string>(StringComparer.Ordinal);
+                while (true)
+                {
+                    var header = ReadMemberHeader();
+                    _path.PushProperty(header.Name);
+                    try
+                    {
+                        if (!seen.Add(header.Name))
+                        {
+                            throw Error(header.NameToken, $"Duplicate property '{header.Name}'.");
+                        }
+
+                        var value = ReadMemberValue(header);
+                        try
+                        {
+                            var input = new TypedDocumentInput(
+                                header.Name,
+                                -1,
+                                header.ReadOnly,
+                                value,
+                                _path.Format());
+                            document.ReadTypedDocument(ref input);
+                        }
+                        catch (TypedDocumentException)
+                        {
+                            throw;
+                        }
+                        catch (Exception exception)
+                        {
+                            throw Error(
+                                header.NameToken,
+                                $"Native TDoc member '{header.Name}' read failed.",
+                                exception);
+                        }
+                    }
+                    finally
+                    {
+                        _path.Pop();
+                    }
+
+                    if (ReadObjectSeparator()) break;
+                }
+            }
+
+            return ScriptDatum.FromObject(scriptObject);
+        }
+
+        private void ReadNativeTypedDocumentArray(
+            string alias,
+            INativeTypedDocument document,
+            TypedDocumentToken typeToken)
+        {
+            if (Match(TypedDocumentTokenKind.RightBracket))
+            {
+                return;
+            }
+
+            var index = 0;
+            while (true)
+            {
+                _path.PushIndex(index);
+                try
+                {
+                    var value = ReadTypedValue();
+                    try
+                    {
+                        var input = new TypedDocumentInput(
+                            null,
+                            index,
+                            false,
+                            value,
+                            _path.Format());
+                        document.ReadTypedDocument(ref input);
+                    }
+                    catch (TypedDocumentException)
+                    {
+                        throw;
+                    }
+                    catch (Exception exception)
+                    {
+                        throw Error(
+                            typeToken,
+                            $"Native TDoc element [{index}] read failed.",
+                            exception);
+                    }
+                }
+                finally
+                {
+                    _path.Pop();
+                }
+
+                index++;
+                if (ReadArraySeparator()) break;
+            }
         }
 
         private void AssignRegisteredMember(

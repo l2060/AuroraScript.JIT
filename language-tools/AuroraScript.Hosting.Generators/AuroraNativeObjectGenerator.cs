@@ -244,6 +244,11 @@ namespace AuroraScript.Hosting.Generators
             }
             var hasUserConstructor = typeSymbol.InstanceConstructors.Any(
                 static candidate => !candidate.IsImplicitlyDeclared);
+            var generateConstructor = scriptObjectBase != null && !hasUserConstructor;
+            var generateTypedDocumentFactory = ImplementsTypedDocument(typeSymbol) &&
+                !HasCreateTypedDocumentFactory(typeSymbol) &&
+                !HasParameterlessConstructor(typeSymbol) &&
+                !generateConstructor;
 
             exports.Sort(static (left, right) =>
                 string.Compare(left.ScriptName, right.ScriptName, StringComparison.Ordinal));
@@ -260,7 +265,8 @@ namespace AuroraScript.Hosting.Generators
                 typeSymbol.ToDisplayString(),
                 typeSymbol.DeclaredAccessibility == Accessibility.Public,
                 GetConstructorAccessibility(typeSymbol),
-                scriptObjectBase != null && !hasUserConstructor,
+                generateConstructor,
+                generateTypedDocumentFactory,
                 typeName!,
                 ResolveOverrideAccessibility(scriptObjectBase, context.SemanticModel.Compilation),
                 exports,
@@ -270,6 +276,28 @@ namespace AuroraScript.Hosting.Generators
                 constructor,
                 scriptObjectBase != null,
                 diagnostics);
+        }
+
+        private static bool ImplementsTypedDocument(INamedTypeSymbol typeSymbol)
+        {
+            return typeSymbol.AllInterfaces.Any(
+                iface => iface.ToDisplayString() == TypedDocumentInterface);
+        }
+
+        private static bool HasCreateTypedDocumentFactory(INamedTypeSymbol typeSymbol)
+        {
+            return typeSymbol.GetMembers("CreateTypedDocument")
+                .OfType<IMethodSymbol>()
+                .Any(method =>
+                    method.IsStatic &&
+                    method.Parameters.Length == 0 &&
+                    method.DeclaredAccessibility == Accessibility.Public);
+        }
+
+        private static bool HasParameterlessConstructor(INamedTypeSymbol typeSymbol)
+        {
+            return typeSymbol.InstanceConstructors.Any(
+                constructor => constructor.Parameters.Length == 0 && !constructor.IsStatic);
         }
 
         private static InstanceFieldModel? ParseInstanceField(
@@ -642,6 +670,23 @@ namespace AuroraScript.Hosting.Generators
                 builder.AppendLine();
             }
 
+            if (model.GenerateTypedDocumentFactory)
+            {
+                builder.AppendLine("        private readonly struct __AuroraTypedDocumentConstruction");
+                builder.AppendLine("        {");
+                builder.AppendLine("        }");
+                builder.AppendLine();
+                builder.Append("        private ").Append(model.ClassName)
+                    .AppendLine("(__AuroraTypedDocumentConstruction _)");
+                builder.AppendLine("        {");
+                builder.AppendLine("        }");
+                builder.AppendLine();
+                builder.Append("        public static ").Append(model.ClassName)
+                    .Append(" CreateTypedDocument() => new ").Append(model.ClassName)
+                    .AppendLine("(default(__AuroraTypedDocumentConstruction));");
+                builder.AppendLine();
+            }
+
             builder.AppendLine("        public static void Register(ScriptObject target, bool writeable = false, bool enumerable = false)");
             builder.AppendLine("        {");
             builder.AppendLine("            target.Define(\"" + EscapeString(model.TypeName) +
@@ -928,6 +973,7 @@ namespace AuroraScript.Hosting.Generators
                 bool isPublic,
                 string constructorAccessibility,
                 bool generateConstructor,
+                bool generateTypedDocumentFactory,
                 string typeName,
                 string overrideAccessibility,
                 IReadOnlyList<ExportModel> exports,
@@ -944,6 +990,7 @@ namespace AuroraScript.Hosting.Generators
                 IsPublic = isPublic;
                 ConstructorAccessibility = constructorAccessibility;
                 GenerateConstructor = generateConstructor;
+                GenerateTypedDocumentFactory = generateTypedDocumentFactory;
                 TypeName = typeName;
                 OverrideAccessibility = overrideAccessibility;
                 Exports = exports;
@@ -961,6 +1008,7 @@ namespace AuroraScript.Hosting.Generators
             public bool IsPublic { get; }
             public string ConstructorAccessibility { get; }
             public bool GenerateConstructor { get; }
+            public bool GenerateTypedDocumentFactory { get; }
             public string TypeName { get; }
             public string OverrideAccessibility { get; }
             public IReadOnlyList<ExportModel> Exports { get; }
