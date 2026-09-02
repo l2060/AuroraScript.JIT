@@ -706,7 +706,7 @@ func init() {
 	// fs.writeText('map.tdoc', TDoc.stringify(map, false));
 	console.time("create astar");
 
-	astar = createAStar(map as AStar, null);
+	astar = createAStar(map as Map, null);
 	pathBuffer = newPathBuffer(astar);
 	console.timeEnd("create astar");
 }

@@ -52,13 +52,14 @@ var node = {
 	C: 3,
 	D: 4,
 	E: "Hello",
-	F: () => { console.log("reset"); }
+	F: () => { console.log("reset"); },
+	log: console.log,
 };
 
 //
 
 node = Object.assign(node, { 你好: 'Hello' });
-
+node.log("Atlas");
 
 
 func testInlude() {
