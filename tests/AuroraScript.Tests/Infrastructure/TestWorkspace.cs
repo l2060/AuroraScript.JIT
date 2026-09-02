@@ -74,7 +74,12 @@ internal sealed class TestWorkspace : IDisposable
         if (nativeTypes)
         {
             options = options.WithCompiler(compiler =>
-                compiler.WithNativeTypes(typeof(Vec2), typeof(StatsSupport)));
+                compiler.WithNativeTypes(
+                    typeof(Vec2),
+                    typeof(StatsSupport),
+                    typeof(Flag),
+                    typeof(State),
+                    typeof(User)));
         }
         return new AuroraEngine(options);
     }

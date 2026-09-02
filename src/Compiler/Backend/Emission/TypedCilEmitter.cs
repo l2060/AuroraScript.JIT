@@ -2383,8 +2383,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return StackValueKind.Datum;
             }
 
-            // A native INativeTypedDocument type is constructed member-by-member or
-            // element-by-element, like packed arrays: no temporary ScriptObject graph.
+            // A native INativeTypedDocument type is constructed member-by-member,
+            // element-by-element, or as a single scalar, like packed arrays: no
+            // temporary ScriptObject graph.
             if (!IsBuiltInTDocTypeName(typeName) &&
                 _session.CompileSession.HostExports.TryGetNativeObject(typeName, out var native) &&
                 typeof(INativeTypedDocument).IsAssignableFrom(native.ClrType))
@@ -2399,6 +2400,12 @@ namespace AuroraScript.Compiler.Backend.Emission
                     !HasSpread(nativeArray.Elements))
                 {
                     EmitTypedNativeDocument(typeName, nativeArray);
+                    return StackValueKind.Datum;
+                }
+
+                if (IsNativeScalarTDocValue(expression.Value))
+                {
+                    EmitTypedNativeDocumentValue(typeName, expression.Value);
                     return StackValueKind.Datum;
                 }
             }
@@ -2612,6 +2619,37 @@ namespace AuroraScript.Compiler.Backend.Emission
             _il.Emit(OpCodes.Ldloc, target);
             _il.Emit(OpCodes.Castclass, typeof(ScriptObject));
             _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
+        }
+
+        private void EmitTypedNativeDocumentValue(string typeName, Expression value)
+        {
+            var target = DeclareLocal(typeof(INativeTypedDocument));
+            _il.Emit(OpCodes.Ldarg_0);
+            _session.Builder.LoadStringConstant(_il, typeName);
+            _session.Builder.LoadStringConstant(_il, _typedDocumentPath ?? "$");
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CreateTypedDocumentNativeObject);
+            _il.Emit(OpCodes.Stloc, target);
+
+            _il.Emit(OpCodes.Ldloc, target);
+            EmitDatum(value);
+            _session.Builder.LoadStringConstant(_il, _typedDocumentPath ?? "$");
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ReadTypedDocumentNativeValue);
+
+            _il.Emit(OpCodes.Ldloc, target);
+            _il.Emit(OpCodes.Castclass, typeof(ScriptObject));
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
+        }
+
+        private static bool IsNativeScalarTDocValue(Expression value)
+        {
+            if (value is LiteralExpression literal)
+            {
+                return literal.Token is NullToken or BooleanToken or NumberToken or StringToken;
+            }
+
+            return value is UnaryExpression unary &&
+                unary.Operator == Operator.Negate &&
+                unary.Expression is LiteralExpression { Token: NumberToken };
         }
 
         private static bool IsBuiltInTDocTypeName(string typeName)

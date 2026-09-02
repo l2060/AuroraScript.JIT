@@ -1312,6 +1312,12 @@ namespace AuroraScript.Compiler.Backend.Emission
                     EmitTypedNativeDocument(typeName, nativeArray);
                     return;
                 }
+
+                if (IsNativeScalarTDocValue(expression.Value))
+                {
+                    EmitTypedNativeDocumentValue(typeName, expression.Value);
+                    return;
+                }
             }
 
             if (!IsBuiltInTDocTypeName(typeName) && expression.Value is MapExpression clrObject)
@@ -1417,6 +1423,37 @@ namespace AuroraScript.Compiler.Backend.Emission
             _il.Emit(OpCodes.Ldloc, target);
             _il.Emit(OpCodes.Castclass, typeof(ScriptObject));
             _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
+        }
+
+        private void EmitTypedNativeDocumentValue(string typeName, Expression value)
+        {
+            var target = DeclareLocal(typeof(INativeTypedDocument));
+            _il.Emit(OpCodes.Ldarg_0);
+            _session.Builder.LoadStringConstant(_il, typeName);
+            _session.Builder.LoadStringConstant(_il, _typedDocumentPath ?? "$");
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CreateTypedDocumentNativeObject);
+            _il.Emit(OpCodes.Stloc, target);
+
+            _il.Emit(OpCodes.Ldloc, target);
+            EmitExpression(value);
+            _session.Builder.LoadStringConstant(_il, _typedDocumentPath ?? "$");
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ReadTypedDocumentNativeValue);
+
+            _il.Emit(OpCodes.Ldloc, target);
+            _il.Emit(OpCodes.Castclass, typeof(ScriptObject));
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
+        }
+
+        private static bool IsNativeScalarTDocValue(Expression value)
+        {
+            if (value is LiteralExpression literal)
+            {
+                return literal.Token is NullToken or BooleanToken or NumberToken or StringToken;
+            }
+
+            return value is UnaryExpression unary &&
+                unary.Operator == Operator.Negate &&
+                unary.Expression is LiteralExpression { Token: NumberToken };
         }
 
         private static bool IsBuiltInTDocTypeName(string typeName)

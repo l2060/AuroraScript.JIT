@@ -147,7 +147,7 @@
         "Only value positions accept $(expression); property names and type names are static.",
         "Standalone .tdoc documents omit the tdoc prefix and do not allow interpolation.",
         "Host NativeTypes listed in WithNativeTypes that implement INativeTypedDocument can be used as TypeName; the engine constructs the native ScriptObject directly.",
-        "INativeTypedDocument.WriteTypedDocument chooses an object body (WriteMember) or an array body (WriteElement). INativeTypedDocument.ReadTypedDocument reads either shape through TypedDocumentInput."
+        "INativeTypedDocument.WriteTypedDocument chooses an object body (WriteMember), an array body (WriteElement), or a scalar body (WriteValue for null, boolean, number, or string). INativeTypedDocument.ReadTypedDocument reads those shapes through TypedDocumentInput."
       ]
     },
     {

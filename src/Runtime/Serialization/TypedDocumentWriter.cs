@@ -378,6 +378,11 @@ namespace AuroraScript.Runtime.Serialization
             _builder.Append("{}");
         }
 
+        internal void WriteNativeScalar(ScriptDatum value)
+        {
+            WriteRawValue(value, clrRegistration: default);
+        }
+
         private void WriteNativeTypedDocument(INativeTypedDocument document)
         {
             var output = new TypedDocumentOutput(ref this);

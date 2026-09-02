@@ -254,6 +254,30 @@ namespace AuroraScript.Runtime.Serialization
             }
         }
 
+        public static void ReadNativeTypedDocument(
+            INativeTypedDocument target,
+            ScriptDatum value,
+            string path)
+        {
+            if (target == null) throw new ArgumentNullException(nameof(target));
+            try
+            {
+                var input = new TypedDocumentInput(null, -1, false, value, path);
+                target.ReadTypedDocument(ref input);
+            }
+            catch (TypedDocumentException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                throw Error(
+                    "Native TDoc value read failed.",
+                    string.IsNullOrEmpty(path) ? "$" : path,
+                    exception);
+            }
+        }
+
         internal static INativeTypedDocument CreateNativeTypedDocument(
             AuroraEngine engine,
             string typeName,
@@ -317,9 +341,16 @@ namespace AuroraScript.Runtime.Serialization
                 return ScriptDatum.FromObject((ScriptObject)arrayTarget);
             }
 
+            if (value.Kind is ValueKind.Null or ValueKind.Boolean or ValueKind.Number or ValueKind.String)
+            {
+                var scalarTarget = CreateNativeTypedDocument(engine, typeName, path);
+                ReadNativeTypedDocument(scalarTarget, value, path);
+                return ScriptDatum.FromObject((ScriptObject)scalarTarget);
+            }
+
             if (source == null || source.GetType() != typeof(ScriptObject))
             {
-                throw Error($"Type '{typeName}' requires an object or array value.", path);
+                throw Error($"Type '{typeName}' requires an object, array, or scalar value.", path);
             }
 
             var target = CreateNativeTypedDocument(engine, typeName, path);

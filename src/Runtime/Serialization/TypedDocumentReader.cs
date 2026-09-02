@@ -1521,51 +1521,70 @@ namespace AuroraScript.Runtime.Serialization
                 return ScriptDatum.FromObject(scriptObject);
             }
 
-            Expect(TypedDocumentTokenKind.LeftBrace, $"Native type '{alias}' requires an object or array value.");
-            if (!Match(TypedDocumentTokenKind.RightBrace))
+            if (Match(TypedDocumentTokenKind.LeftBrace))
             {
-                var seen = new HashSet<string>(StringComparer.Ordinal);
-                while (true)
+                if (!Match(TypedDocumentTokenKind.RightBrace))
                 {
-                    var header = ReadMemberHeader();
-                    _path.PushProperty(header.Name);
-                    try
+                    var seen = new HashSet<string>(StringComparer.Ordinal);
+                    while (true)
                     {
-                        if (!seen.Add(header.Name))
-                        {
-                            throw Error(header.NameToken, $"Duplicate property '{header.Name}'.");
-                        }
-
-                        var value = ReadMemberValue(header);
+                        var header = ReadMemberHeader();
+                        _path.PushProperty(header.Name);
                         try
                         {
-                            var input = new TypedDocumentInput(
-                                header.Name,
-                                -1,
-                                header.ReadOnly,
-                                value,
-                                _path.Format());
-                            document.ReadTypedDocument(ref input);
-                        }
-                        catch (TypedDocumentException)
-                        {
-                            throw;
-                        }
-                        catch (Exception exception)
-                        {
-                            throw Error(
-                                header.NameToken,
-                                $"Native TDoc member '{header.Name}' read failed.",
-                                exception);
-                        }
-                    }
-                    finally
-                    {
-                        _path.Pop();
-                    }
+                            if (!seen.Add(header.Name))
+                            {
+                                throw Error(header.NameToken, $"Duplicate property '{header.Name}'.");
+                            }
 
-                    if (ReadObjectSeparator()) break;
+                            var memberValue = ReadMemberValue(header);
+                            try
+                            {
+                                var input = new TypedDocumentInput(
+                                    header.Name,
+                                    -1,
+                                    header.ReadOnly,
+                                    memberValue,
+                                    _path.Format());
+                                document.ReadTypedDocument(ref input);
+                            }
+                            catch (TypedDocumentException)
+                            {
+                                throw;
+                            }
+                            catch (Exception exception)
+                            {
+                                throw Error(
+                                    header.NameToken,
+                                    $"Native TDoc member '{header.Name}' read failed.",
+                                    exception);
+                            }
+                        }
+                        finally
+                        {
+                            _path.Pop();
+                        }
+
+                        if (ReadObjectSeparator()) break;
+                    }
                 }
+
+                return ScriptDatum.FromObject(scriptObject);
+            }
+
+            var scalar = ReadTypedValue();
+            try
+            {
+                var input = new TypedDocumentInput(null, -1, false, scalar, _path.Format());
+                document.ReadTypedDocument(ref input);
+            }
+            catch (TypedDocumentException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                throw Error(typeToken, $"Native TDoc value read failed.", exception);
             }
 
             return ScriptDatum.FromObject(scriptObject);

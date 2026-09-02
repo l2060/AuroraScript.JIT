@@ -471,6 +471,55 @@ public sealed class TypedDocumentSerializationTests
     }
 
     [Fact]
+    public void NativeTypedDocumentsRoundTripScalarBodies()
+    {
+        var engine = new AuroraEngine(EngineOptions.Default.WithCompiler(compiler =>
+            compiler.WithNativeTypes(typeof(Flag), typeof(State), typeof(User))));
+
+        Assert.Equal(
+            "Flag false",
+            TypedDocumentSerializer.Serialize(
+                engine,
+                ScriptDatum.FromObject(new Flag(false)),
+                new TypedDocumentOptions { Indented = false }));
+        Assert.Equal(
+            "State 10000000000",
+            TypedDocumentSerializer.Serialize(
+                engine,
+                ScriptDatum.FromObject(new State(10000000000d)),
+                new TypedDocumentOptions { Indented = false }));
+        Assert.Equal(
+            "User \"a,b,c,d\"",
+            TypedDocumentSerializer.Serialize(
+                engine,
+                ScriptDatum.FromObject(new User("a,b,c,d")),
+                new TypedDocumentOptions { Indented = false }));
+
+        var flag = Assert.IsType<Flag>(
+            TypedDocumentSerializer.Deserialize(engine, "Flag false").Object);
+        Assert.False(flag.Value);
+
+        var fromObject = Assert.IsType<Flag>(
+            TypedDocumentSerializer.Deserialize(engine, "Flag {value true}").Object);
+        Assert.True(fromObject.Value);
+
+        var state = Assert.IsType<State>(
+            TypedDocumentSerializer.Deserialize(engine, "State 10000000000").Object);
+        Assert.Equal(10000000000d, state.Code);
+
+        var user = Assert.IsType<User>(
+            TypedDocumentSerializer.Deserialize(engine, "User \"xxx,xx,xxx,xx\"").Object);
+        Assert.Equal("xxx,xx,xxx,xx", user.Record);
+
+        Assert.Throws<TypedDocumentException>(() =>
+            TypedDocumentSerializer.Deserialize(engine, "Flag 1"));
+        Assert.Throws<TypedDocumentException>(() =>
+            TypedDocumentSerializer.Deserialize(engine, "State false"));
+        Assert.Throws<TypedDocumentException>(() =>
+            TypedDocumentSerializer.Deserialize(engine, "User [\"a\"]"));
+    }
+
+    [Fact]
     public void PrimitiveHotPathsDoNotBuildTokenOrNodeGraphs()
     {
         var engine = new AuroraEngine(EngineOptions.Default);

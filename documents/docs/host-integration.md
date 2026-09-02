@@ -640,11 +640,11 @@ Host code can also `new Vec2(3, 4)` and pass the instance as `ScriptDatum.FromOb
 
 ### Native types in TDoc
 
-Implement `INativeTypedDocument` on a native instance class so script `tdoc Type { ... }` / `tdoc Type [ ... ]` literals and host `TDoc.parse` / `TDoc.stringify` construct that NativeType directly. The engine indexes only `WithNativeTypes` classes that implement the interface and derive `ScriptObject`. There is no CLR wrapper and no property-slot reflection on this path.
+Implement `INativeTypedDocument` on a native instance class so script `tdoc Type { ... }` / `tdoc Type [ ... ]` / `tdoc Type "a,b"` literals and host `TDoc.parse` / `TDoc.stringify` construct that NativeType directly. The engine indexes only `WithNativeTypes` classes that implement the interface and derive `ScriptObject`. There is no CLR wrapper and no property-slot reflection on this path.
 
-`WriteTypedDocument` chooses the canonical stored shape. The first `WriteMember` call emits an object body (`Vec2 {x 3,y 4}`); the first `WriteElement` call emits an array body (`Vec2 [3,4]`). Do not mix both on one write. `ReadTypedDocument` handles both shapes through one input: inspect `IsMember` / `IsElement`, then get `MemberName` or `ElementIndex` and `Value`. Array form is the compact NativeType-friendly layout for vectors, colors, and similar fixed tuples.
+`WriteTypedDocument` chooses the canonical stored shape. The first `WriteMember` call emits an object body (`Vec2 {x 3,y 4}`); the first `WriteElement` call emits an array body (`Vec2 [3,4]`); the first `WriteValue` call emits a scalar body (`User "a,b,c"`, `State 10000000000`, `Flag false`). Do not mix those calls on one write. `WriteValue` accepts only null, boolean, number, or string. `ReadTypedDocument` handles all three shapes through one input: inspect `IsMember` / `IsElement` / `IsValue`, then get `MemberName`, `ElementIndex`, and `Value`. Array form is the compact layout for vectors; scalar form is the compact layout for ids, flags, and packed strings.
 
-Construction is automatic. If the type has no user constructor, the NativeType generator already emits a parameterless constructor. If the type has a script constructor such as `Vec2(double x, double y)`, the generator emits `CreateTypedDocument()` so TDoc does not call that constructor with dummy arguments. Write a factory yourself only when construction needs extra setup. Member and element assignment receive `ScriptDatum` (numbers and booleans do not allocate). Serialization writes through `TypedDocumentOutput`, a ref struct that must not be stored.
+Construction is automatic. If the type has no user constructor, the NativeType generator already emits a parameterless constructor. If the type has a script constructor such as `Vec2(double x, double y)`, the generator emits `CreateTypedDocument()` so TDoc does not call that constructor with dummy arguments. Write a factory yourself only when construction needs extra setup. Member, element, and scalar assignment receive `ScriptDatum` (numbers and booleans do not allocate). Serialization writes through `TypedDocumentOutput`, a ref struct that must not be stored.
 
 ```csharp
 using AuroraScript.Hosting;
@@ -714,6 +714,8 @@ public sealed partial class Vec2 : ScriptObject, INativeTypedDocument
 ```as
 var named = tdoc Vec2 { x 3, y 4 };
 var packed = tdoc Vec2 [3, 4];
+var off = tdoc Flag false;
+var user = tdoc User "xxx,xx,xxx,xx";
 return packed.length();
 ```
 

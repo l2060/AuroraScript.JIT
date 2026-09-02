@@ -2,7 +2,7 @@ namespace AuroraScript.Runtime.Serialization
 {
     /// <summary>
     /// Low-allocation TDoc body writer used by <see cref="INativeTypedDocument"/>.
-    /// The first member or element write locks an object or array body.
+    /// The first member, element, or scalar write locks the body shape.
     /// The struct forwards into the active document writer and must not be stored.
     /// </summary>
     public ref struct TypedDocumentOutput
@@ -11,7 +11,8 @@ namespace AuroraScript.Runtime.Serialization
         {
             Unspecified = 0,
             Object = 1,
-            Array = 2
+            Array = 2,
+            Scalar = 3
         }
 
         private ref TypedDocumentWriter _writer;
@@ -32,6 +33,11 @@ namespace AuroraScript.Runtime.Serialization
             if (_kind == BodyKind.Unspecified)
             {
                 _writer.WriteEmptyNativeObject();
+                return;
+            }
+
+            if (_kind == BodyKind.Scalar)
+            {
                 return;
             }
 
@@ -102,19 +108,71 @@ namespace AuroraScript.Runtime.Serialization
             }
         }
 
+        /// <summary>Writes a number as the whole scalar body.</summary>
+        public void WriteValue(double value)
+        {
+            WriteValue(ScriptDatum.FromNumber(value));
+        }
+
+        /// <summary>Writes a boolean as the whole scalar body.</summary>
+        public void WriteValue(bool value)
+        {
+            WriteValue(ScriptDatum.FromBoolean(value));
+        }
+
+        /// <summary>
+        /// Writes a string as the whole scalar body. A null value becomes TDoc
+        /// <c>null</c>.
+        /// </summary>
+        public void WriteValue(string value)
+        {
+            WriteValue(value == null ? ScriptDatum.Null : ScriptDatum.FromString(value));
+        }
+
+        /// <summary>
+        /// Writes one scalar body using an existing datum. Only null, boolean,
+        /// number, and string are allowed; do not call this more than once.
+        /// </summary>
+        public void WriteValue(ScriptDatum value)
+        {
+            if (value.Kind is not (ValueKind.Null or ValueKind.Boolean or ValueKind.Number or ValueKind.String))
+            {
+                throw new TypedDocumentException(
+                    "Native TDoc scalar body requires null, boolean, number, or string.");
+            }
+
+            EnsureKind(BodyKind.Scalar);
+            _writer.WriteNativeScalar(value);
+            _written = 1;
+        }
+
         private void EnsureKind(BodyKind kind)
         {
             if (_kind == BodyKind.Unspecified)
             {
                 _kind = kind;
-                _writer.BeginNativeBody(kind == BodyKind.Array ? '[' : '{');
+                if (kind == BodyKind.Object)
+                {
+                    _writer.BeginNativeBody('{');
+                }
+                else if (kind == BodyKind.Array)
+                {
+                    _writer.BeginNativeBody('[');
+                }
+
                 return;
             }
 
             if (_kind != kind)
             {
                 throw new TypedDocumentException(
-                    "Native TDoc output cannot mix object members and array elements.");
+                    "Native TDoc output cannot mix object members, array elements, and scalar values.");
+            }
+
+            if (_kind == BodyKind.Scalar)
+            {
+                throw new TypedDocumentException(
+                    "Native TDoc scalar body accepts a single value.");
             }
         }
     }

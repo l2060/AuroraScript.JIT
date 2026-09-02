@@ -330,6 +330,67 @@ public sealed class TypedDocumentLiteralTests
         ScriptAssert.Equal(5d, TestWorkspace.Execute(domain, "run"));
     }
 
+    [Fact]
+    public async Task TDocLiteralBuildsNativeScalarTypedDocuments()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func run() {
+                var off = tdoc Flag false;
+                var on = tdoc Flag { value true };
+                var state = tdoc State 10000000000;
+                var user = tdoc User "xxx,xx,xxx,xx";
+                return [off.value, on.value, state.code, user.record];
+            }
+            """,
+            nativeTypes: true);
+
+        ScriptAssert.Equal(
+            new object?[] { false, true, 10000000000d, "xxx,xx,xxx,xx" },
+            TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
+    public async Task TDocLiteralBindsInterpolatedNativeScalarTypedDocuments()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func run(flag, code, record) {
+                var boundFlag = tdoc Flag $(flag);
+                var boundState = tdoc State $(code);
+                var boundUser = tdoc User $(record);
+                return [boundFlag.value, boundState.code, boundUser.record];
+            }
+            """,
+            nativeTypes: true);
+
+        ScriptAssert.Equal(
+            new object?[] { true, 8d, "a,b" },
+            TestWorkspace.Execute(domain, "run", "TEST", true, 8d, "a,b"));
+    }
+
+    [Fact]
+    public async Task ModuleConstTDocLiteralBuildsNativeScalarTypedDocuments()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            const off = tdoc Flag false;
+            const code = tdoc State -1;
+            export func run() {
+                return [off.value, code.code];
+            }
+            """,
+            nativeTypes: true);
+
+        ScriptAssert.Equal(new object?[] { false, -1d }, TestWorkspace.Execute(domain, "run"));
+    }
+
     private static void AssertPackedValues(ScriptArray values)
     {
         Assert.Equal(int.MinValue, Assert.IsType<ScriptInt32Array>(values.GetElement(0).Object).GetElement(0));

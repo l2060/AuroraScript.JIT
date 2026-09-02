@@ -169,6 +169,7 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo CreateTypedDocumentNativeObject = Method(typeof(TypedDocumentBinder), nameof(TypedDocumentBinder.CreateNativeTypedDocument), typeof(ScriptContext), typeof(string), typeof(string));
         public static readonly MethodInfo ReadTypedDocumentNativeMember = Method(typeof(TypedDocumentBinder), nameof(TypedDocumentBinder.ReadNativeTypedDocument), typeof(INativeTypedDocument), typeof(string), typeof(bool), typeof(ScriptDatum), typeof(string));
         public static readonly MethodInfo ReadTypedDocumentNativeElement = Method(typeof(TypedDocumentBinder), nameof(TypedDocumentBinder.ReadNativeTypedDocument), typeof(INativeTypedDocument), typeof(int), typeof(ScriptDatum), typeof(string));
+        public static readonly MethodInfo ReadTypedDocumentNativeValue = Method(typeof(TypedDocumentBinder), nameof(TypedDocumentBinder.ReadNativeTypedDocument), typeof(INativeTypedDocument), typeof(ScriptDatum), typeof(string));
 
         public static readonly ConstructorInfo ScriptArrayCapacity = Constructor(typeof(ScriptArray), typeof(int));
         public static readonly MethodInfo ScriptArrayCreateWithLength = StaticMethod(typeof(ScriptArray), nameof(ScriptArray.CreateWithLength), typeof(ScriptDatum));

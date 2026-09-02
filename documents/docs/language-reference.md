@@ -485,13 +485,14 @@ func createProfile(user) {
         readonly String id $(user.id),
         name "Aurora",
         tags [String "system", Number 4],
+        Flag enabled false,
     };
 }
 ```
 
-The `tdoc` prefix is valid only in script expressions. It accepts optional explicit type names, `readonly` object members, arrays, objects, and `$(expression)` in value positions. Property names and type names are static. Standalone `.tdoc` documents start directly with the root value and do not allow the prefix or interpolation. Use `TDoc.parse` and `TDoc.stringify` to convert between text and runtime values.
+The `tdoc` prefix is valid only in script expressions. It accepts optional explicit type names, `readonly` object members, arrays, objects, scalars (`null` / boolean / number / string), and `$(expression)` in value positions. Property names and type names are static. Standalone `.tdoc` documents start directly with the root value and do not allow the prefix or interpolation. Use `TDoc.parse` and `TDoc.stringify` to convert between text and runtime values.
 
-Host NativeTypes participate when the CLR class implements `INativeTypedDocument` and is listed in `WithNativeTypes`. Then `tdoc Vec2 { x 3, y 4 }` and `tdoc Vec2 [3, 4]` both construct the native instance directly. `WriteTypedDocument` chooses the canonical stored shape (object members or array elements); deserialize and literals accept the shapes that type implements.
+Host NativeTypes participate when the CLR class implements `INativeTypedDocument` and is listed in `WithNativeTypes`. Then `tdoc Vec2 { x 3, y 4 }`, `tdoc Vec2 [3, 4]`, and `tdoc Flag false` construct the native instance directly. `WriteTypedDocument` chooses the canonical stored shape (object members, array elements, or a scalar null/boolean/number/string); deserialize and literals accept the shapes that type implements.
 
 Lambdas:
 

@@ -1,8 +1,8 @@
 namespace AuroraScript.Runtime.Serialization
 {
     /// <summary>
-    /// Describes one object member or array element being read into an
-    /// <see cref="INativeTypedDocument"/> instance.
+    /// Describes one object member, array element, or scalar value being read
+    /// into an <see cref="INativeTypedDocument"/> instance.
     /// </summary>
     public readonly ref struct TypedDocumentInput
     {
@@ -27,19 +27,28 @@ namespace AuroraScript.Runtime.Serialization
         public bool IsMember => MemberName != null;
 
         /// <summary>Whether this input represents a positional array element.</summary>
-        public bool IsElement => MemberName == null;
+        public bool IsElement => MemberName == null && ElementIndex >= 0;
 
         /// <summary>
-        /// Object member name, or <see langword="null"/> for an array element.
+        /// Whether this input represents the whole scalar body
+        /// (<c>User "a,b"</c>, <c>State 1</c>, <c>Flag false</c>).
+        /// </summary>
+        public bool IsValue => MemberName == null && ElementIndex < 0;
+
+        /// <summary>
+        /// Object member name, or <see langword="null"/> for an array element
+        /// or scalar value.
         /// </summary>
         public string MemberName { get; }
 
-        /// <summary>Array index, or -1 for an object member.</summary>
+        /// <summary>
+        /// Array index, or -1 for an object member or scalar value.
+        /// </summary>
         public int ElementIndex { get; }
 
         /// <summary>
         /// Whether an object member was declared readonly. Always false for an
-        /// array element.
+        /// array element or scalar value.
         /// </summary>
         public bool IsReadOnly { get; }
 
