@@ -37,6 +37,7 @@ export type AStar {
 	Int32Array heapNodes;
 	Float64Array heapScores;
 	Float64Array heapTies;
+	// func add(Number a, Number b) Number;
 }
 
 native func astarHeuristic(Number x, Number y, Number goalX, Number goalY, Boolean allowDiagonal, Number minCost) Number {
@@ -97,7 +98,7 @@ native func astarHeapPush(Int32Array heapNodes, Float64Array heapScores, Float64
 		heapTies[i] = parentTie;
 		i = parent;
 	}
-	
+
 	heapNodes[i] = node;
 	heapScores[i] = score;
 	heapTies[i] = tie;

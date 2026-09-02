@@ -100,9 +100,9 @@ public sealed class BuiltInLibraryTests
             export func roundTrip() {
                 var number = TDoc.parse('Number 42.5');
                 var value = TDoc.parse('Object { readonly String id "u-1", Int8Array bytes [1, 2], }');
-                var compact = TDoc.stringify(value, false);
+                var compact = TDoc.stringify(value);
                 var explicit = TDoc.stringify(value, false, true);
-                var pretty = TDoc.stringify(value);
+                var pretty = TDoc.stringify(value, true);
                 return [number, value.id, value.bytes[1], compact, explicit, pretty.contains('\n')];
             }
             export func invalid() {

@@ -1697,16 +1697,17 @@
             {
               "name": "indented",
               "type": "boolean",
-              "optional": true
+              "optional": true,
+              "default": false
             }
           ],
           "returns": "string",
           "notes": {
             "en": [
-              "Serializes a value to JSON text."
+              "Serializes a value to JSON text. Optional indented defaults to false."
             ],
             "zh-CN": [
-              "将值序列化为 JSON 文本。"
+              "将值序列化为 JSON 文本。可选参数 indented 默认为 false。"
             ]
           }
         }
@@ -1751,12 +1752,14 @@
             {
               "name": "indented",
               "type": "boolean",
-              "optional": true
+              "optional": true,
+              "default": false
             },
             {
               "name": "emitTypes",
               "type": "boolean",
-              "optional": true
+              "optional": true,
+              "default": false
             }
           ],
           "returns": "string",
@@ -1774,12 +1777,12 @@
         "en": [
           "TDoc parsing and serialization API.",
           "The native script literal uses the separate `tdoc [TypeName] value` expression syntax; standalone .tdoc documents omit that prefix.",
-          "parse/stringify are generated native host exports; optional stringify arguments default to indented=true and emitTypes=false."
+          "parse/stringify are generated native host exports; optional stringify arguments default to indented=false and emitTypes=false."
         ],
         "zh-CN": [
           "TDoc 类型文档解析与序列化 API。",
           "脚本原生字面量使用独立的 `tdoc [TypeName] value` 表达式语法；独立 .tdoc 文档省略此前缀。",
-          "parse/stringify 由生成的宿主原生导出实现；stringify 可选参数默认 indented=true、emitTypes=false。"
+          "parse/stringify 由生成的宿主原生导出实现；stringify 可选参数默认 indented=false、emitTypes=false。"
         ]
       }
     },

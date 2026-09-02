@@ -26,7 +26,7 @@ namespace AuroraScript.Runtime.Builtin
 
 
         [AuroraExport("stringify", MatchFailure.Throw)]
-        public static string StringifyCore(ScriptContext ctx, ScriptDatum value, bool indented = true)
+        public static string StringifyCore(ScriptContext ctx, ScriptDatum value, bool indented = false)
         {
             try
             {

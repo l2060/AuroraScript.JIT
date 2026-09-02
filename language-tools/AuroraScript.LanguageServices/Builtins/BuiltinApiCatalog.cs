@@ -81,4 +81,11 @@ public sealed class BuiltinApiCatalog
         member = null!;
         return false;
     }
+
+    public bool TryGetPrototype(
+        string prototypeName,
+        out IReadOnlyDictionary<string, BuiltinApiMember> members)
+    {
+        return _prototypes.TryGetValue(prototypeName, out members!);
+    }
 }

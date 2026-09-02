@@ -139,3 +139,38 @@ public sealed partial class User : ScriptObject, INativeTypedDocument
         return input.Value.StringText;
     }
 }
+
+[AuroraNativeType("NativeRecord")]
+public sealed partial class NativeRecord : ScriptObject, INativeTypedDocument
+{
+    [AuroraExport("name")]
+    public string Name;
+
+    [AuroraExport]
+    public NativeRecord(string name)
+    {
+        Name = name;
+    }
+
+    public void WriteTypedDocument(ref TypedDocumentOutput output)
+    {
+        output.WriteMember("name", Name);
+        output.WriteDynamicMembers(this);
+    }
+
+    public void ReadTypedDocument(ref TypedDocumentInput input)
+    {
+        if (input.IsMember && input.MemberName == "name")
+        {
+            if (input.IsReadOnly || input.Value.Kind != ValueKind.String)
+            {
+                throw input.Error("NativeRecord name requires a writable string.");
+            }
+
+            Name = input.Value.StringText;
+            return;
+        }
+
+        input.DefineDynamicMember(this);
+    }
+}

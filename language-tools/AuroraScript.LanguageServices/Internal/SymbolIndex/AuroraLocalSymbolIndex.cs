@@ -38,6 +38,19 @@ internal sealed class AuroraLocalSymbolIndex
         return _references.ContainsKey(name);
     }
 
+    public bool TryGetDeclaration(NameExpression reference, out AstNode declaration)
+    {
+        if (_references.TryGetValue(reference, out var symbol) &&
+            symbol.DeclarationNode != null)
+        {
+            declaration = symbol.DeclarationNode;
+            return true;
+        }
+
+        declaration = null!;
+        return false;
+    }
+
     public IReadOnlyList<LocalSymbolInfo> GetVisibleSymbols(TextPosition position)
     {
         if (!TryGetScope(position, out var scope))
@@ -215,7 +228,12 @@ internal sealed class AuroraLocalSymbolIndex
             var parameter = function.Parameters[i];
             if (parameter.Name != null)
             {
-                Declare(rootScope, parameter.Name.Value, TextRange.FromSourceSpan(parameter.Name.Range), LocalSymbolKind.Variable);
+                Declare(
+                    rootScope,
+                    parameter.Name.Value,
+                    TextRange.FromSourceSpan(parameter.Name.Range),
+                    LocalSymbolKind.Variable,
+                    parameter);
             }
         }
 
@@ -274,7 +292,12 @@ internal sealed class AuroraLocalSymbolIndex
             case FunctionDeclaration function:
                 if (function.Flags != FunctionFlags.Declare && function.Name != null)
                 {
-                    Declare(scope, function.Name.Value, TextRange.FromSourceSpan(function.Name.Range), LocalSymbolKind.Function);
+                    Declare(
+                        scope,
+                        function.Name.Value,
+                        TextRange.FromSourceSpan(function.Name.Range),
+                        LocalSymbolKind.Function,
+                        function);
                 }
                 BuildFunction(function, scope);
                 return;
@@ -331,7 +354,12 @@ internal sealed class AuroraLocalSymbolIndex
         var kind = variable.IsConst ? LocalSymbolKind.Constant : LocalSymbolKind.Variable;
         if (variable.Name != null)
         {
-            Declare(scope, variable.Name.Value, TextRange.FromSourceSpan(variable.Name.Range), kind);
+            Declare(
+                scope,
+                variable.Name.Value,
+                TextRange.FromSourceSpan(variable.Name.Range),
+                kind,
+                variable);
             return;
         }
 
@@ -364,7 +392,12 @@ internal sealed class AuroraLocalSymbolIndex
         }
     }
 
-    private void Declare(LocalScope scope, string name, TextRange? declarationRange, LocalSymbolKind kind)
+    private void Declare(
+        LocalScope scope,
+        string name,
+        TextRange? declarationRange,
+        LocalSymbolKind kind,
+        AstNode? declarationNode = null)
     {
         if (string.IsNullOrEmpty(name) ||
             scope.Declarations.ContainsKey(name))
@@ -372,7 +405,7 @@ internal sealed class AuroraLocalSymbolIndex
             return;
         }
 
-        var symbol = new LocalSymbol(_nextSymbolId++, name, kind, declarationRange)
+        var symbol = new LocalSymbol(_nextSymbolId++, name, kind, declarationRange, declarationNode)
         {
             Scope = scope
         };
@@ -641,13 +674,19 @@ internal sealed class AuroraLocalSymbolIndex
 
     private sealed class LocalSymbol
     {
-        public LocalSymbol(int id, string name, LocalSymbolKind kind, TextRange? declarationRange)
+        public LocalSymbol(
+            int id,
+            string name,
+            LocalSymbolKind kind,
+            TextRange? declarationRange,
+            AstNode? declarationNode)
         {
             Id = id;
             Name = name;
             Kind = kind;
             DeclarationRange = declarationRange.GetValueOrDefault();
             HasDeclarationRange = declarationRange.HasValue;
+            DeclarationNode = declarationNode;
         }
 
         public int Id { get; }
@@ -655,6 +694,7 @@ internal sealed class AuroraLocalSymbolIndex
         public LocalSymbolKind Kind { get; }
         public TextRange DeclarationRange { get; }
         public bool HasDeclarationRange { get; }
+        public AstNode? DeclarationNode { get; }
         public LocalScope Scope { get; set; } = null!;
     }
 

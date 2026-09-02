@@ -1,3 +1,5 @@
+using AuroraScript.Runtime.Types;
+
 namespace AuroraScript.Runtime.Serialization
 {
     /// <summary>
@@ -78,6 +80,18 @@ namespace AuroraScript.Runtime.Serialization
             {
                 _written++;
             }
+        }
+
+        /// <summary>
+        /// Appends this object's own enumerable dynamic properties to an object
+        /// body. Native CLR fields are not dynamic properties and must still be
+        /// written explicitly with <see cref="WriteMember(string, ScriptDatum, bool)"/>.
+        /// </summary>
+        public void WriteDynamicMembers(ScriptObject source)
+        {
+            if (source == null) throw new System.ArgumentNullException(nameof(source));
+            EnsureKind(BodyKind.Object);
+            _written = _writer.WriteNativeDynamicMembers(source, _written);
         }
 
         /// <summary>Writes a number array element.</summary>

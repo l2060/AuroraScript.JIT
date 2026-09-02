@@ -23,30 +23,16 @@ namespace Examples
 
         public void WriteTypedDocument(ref TypedDocumentOutput output)
         {
-            output.WriteElement(X);
-            output.WriteElement(Y);
+            output.WriteMember("x", X);
+            output.WriteMember("y", Y);
+            output.WriteDynamicMembers(this);
         }
 
         public void ReadTypedDocument(ref TypedDocumentInput input)
         {
             if (input.IsElement)
             {
-                switch (input.ElementIndex)
-                {
-                    case 0:
-                        X = ReadFiniteNumber(ref input);
-                        return;
-                    case 1:
-                        Y = ReadFiniteNumber(ref input);
-                        return;
-                    default:
-                        throw input.Error("Vec2 array form requires exactly two numbers.");
-                }
-            }
-
-            if (input.IsReadOnly)
-            {
-                throw input.Error("readonly is not supported by Vec2 TDoc members.");
+                throw input.Error("Not a valid format for Vec2 type documentation value.");
             }
 
             switch (input.MemberName)
@@ -58,8 +44,8 @@ namespace Examples
                     Y = ReadFiniteNumber(ref input);
                     return;
                 default:
-                    throw input.Error(
-                        $"Unknown field '{input.MemberName}' for native type 'Vec2'.");
+                    input.DefineDynamicMember(this);
+                    return;
             }
         }
 
@@ -77,14 +63,10 @@ namespace Examples
         public double LengthCore() => Math.Sqrt((X * X) + (Y * Y));
 
         [AuroraExport("length")]
-        public static double StaticLengthCore(double x, double y) =>
-            Math.Sqrt((x * x) + (y * y));
-
-
+        public static double StaticLengthCore(double x, double y) => Math.Sqrt((x * x) + (y * y));
 
         [AuroraExport("from")]
         public static Vec2 FromCore(double x, double y) => new Vec2(x, y);
-
 
     }
 

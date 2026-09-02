@@ -49,6 +49,8 @@ public sealed class GlobalDeclarationLanguageFeatureTests : IDisposable
                 var vec = new Vec2(3, 4);
                 vec.length();
                 Vec2.from(5, 6);
+                var inferred = Vec2.from(7, 8);
+                inferred.length();
                 return vec.x;
             }
             """;
@@ -68,6 +70,12 @@ public sealed class GlobalDeclarationLanguageFeatureTests : IDisposable
         Assert.Contains(instanceMembers.Items, item => item.Label == "length");
         Assert.Contains(instanceMembers.Items, item => item.Label == "x");
         Assert.DoesNotContain(instanceMembers.Items, item => item.Label == "from");
+
+        var inferredMembers = service.GetCompletions(
+            mainPath,
+            PositionAfter(main, "inferred."));
+        Assert.Contains(inferredMembers.Items, item => item.Label == "length");
+        Assert.Contains(inferredMembers.Items, item => item.Label == "x");
 
         var staticMembers = service.GetCompletions(mainPath, PositionAfter(main, "Vec2."));
         Assert.Contains(staticMembers.Items, item => item.Label == "from");
@@ -89,6 +97,18 @@ public sealed class GlobalDeclarationLanguageFeatureTests : IDisposable
         var lengthHelp = service.GetSignatureHelp(mainPath, PositionAfter(main, "vec.length("));
         Assert.NotNull(lengthHelp);
         Assert.Contains("func length()", lengthHelp!.Signatures[0].Label, StringComparison.Ordinal);
+
+        var inferredHover = service.GetHover(
+            mainPath,
+            PositionOfLast(main, "length"));
+        Assert.NotNull(inferredHover);
+        Assert.Contains("func length()", inferredHover!.Contents, StringComparison.Ordinal);
+
+        var inferredDefinition = service.GetDefinition(
+            mainPath,
+            PositionOfLast(main, "length"));
+        Assert.NotNull(inferredDefinition);
+        Assert.Equal(Path.GetFullPath(globalsPath), Path.GetFullPath(inferredDefinition!.Path));
 
         var meanDefinition = service.GetDefinition(mainPath, PositionOf(main, "mean"));
         Assert.NotNull(meanDefinition);

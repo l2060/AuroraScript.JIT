@@ -1,6 +1,7 @@
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Serialization;
 using AuroraScript.Runtime.Types;
+using AuroraScript.Tests.Host;
 using System;
 using Xunit;
 
@@ -31,6 +32,17 @@ public sealed class SerializationTests
 
         Assert.Equal("{\"name\":\"Aurora\",\"items\":[1,true,null]}", compact);
         Assert.Contains(Environment.NewLine, indented);
+    }
+
+    [Fact]
+    public void SerializesNativeAndDynamicFieldsFromNativeTypes()
+    {
+        var value = new Vec2(3, 4);
+        value.Define("tag", ScriptDatum.FromString("origin"));
+
+        var json = ScriptJsonSerializer.Default.Serialize(ScriptDatum.FromObject(value));
+
+        Assert.Equal("{\"x\":3,\"y\":4,\"tag\":\"origin\"}", json);
     }
 
     [Fact]

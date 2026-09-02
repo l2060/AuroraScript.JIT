@@ -29,7 +29,7 @@ namespace AuroraScript.Runtime.Builtin
         public static string StringifyCore(
             ScriptContext ctx,
             ScriptDatum value,
-            bool indented = true,
+            bool indented = false,
             bool emitTypeNames = false)
         {
             try

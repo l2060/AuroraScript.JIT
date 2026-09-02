@@ -357,10 +357,15 @@ namespace AuroraScript.Runtime.Serialization
         /// </summary>
         protected virtual void SerializeObjectProperties(Utf8JsonWriter writer, ScriptObject value, in ScriptSerializationContext context)
         {
-            var keys = value.EnumerationKeys();
-            for (int i = 0; i < keys.Count; i++)
+            var keys = value.GetEnumerator();
+            while (keys.NextValue(out var key))
             {
-                var propertyName = keys[i];
+                if (key.Kind != ValueKind.String)
+                {
+                    continue;
+                }
+
+                var propertyName = key.StringText;
                 writer.WritePropertyName(propertyName);
                 var propDatum = value.GetPropertyDatum(null, propertyName);
                 WriteDatum(writer, in propDatum, context);

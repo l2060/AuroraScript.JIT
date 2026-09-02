@@ -7,7 +7,7 @@
   <PropertyGroup>
     <TargetFramework>net472</TargetFramework>
     <LangVersion>latest</LangVersion>
-    <Nullable>disable</Nullable>
+    <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <RootNamespace>AuroraScript.VisualStudio</RootNamespace>
     <AssemblyName>AuroraScript.VisualStudio</AssemblyName>

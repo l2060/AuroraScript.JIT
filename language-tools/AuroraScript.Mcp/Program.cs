@@ -1656,18 +1656,46 @@ internal sealed class AuroraMcpServer
                 var type = parameterNode["type"]?.GetValue<string>() ?? "any";
                 var optional = parameterNode["optional"]?.GetValue<bool>() == true;
                 var variadic = parameterNode["variadic"]?.GetValue<bool>() == true;
+                var defaultLiteral = FormatJsonDefault(parameterNode["default"]);
                 if (variadic)
                 {
                     name = "..." + name;
                 }
 
-                parts.Add(name + (optional ? "?: " : ": ") + type);
+                if (defaultLiteral != null)
+                {
+                    parts.Add(name + ": " + type + " = " + defaultLiteral);
+                }
+                else
+                {
+                    parts.Add(name + (optional ? "?: " : ": ") + type);
+                }
             }
 
             var namePart = category == "constructor" && !string.IsNullOrWhiteSpace(ownerName)
                 ? "new " + ownerName
                 : path;
             return namePart + "(" + string.Join(", ", parts) + "): " + (node["returns"]?.GetValue<string>() ?? string.Empty);
+        }
+
+        private static string? FormatJsonDefault(JsonNode? node)
+        {
+            if (node is null)
+            {
+                return null;
+            }
+
+            return node.GetValueKind() switch
+            {
+                JsonValueKind.True => "true",
+                JsonValueKind.False => "false",
+                JsonValueKind.Null => "null",
+                JsonValueKind.Number => node.ToJsonString(),
+                JsonValueKind.String => "\"" + (node.GetValue<string>() ?? string.Empty)
+                    .Replace("\\", "\\\\")
+                    .Replace("\"", "\\\"") + "\"",
+                _ => null
+            };
         }
 
         private static string ReadNotes(JsonNode? notes)

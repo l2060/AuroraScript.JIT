@@ -35,13 +35,13 @@ export func testTypedDocument() {
 		readonly name 'Hanks',
 		Date Birthday '2026-08-22 12:34:56',
 		StringBuffer buff 'Hello ',
-		Vec2 vec [1000,2000]
+		Vec2 vec {x 1000, y 2000, ext ['this', 'extend', 'members', 3000], o { k 1.1, p 2.2, i 3.3 } }
 	};
 	doc.buff.append('Hanks');
 	console.log(JSON.stringify(doc));
-	console.log(TDoc.stringify(doc, false));
+	console.log(TDoc.stringify(TDoc.parse(TDoc.stringify(doc, false))));
 
-	
+	console.log();
 
 
 }

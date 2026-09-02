@@ -1,3 +1,5 @@
+using AuroraScript.Runtime.Types;
+
 namespace AuroraScript.Runtime.Serialization
 {
     /// <summary>
@@ -54,6 +56,26 @@ namespace AuroraScript.Runtime.Serialization
 
         /// <summary>Gets the parsed script value without conversion or boxing.</summary>
         public ScriptDatum Value => _value;
+
+        /// <summary>
+        /// Defines this member as an own enumerable dynamic property on the
+        /// target, preserving its readonly flag. This is valid only for member
+        /// input and lets each NativeType opt into dynamic-property round trips.
+        /// </summary>
+        public void DefineDynamicMember(ScriptObject target)
+        {
+            if (target == null) throw new System.ArgumentNullException(nameof(target));
+            if (!IsMember)
+            {
+                throw Error("Only object members can be defined as dynamic properties.");
+            }
+
+            target.Define(
+                MemberName,
+                _value,
+                writeable: !IsReadOnly,
+                enumerable: true);
+        }
 
         /// <summary>Creates a TDoc error associated with this input's data path.</summary>
         public TypedDocumentException Error(string message)

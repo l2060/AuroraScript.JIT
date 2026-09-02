@@ -241,7 +241,8 @@ Common APIs:
 
 - `console.log(...values)`, `console.error(...values)`, `console.time(label)`, `console.timeEnd(label)`
 - `JSON.parse(text)`, `JSON.stringify(value, indented = false)`
-- `TDoc.parse(text)`, `TDoc.stringify(value, indented = true, emitTypes = false)`；`emitTypes = true` 强制输出所有可用类型名
+- `JSON.stringify` enumerates NativeType instances normally: exported enumerable Native fields and enumerable dynamic properties are included; Native methods are not.
+- `TDoc.parse(text)`, `TDoc.stringify(value, indented = false, emitTypes = false)`；`emitTypes = true` 强制输出所有可用类型名
 - Native TDoc literals use `tdoc [TypeName] value`, for example `const value = tdoc Object { readonly String id $(user.id), enabled true, };`. Host NativeTypes that implement `INativeTypedDocument` can be named directly (`tdoc Vec2 { x 3, y 4 }`, `tdoc Vec2 [3, 4]`, `tdoc Flag false`, `tdoc User "a,b"`). `WriteTypedDocument` chooses the canonical object, array, or scalar body. Only value positions may use `$(expression)`; property names and type names are static. Standalone `.tdoc` documents omit the `tdoc` prefix and do not allow interpolation.
 - `Math.PI`, `Math.E`, `Math.Tau`, `Math.abs`, `Math.max`, `Math.min`, `Math.random`, `Math.log`, `Math.pow`, `Math.exp`, `Math.cos`, `Math.sin`, `Math.tan`, `Math.acos`, `Math.asin`, `Math.atan`, `Math.floor`, `Math.round`
 - Array: `length`, `push`, `pop`, `sort`, `join`, `slice`, `reverse`, `unshift`, `shift`, `concat`, `find`, `findIndex`, `findLast`, `findLastIndex`, `map`, `filter`, `some`, `every`, `flat`, `reduce`, `indexOf`, `lastIndexOf`, `has`

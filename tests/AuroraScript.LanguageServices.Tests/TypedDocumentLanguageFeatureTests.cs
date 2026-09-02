@@ -195,6 +195,51 @@ public sealed class TypedDocumentLanguageFeatureTests
     }
 
     [Fact]
+    public void InfersExportedTypesForModuleVariablesAndLocalFunctionResults()
+    {
+        const string source =
+            """
+            export type Point {
+                Number x;
+                Number y;
+            }
+            func make() Point {
+                return { x: 1, y: 2 };
+            }
+            var modulePoint = make();
+            export func run() Number {
+                func localMake() Point {
+                    return { x: 3, y: 4 };
+                }
+                var localPoint = localMake();
+                return modulePoint.x + localPoint.y;
+            }
+            """;
+        var service = new AuroraLanguageService(
+            BuiltinApiLoader.LoadFromFile(BuiltinApiCatalogTests.GetRuntimeApiPath()));
+
+        var moduleHover = service.GetHover(
+            "main.as",
+            source,
+            PositionOf(source, "modulePoint.x") with
+            {
+                Character = PositionOf(source, "modulePoint.x").Character + "modulePoint.".Length
+            });
+        Assert.NotNull(moduleHover);
+        Assert.Contains("Number x", moduleHover!.Contents, StringComparison.Ordinal);
+
+        var localHover = service.GetHover(
+            "main.as",
+            source,
+            PositionOf(source, "localPoint.y") with
+            {
+                Character = PositionOf(source, "localPoint.y").Character + "localPoint.".Length
+            });
+        Assert.NotNull(localHover);
+        Assert.Contains("Number y", localHover!.Contents, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void QualifiedImportedTypesProvideHoverAndDefinition()
     {
         var root = Path.Combine(
@@ -206,11 +251,21 @@ public sealed class TypedDocumentLanguageFeatureTests
             var modelsPath = Path.Combine(root, "models.as");
             var mainPath = Path.Combine(root, "main.as");
             const string models =
-                "export type Point { Number x; Number y; }\n";
+                "export type Point { Number x; Number y; }\n" +
+                "export func make() Point { return { x: 1, y: 2 }; }\n" +
+                "export func text() String { return \"abc\"; }\n";
             const string main =
                 "import models from './models';\n" +
                 "export func add(models.Point p) Number {\n" +
                 "    return p.x + p.y;\n" +
+                "}\n" +
+                "export func inferred() Number {\n" +
+                "    var factoryPoint = models.make();\n" +
+                "    return factoryPoint.x;\n" +
+                "}\n" +
+                "export func importedBuiltin() String {\n" +
+                "    var text = models.text();\n" +
+                "    return text.replace(\"a\", \"b\");\n" +
                 "}\n";
             File.WriteAllText(modelsPath, models);
 
@@ -253,6 +308,34 @@ public sealed class TypedDocumentLanguageFeatureTests
                 PositionAfter(main, "return p."));
             Assert.Contains(fieldCompletions.Items, item => item.Label == "x");
             Assert.Contains(fieldCompletions.Items, item => item.Label == "y");
+
+            var inferredHover = service.GetHover(
+                mainPath,
+                PositionOf(main, "factoryPoint.x") with
+                {
+                    Character = PositionOf(main, "factoryPoint.x").Character + "factoryPoint.".Length
+                });
+            Assert.NotNull(inferredHover);
+            Assert.Contains("Number x", inferredHover!.Contents, StringComparison.Ordinal);
+
+            var inferredDefinition = service.GetDefinition(
+                mainPath,
+                PositionOf(main, "factoryPoint.x") with
+                {
+                    Character = PositionOf(main, "factoryPoint.x").Character + "factoryPoint.".Length
+                });
+            Assert.NotNull(inferredDefinition);
+            Assert.Equal(Path.GetFullPath(modelsPath), Path.GetFullPath(inferredDefinition!.Path));
+
+            var builtinHover = service.GetHover(mainPath, PositionOf(main, "replace"));
+            Assert.NotNull(builtinHover);
+            Assert.Contains("func replace(", builtinHover!.Contents, StringComparison.Ordinal);
+
+            var builtinDefinition = service.GetDefinition(
+                mainPath,
+                PositionOf(main, "replace"));
+            Assert.NotNull(builtinDefinition);
+            Assert.Equal("aurora-builtin:/String.as", builtinDefinition!.Path);
         }
         finally
         {

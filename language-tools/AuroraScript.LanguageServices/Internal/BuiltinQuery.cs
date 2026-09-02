@@ -4,6 +4,7 @@ using AuroraScript.LanguageServices.Builtins;
 using AuroraScript.LanguageServices.Features.Completion;
 using AuroraScript.LanguageServices.Features.Hover;
 using AuroraScript.LanguageServices.Features.SignatureHelp;
+using AuroraScript.LanguageServices.Internal.SymbolIndex;
 using AuroraScript.LanguageServices.Text;
 using System;
 using System.Collections.Generic;
@@ -17,7 +18,8 @@ internal static class BuiltinQuery
         ModuleDeclaration? declaration,
         AstQueryContext context,
         string? locale,
-        out HoverResult hover)
+        out HoverResult hover,
+        ExpressionTypeResolver? expressionTypes = null)
     {
         hover = null!;
         if (context.TypeReference != null &&
@@ -54,12 +56,20 @@ internal static class BuiltinQuery
 
         if (context.PropertyAccess != null &&
             context.IsOnPropertyName &&
-            TryResolveMember(builtins, declaration, context.PropertyAccess, out var member))
+            TryResolveMember(
+                builtins,
+                declaration,
+                context.PropertyAccess,
+                out var member,
+                out var instanceMember,
+                expressionTypes))
         {
             var range = context.PropertyAccess.Property is NameExpression name
                 ? name.Identifier.Range
                 : context.PropertyAccess.Property.Range;
-            hover = new HoverResult(BuiltinFormat.FormatMember(member, locale), TextRange.FromSourceSpan(range));
+            hover = new HoverResult(
+                BuiltinFormat.FormatMember(member, locale, instanceMember),
+                TextRange.FromSourceSpan(range));
             return true;
         }
 
@@ -78,10 +88,24 @@ internal static class BuiltinQuery
         BuiltinApiCatalog builtins,
         ModuleDeclaration? declaration,
         AstQueryContext? context,
-        string? locale = null)
+        string? locale = null,
+        ExpressionTypeResolver? expressionTypes = null)
     {
         if (context?.PropertyAccess != null)
         {
+            if (declaration != null)
+            {
+                var resolver = expressionTypes ??
+                    new ExpressionTypeResolver(declaration, builtins);
+                if (resolver.TryResolveBuiltinPrototype(
+                        context.PropertyAccess.Object,
+                        out var prototypeName) &&
+                    builtins.TryGetPrototype(prototypeName, out var prototype))
+                {
+                    return CompleteMembers(prototype, locale);
+                }
+            }
+
             if (TryResolveOwnerName(context.PropertyAccess.Object, out var ownerName))
             {
                 return GetMemberCompletions(builtins, declaration, ownerName, locale);
@@ -122,7 +146,8 @@ internal static class BuiltinQuery
         ModuleDeclaration? declaration,
         AstQueryContext context,
         TextPosition position,
-        string? locale = null)
+        string? locale = null,
+        ExpressionTypeResolver? expressionTypes = null)
     {
         var call = context.Call;
         if (call == null)
@@ -138,10 +163,26 @@ internal static class BuiltinQuery
         BuiltinApiMember member;
         if (call.Target is GetPropertyExpression propertyAccess)
         {
-            if (!TryResolveMember(builtins, declaration, propertyAccess, out member))
+            if (!TryResolveMember(
+                    builtins,
+                    declaration,
+                    propertyAccess,
+                    out member,
+                    out var instanceMember,
+                    expressionTypes))
             {
                 return null;
             }
+
+            var instanceSignature = BuiltinFormat.FormatSignatureInfo(
+                member,
+                locale,
+                instanceMember);
+            var instanceActiveParameter = GetActiveParameter(call, position);
+            return new SignatureHelpResult(
+                new[] { instanceSignature },
+                0,
+                instanceActiveParameter);
         }
         else if (call.Target is NameExpression name)
         {
@@ -247,22 +288,49 @@ internal static class BuiltinQuery
         BuiltinApiCatalog builtins,
         ModuleDeclaration? declaration,
         GetPropertyExpression propertyAccess,
-        out BuiltinApiMember member)
+        out BuiltinApiMember member,
+        out bool instanceMember,
+        ExpressionTypeResolver? expressionTypes = null)
     {
         member = null!;
-        if (!TryResolveOwnerName(propertyAccess.Object, out var ownerName) ||
-            propertyAccess.Property is not NameExpression property)
+        instanceMember = false;
+        if (propertyAccess.Property is not NameExpression property)
         {
             return false;
         }
 
-        if (BuiltinModuleQuery.TryResolve(builtins, declaration, ownerName, out var module))
+        ExpressionTypeResolver? resolver = expressionTypes ??
+            (declaration == null
+                ? null
+                : new ExpressionTypeResolver(declaration, builtins));
+        if (TryResolveOwnerName(propertyAccess.Object, out var ownerName) &&
+            (propertyAccess.Object is not NameExpression owner ||
+                resolver == null ||
+                !resolver.IsSourceDefinedReference(owner)) &&
+            BuiltinModuleQuery.TryResolve(builtins, declaration, ownerName, out var module))
         {
             return module.TryGetMember(property.Identifier.Value, out member);
         }
 
-        return !BuiltinModuleQuery.IsImportedName(declaration, ownerName) &&
-            builtins.TryGetGlobalMember(ownerName, property.Identifier.Value, out member);
+        if (TryResolveOwnerName(propertyAccess.Object, out ownerName) &&
+            (propertyAccess.Object is not NameExpression globalOwner ||
+                resolver == null ||
+                !resolver.IsSourceDefinedReference(globalOwner)) &&
+            !BuiltinModuleQuery.IsImportedName(declaration, ownerName) &&
+            builtins.TryGetGlobalMember(ownerName, property.Identifier.Value, out member))
+        {
+            return true;
+        }
+
+        if (resolver != null &&
+            resolver.TryResolveBuiltinPrototype(propertyAccess.Object, out var prototypeName) &&
+            builtins.TryGetPrototypeMember(prototypeName, property.Identifier.Value, out member))
+        {
+            instanceMember = true;
+            return true;
+        }
+
+        return false;
     }
 
     private static bool TryResolveOwnerName(Expression expression, out string ownerName)

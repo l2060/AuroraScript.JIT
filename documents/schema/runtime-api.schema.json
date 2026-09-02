@@ -97,7 +97,8 @@
         "name": { "type": "string" },
         "type": { "type": "string" },
         "optional": { "type": "boolean" },
-        "variadic": { "type": "boolean" }
+        "variadic": { "type": "boolean" },
+        "default": { "type": ["boolean", "number", "string", "null"] }
       },
       "additionalProperties": false
     },

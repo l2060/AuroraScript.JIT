@@ -170,7 +170,10 @@ public static class BuiltinApiLoader
                 optionalElement.ValueKind == JsonValueKind.True;
             var variadic = parameterElement.TryGetProperty("variadic", out var variadicElement) &&
                 variadicElement.ValueKind == JsonValueKind.True;
-            parameters.Add(new BuiltinApiParameter(name, type, optional, variadic));
+            var defaultValue = parameterElement.TryGetProperty("default", out var defaultElement)
+                ? FormatDefaultLiteral(defaultElement)
+                : null;
+            parameters.Add(new BuiltinApiParameter(name, type, optional, variadic, defaultValue));
         }
 
         return parameters;
@@ -221,6 +224,21 @@ public static class BuiltinApiLoader
         }
 
         return notes;
+    }
+
+    private static string? FormatDefaultLiteral(JsonElement element)
+    {
+        return element.ValueKind switch
+        {
+            JsonValueKind.True => "true",
+            JsonValueKind.False => "false",
+            JsonValueKind.Null => "null",
+            JsonValueKind.Number => element.GetRawText(),
+            JsonValueKind.String => "\"" + (element.GetString() ?? string.Empty)
+                .Replace("\\", "\\\\")
+                .Replace("\"", "\\\"") + "\"",
+            _ => null
+        };
     }
 
     private static BuiltinApiKind ReadKind(JsonElement element, BuiltinApiKind fallback)

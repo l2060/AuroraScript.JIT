@@ -911,6 +911,48 @@ public sealed class DefinitionFeatureTests : IDisposable
     }
 
     [Fact]
+    public void ResolvesInferredBuiltinInstanceMembersToVirtualDocuments()
+    {
+        const string source =
+            """
+            @module(TEST);
+            export func run(Number iterations) {
+                var map = new HashMap();
+                map.set(1, true);
+                var text = "abc";
+                text.match(/a/);
+                /a/.test(text);
+                var values = [];
+                values.push(1);
+                var size = values.length;
+                var capacity = Array.withCapacity(iterations);
+                capacity.sort();
+                return size;
+            }
+            """;
+        var service = CreateService();
+
+        Assert.Equal(
+            "aurora-builtin:/HashMap.as",
+            service.GetDefinition("test.as", source, PositionOf(source, "set"))!.Path);
+        Assert.Equal(
+            "aurora-builtin:/String.as",
+            service.GetDefinition("test.as", source, PositionOf(source, "match"))!.Path);
+        Assert.Equal(
+            "aurora-builtin:/Regex.as",
+            service.GetDefinition("test.as", source, PositionOf(source, "test"))!.Path);
+        Assert.Equal(
+            "aurora-builtin:/Array.as",
+            service.GetDefinition("test.as", source, PositionOf(source, "push"))!.Path);
+        Assert.Equal(
+            "aurora-builtin:/Array.as",
+            service.GetDefinition("test.as", source, PositionOfLast(source, "length"))!.Path);
+        Assert.Equal(
+            "aurora-builtin:/Array.as",
+            service.GetDefinition("test.as", source, PositionOf(source, "sort"))!.Path);
+    }
+
+    [Fact]
     public void BuiltinDocumentIncludesConstructorSignatures()
     {
         var service = CreateService();
@@ -918,7 +960,31 @@ public sealed class DefinitionFeatureTests : IDisposable
         var document = service.GetBuiltinDocument("aurora-builtin:/Path.as");
 
         Assert.NotNull(document);
-        Assert.Contains("constructor(String | Path | Null root, ...String | Path segments)", document.Text, StringComparison.Ordinal);
+        Assert.Contains("constructor(String | Path root = null, ...String | Path segments)", document.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuiltinDocumentRendersNullableParametersAsDefaultValues()
+    {
+        var service = CreateService();
+
+        var document = service.GetBuiltinDocument("aurora-builtin:/Date.as");
+
+        Assert.NotNull(document);
+        Assert.Contains("func toString(String format = null) String;", document!.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("| Null format", document.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuiltinDocumentAlignsMemberDocumentationWithMembers()
+    {
+        var service = CreateService();
+
+        var document = service.GetBuiltinDocument("aurora-builtin:/Date.as");
+
+        Assert.NotNull(document);
+        Assert.Contains("    /**\n     * ", document!.Text, StringComparison.Ordinal);
+        Assert.Contains("\n     */\n    const Number year;", document.Text, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -12,6 +12,8 @@ internal sealed class BuiltinDefinitionDocuments
 {
     public const string Scheme = "aurora-builtin";
 
+    private const string MemberIndent = "    ";
+
     private static readonly Regex TypeTokenPattern = new("[A-Za-z_$][A-Za-z0-9_$]*", RegexOptions.Compiled);
     private static readonly string[] SyntheticTypeNames =
     {
@@ -192,7 +194,7 @@ internal sealed class BuiltinDefinitionDocuments
         builder.AppendLine("// Generated from the runtime API catalog for editor navigation.");
         builder.AppendLine();
 
-        AppendDocumentation(builder, uri, symbol.Documentation.GetNotes(_locale), null, null, builtinReferences);
+        AppendDocumentation(builder, uri, string.Empty, symbol.Documentation.GetNotes(_locale), null, null, builtinReferences);
         builder.Append("declare type ");
         var globalRange = builder.AppendToken(uri, symbol.Name);
         builder.AppendLine(" {");
@@ -231,7 +233,7 @@ internal sealed class BuiltinDefinitionDocuments
         builder.AppendLine("// Generated from the runtime API catalog for editor navigation.");
         builder.AppendLine();
 
-        AppendDocumentation(builder, uri, module.Documentation.GetNotes(_locale), null, null, builtinReferences);
+        AppendDocumentation(builder, uri, string.Empty, module.Documentation.GetNotes(_locale), null, null, builtinReferences);
         builder.Append("import ");
         var moduleRange = builder.AppendToken(uri, module.Name);
         builder.Append(" from \"").Append(module.ModulePath).AppendLine("\";");
@@ -279,8 +281,8 @@ internal sealed class BuiltinDefinitionDocuments
         builder.AppendLine("// Generated for declaration-file type navigation.");
         builder.AppendLine();
         builder.AppendLine("/**");
-        builder.Append("* Built-in ").Append(typeName).AppendLine(" type used by runtime API declarations.");
-        builder.AppendLine("*/");
+        builder.Append(" * Built-in ").Append(typeName).AppendLine(" type used by runtime API declarations.");
+        builder.AppendLine(" */");
         builder.Append("declare type ");
         var globalRange = builder.AppendToken(uri, typeName);
         builder.AppendLine(";");
@@ -294,8 +296,15 @@ internal sealed class BuiltinDefinitionDocuments
         BuiltinApiMember constructor,
         List<BuiltinReference> builtinReferences)
     {
-        AppendDocumentation(builder, uri, constructor.Documentation.GetNotes(_locale), constructor.Parameters, constructor.ReturnType, builtinReferences);
-        builder.Append("    constructor(");
+        AppendDocumentation(
+            builder,
+            uri,
+            MemberIndent,
+            constructor.Documentation.GetNotes(_locale),
+            constructor.Parameters,
+            constructor.ReturnType,
+            builtinReferences);
+        builder.Append(MemberIndent).Append("constructor(");
         AppendParameters(builder, uri, constructor.Parameters, builtinReferences);
         builder.AppendLine(");");
     }
@@ -308,8 +317,15 @@ internal sealed class BuiltinDefinitionDocuments
         Dictionary<string, TextRange>? memberRanges,
         List<BuiltinReference> builtinReferences)
     {
-        AppendDocumentation(builder, uri, member.Documentation.GetNotes(_locale), member.Parameters, member.ReturnType, builtinReferences);
-        builder.Append("    ");
+        AppendDocumentation(
+            builder,
+            uri,
+            MemberIndent,
+            member.Documentation.GetNotes(_locale),
+            member.Parameters,
+            member.ReturnType,
+            builtinReferences);
+        builder.Append(MemberIndent);
         if (!instanceMember)
         {
             builder.Append("static ");
@@ -323,7 +339,7 @@ internal sealed class BuiltinDefinitionDocuments
             builder.Append("(");
             AppendParameters(builder, uri, member.Parameters, builtinReferences);
             builder.Append(") ");
-            AppendType(builder, uri, member.ReturnType, BuiltinTypeFormatter.TypeUsage.Return, optional: false, variadic: false, builtinReferences);
+            AppendType(builder, uri, member.ReturnType, BuiltinTypeFormatter.TypeUsage.Return, builtinReferences);
             builder.AppendLine(";");
             return;
         }
@@ -333,7 +349,7 @@ internal sealed class BuiltinDefinitionDocuments
             builder.Append("const ");
         }
 
-        AppendType(builder, uri, member.ReturnType, BuiltinTypeFormatter.TypeUsage.Value, optional: false, variadic: false, builtinReferences);
+        AppendType(builder, uri, member.ReturnType, BuiltinTypeFormatter.TypeUsage.Value, builtinReferences);
         builder.Append(" ");
         var fieldRange = builder.AppendToken(uri, member.Name);
         RecordMemberRange(memberRanges, member.Name, fieldRange);
@@ -370,14 +386,20 @@ internal sealed class BuiltinDefinitionDocuments
                 builder.Append("...");
             }
 
-            AppendType(builder, uri, parameter.Type, BuiltinTypeFormatter.TypeUsage.Value, parameter.Optional, variadic: false, builtinReferences);
+            AppendFormattedType(builder, uri, BuiltinTypeFormatter.FormatParameterType(parameter), builtinReferences);
             builder.Append(" ").Append(BuiltinTypeFormatter.SafeParameterName(parameter.Name, i));
+            var defaultLiteral = BuiltinTypeFormatter.FormatParameterDefault(parameter);
+            if (defaultLiteral != null)
+            {
+                builder.Append(" = ").Append(defaultLiteral);
+            }
         }
     }
 
     private void AppendDocumentation(
         DocumentTextBuilder builder,
         string uri,
+        string indent,
         IReadOnlyList<string> notes,
         IReadOnlyList<BuiltinApiParameter>? parameters,
         string? returnType,
@@ -390,10 +412,11 @@ internal sealed class BuiltinDefinitionDocuments
             return;
         }
 
-        builder.AppendLine("/**");
+        var continuation = indent + " * ";
+        builder.Append(indent).AppendLine("/**");
         for (var i = 0; i < notes.Count; i++)
         {
-            builder.Append("* ").AppendLine(notes[i]);
+            builder.Append(continuation).AppendLine(notes[i]);
         }
 
         if (hasParameters)
@@ -401,28 +424,34 @@ internal sealed class BuiltinDefinitionDocuments
             for (var i = 0; i < parameters!.Count; i++)
             {
                 var parameter = parameters[i];
-                var type = BuiltinTypeFormatter.FormatType(parameter.Type, BuiltinTypeFormatter.TypeUsage.Value, parameter.Optional, parameter.Variadic);
+                var type = BuiltinTypeFormatter.FormatParameterType(parameter);
                 builder
-                    .Append("* @param ")
+                    .Append(continuation)
+                    .Append("@param ")
                     .Append(BuiltinTypeFormatter.SafeParameterName(parameter.Name, i))
                     .Append(" ");
                 AppendFormattedType(builder, uri, type, builtinReferences);
+                var defaultLiteral = BuiltinTypeFormatter.FormatParameterDefault(parameter);
+                if (defaultLiteral != null)
+                {
+                    builder.Append(" = ").Append(defaultLiteral);
+                }
                 builder.AppendLine(".");
             }
         }
 
         if (hasReturnType)
         {
-            var type = BuiltinTypeFormatter.FormatType(returnType!, BuiltinTypeFormatter.TypeUsage.Return, optional: false, variadic: false);
+            var type = BuiltinTypeFormatter.FormatType(returnType!, BuiltinTypeFormatter.TypeUsage.Return);
             if (!string.Equals(type, "void", StringComparison.Ordinal))
             {
-                builder.Append("* @returns ");
+                builder.Append(continuation).Append("@returns ");
                 AppendFormattedType(builder, uri, type, builtinReferences);
                 builder.AppendLine(".");
             }
         }
 
-        builder.AppendLine("*/");
+        builder.Append(indent).AppendLine(" */");
     }
 
     private void AppendFormattedType(
@@ -454,11 +483,9 @@ internal sealed class BuiltinDefinitionDocuments
         string uri,
         string rawType,
         BuiltinTypeFormatter.TypeUsage usage,
-        bool optional,
-        bool variadic,
         List<BuiltinReference> builtinReferences)
     {
-        var type = BuiltinTypeFormatter.FormatType(rawType, usage, optional, variadic);
+        var type = BuiltinTypeFormatter.FormatType(rawType, usage);
         AppendFormattedType(builder, uri, type, builtinReferences);
     }
 

@@ -284,6 +284,22 @@ internal static class AuroraShapeQuery
         reference = null!;
         resolveModule = useModule;
         resolvePath = usePath ?? string.Empty;
+        if (expression != null)
+        {
+            var resolver = new ExpressionTypeResolver(
+                useModule,
+                workspace: index,
+                modulePath: usePath);
+            if (resolver.TryResolve(
+                    expression,
+                    out reference,
+                    out resolveModule,
+                    out resolvePath))
+            {
+                return true;
+            }
+        }
+
         switch (expression)
         {
             case CheckExpression check:

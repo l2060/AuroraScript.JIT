@@ -471,6 +471,36 @@ public sealed class TypedDocumentSerializationTests
     }
 
     [Fact]
+    public void NativeTypedDocumentsCanOptIntoDynamicMemberRoundTrips()
+    {
+        var engine = new AuroraEngine(EngineOptions.Default.WithCompiler(compiler =>
+            compiler.WithNativeTypes(typeof(NativeRecord))));
+        var record = new NativeRecord("Aurora");
+        record.Define("tag", ScriptDatum.FromString("origin"));
+        record.Define(
+            "locked",
+            ScriptDatum.FromBoolean(true),
+            writeable: false,
+            enumerable: true);
+
+        var text = TypedDocumentSerializer.Serialize(
+            engine,
+            ScriptDatum.FromObject(record),
+            new TypedDocumentOptions { Indented = false });
+
+        Assert.Equal(
+            "NativeRecord {name \"Aurora\",tag \"origin\",readonly locked true}",
+            text);
+
+        var restored = Assert.IsType<NativeRecord>(
+            TypedDocumentSerializer.Deserialize(engine, text).Object);
+        Assert.Equal("Aurora", restored.Name);
+        Assert.Equal("origin", restored.GetPropertyDatum(null, "tag").StringText);
+        Assert.True(restored.GetPropertyDatum(null, "locked").Boolean);
+        Assert.Throws<AuroraRuntimeException>(() => restored.DeletePropertyValue("locked"));
+    }
+
+    [Fact]
     public void NativeTypedDocumentsRoundTripScalarBodies()
     {
         var engine = new AuroraEngine(EngineOptions.Default.WithCompiler(compiler =>

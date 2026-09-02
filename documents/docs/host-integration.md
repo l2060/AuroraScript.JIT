@@ -644,6 +644,17 @@ Implement `INativeTypedDocument` on a native instance class so script `tdoc Type
 
 `WriteTypedDocument` chooses the canonical stored shape. The first `WriteMember` call emits an object body (`Vec2 {x 3,y 4}`); the first `WriteElement` call emits an array body (`Vec2 [3,4]`); the first `WriteValue` call emits a scalar body (`User "a,b,c"`, `State 10000000000`, `Flag false`). Do not mix those calls on one write. `WriteValue` accepts only null, boolean, number, or string. `ReadTypedDocument` handles all three shapes through one input: inspect `IsMember` / `IsElement` / `IsValue`, then get `MemberName`, `ElementIndex`, and `Value`. Array form is the compact layout for vectors; scalar form is the compact layout for ids, flags, and packed strings.
 
+Dynamic ScriptObject properties are not included by default: each NativeType
+decides whether they belong to its persistent contract. An object-body type can
+opt in by calling `output.WriteDynamicMembers(this)` after its native
+`WriteMember` calls, then route accepted extra input through
+`input.DefineDynamicMember(this)`. These helpers preserve enumerable readonly
+metadata. They cannot be mixed with array or scalar bodies.
+
+`JSON.stringify` follows runtime property enumeration instead of the TDoc
+contract. It includes exported enumerable native fields and enumerable dynamic
+properties automatically; native methods remain excluded.
+
 Construction is automatic. If the type has no user constructor, the NativeType generator already emits a parameterless constructor. If the type has a script constructor such as `Vec2(double x, double y)`, the generator emits `CreateTypedDocument()` so TDoc does not call that constructor with dummy arguments. Write a factory yourself only when construction needs extra setup. Member, element, and scalar assignment receive `ScriptDatum` (numbers and booleans do not allocate). Serialization writes through `TypedDocumentOutput`, a ref struct that must not be stored.
 
 ```csharp

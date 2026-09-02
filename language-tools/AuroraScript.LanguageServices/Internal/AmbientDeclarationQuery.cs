@@ -3,6 +3,7 @@ using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Compiler.GlobalDeclarations;
+using AuroraScript.LanguageServices.Builtins;
 using AuroraScript.LanguageServices.Features.Completion;
 using AuroraScript.LanguageServices.Features.Definition;
 using AuroraScript.LanguageServices.Features.Hover;
@@ -265,10 +266,22 @@ internal static class AmbientDeclarationQuery
         AuroraModuleIndex module,
         AstQueryContext context,
         TextPosition position,
-        out HoverResult hover)
+        out HoverResult hover,
+        AuroraWorkspaceIndex? index = null,
+        BuiltinApiCatalog? builtins = null)
     {
         hover = null!;
-        if (!TryMatchSymbol(catalog, module, context, position, out var ownerName, out var name, out var instanceMembers, out var range))
+        if (!TryMatchSymbol(
+                catalog,
+                module,
+                context,
+                position,
+                out var ownerName,
+                out var name,
+                out var instanceMembers,
+                out var range,
+                index,
+                builtins))
         {
             return false;
         }
@@ -310,10 +323,22 @@ internal static class AmbientDeclarationQuery
         AuroraModuleIndex module,
         AstQueryContext context,
         TextPosition position,
-        out DefinitionLocation definition)
+        out DefinitionLocation definition,
+        AuroraWorkspaceIndex? index = null,
+        BuiltinApiCatalog? builtins = null)
     {
         definition = null!;
-        if (!TryMatchSymbol(catalog, module, context, position, out var ownerName, out var name, out var instanceMembers, out _))
+        if (!TryMatchSymbol(
+                catalog,
+                module,
+                context,
+                position,
+                out var ownerName,
+                out var name,
+                out var instanceMembers,
+                out _,
+                index,
+                builtins))
         {
             return false;
         }
@@ -358,7 +383,9 @@ internal static class AmbientDeclarationQuery
         AmbientContractCatalog catalog,
         AuroraModuleIndex? module,
         AstQueryContext context,
-        TextPosition position)
+        TextPosition position,
+        AuroraWorkspaceIndex? index = null,
+        BuiltinApiCatalog? builtins = null)
     {
         var call = context.Call;
         if (call == null)
@@ -379,18 +406,45 @@ internal static class AmbientDeclarationQuery
         }
         else if (call.Target is GetPropertyExpression
             {
-                Object: NameExpression owner,
+                Object: var receiver,
                 Property: NameExpression member
             })
         {
-            if (catalog.TryGetMember(owner.Identifier.Value, member.Identifier.Value, instanceMembers: false, out var staticMember) &&
+            var owner = receiver as NameExpression;
+            var typeResolver = module == null
+                ? null
+                : new ExpressionTypeResolver(
+                    module.Module,
+                    builtins: builtins,
+                    ambient: catalog,
+                    workspace: index,
+                    modulePath: module.Path);
+            if (owner != null &&
+                (typeResolver == null ||
+                    !typeResolver.IsSourceDefinedReference(owner)) &&
+                catalog.TryGetMember(owner.Identifier.Value, member.Identifier.Value, instanceMembers: false, out var staticMember) &&
                 staticMember.Kind == AmbientMemberKind.Function)
             {
                 callable = staticMember;
                 ownerName = owner.Identifier.Value;
                 callableName = member.Identifier.Value;
             }
+            else if (typeResolver != null &&
+                typeResolver.TryResolve(
+                        receiver,
+                        out var resolvedType,
+                        out _,
+                        out _) &&
+                catalog.TryGetRoot(resolvedType.Name, out _) &&
+                catalog.TryGetMember(resolvedType.Name, member.Identifier.Value, instanceMembers: true, out var resolvedMember) &&
+                resolvedMember.Kind == AmbientMemberKind.Function)
+            {
+                callable = resolvedMember;
+                ownerName = resolvedType.Name;
+                callableName = member.Identifier.Value;
+            }
             else if (module != null &&
+                owner != null &&
                 TryGetConstructedClassName(module, owner.Identifier.Value, position, out var className) &&
                 catalog.TryGetMember(className, member.Identifier.Value, instanceMembers: true, out var instanceMember) &&
                 instanceMember.Kind == AmbientMemberKind.Function)
@@ -476,7 +530,9 @@ internal static class AmbientDeclarationQuery
         out string? ownerName,
         out string name,
         out bool instanceMembers,
-        out TextRange range)
+        out TextRange range,
+        AuroraWorkspaceIndex? index,
+        BuiltinApiCatalog? builtins)
     {
         ownerName = null;
         name = string.Empty;
@@ -485,25 +541,47 @@ internal static class AmbientDeclarationQuery
         var localIndex = AuroraLocalSymbolIndex.Build(module);
         if (context.PropertyAccess != null &&
             context.IsOnPropertyName &&
-            context.PropertyAccess.Object is NameExpression owner &&
             context.PropertyAccess.Property is NameExpression property)
         {
             range = TextRange.FromSourceSpan(property.Identifier.Range);
             name = property.Identifier.Value;
-            if (StringComparer.Ordinal.Equals(owner.Identifier.Value, "global") &&
+            var receiver = context.PropertyAccess.Object;
+            var owner = receiver as NameExpression;
+            if (owner != null &&
+                StringComparer.Ordinal.Equals(owner.Identifier.Value, "global") &&
                 !IsShadowed(module, localIndex, position, "global"))
             {
                 return catalog.TryGetRoot(name, out _);
             }
 
-            if (!IsShadowed(module, localIndex, position, owner.Identifier.Value) &&
+            if (owner != null &&
+                !IsShadowed(module, localIndex, position, owner.Identifier.Value) &&
                 catalog.TryGetRoot(owner.Identifier.Value, out _))
             {
                 ownerName = owner.Identifier.Value;
                 return true;
             }
 
-            if (TryGetConstructedClassName(module, owner.Identifier.Value, position, out var className) &&
+            var resolver = new ExpressionTypeResolver(
+                module.Module,
+                builtins: builtins,
+                ambient: catalog,
+                workspace: index,
+                modulePath: module.Path);
+            if (resolver.TryResolve(
+                    context.PropertyAccess.Object,
+                    out var resolvedType,
+                    out _,
+                    out _) &&
+                catalog.TryGetRoot(resolvedType.Name, out _))
+            {
+                ownerName = resolvedType.Name;
+                instanceMembers = true;
+                return true;
+            }
+
+            if (owner != null &&
+                TryGetConstructedClassName(module, owner.Identifier.Value, position, out var className) &&
                 catalog.TryGetRoot(className, out _))
             {
                 ownerName = className;

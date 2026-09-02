@@ -390,6 +390,28 @@ namespace AuroraScript.Runtime.Serialization
             output.Complete();
         }
 
+        internal int WriteNativeDynamicMembers(ScriptObject value, int writtenCount)
+        {
+            var properties = value.OwnProperties;
+            for (var index = 0; index < properties.Length; index++)
+            {
+                ref readonly var metadata = ref properties[index];
+                if (!metadata.Meta.Enumerable) continue;
+                var property = value.GetOwnProperty(metadata.Meta.Slot);
+                if (property.IsAccessor) continue;
+                if (TryWriteNativeMember(
+                    metadata.Name,
+                    property.Datum,
+                    metadata.Meta.Writable,
+                    writtenCount == 0))
+                {
+                    writtenCount++;
+                }
+            }
+
+            return writtenCount;
+        }
+
         private void WriteArray(ScriptArray value)
         {
             var length = value.Length;

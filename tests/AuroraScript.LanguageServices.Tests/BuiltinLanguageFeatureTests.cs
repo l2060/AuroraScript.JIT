@@ -31,6 +31,108 @@ public sealed class BuiltinLanguageFeatureTests
     }
 
     [Fact]
+    public void InfersBuiltinInstanceMembersFromExpressionsAndInitializers()
+    {
+        const string source =
+            """
+            @module(TEST);
+            export func run(Number iterations) {
+                var map = new HashMap();
+                map.set(1, true);
+                const paragraph = "The quick brown fox.";
+                paragraph.match(/fox/);
+                "abc123".replace(/\d+/, "x");
+                /profile\.json$/i.test("profile.json");
+                var keys = [];
+                keys.push("123");
+                keys.sort();
+                var size = keys.length;
+                var arr = Array.withCapacity(iterations);
+                arr.push(1);
+                return size;
+            }
+            """;
+        var service = CreateService();
+
+        Assert.Contains(
+            "func set(",
+            service.GetHover("test.as", source, PositionOf(source, "set"))!.Contents,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "func match(",
+            service.GetHover("test.as", source, PositionOf(source, "match"))!.Contents,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "func replace(",
+            service.GetHover("test.as", source, PositionOf(source, "replace"))!.Contents,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "func test(",
+            service.GetHover("test.as", source, PositionOf(source, "test"))!.Contents,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "func push(",
+            service.GetHover("test.as", source, PositionOf(source, "push"))!.Contents,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "func sort(",
+            service.GetHover("test.as", source, PositionOf(source, "sort"))!.Contents,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Number length",
+            service.GetHover("test.as", source, PositionOfLast(source, "length"))!.Contents,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "func push(",
+            service.GetHover("test.as", source, PositionOfLast(source, "push"))!.Contents,
+            StringComparison.Ordinal);
+
+        var completions = service.GetCompletions(
+            "test.as",
+            source,
+            PositionAfter(source, "keys."));
+        Assert.Contains(completions.Items, item => item.Label == "push");
+        Assert.Contains(completions.Items, item => item.Label == "sort");
+        Assert.Contains(completions.Items, item => item.Label == "length");
+
+        var signature = service.GetSignatureHelp(
+            "test.as",
+            source,
+            PositionOf(source, "1, true"));
+        Assert.NotNull(signature);
+        Assert.StartsWith("func set(", signature!.Signatures[0].Label, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void HoverShowsStringifyDefaultArgumentsInsteadOfNullableUnions()
+    {
+        const string source =
+            """
+            @module(TEST);
+            export func run() {
+                return [JSON.stringify({}), TDoc.stringify({})];
+            }
+            """;
+        var service = CreateService();
+
+        var jsonHover = service.GetHover("test.as", source, PositionOf(source, "stringify"));
+        Assert.NotNull(jsonHover);
+        Assert.Contains(
+            "static func stringify(Object value, Boolean indented = false) String",
+            jsonHover!.Contents,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("Boolean | Null", jsonHover.Contents, StringComparison.Ordinal);
+
+        var tdocHover = service.GetHover("test.as", source, PositionOfLast(source, "stringify"));
+        Assert.NotNull(tdocHover);
+        Assert.Contains(
+            "static func stringify(Object value, Boolean indented = false, Boolean emitTypes = false) String",
+            tdocHover!.Contents,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("Boolean | Null", tdocHover.Contents, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void HoverReturnsBuiltinOwnerDocumentationForMemberAccess()
     {
         const string source =
@@ -391,7 +493,7 @@ public sealed class BuiltinLanguageFeatureTests
         Assert.Contains("callback(null, response)", hover.Contents, StringComparison.Ordinal);
         Assert.NotNull(signature);
         Assert.Equal(
-            "static func getAsync(String url, HttpRequestOptions | Null options, Function callback) Boolean",
+            "static func getAsync(String url, HttpRequestOptions options = null, Function callback) Boolean",
             Assert.Single(signature!.Signatures).Label);
     }
 
@@ -573,7 +675,7 @@ public sealed class BuiltinLanguageFeatureTests
 
         Assert.NotNull(signatureHelp);
         var signature = Assert.Single(signatureHelp!.Signatures);
-        Assert.Equal("constructor(String | Path | Null root, ...String | Path segments)", signature.Label);
+        Assert.Equal("constructor(String | Path root = null, ...String | Path segments)", signature.Label);
         Assert.Equal(1, signatureHelp.ActiveParameter);
         Assert.Equal(2, signature.Parameters.Count);
     }
@@ -594,7 +696,7 @@ public sealed class BuiltinLanguageFeatureTests
 
         Assert.NotNull(signatureHelp);
         var signature = Assert.Single(signatureHelp!.Signatures);
-        Assert.Equal("constructor(Object | Null value)", signature.Label);
+        Assert.Equal("constructor(Object value = null)", signature.Label);
         Assert.Equal(0, signatureHelp.ActiveParameter);
     }
 
@@ -614,7 +716,7 @@ public sealed class BuiltinLanguageFeatureTests
 
         Assert.Contains(completions.Items, item =>
             item.Label == "Path" &&
-            item.Detail == "constructor(String | Path | Null root, ...String | Path segments)");
+            item.Detail == "constructor(String | Path root = null, ...String | Path segments)");
     }
 
     [Fact]

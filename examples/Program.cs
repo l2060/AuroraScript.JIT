@@ -55,7 +55,7 @@ namespace Examples
         {
             optimization.StackTrace = false;
             optimization.ModuleConstInlining = true;
-            optimization.Level = OptimizeOptions.Release;
+            optimization.Level = OptimizeOptions.Debug;
         });
 
 

@@ -95,6 +95,45 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
         "in"
     };
 
+    private static readonly HashSet<string> ReservedWords = new(StringComparer.Ordinal)
+    {
+        "as",
+        "break",
+        "catch",
+        "const",
+        "continue",
+        "debugger",
+        "declare",
+        "delete",
+        "else",
+        "enum",
+        "export",
+        "false",
+        "finally",
+        "for",
+        "from",
+        "func",
+        "function",
+        "if",
+        "import",
+        "in",
+        "include",
+        "native",
+        "new",
+        "null",
+        "of",
+        "readonly",
+        "return",
+        "static",
+        "throw",
+        "true",
+        "try",
+        "type",
+        "typeof",
+        "var",
+        "while"
+    };
+
     private static readonly HashSet<string> BuiltinVariables = new(StringComparer.Ordinal)
     {
         "global",
@@ -1046,9 +1085,11 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
             string.Equals(keyword, "const", StringComparison.Ordinal))
         {
             var nameStart = SkipTrivia(text, keywordEnd);
-            if (TryReadIdentifier(text, nameStart, out _, out _, out var declaredName))
+            if (TryReadIdentifier(text, nameStart, out _, out var declaredEnd, out var declaredName))
             {
-                name = declaredName;
+                name = TryReadTypedDeclarationName(text, declaredEnd, out _, out _, out var typedName)
+                    ? typedName
+                    : declaredName;
                 kind = LightweightSymbolKind.DeclaredGlobal;
                 return true;
             }
@@ -1120,6 +1161,13 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
 
         if (TryReadIdentifier(text, nameStart, out var tokenStart, out var tokenEnd, out var name))
         {
+            if (TryReadTypedDeclarationName(text, tokenEnd, out var typedStart, out var typedEnd, out var typedName))
+            {
+                tokenStart = typedStart;
+                tokenEnd = typedEnd;
+                name = typedName;
+            }
+
             scope.Declare(name, LightweightSymbolKind.Local);
             index.AddLocalDeclarationSpan(tokenStart, tokenEnd);
             return;
@@ -1796,6 +1844,88 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
 
         value = text.Substring(start, tokenEnd - start);
         return true;
+    }
+
+    /// <summary>
+    /// Recognizes the typed declaration form <c>const Number year;</c>, where the identifier
+    /// following <c>const</c>/<c>var</c> is a type reference and the declared name comes after it.
+    /// </summary>
+    private static bool TryReadTypedDeclarationName(
+        string text,
+        int typeEnd,
+        out int tokenStart,
+        out int tokenEnd,
+        out string value)
+    {
+        tokenStart = typeEnd;
+        tokenEnd = typeEnd;
+        value = string.Empty;
+
+        var nameStart = SkipTrivia(text, SkipTypeReferenceSuffix(text, typeEnd));
+        if (!TryReadIdentifier(text, nameStart, out var nameTokenStart, out var nameTokenEnd, out var name) ||
+            ReservedWords.Contains(name))
+        {
+            return false;
+        }
+
+        var terminator = SkipTrivia(text, nameTokenEnd);
+        if (terminator >= text.Length)
+        {
+            return false;
+        }
+
+        var current = text[terminator];
+        var isAssignment = current == '=' &&
+            (terminator + 1 >= text.Length || text[terminator + 1] != '=');
+        if (current != ';' && current != ',' && !isAssignment)
+        {
+            return false;
+        }
+
+        tokenStart = nameTokenStart;
+        tokenEnd = nameTokenEnd;
+        value = name;
+        return true;
+    }
+
+    private static int SkipTypeReferenceSuffix(string text, int start)
+    {
+        var i = start;
+        while (true)
+        {
+            var next = SkipTrivia(text, i);
+            if (next >= text.Length)
+            {
+                return i;
+            }
+
+            if (text[next] == '[')
+            {
+                var close = SkipTrivia(text, next + 1);
+                if (close >= text.Length || text[close] != ']')
+                {
+                    return i;
+                }
+
+                i = close + 1;
+                continue;
+            }
+
+            if (text[next] == '.' ||
+                (text[next] == '|' && (next + 1 >= text.Length || text[next + 1] != '|')))
+            {
+                var memberStart = SkipTrivia(text, next + 1);
+                if (!TryReadIdentifier(text, memberStart, out _, out var memberEnd, out _))
+                {
+                    return i;
+                }
+
+                i = memberEnd;
+                continue;
+            }
+
+            return i;
+        }
     }
 
     private static bool PreviousSignificantIdentifierIs(string text, int start, string expected)

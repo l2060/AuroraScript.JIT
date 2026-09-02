@@ -27,6 +27,14 @@ namespace AuroraScript.Runtime.Serialization
     /// report any of the three shapes through <see cref="ReadTypedDocument"/>.
     /// </para>
     /// <para>
+    /// Dynamic <see cref="ScriptObject"/> properties are opt-in. An object-body
+    /// implementation may call
+    /// <see cref="TypedDocumentOutput.WriteDynamicMembers(ScriptObject)"/> and
+    /// route accepted extra member input through
+    /// <see cref="TypedDocumentInput.DefineDynamicMember(ScriptObject)"/>.
+    /// Array and scalar bodies cannot contain named dynamic members.
+    /// </para>
+    /// <para>
     /// The TDoc type-name prefix comes from
     /// <see cref="Hosting.AuroraNativeTypeAttribute"/> through the engine
     /// catalog, so the implementation does not declare its own script name.

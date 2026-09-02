@@ -31,6 +31,28 @@ internal static class AuroraCompletionResolver
             CompletionResult objectCompletions = new CompletionResult(Array.Empty<CompletionItem>());
             CompletionResult importCompletions = new CompletionResult(Array.Empty<CompletionItem>());
             CompletionResult ambientCompletions = new CompletionResult(Array.Empty<CompletionItem>());
+            if (ambient != null)
+            {
+                var typeResolver = new ExpressionTypeResolver(
+                    module.Module,
+                    ambient: ambient,
+                    workspace: index,
+                    modulePath: module.Path);
+                if (typeResolver.TryResolve(
+                        context.PropertyAccess.Object,
+                        out var ownerType,
+                        out _,
+                        out _) &&
+                    ambient.TryGetRoot(ownerType.Name, out var ownerRoot) &&
+                    ownerRoot.Kind == GlobalDeclarationKind.Type)
+                {
+                    ambientCompletions = AmbientDeclarationQuery.GetMemberCompletions(
+                        ambient,
+                        ownerType.Name,
+                        instanceMembers: true);
+                }
+            }
+
             if (TryResolveOwnerName(context.PropertyAccess.Object, out var ownerName))
             {
                 objectCompletions = AuroraDefinitionResolver.GetObjectMemberCompletions(
@@ -39,12 +61,14 @@ internal static class AuroraCompletionResolver
                     ownerName,
                     position);
                 importCompletions = GetImportMemberCompletions(index, module, ownerName);
-                ambientCompletions = GetAmbientMemberCompletions(
-                    index,
-                    module,
-                    ownerName,
-                    position,
-                    ambient);
+                ambientCompletions = Merge(
+                    ambientCompletions,
+                    GetAmbientMemberCompletions(
+                        index,
+                        module,
+                        ownerName,
+                        position,
+                        ambient));
             }
 
             var merged = Merge(shapeCompletions, objectCompletions, importCompletions, ambientCompletions);

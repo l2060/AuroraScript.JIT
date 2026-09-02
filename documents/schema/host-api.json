@@ -1939,6 +1939,7 @@
         "Construction is supplied by the NativeType generator: a parameterless constructor when the type has none, otherwise CreateTypedDocument(). Host code may still write that factory to customize construction. Factories are compiled once per engine.",
         "WriteTypedDocument chooses the canonical body: WriteMember for Vec2 {x 3,y 4}, WriteElement for Vec2 [3,4], WriteValue for User \"a,b\" / State 1 / Flag false. Do not mix those calls on one write.",
         "ReadTypedDocument handles object members, array elements, and scalar values through one TypedDocumentInput.",
+        "Dynamic ScriptObject properties are opt-in per NativeType. Object-body implementations call TypedDocumentOutput.WriteDynamicMembers(this) and TypedDocumentInput.DefineDynamicMember(this); array and scalar bodies cannot contain named dynamic members.",
         "The TDoc type-name prefix comes from AuroraNativeTypeAttribute through the engine catalog; the implementation does not declare its own script name.",
         "Number and boolean ScriptDatum values do not allocate."
       ]
@@ -1962,7 +1963,8 @@
             "void WriteValue(double value)",
             "void WriteValue(bool value)",
             "void WriteValue(string value)",
-            "void WriteValue(ScriptDatum value)"
+            "void WriteValue(ScriptDatum value)",
+            "void WriteDynamicMembers(ScriptObject source)"
           ]
         }
       }
@@ -1999,6 +2001,10 @@
         "Value": {
           "kind": "property",
           "signature": "ScriptDatum Value"
+        },
+        "DefineDynamicMember": {
+          "kind": "method",
+          "signature": "void DefineDynamicMember(ScriptObject target)"
         },
         "Error": {
           "kind": "method",

@@ -15,20 +15,9 @@ internal static class BuiltinTypeFormatter
         Return
     }
 
-    public static string FormatType(string rawType, TypeUsage usage, bool optional, bool variadic)
+    public static string FormatType(string rawType, TypeUsage usage)
     {
-        var type = FormatTypeCore(rawType, usage);
-        if (optional && !ContainsNullType(rawType) && !string.Equals(type, "void", StringComparison.Ordinal))
-        {
-            type += " | Null";
-        }
-
-        if (!variadic)
-        {
-            return type;
-        }
-
-        return type;
+        return FormatTypeCore(rawType, usage, dropNullMembers: false);
     }
 
     public static string SafeParameterName(string name, int index)
@@ -50,17 +39,51 @@ internal static class BuiltinTypeFormatter
                 builder.Append(", ");
             }
 
-            var parameter = parameters[i];
-            if (parameter.Variadic)
-            {
-                builder.Append("...");
-            }
-
-            builder
-                .Append(FormatType(parameter.Type, TypeUsage.Value, parameter.Optional, variadic: false))
-                .Append(' ')
-                .Append(SafeParameterName(parameter.Name, i));
+            AppendParameter(builder, parameters[i], i);
         }
+    }
+
+    public static void AppendParameter(StringBuilder builder, BuiltinApiParameter parameter, int index)
+    {
+        if (parameter.Variadic)
+        {
+            builder.Append("...");
+        }
+
+        builder
+            .Append(FormatParameterType(parameter))
+            .Append(' ')
+            .Append(SafeParameterName(parameter.Name, index));
+
+        var defaultLiteral = FormatParameterDefault(parameter);
+        if (defaultLiteral != null)
+        {
+            builder.Append(" = ").Append(defaultLiteral);
+        }
+    }
+
+    public static string FormatParameterType(BuiltinApiParameter parameter)
+    {
+        return FormatTypeCore(parameter.Type, TypeUsage.Value, dropNullMembers: !parameter.Variadic);
+    }
+
+    /// <summary>
+    /// Nullable parameters are declared through a <c>null</c> default value instead of a
+    /// <c>| Null</c> union member, so the rendered signature matches how callers omit the argument.
+    /// </summary>
+    public static string? FormatParameterDefault(BuiltinApiParameter parameter)
+    {
+        if (parameter.DefaultValue != null)
+        {
+            return parameter.DefaultValue;
+        }
+
+        if (parameter.Variadic)
+        {
+            return null;
+        }
+
+        return parameter.Optional || ContainsNullType(parameter.Type) ? "null" : null;
     }
 
     public static string FormatMemberSignature(BuiltinApiMember member, bool instanceMember = false)
@@ -75,7 +98,7 @@ internal static class BuiltinTypeFormatter
         {
             builder.Append("func ").Append(member.Name).Append('(');
             AppendMappedParameters(builder, member.Parameters);
-            builder.Append(") ").Append(FormatType(member.ReturnType, TypeUsage.Return, optional: false, variadic: false));
+            builder.Append(") ").Append(FormatType(member.ReturnType, TypeUsage.Return));
             return builder.ToString();
         }
 
@@ -85,7 +108,7 @@ internal static class BuiltinTypeFormatter
         }
 
         builder
-            .Append(FormatType(member.ReturnType, TypeUsage.Value, optional: false, variadic: false))
+            .Append(FormatType(member.ReturnType, TypeUsage.Value))
             .Append(' ')
             .Append(member.Name);
         return builder.ToString();
@@ -157,7 +180,7 @@ internal static class BuiltinTypeFormatter
         return builder.ToString();
     }
 
-    private static string FormatTypeCore(string rawType, TypeUsage usage)
+    private static string FormatTypeCore(string rawType, TypeUsage usage, bool dropNullMembers)
     {
         if (string.IsNullOrWhiteSpace(rawType))
         {
@@ -173,6 +196,11 @@ internal static class BuiltinTypeFormatter
         var mapped = new List<string>(parts.Length);
         for (var i = 0; i < parts.Length; i++)
         {
+            if (dropNullMembers && IsNullTypeName(parts[i]))
+            {
+                continue;
+            }
+
             var part = MapSingleType(parts[i], TypeUsage.Value, wholeType: false);
             if (!mapped.Contains(part))
             {
@@ -180,7 +208,7 @@ internal static class BuiltinTypeFormatter
             }
         }
 
-        return string.Join(" | ", mapped);
+        return mapped.Count == 0 ? "Object" : string.Join(" | ", mapped);
     }
 
     private static string MapSingleType(string rawType, TypeUsage usage, bool wholeType)
@@ -217,16 +245,20 @@ internal static class BuiltinTypeFormatter
         var parts = rawType.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         for (var i = 0; i < parts.Length; i++)
         {
-            var part = parts[i];
-            if (string.Equals(part, "null", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(part, "undefined", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(part, "void", StringComparison.OrdinalIgnoreCase))
+            if (IsNullTypeName(parts[i]))
             {
                 return true;
             }
         }
 
         return false;
+    }
+
+    private static bool IsNullTypeName(string part)
+    {
+        return string.Equals(part, "null", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(part, "undefined", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(part, "void", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsIdentifier(string value)

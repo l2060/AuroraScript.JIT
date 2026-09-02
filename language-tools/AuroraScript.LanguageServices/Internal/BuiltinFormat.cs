@@ -69,10 +69,13 @@ internal static class BuiltinFormat
         }
 
         return (member.ReadOnly ? "readonly " : string.Empty) +
-            BuiltinTypeFormatter.FormatType(member.ReturnType, BuiltinTypeFormatter.TypeUsage.Value, optional: false, variadic: false);
+            BuiltinTypeFormatter.FormatType(member.ReturnType, BuiltinTypeFormatter.TypeUsage.Value);
     }
 
-    public static SignatureInformation FormatSignatureInfo(BuiltinApiMember member, string? locale = null)
+    public static SignatureInformation FormatSignatureInfo(
+        BuiltinApiMember member,
+        string? locale = null,
+        bool instanceMember = false)
     {
         var parameters = new List<SignatureParameter>(member.Parameters.Count);
         for (var i = 0; i < member.Parameters.Count; i++)
@@ -80,12 +83,12 @@ internal static class BuiltinFormat
             var parameter = member.Parameters[i];
             parameters.Add(new SignatureParameter(
                 FormatMappedParameter(parameter, i),
-                BuiltinTypeFormatter.FormatType(parameter.Type, BuiltinTypeFormatter.TypeUsage.Value, parameter.Optional, parameter.Variadic)));
+                BuiltinTypeFormatter.FormatParameterType(parameter)));
         }
 
         return new SignatureInformation(
-            BuiltinTypeFormatter.FormatMemberSignature(member),
-            FormatMember(member, locale),
+            BuiltinTypeFormatter.FormatMemberSignature(member, instanceMember),
+            FormatMember(member, locale, instanceMember),
             parameters);
     }
 
@@ -100,7 +103,7 @@ internal static class BuiltinFormat
             var parameter = constructor.Parameters[i];
             parameters.Add(new SignatureParameter(
                 FormatMappedParameter(parameter, i),
-                BuiltinTypeFormatter.FormatType(parameter.Type, BuiltinTypeFormatter.TypeUsage.Value, parameter.Optional, parameter.Variadic)));
+                BuiltinTypeFormatter.FormatParameterType(parameter)));
         }
 
         var signature = BuiltinTypeFormatter.FormatConstructorSignature(constructor);
@@ -136,15 +139,7 @@ internal static class BuiltinFormat
     private static string FormatMappedParameter(BuiltinApiParameter parameter, int index)
     {
         var builder = new StringBuilder();
-        if (parameter.Variadic)
-        {
-            builder.Append("...");
-        }
-
-        builder
-            .Append(BuiltinTypeFormatter.FormatType(parameter.Type, BuiltinTypeFormatter.TypeUsage.Value, parameter.Optional, variadic: false))
-            .Append(' ')
-            .Append(BuiltinTypeFormatter.SafeParameterName(parameter.Name, index));
+        BuiltinTypeFormatter.AppendParameter(builder, parameter, index);
         return builder.ToString();
     }
 
