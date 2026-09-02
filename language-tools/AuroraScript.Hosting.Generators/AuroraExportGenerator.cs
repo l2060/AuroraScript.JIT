@@ -27,7 +27,6 @@ namespace AuroraScript.Hosting.Generators
     [Generator]
     public sealed partial class AuroraExportGenerator : IIncrementalGenerator
     {
-        private const string BuiltinGlobalAttribute = "AuroraScript.Hosting.AuroraNativeModuleAttribute";
         private const string NativeTypeAttribute = "AuroraScript.Hosting.AuroraNativeTypeAttribute";
         private const string TypedDocumentInterface = "AuroraScript.Runtime.Serialization.INativeTypedDocument";
         private const string ExportAttribute = "AuroraScript.Hosting.AuroraExportAttribute";
@@ -53,20 +52,9 @@ namespace AuroraScript.Hosting.Generators
             "AuroraScript.Hosting",
             DiagnosticSeverity.Error,
             isEnabledByDefault: true);
-        private static readonly DiagnosticDescriptor ManualRegistration = new(
-            "AURORAEXP004",
-            "Aurora exports require manual registration",
-            "{0}",
-            "AuroraScript.Hosting",
-            DiagnosticSeverity.Warning,
-            isEnabledByDefault: true);
 
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
-            var candidates = context.SyntaxProvider.ForAttributeWithMetadataName(
-                BuiltinGlobalAttribute,
-                static (node, _) => node is TypeDeclarationSyntax,
-                static (context, cancellationToken) => ParseBuiltinGlobal(context, cancellationToken));
             var nativeTypes = context.SyntaxProvider.ForAttributeWithMetadataName(
                 NativeTypeAttribute,
                 static (node, _) => node is TypeDeclarationSyntax,
@@ -74,214 +62,12 @@ namespace AuroraScript.Hosting.Generators
             var allNativeTypes = nativeTypes.Collect();
 
             context.RegisterSourceOutput(
-                candidates.Collect(),
-                static (productionContext, models) => Execute(productionContext, models));
-            context.RegisterSourceOutput(
-                candidates.Collect(),
-                static (productionContext, models) =>
-                    EmitCompilerCatalog(productionContext, models));
-            context.RegisterSourceOutput(
                 allNativeTypes,
                 static (productionContext, models) => ExecuteNativeObjects(productionContext, models));
             context.RegisterSourceOutput(
                 allNativeTypes,
                 static (productionContext, models) =>
                     EmitNativeObjectCatalog(productionContext, models));
-        }
-
-        private static BuiltinGlobalModel? ParseBuiltinGlobal(
-            GeneratorAttributeSyntaxContext context,
-            System.Threading.CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            if (context.TargetSymbol is not INamedTypeSymbol typeSymbol)
-            {
-                return null;
-            }
-
-            var globalAttribute = context.Attributes.FirstOrDefault(
-                attribute => attribute.AttributeClass?.ToDisplayString() == BuiltinGlobalAttribute);
-            if (globalAttribute == null)
-            {
-                return null;
-            }
-
-            var diagnostics = new List<Diagnostic>();
-            if (typeSymbol.IsRecord || typeSymbol.IsAbstract)
-            {
-                diagnostics.Add(Diagnostic.Create(
-                    InvalidGlobal,
-                    GetLocation(typeSymbol),
-                    $"Type '{typeSymbol.ToDisplayString()}' must be a non-abstract class."));
-            }
-            if (!IsPartialClass(typeSymbol))
-            {
-                diagnostics.Add(Diagnostic.Create(
-                    InvalidGlobal,
-                    GetLocation(typeSymbol),
-                    $"Type '{typeSymbol.ToDisplayString()}' must be partial to use AuroraNativeModule."));
-            }
-            if (typeSymbol.ContainingType != null || typeSymbol.TypeParameters.Length != 0)
-            {
-                diagnostics.Add(Diagnostic.Create(
-                    InvalidGlobal,
-                    GetLocation(typeSymbol),
-                    $"Type '{typeSymbol.ToDisplayString()}' must be a non-generic top-level class."));
-            }
-            if (typeSymbol.ContainingNamespace.IsGlobalNamespace)
-            {
-                diagnostics.Add(Diagnostic.Create(
-                    InvalidGlobal,
-                    GetLocation(typeSymbol),
-                    $"Type '{typeSymbol.ToDisplayString()}' must be declared in a namespace."));
-            }
-            if (!DerivesFromScriptObject(typeSymbol))
-            {
-                diagnostics.Add(Diagnostic.Create(
-                    InvalidGlobal,
-                    GetLocation(typeSymbol),
-                    $"Type '{typeSymbol.ToDisplayString()}' must derive from ScriptObject."));
-            }
-            if (typeSymbol.GetAttributes().Any(
-                    attribute => attribute.AttributeClass?.ToDisplayString() == NativeTypeAttribute))
-            {
-                diagnostics.Add(Diagnostic.Create(
-                    InvalidGlobal,
-                    GetLocation(typeSymbol),
-                    $"Type '{typeSymbol.ToDisplayString()}' cannot be both AuroraNativeModule and AuroraNativeType."));
-            }
-            if (typeSymbol.InstanceConstructors.Any(
-                    static constructor => !constructor.IsImplicitlyDeclared))
-            {
-                diagnostics.Add(Diagnostic.Create(
-                    ManualRegistration,
-                    GetLocation(typeSymbol),
-                    $"Type '{typeSymbol.ToDisplayString()}' declares an instance constructor and must call RegisterAuroraExports()."));
-            }
-
-            var globalName = globalAttribute.ConstructorArguments.Length > 0
-                ? globalAttribute.ConstructorArguments[0].Value as string
-                : null;
-            if (string.IsNullOrWhiteSpace(globalName))
-            {
-                diagnostics.Add(Diagnostic.Create(
-                    InvalidGlobal,
-                    GetLocation(typeSymbol),
-                    "AuroraNativeModule requires a non-empty global name."));
-                globalName = typeSymbol.Name;
-            }
-
-            var writable = GetNamedBool(globalAttribute, "Writable");
-            var enumerable = GetNamedBool(globalAttribute, "Enumerable");
-
-            var exports = new List<ExportModel>();
-            var constants = new List<ConstantModel>();
-            var exportedNames = new HashSet<string>(StringComparer.Ordinal);
-            var adapterNames = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var member in typeSymbol.GetMembers())
-            {
-                var exportAttribute = member.GetAttributes()
-                    .FirstOrDefault(attribute => attribute.AttributeClass?.ToDisplayString() == ExportAttribute);
-                if (exportAttribute == null)
-                {
-                    continue;
-                }
-
-                if (member is IMethodSymbol methodSymbol &&
-                    methodSymbol.MethodKind == MethodKind.Ordinary &&
-                    methodSymbol.IsStatic &&
-                    !methodSymbol.IsImplicitlyDeclared)
-                {
-                    var export = ParseExport(typeSymbol, methodSymbol, exportAttribute);
-                    if (export != null)
-                    {
-                        if (exportedNames.Add(export.ScriptName))
-                        {
-                            if (adapterNames.Add(export.AdapterMethodName))
-                            {
-                                exports.Add(export);
-                            }
-                            else
-                            {
-                                diagnostics.Add(Diagnostic.Create(
-                                    DuplicateExport,
-                                    GetLocation(member),
-                                    globalName,
-                                    export.ScriptName));
-                            }
-                        }
-                        else
-                        {
-                            diagnostics.Add(Diagnostic.Create(
-                                DuplicateExport,
-                                GetLocation(member),
-                                globalName,
-                                export.ScriptName));
-                        }
-                    }
-                    else
-                    {
-                        diagnostics.Add(Diagnostic.Create(
-                            InvalidExport,
-                            GetLocation(member),
-                            $"Method '{member.ToDisplayString()}' has an unsupported Aurora export signature."));
-                    }
-                }
-                else if (member is IFieldSymbol fieldSymbol &&
-                    fieldSymbol.IsStatic &&
-                    !fieldSymbol.IsImplicitlyDeclared)
-                {
-                    var constant = ParseConstant(fieldSymbol, exportAttribute);
-                    if (constant != null)
-                    {
-                        if (exportedNames.Add(constant.ScriptName))
-                        {
-                            constants.Add(constant);
-                        }
-                        else
-                        {
-                            diagnostics.Add(Diagnostic.Create(
-                                DuplicateExport,
-                                GetLocation(member),
-                                globalName,
-                                constant.ScriptName));
-                        }
-                    }
-                    else
-                    {
-                        diagnostics.Add(Diagnostic.Create(
-                            InvalidExport,
-                            GetLocation(member),
-                            $"Field '{member.ToDisplayString()}' must be a public static readonly double."));
-                    }
-                }
-                else
-                {
-                    diagnostics.Add(Diagnostic.Create(
-                        InvalidExport,
-                        GetLocation(member),
-                        $"Member '{member.ToDisplayString()}' must be a static method or static readonly field."));
-                }
-            }
-
-            exports.Sort(static (left, right) =>
-                string.Compare(left.ScriptName, right.ScriptName, StringComparison.Ordinal));
-            constants.Sort(static (left, right) =>
-                string.Compare(left.ScriptName, right.ScriptName, StringComparison.Ordinal));
-
-            return new BuiltinGlobalModel(
-                typeSymbol.ContainingNamespace.ToDisplayString(),
-                typeSymbol.Name,
-                GetConstructorAccessibility(typeSymbol),
-                !typeSymbol.InstanceConstructors.Any(
-                    constructor => !constructor.IsImplicitlyDeclared),
-                globalName!,
-                writable,
-                enumerable,
-                exports,
-                constants,
-                diagnostics);
         }
 
         private static ExportModel? ParseExport(
@@ -428,121 +214,6 @@ namespace AuroraScript.Hosting.Generators
                 fieldSymbol.ContainingType.ToDisplayString());
         }
 
-        private static void Execute(
-            SourceProductionContext context,
-            ImmutableArray<BuiltinGlobalModel?> models)
-        {
-            var globalNames = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var model in models)
-            {
-                if (model == null)
-                {
-                    continue;
-                }
-                foreach (var diagnostic in model.Diagnostics)
-                {
-                    context.ReportDiagnostic(diagnostic);
-                }
-                if (model.Diagnostics.Any(static diagnostic =>
-                        diagnostic.Severity == DiagnosticSeverity.Error))
-                {
-                    continue;
-                }
-                if (!globalNames.Add(model.GlobalName))
-                {
-                    context.ReportDiagnostic(Diagnostic.Create(
-                        InvalidGlobal,
-                        Location.None,
-                        $"Global '{model.GlobalName}' is declared by more than one AuroraNativeModule type."));
-                    continue;
-                }
-
-                var source = SourceText.From(GenerateSource(model), Encoding.UTF8);
-                context.AddSource(
-                    $"{model.Namespace.Replace('.', '_')}.{model.ClassName}.AuroraExports.g.cs",
-                    source);
-            }
-        }
-
-        private static void EmitCompilerCatalog(
-            SourceProductionContext context,
-            ImmutableArray<BuiltinGlobalModel?> models)
-        {
-            var builder = new StringBuilder();
-            builder.AppendLine("// <auto-generated />");
-            builder.AppendLine("#nullable disable");
-            builder.AppendLine("#pragma warning disable CS1591");
-
-            var count = 0;
-            var globalNames = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var model in models)
-            {
-                if (model == null)
-                {
-                    continue;
-                }
-                if (model.Diagnostics.Any(static diagnostic =>
-                        diagnostic.Severity == DiagnosticSeverity.Error))
-                {
-                    continue;
-                }
-                if (!globalNames.Add(model.GlobalName))
-                {
-                    continue;
-                }
-
-                foreach (var export in model.Exports)
-                {
-                    if (!export.CanDirectCall || export.IsInstance)
-                    {
-                        continue;
-                    }
-
-                    builder.Append("[assembly: global::AuroraScript.Hosting.AuroraGeneratedExportAttribute(");
-                    builder.Append('"').Append(EscapeString(model.GlobalName)).Append("\", ");
-                    builder.Append('"').Append(EscapeString(export.ScriptName)).Append("\", ");
-                    builder.Append("typeof(global::").Append(export.ContainingTypeDisplayName).Append("), ");
-                    builder.Append('"').Append(EscapeString(export.CoreMethodName)).Append("\", ");
-                    builder.Append("global::AuroraScript.Hosting.AuroraExportValueKind.")
-                        .Append(GetCatalogKind(export.ReturnKind)).Append(", new global::AuroraScript.Hosting.AuroraExportValueKind[] { ");
-                    for (var i = 0; i < export.Parameters.Count; i++)
-                    {
-                        if (i != 0)
-                        {
-                            builder.Append(", ");
-                        }
-                        builder.Append("global::AuroraScript.Hosting.AuroraExportValueKind.")
-                            .Append(GetCatalogKind(export.Parameters[i].Kind));
-                    }
-                    builder.Append(" }, ");
-                    builder.Append(export.TakesContext ? "true" : "false").Append(", ");
-                    builder.Append(export.TakesThisObject ? "true" : "false");
-                    builder.AppendLine(")]");
-                    count++;
-                }
-
-                if (!model.Writable)
-                {
-                    foreach (var constant in model.Constants)
-                    {
-                        builder.Append("[assembly: global::AuroraScript.Hosting.AuroraGeneratedConstantAttribute(");
-                        builder.Append('"').Append(EscapeString(model.GlobalName)).Append("\", ");
-                        builder.Append('"').Append(EscapeString(constant.ScriptName)).Append("\", ");
-                        builder.Append("typeof(global::").Append(constant.ContainingTypeDisplayName).Append("), ");
-                        builder.Append('"').Append(EscapeString(constant.FieldName)).AppendLine("\")]");
-                        count++;
-                    }
-                }
-            }
-
-            if (count != 0)
-            {
-                context.AddSource(
-                    "AuroraHostExportCatalog.g.cs",
-                    SourceText.From(builder.ToString(), Encoding.UTF8));
-            }
-        }
-
         private static string GetCatalogKind(ParameterKind kind)
         {
             return kind switch
@@ -570,82 +241,6 @@ namespace AuroraScript.Hosting.Generators
                 ReturnKind.Datum => "Datum",
                 _ => throw new ArgumentOutOfRangeException(nameof(kind))
             };
-        }
-
-        private static string GenerateSource(BuiltinGlobalModel model)
-        {
-            var builder = new StringBuilder();
-            builder.AppendLine("// <auto-generated />");
-            builder.AppendLine("#nullable disable");
-            builder.AppendLine("#pragma warning disable CS1591");
-            builder.AppendLine("using System;");
-            builder.AppendLine("using AuroraScript;");
-            builder.AppendLine("using AuroraScript.Core;");
-            builder.AppendLine("using AuroraScript.Runtime;");
-            builder.AppendLine("using AuroraScript.Runtime.Types;");
-            builder.AppendLine();
-            builder.AppendLine($"namespace {model.Namespace}");
-            builder.AppendLine("{");
-            builder.AppendLine($"    partial class {model.ClassName}");
-            builder.AppendLine("    {");
-
-            if (model.GenerateConstructor)
-            {
-                builder.Append("        ").Append(model.ConstructorAccessibility)
-                    .Append(' ').Append(model.ClassName).AppendLine("()");
-                builder.AppendLine("        {");
-                builder.AppendLine("            RegisterAuroraExports();");
-                builder.AppendLine("        }");
-                builder.AppendLine();
-            }
-
-            builder.AppendLine("        private void RegisterAuroraExports()");
-            builder.AppendLine("        {");
-            foreach (var constant in model.Constants)
-            {
-                builder.Append("            Define(\"");
-                builder.Append(EscapeString(constant.ScriptName));
-                builder.Append("\", ScriptDatum.FromNumber(");
-                builder.Append(constant.FieldName);
-                builder.Append("), writeable: ");
-                builder.Append(model.Writable ? "true" : "false");
-                builder.Append(", enumerable: ");
-                builder.Append(model.Enumerable ? "true" : "false");
-                builder.AppendLine(");");
-            }
-            foreach (var export in model.Exports)
-            {
-                builder.Append("            Define(\"");
-                builder.Append(EscapeString(export.ScriptName));
-                builder.Append("\", ScriptDatum.FromBonding(");
-                builder.Append(export.AdapterMethodName);
-                builder.Append("), writeable: ");
-                builder.Append(model.Writable ? "true" : "false");
-                builder.Append(", enumerable: ");
-                builder.Append(model.Enumerable ? "true" : "false");
-                builder.AppendLine(");");
-            }
-            builder.AppendLine("        }");
-            builder.AppendLine();
-
-            foreach (var export in model.Exports)
-            {
-                builder.AppendLine("        public static void " + export.AdapterMethodName + "(");
-                builder.AppendLine("            ScriptContext ctx,");
-                builder.AppendLine("            ScriptObject thisObject,");
-                builder.AppendLine("            Span<ScriptDatum> args,");
-                builder.AppendLine("            ref ScriptDatum result)");
-                builder.AppendLine("        {");
-                AppendParameterCoercion(builder, export);
-                AppendCoreInvocation(builder, export);
-                builder.AppendLine("        }");
-                builder.AppendLine();
-            }
-
-            builder.AppendLine("    }");
-            builder.AppendLine("}");
-
-            return builder.ToString();
         }
 
         private static void AppendParameterCoercion(StringBuilder builder, ExportModel export)
@@ -1178,19 +773,6 @@ namespace AuroraScript.Hosting.Generators
             return builder.ToString();
         }
 
-        private static bool GetNamedBool(AttributeData attribute, string name)
-        {
-            foreach (var argument in attribute.NamedArguments)
-            {
-                if (argument.Key == name && argument.Value.Value is bool value)
-                {
-                    return value;
-                }
-            }
-
-            return false;
-        }
-
         private static TEnum GetNamedEnum<TEnum>(AttributeData attribute, string name)
             where TEnum : struct
         {
@@ -1293,21 +875,6 @@ namespace AuroraScript.Hosting.Generators
             return false;
         }
 
-        private static bool DerivesFromScriptObject(INamedTypeSymbol typeSymbol)
-        {
-            for (var current = typeSymbol; current != null; current = current.BaseType)
-            {
-                if (string.Equals(
-                        current.ToDisplayString(),
-                        "AuroraScript.Runtime.Types.ScriptObject",
-                        StringComparison.Ordinal))
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
-
         private static Location GetLocation(ISymbol symbol)
         {
             return symbol.Locations.FirstOrDefault(static location => location.IsInSource)
@@ -1369,44 +936,6 @@ namespace AuroraScript.Hosting.Generators
             }
 
             return null;
-        }
-
-        private sealed class BuiltinGlobalModel
-        {
-            public BuiltinGlobalModel(
-                string namespaceName,
-                string className,
-                string constructorAccessibility,
-                bool generateConstructor,
-                string globalName,
-                bool writable,
-                bool enumerable,
-                IReadOnlyList<ExportModel> exports,
-                IReadOnlyList<ConstantModel> constants,
-                IReadOnlyList<Diagnostic> diagnostics)
-            {
-                Namespace = namespaceName;
-                ClassName = className;
-                ConstructorAccessibility = constructorAccessibility;
-                GenerateConstructor = generateConstructor;
-                GlobalName = globalName;
-                Writable = writable;
-                Enumerable = enumerable;
-                Exports = exports;
-                Constants = constants;
-                Diagnostics = diagnostics;
-            }
-
-            public string Namespace { get; }
-            public string ClassName { get; }
-            public string ConstructorAccessibility { get; }
-            public bool GenerateConstructor { get; }
-            public string GlobalName { get; }
-            public bool Writable { get; }
-            public bool Enumerable { get; }
-            public IReadOnlyList<ExportModel> Exports { get; }
-            public IReadOnlyList<ConstantModel> Constants { get; }
-            public IReadOnlyList<Diagnostic> Diagnostics { get; }
         }
 
         private sealed class ConstantModel

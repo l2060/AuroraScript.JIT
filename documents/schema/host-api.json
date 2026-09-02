@@ -2293,33 +2293,6 @@
       "namespace": "AuroraScript.Runtime.Types",
       "summary": "Marker implemented by generated native-type instances so unannotated CLR members are not exposed through reflection fallback."
     },
-    "AuroraNativeModuleAttribute": {
-      "kind": "class",
-      "namespace": "AuroraScript.Hosting",
-      "summary": "Deprecated compatibility attribute. Use AuroraNativeTypeAttribute.",
-      "members": {
-        "Constructor": {
-          "kind": "constructor",
-          "signature": "AuroraNativeModuleAttribute(string globalName)"
-        },
-        "GlobalName": {
-          "kind": "property",
-          "signature": "string GlobalName"
-        },
-        "Writable": {
-          "kind": "property",
-          "signature": "bool Writable"
-        },
-        "Enumerable": {
-          "kind": "property",
-          "signature": "bool Enumerable"
-        }
-      },
-      "notes": [
-        "Compatibility alias only. New host Types must use AuroraNativeTypeAttribute.",
-        "Do not use this attribute for Math, JSON, TDoc, console, HotPatch, or application native Types."
-      ]
-    },
     "AuroraExportAttribute": {
       "kind": "class",
       "namespace": "AuroraScript.Hosting",

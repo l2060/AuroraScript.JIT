@@ -784,7 +784,6 @@ var options = EngineOptions.Default.WithCompiler(compiler =>
 ### Type and generator rules
 
 - The class must be a non-abstract, non-generic, top-level `partial` class in a namespace.
-- If you write an instance constructor, call `RegisterAuroraExports()` from it; otherwise the generator emits a constructor. Missing that call is `AURORAEXP004`.
 - Implementing `INativeTypedDocument` does not require a factory. The generator emits construction for TDoc. Write `CreateTypedDocument()` only when the empty instance needs extra setup.
 - Invalid globals are `AURORAEXP001`; unsupported members/signatures are `AURORAEXP002`; duplicate script names are `AURORAEXP003`.
 - Unsupported: `async`, `Span`/`ref`/`out`/`in`, generic methods, nested types, records, empty export names, `params` with `[AuroraParam]`, `ctx`/`thisObject` after script parameters.

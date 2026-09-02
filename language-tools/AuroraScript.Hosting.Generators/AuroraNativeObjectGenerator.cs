@@ -57,14 +57,6 @@ namespace AuroraScript.Hosting.Generators
                     $"Type '{typeSymbol.ToDisplayString()}' must be declared in a namespace."));
             }
             var scriptObjectBase = FindScriptObjectBase(typeSymbol);
-            if (typeSymbol.GetAttributes().Any(
-                    attribute => attribute.AttributeClass?.ToDisplayString() == BuiltinGlobalAttribute))
-            {
-                diagnostics.Add(Diagnostic.Create(
-                    InvalidGlobal,
-                    GetLocation(typeSymbol),
-                    $"Type '{typeSymbol.ToDisplayString()}' cannot be both AuroraNativeModule and AuroraNativeType."));
-            }
 
             var typeName = typeAttribute.ConstructorArguments.Length > 0
                 ? typeAttribute.ConstructorArguments[0].Value as string
