@@ -595,6 +595,10 @@ var options = EngineOptions.Default.WithCompiler(compiler =>
     compiler.WithNativeTypes(
         typeof(StatsSupport),
         typeof(Vec2)));
+
+// Or scan every public [AuroraNativeType] in one or more assemblies:
+options = EngineOptions.Default.WithCompiler(compiler =>
+    compiler.AddNativeTypes(typeof(Vec2).Assembly, pluginAssembly));
 ```
 
 `Register` accepts any `ScriptObject` when a Type needs to be exposed under a
@@ -799,14 +803,13 @@ When argument types are proven, the compiler calls the Core method directly. Req
 - Public Core method without `params`.
 - Compatible proven argument types, including optional trailing defaults.
 - Catalog metadata present. Infrastructure native types in the engine assembly
-  are always included. Application types must be selected explicitly with
-  `CompilerOptionsBuilder.WithNativeTypes`.
+  are always included. Application types must be selected with
+  `CompilerOptionsBuilder.WithNativeTypes` or scanned from assemblies with
+  `AddNativeTypes`.
 
 ```csharp
 var options = EngineOptions.Default.WithCompiler(compiler =>
-    compiler.WithNativeTypes(
-        typeof(Vec2),
-        typeof(StatsSupport)));
+    compiler.AddNativeTypes(typeof(Vec2).Assembly));
 ```
 
 `params` exports, spread arguments, shadowed globals, and unproven argument types stay on the generated Datum adapter.

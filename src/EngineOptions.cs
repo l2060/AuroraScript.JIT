@@ -1,10 +1,13 @@
-﻿using AuroraScript.Runtime.Serialization;
+﻿using AuroraScript.Core;
+using AuroraScript.Hosting;
+using AuroraScript.Runtime.Serialization;
 using AuroraScript.Source;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
-using AuroraScript.Core;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 
 namespace AuroraScript
 {
@@ -589,6 +592,77 @@ namespace AuroraScript
         {
             NativeTypes = nativeTypes;
             return this;
+        }
+
+        /// <summary>
+        /// Adds every public <see cref="AuroraNativeTypeAttribute"/> type from the
+        /// calling assembly to the host native-type catalog.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public CompilerOptionsBuilder AddNativeTypes()
+        {
+            return AddNativeTypes(Assembly.GetCallingAssembly());
+        }
+
+        /// <summary>
+        /// Adds every public <see cref="AuroraNativeTypeAttribute"/> type from the
+        /// given assemblies to the host native-type catalog. Types already listed
+        /// are skipped. Infrastructure types from the engine assembly are ignored.
+        /// </summary>
+        public CompilerOptionsBuilder AddNativeTypes(params Assembly[] assemblies)
+        {
+            ArgumentNullException.ThrowIfNull(assemblies);
+            NativeTypes = CollectNativeTypes(_nativeTypes, assemblies);
+            return this;
+        }
+
+        private static IReadOnlyList<Type> CollectNativeTypes(
+            IReadOnlyList<Type> existing,
+            Assembly[] assemblies)
+        {
+            var types = new List<Type>(existing.Count);
+            var seen = new HashSet<Type>();
+            for (var i = 0; i < existing.Count; i++)
+            {
+                if (seen.Add(existing[i]))
+                {
+                    types.Add(existing[i]);
+                }
+            }
+
+            var engineAssembly = typeof(AuroraEngine).Assembly;
+            for (var i = 0; i < assemblies.Length; i++)
+            {
+                var assembly = assemblies[i] ??
+                    throw new ArgumentException("Assemblies cannot contain null.", nameof(assemblies));
+                if (assembly == engineAssembly)
+                {
+                    continue;
+                }
+
+                var exported = assembly.GetExportedTypes();
+                for (var t = 0; t < exported.Length; t++)
+                {
+                    var type = exported[t];
+                    if (!IsHostNativeType(type) || !seen.Add(type))
+                    {
+                        continue;
+                    }
+
+                    types.Add(type);
+                }
+            }
+
+            return types;
+        }
+
+        private static bool IsHostNativeType(Type type)
+        {
+            return type.IsClass &&
+                !type.IsAbstract &&
+                !type.IsGenericType &&
+                !type.IsNested &&
+                type.GetCustomAttribute<AuroraNativeTypeAttribute>() != null;
         }
 
         internal CompilerOptions ToOptions()

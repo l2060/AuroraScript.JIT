@@ -35,7 +35,7 @@ namespace Examples
             compiler.MaxDegreeOfParallelism = 0;
             compiler.ExtName = "as";
             compiler.Mode = CompilationMode.Persistence;
-            compiler.WithNativeTypes(typeof(Vec2), typeof(StatsSupport), typeof(UserState));
+            compiler.AddNativeTypes();
         })
         .WithOutput(output =>
         {

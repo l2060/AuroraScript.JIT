@@ -363,7 +363,9 @@
             "CompilerOptionsBuilder WithExtName(string value)",
             "CompilerOptionsBuilder WithMaxDegreeOfParallelism(int value)",
             "CompilerOptionsBuilder WithSourceResolver(IScriptSourceResolver value)",
-            "CompilerOptionsBuilder WithNativeTypes(params Type[] nativeTypes)"
+            "CompilerOptionsBuilder WithNativeTypes(params Type[] nativeTypes)",
+            "CompilerOptionsBuilder AddNativeTypes()",
+            "CompilerOptionsBuilder AddNativeTypes(params Assembly[] assemblies)"
           ]
         }
       }
@@ -2466,8 +2468,8 @@
     },
     {
       "id": "interop.native-host-exports",
-      "summary": "Implement static-only and constructible host Types with [AuroraNativeType] and [AuroraExport]. Select exact application types with CompilerOptionsBuilder.WithNativeTypes; they are registered once on the engine global and available to every domain. Hand-write matching declare type contracts in an @global() file for editor assistance. Implement INativeTypedDocument on a native instance type so script tdoc literals and host TDoc serialize/deserialize construct that NativeType directly.",
-      "apis": ["AuroraNativeTypeAttribute", "AuroraExportAttribute", "AuroraParamAttribute", "CompilerOptions.NativeTypes", "CompilerOptionsBuilder.WithNativeTypes", "INativeTypedDocument", "TypedDocumentOutput", "TypedDocumentInput"]
+      "summary": "Implement static-only and constructible host Types with [AuroraNativeType] and [AuroraExport]. Select exact application types with CompilerOptionsBuilder.WithNativeTypes, or scan assemblies with AddNativeTypes; they are registered once on the engine global and available to every domain. Hand-write matching declare type contracts in an @global() file for editor assistance. Implement INativeTypedDocument on a native instance type so script tdoc literals and host TDoc serialize/deserialize construct that NativeType directly.",
+      "apis": ["AuroraNativeTypeAttribute", "AuroraExportAttribute", "AuroraParamAttribute", "CompilerOptions.NativeTypes", "CompilerOptionsBuilder.WithNativeTypes", "CompilerOptionsBuilder.AddNativeTypes", "INativeTypedDocument", "TypedDocumentOutput", "TypedDocumentInput"]
     },
     {
       "id": "interop.register-clr-type",

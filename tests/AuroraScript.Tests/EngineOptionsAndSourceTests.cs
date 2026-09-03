@@ -7,6 +7,7 @@ using AuroraScript.Tests.Infrastructure;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Xunit;
@@ -69,6 +70,41 @@ public sealed class EngineOptionsAndSourceTests
         Assert.Equal(ValueKind.Type, first.GetPropertyDatum(null!, "Math").Kind);
         Assert.Equal(ValueKind.Type, first.GetPropertyDatum(null!, "JSON").Kind);
         Assert.Equal(ValueKind.Type, first.GetPropertyDatum(null!, "TDoc").Kind);
+    }
+
+    [Fact]
+    public void AddNativeTypesCollectsAnnotatedTypesFromAssemblies()
+    {
+        var options = EngineOptions.Default.WithCompiler(compiler =>
+            compiler.AddNativeTypes(typeof(object).Assembly, typeof(Vec2).Assembly));
+
+        Assert.Contains(typeof(Vec2), options.Compiler.NativeTypes);
+        Assert.Contains(typeof(StatsSupport), options.Compiler.NativeTypes);
+        Assert.Contains(typeof(Flag), options.Compiler.NativeTypes);
+        Assert.DoesNotContain(
+            options.Compiler.NativeTypes,
+            type => type.Assembly == typeof(AuroraEngine).Assembly);
+    }
+
+    [Fact]
+    public void AddNativeTypesMergesWithoutDuplicatingExistingEntries()
+    {
+        var options = EngineOptions.Default.WithCompiler(compiler =>
+            compiler.WithNativeTypes(typeof(Vec2))
+                .AddNativeTypes(typeof(Vec2).Assembly, typeof(Vec2).Assembly));
+
+        Assert.Equal(1, options.Compiler.NativeTypes.Count(type => type == typeof(Vec2)));
+        Assert.Contains(typeof(StatsSupport), options.Compiler.NativeTypes);
+    }
+
+    [Fact]
+    public void AddNativeTypesRejectsNullAssemblies()
+    {
+        Assert.Throws<ArgumentNullException>(() =>
+            EngineOptions.Default.WithCompiler(compiler => compiler.AddNativeTypes(null!)));
+        Assert.Throws<ArgumentException>(() =>
+            EngineOptions.Default.WithCompiler(compiler =>
+                compiler.AddNativeTypes(typeof(Vec2).Assembly, null!)));
     }
 
     [Fact]
