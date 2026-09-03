@@ -54,6 +54,16 @@ public sealed class CompileBlockTests
     }
 
     [Fact]
+    public void ArgsNameIsAnOrdinaryCompileBlockParameter()
+    {
+        using var workspace = new TestWorkspace();
+        var engine = workspace.CreateEngine();
+        var block = engine.CompileBlock("return $args;", ["$args"]);
+
+        ScriptAssert.Equal(42, block.Invoke(ScriptDatum.FromNumber(42)));
+    }
+
+    [Fact]
     public void DisposeUnregistersCompileBlockDynamicDelegates()
     {
         using var workspace = new TestWorkspace();
@@ -95,8 +105,6 @@ public sealed class CompileBlockTests
     [InlineData("1value")]
     [InlineData("bad-name")]
     [InlineData("global")]
-    [InlineData("$args")]
-    [InlineData("$state")]
     public void RejectsInvalidParameterNames(string parameter)
     {
         using var workspace = new TestWorkspace();

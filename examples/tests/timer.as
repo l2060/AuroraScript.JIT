@@ -1,5 +1,7 @@
 @module(TIMER_LIB);
 
+context bag;
+
 export var resetCount = 0;
 var timeCount = 0;
 export var timers = [0,, 1, 2, 3, 4, 5];
@@ -11,7 +13,7 @@ function time_proc(timer, arrays, clrdata) {
 	for (var item in timers) {
 		timeCount++;
 	}
-	console.log(timer, arrays, clrdata, $state);
+	console.log(timer, arrays, clrdata, bag);
 
 }
 

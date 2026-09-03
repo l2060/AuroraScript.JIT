@@ -19,6 +19,18 @@ internal static class ScriptDocumentationQuery
             return true;
         }
 
+        for (var i = 0; i < module.Contexts.Count; i++)
+        {
+            var context = module.Contexts[i];
+            if (Contains(TextRange.FromSourceSpan(context.Name.Range), position))
+            {
+                return TryBuildContextHover(
+                    context,
+                    TextRange.FromSourceSpan(context.Name.Range),
+                    out hover);
+            }
+        }
+
         for (var i = 0; i < module.Functions.Count; i++)
         {
             var function = module.Functions[i];
@@ -475,6 +487,15 @@ internal static class ScriptDocumentationQuery
         out HoverResult hover)
     {
         hover = null!;
+        for (var i = 0; i < module.Contexts.Count; i++)
+        {
+            var context = module.Contexts[i];
+            if (SameRange(TextRange.FromSourceSpan(context.Name.Range), definitionRange))
+            {
+                return TryBuildContextHover(context, hoverRange, out hover);
+            }
+        }
+
         for (var i = 0; i < module.Statements.Count; i++)
         {
             if (TryFindDeclaration(module.Statements[i], sourceText, definitionRange, hoverRange, out hover))
@@ -484,6 +505,25 @@ internal static class ScriptDocumentationQuery
         }
 
         return false;
+    }
+
+    private static bool TryBuildContextHover(
+        ContextDeclaration context,
+        TextRange hoverRange,
+        out HoverResult hover)
+    {
+        var builder = new StringBuilder();
+        builder
+            .Append("```").Append(BuiltinTypeFormatter.MarkdownLanguageId).Append('\n')
+            .Append("context ")
+            .Append(context.Name.Value);
+        if (context.DeclaredType != null)
+        {
+            builder.Append(" as ").Append(context.DeclaredType.DisplayName);
+        }
+        builder.Append(";\n```");
+        hover = new HoverResult(builder.ToString(), hoverRange);
+        return true;
     }
 
     private static bool TryFindDeclaration(

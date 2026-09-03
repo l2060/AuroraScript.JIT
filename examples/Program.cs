@@ -35,7 +35,7 @@ namespace Examples
             compiler.MaxDegreeOfParallelism = 0;
             compiler.ExtName = "as";
             compiler.Mode = CompilationMode.Persistence;
-            compiler.WithNativeTypes(typeof(Vec2), typeof(StatsSupport));
+            compiler.WithNativeTypes(typeof(Vec2), typeof(StatsSupport), typeof(UserState));
         })
         .WithOutput(output =>
         {
@@ -55,7 +55,7 @@ namespace Examples
         {
             optimization.StackTrace = false;
             optimization.ModuleConstInlining = true;
-            optimization.Level = OptimizeOptions.Debug;
+            optimization.Level = OptimizeOptions.Release;
         });
 
 

@@ -501,7 +501,7 @@ namespace AuroraScript
 
         private static bool IsValidCompileBlockParameterName(string name)
         {
-            if (name == "global" || name == "$args" || name == "$state")
+            if (name == "global")
             {
                 return false;
             }

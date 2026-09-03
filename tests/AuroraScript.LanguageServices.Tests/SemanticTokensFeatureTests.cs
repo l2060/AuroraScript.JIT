@@ -28,6 +28,7 @@ public sealed class SemanticTokensFeatureTests : IDisposable
             export func run() {
                 const string = 1;
                 const number = 2;
+                const $args = 3;
                 const label = "text";
                 const escaped = "a\nb";
                 const local = { log: 1, "path": 2, 3: "number-key" };
@@ -46,7 +47,7 @@ public sealed class SemanticTokensFeatureTests : IDisposable
                 } finally {
                     debugger;
                 }
-                console.log($arg, $state);
+                console.log($arg, $args);
                 global.modules;
                 JSON.stringify(Math.PI);
                 HotPatch.apply();
@@ -74,7 +75,8 @@ public sealed class SemanticTokensFeatureTests : IDisposable
         AssertToken(source, result, "Math", AuroraSemanticTokenTypes.Type);
         AssertToken(source, result, "HotPatch", AuroraSemanticTokenTypes.Type);
         AssertToken(source, result, "$arg", AuroraSemanticTokenTypes.BuiltinVariable);
-        AssertToken(source, result, "$state", AuroraSemanticTokenTypes.BuiltinVariable);
+        AssertNoToken(source, result, "$state", AuroraSemanticTokenTypes.BuiltinVariable);
+        AssertNoToken(source, result, "$args", AuroraSemanticTokenTypes.BuiltinVariable);
         AssertToken(source, result, "String", AuroraSemanticTokenTypes.Type);
         AssertToken(source, result, "fromCharCode", AuroraSemanticTokenTypes.MethodCall);
         AssertToken(source, result, "0xFDE5380C", AuroraSemanticTokenTypes.Number);

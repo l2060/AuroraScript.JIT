@@ -49,7 +49,34 @@ export func run(value) {
 
 The host may opt in to native modules through `EngineOptions.BuiltIns`. Shipped modules use bare imports such as `import fs from "fs";` and `import http from "http";`; they are not global objects and are unavailable when the host has not enabled them. A relative path such as `./fs` remains a project-source import even when the `fs` native module is enabled.
 
-### 3. Declare variables and constants
+### 3. Bind execution context
+
+`context name;` and `context name as NativeType;` alias the current `UserState` object for this module. They are not properties of a session bag. Multiple names are allowed; every name still refers to that same instance, and a function that uses several names caches each one in its own local.
+
+```as
+context bag;
+context player as UserState;
+
+export func tick() Number {
+    return player.x;
+}
+
+export func dump() {
+    return bag.name;
+}
+
+export func both() Number {
+    return player.x + bag.y;
+}
+
+export func current() UserState {
+    return player;
+}
+```
+
+A typed context is loaded once at the start of each function that uses it (`ldfld UserState` plus one `castclass`), then native field and method access applies. An untyped context stays dynamic. Host NativeType names are valid function return contracts. An `export native func player() UserState` entry returns the CLR `UserState` instance on the `$native` path; proven call sites invoke members without wrapping through `ScriptDatum`. Context names cannot be exported. A parameter or local of the same name shadows the context. The type listed after `as` must be a public `[AuroraNativeType]` included in `WithNativeTypes`.
+
+### 4. Declare variables and constants
 
 ```as
 var total = 0;
@@ -77,7 +104,7 @@ var [first, second, ...rest] = values;
 
 Duplicate declarations in one scope are rejected. A child block may shadow an outer `var`, but may not redeclare a visible outer `const`. `let` and JavaScript-style comma declarations are not supported.
 
-### 4. Define functions and methods
+### 5. Define functions and methods
 
 `func` and `function` are equivalent. Types remain optional. A function
 without a return contract keeps the normal weakly typed behavior; a type name
@@ -115,13 +142,17 @@ var operations = {
 return operations.format(operations.add(20, 22));
 ```
 
-Lambdas can have an expression body or a block body and can capture outer bindings. The compiler-provided `$args` value contains the current function's arguments.
+Lambdas can have an expression body or a block body and can capture outer bindings.
 
 `native func` is an explicit module-scope ABI contract. It emits a
 `ScriptContext`-aware CLR-native entry for declared numeric, boolean, array,
-and packed-array parameters while retaining `ScriptDatum` for dynamic slots.
-Dynamic expressions inside the body remain valid and cross a Datum boundary
-locally; they do not disable native storage in the rest of the function.
+packed-array, and host NativeType parameters and returns, while retaining
+`ScriptDatum` for dynamic slots. A declared NativeType return is the CLR type
+itself (`UserState player$native(...)`), not `ScriptDatum`; only the `$typed`
+shell converts at a dynamic boundary. The host is responsible for supplying a
+matching `UserState` object. Dynamic expressions inside the body remain valid
+and cross a Datum boundary locally; they do not disable native storage in the
+rest of the function.
 Exported functions and private functions used as values also receive a
 Datum-compatible closure shell. A qualified call to an imported exported
 native function calls its native entry directly when every native argument is
@@ -143,7 +174,7 @@ valid on ordinary functions, parameters, fields, or assertions.
 
 Native functions may use trailing primitive defaults that the compiler can evaluate as constants,
 but the default must exactly match an explicit `Number`, `Boolean`, `String`, or
-`Null` parameter type. They cannot use rest parameters or `$args`, and cannot be assigned. Apply
+`Null` parameter type. They cannot use rest parameters and cannot be assigned. Apply
 them only through a normal build: neither incremental nor replacement hot
 patches may add, replace, or redefine a native function. The emitted native
 method contains the function body directly; it does not enter a script frame
@@ -151,7 +182,7 @@ or add an exception wrapper. Runtime error conversion derives native function
 names from the CLR exception stack and combines them with recorded source
 locations.
 
-### 5. Choose a value type
+### 6. Choose a value type
 
 The source-level primitive and collection forms are:
 
@@ -263,7 +294,7 @@ There is no separate `Unit`/`void` value type in the script language, and the cu
 
 Common object-like built-ins are `Date`, `Error`, `HashMap`, `Path`, `Proxy`, `Regex`, and `StringBuffer`. Construct them with `new` and use the members documented in `schema/runtime-api.json` and the Script API pages. `TDoc` additionally provides the compiler-recognized `tdoc` expression for typed document values.
 
-### 6. Use packed arrays for homogeneous data
+### 7. Use packed arrays for homogeneous data
 
 The runtime exposes ten fixed-length packed arrays:
 
@@ -284,7 +315,7 @@ Each constructor accepts an optional non-negative length and zero-initializes co
 
 `typeof` reports the constructor name for these packed arrays (`"Int8Array"`, `"UInt8Array"`, and so on). They remain object-backed `ScriptDatum` values; they do not consume a dedicated `ValueKind` bit. `value as Int8Array` is the exact assertion used by the typed backend, while `typeof value == "Int8Array"` is the dynamic name check.
 
-### 7. Understand the strong-typing path
+### 8. Understand the strong-typing path
 
 The compiler performs flow analysis rather than requiring explicit annotations. Stable numbers, booleans, integer loop variables, and known packed-array references can be emitted as native CIL locals and direct array accesses. When a value is put in a dynamic object, read through an unknown property, passed to an unknown host callback, assigned an unrelated kind, or otherwise escapes the proven flow, the compiler boxes it into the normal `ScriptDatum` representation.
 
@@ -296,7 +327,7 @@ This path exists for three practical reasons:
 
 It is therefore an optimization and a semantic boundary, not a second statically typed source language. Dynamic scripts remain valid, and unsupported local flow safely falls back to the dynamic path. To help inference, keep hot locals single-kind, cache `length`, keep packed arrays in locals, and avoid unknown callbacks in the inner loop. Function-call ABI optimization is explicit: use `native func` when a callable native ABI is required.
 
-### 8. Handle host globals and compile blocks
+### 9. Handle host globals and compile blocks
 
 Host globals can be described for tooling in a separate declaration file:
 

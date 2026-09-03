@@ -154,7 +154,6 @@ namespace AuroraScript.Compiler.Backend.Plans
         public UpvalueSlot[] CapturedLocalSlots { get; set; }
         public FunctionId[] NestedFunctions { get; set; }
         public bool IsDirectCallCandidate { get; set; }
-        public bool UsesArgumentsObject { get; set; }
         public bool HasDefaultParameters { get; set; }
         public bool RequiresClosureObject { get; set; } = true;
         public bool CanCacheClosureObject { get; set; }

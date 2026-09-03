@@ -48,7 +48,7 @@ namespace AuroraScript.Compiler.Backend.Traversal
                         VisitIfNotNull(arrayPattern.Elements[i], ref visitor);
                     }
                     return;
-                case ObjectDestructuringPattern:
+                case ContextDeclaration:
                     return;
                 case IfStatement ifStatement:
                     VisitIfNotNull(ifStatement.Condition, ref visitor);

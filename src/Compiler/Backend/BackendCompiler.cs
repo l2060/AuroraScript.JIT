@@ -299,8 +299,27 @@ namespace AuroraScript.Compiler.Backend
             }
 
             symbolCount += AddGlobalDeclarationSymbols(session, modulePlan, moduleScope, globalDeclarations);
+            ValidateContextNames(modulePlan);
 
             session.Scopes[moduleScope] = session.Scopes[moduleScope].WithSymbolRange(firstSymbol, symbolCount);
+        }
+
+        private static void ValidateContextNames(ModulePlan modulePlan)
+        {
+            var contexts = modulePlan.Declaration.Contexts;
+            for (var i = 0; i < contexts.Count; i++)
+            {
+                var name = contexts[i].Name.Value;
+                if (!modulePlan.TryGetSymbol(name, out _))
+                {
+                    continue;
+                }
+
+                throw new AuroraCompilationException(
+                    AuroraCompilationStage.Binding,
+                    contexts[i],
+                    $"Context name '{name}' conflicts with an existing module declaration.");
+            }
         }
 
         private static int AddGlobalDeclarationSymbols(

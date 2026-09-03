@@ -515,7 +515,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         private void EmitName(NameExpression expression)
         {
             var name = expression.Identifier?.Value;
-            if (StringComparer.Ordinal.Equals(name, "$state"))
+            if (_module.Declaration.TryGetContext(name, out _))
             {
                 _il.Emit(OpCodes.Ldarg_0);
                 _il.Emit(OpCodes.Ldfld, TypedRuntimeMetadata.ContextUserState);

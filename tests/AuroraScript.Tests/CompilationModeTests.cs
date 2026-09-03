@@ -176,7 +176,7 @@ public sealed class CompilationModeTests
             }
 
             func defaults(a, b = 5) {
-                return [a, b, $args.length];
+                return [a, b];
             }
 
             export func run() {
@@ -221,7 +221,7 @@ public sealed class CompilationModeTests
                     first, `${name}:${middle.join(',')}`,
                     object.total, object.age, object.tag, textCount,
                     counter1, counter2,
-                    defaultValues[0], defaultValues[1], defaultValues[2],
+                    defaultValues[0], defaultValues[1],
                     sum, values[0], index, logical, caught, moduleValue
                 ];
             }
@@ -235,7 +235,7 @@ public sealed class CompilationModeTests
                 1, "Aurora:2,3,4",
                 2, null, "ok", 3,
                 11, 12,
-                2, 5, 1,
+                2, 5,
                 36, 11, 1, 2, "failure", 4
             },
             TestWorkspace.Execute(domain, "run"));

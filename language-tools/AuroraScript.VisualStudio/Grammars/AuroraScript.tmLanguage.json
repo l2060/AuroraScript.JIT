@@ -140,7 +140,7 @@
         },
         {
           "name": "variable.language.aurora",
-          "match": "\\$(?:arg|args|state)\\b"
+          "match": "\\$arg\\b"
         }
       ]
     },
@@ -243,6 +243,16 @@
             "1": { "name": "keyword.control.export.aurora" },
             "2": { "name": "keyword.declaration.variable.aurora" },
             "3": { "name": "variable.other.aurora" }
+          }
+        },
+        {
+          "name": "meta.declaration.context.aurora",
+          "match": "\\b(context)\\s+([\\p{L}_$][\\p{L}\\p{N}_$]*)(?:\\s+(as)\\s+([\\p{L}_$][\\p{L}\\p{N}_$]*))?",
+          "captures": {
+            "1": { "name": "keyword.declaration.context.aurora" },
+            "2": { "name": "variable.other.aurora" },
+            "3": { "name": "keyword.operator.type-check.aurora" },
+            "4": { "name": "entity.name.type.aurora" }
           }
         },
         {
@@ -384,7 +394,7 @@
         },
         {
           "name": "keyword.declaration.aurora",
-          "match": "\\b(?:const|constructor|declare|enum|func|function|module|native|static|var|readonly)\\b"
+          "match": "\\b(?:const|constructor|context|declare|enum|func|function|module|native|static|var|readonly)\\b"
         },
         {
           "name": "keyword.operator.type-check.aurora",

@@ -81,6 +81,16 @@ closure. This applies to both `new Vec2(...)` and static factories such as
 `++`/`+=` and method calls stay on `ldfld`/`stfld`/`callvirt` instead of boxing
 through `ScriptDatum`.
 
+A module-level `context player as Vec2;` is the same proof for
+`ScriptContext.UserState`. Each used context name is loaded once per function
+into its own typed local. Several names in one function are independent caches
+of that same instance. Host NativeType names are valid function return
+contracts. A native function declared `Vec2` (or another NativeType) returns
+that CLR type from `$native`; proven callees call members directly. Only the
+`$typed` shell boxes into `ScriptDatum`. The host must pass a matching
+`UserState` instance; the compiler does not insert extra compatibility
+conversions on the native ABI.
+
 Use `native func` when the ABI itself must be explicit:
 
 ```as
@@ -107,7 +117,7 @@ native-to-native statement calls do not create or discard a `ScriptDatum`;
 exported and other dynamic calls still observe `null`. Trailing defaults are supported only
 when the compiler can fold them to primitive constants; an explicitly typed
 parameter requires an exact matching default type. Native functions still reject
-rest parameters, `$args`, assignment, and all hot patches. Rebuild the module
+rest parameters, assignment, and all hot patches. Rebuild the module
 normally when changing one.
 
 ## Loops And Closures

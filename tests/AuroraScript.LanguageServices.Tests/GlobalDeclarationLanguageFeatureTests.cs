@@ -20,6 +20,45 @@ public sealed class GlobalDeclarationLanguageFeatureTests : IDisposable
     }
 
     [Fact]
+    public void TypedContextProvidesTypeAliasAndMemberHover()
+    {
+        var service = CreateService();
+        var mainPath = Path.Combine(_root, "main.as");
+        var globalsPath = Path.Combine(_root, "globals.as");
+        var globals =
+            """
+            @global();
+            declare type UserState {
+                String name;
+            }
+            """;
+        var main =
+            """
+            @module(MAIN);
+            context user as UserState;
+            export func player() UserState {
+                return user;
+            }
+            export func name() {
+                return user.name;
+            }
+            """;
+        service.OpenOrUpdateDocument(globalsPath, globals);
+        service.OpenOrUpdateDocument(mainPath, main);
+
+        var typeHover = service.GetHover(mainPath, PositionOf(main, "UserState"));
+        var aliasHover = service.GetHover(mainPath, PositionOfLast(main, "user"));
+        var memberHover = service.GetHover(mainPath, PositionOf(main, "name;"));
+
+        Assert.NotNull(typeHover);
+        Assert.Contains("declare type UserState", typeHover!.Contents, StringComparison.Ordinal);
+        Assert.NotNull(aliasHover);
+        Assert.Contains("context user as UserState;", aliasHover!.Contents, StringComparison.Ordinal);
+        Assert.NotNull(memberHover);
+        Assert.Contains("String name", memberHover!.Contents, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AmbientTypesDriveEditorFeaturesWithoutShadowingLocals()
     {
         var service = CreateService();

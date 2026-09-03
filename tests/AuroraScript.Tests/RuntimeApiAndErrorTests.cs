@@ -84,7 +84,7 @@ public sealed class RuntimeApiAndErrorTests
         var engine = workspace.CreateEngine();
         await engine.BuildAsync(workspace.MemorySource(
             "main.as",
-            "@module(TEST); export func read() { return $state.Value; }"));
+            "@module(TEST); context bag; export func read() { return bag.Value; }"));
 
         var firstState = new ScriptObject();
         firstState.Define("Value", ScriptDatum.FromNumber(10));
@@ -107,8 +107,9 @@ public sealed class RuntimeApiAndErrorTests
             "main.as",
             """
             @module(TEST);
+            context bag;
             export func run() {
-                return [$state.Name, $state.Count, $state.Enabled, $state.Empty];
+                return [bag.Name, bag.Count, bag.Enabled, bag.Empty];
             }
             """));
 
@@ -132,8 +133,9 @@ public sealed class RuntimeApiAndErrorTests
             "main.as",
             """
             @module(TEST);
+            context bag;
             export func run() {
-                return [$state.Add(20, 22), $state.Title];
+                return [bag.Add(20, 22), bag.Title];
             }
             """));
 

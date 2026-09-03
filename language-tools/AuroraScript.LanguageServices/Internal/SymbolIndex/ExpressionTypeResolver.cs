@@ -41,6 +41,7 @@ internal sealed class ExpressionTypeResolver
     public bool IsSourceDefinedReference(NameExpression name)
     {
         if (_locals.IsLocalReference(name) ||
+            _module.TryGetContext(name.Identifier.Value, out _) ||
             TryFindModuleVariable(name.Identifier.Value, out _) ||
             TryFindFunction(_module, name.Identifier.Value, out _) ||
             _module.TryGetType(name.Identifier.Value, out _))
@@ -156,17 +157,29 @@ internal sealed class ExpressionTypeResolver
         reference = null!;
         declaringModule = _module;
         declaringPath = _modulePath;
-        if (!_locals.TryGetDeclaration(name, out var declaration) ||
-            declaration is not VariableDeclaration variable)
+        if (!_locals.TryGetDeclaration(name, out var declaration))
         {
-            return TryFindModuleVariable(name.Identifier.Value, out variable) &&
-                variable.Initializer != null &&
+            if (_module.TryGetContext(name.Identifier.Value, out var context) &&
+                context.DeclaredType != null)
+            {
+                reference = context.DeclaredType;
+                return true;
+            }
+
+            VariableDeclaration moduleVariable;
+            return TryFindModuleVariable(name.Identifier.Value, out moduleVariable) &&
+                moduleVariable.Initializer != null &&
                 TryResolve(
-                    variable.Initializer,
+                    moduleVariable.Initializer,
                     visited,
                     out reference,
                     out declaringModule,
                     out declaringPath);
+        }
+
+        if (declaration is not VariableDeclaration variable)
+        {
+            return false;
         }
 
         if (variable is ParameterDeclaration parameter &&

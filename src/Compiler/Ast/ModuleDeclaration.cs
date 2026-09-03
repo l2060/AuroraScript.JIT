@@ -20,6 +20,8 @@ namespace AuroraScript.Compiler.Ast
         private Dictionary<string, TypeDeclaration> _typesByName;
         private List<AmbientDeclaration> _ambientDeclarations;
         private Dictionary<string, AmbientDeclaration> _ambientDeclarationsByName;
+        private List<ContextDeclaration> _contexts;
+        private Dictionary<string, ContextDeclaration> _contextsByName;
 
         public IReadOnlyList<ImportDeclaration> Imports => _imports ?? (IReadOnlyList<ImportDeclaration>)Array.Empty<ImportDeclaration>();
 
@@ -28,6 +30,9 @@ namespace AuroraScript.Compiler.Ast
 
         public IReadOnlyList<AmbientDeclaration> AmbientDeclarations =>
             _ambientDeclarations ?? (IReadOnlyList<AmbientDeclaration>)Array.Empty<AmbientDeclaration>();
+
+        public IReadOnlyList<ContextDeclaration> Contexts =>
+            _contexts ?? (IReadOnlyList<ContextDeclaration>)Array.Empty<ContextDeclaration>();
 
 
         internal ModuleDeclaration(ScriptSourceReference source)
@@ -136,12 +141,37 @@ namespace AuroraScript.Compiler.Ast
 
 
 
+        public bool AddContext(ContextDeclaration declaration)
+        {
+            ArgumentNullException.ThrowIfNull(declaration);
+            _contextsByName ??= new Dictionary<string, ContextDeclaration>(StringComparer.Ordinal);
+            if (!_contextsByName.TryAdd(declaration.Name.Value, declaration))
+            {
+                return false;
+            }
+            _contexts ??= new List<ContextDeclaration>();
+            _contexts.Add(declaration);
+            AttachParent(declaration, this);
+            return true;
+        }
+
+        public bool TryGetContext(string name, out ContextDeclaration declaration)
+        {
+            if (_contextsByName != null)
+            {
+                return _contextsByName.TryGetValue(name, out declaration);
+            }
+            declaration = null;
+            return false;
+        }
+
         public Boolean IsEmpty()
         {
             return Functions.Count == 0 &&
                 Statements.Count == 0 &&
                 Types.Count == 0 &&
-                AmbientDeclarations.Count == 0;
+                AmbientDeclarations.Count == 0 &&
+                Contexts.Count == 0;
         }
     }
 

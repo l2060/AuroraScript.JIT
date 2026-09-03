@@ -11,6 +11,7 @@ namespace AuroraScript.Compiler
         // key words
 
         public static readonly Symbols KW_DECLARE = new Symbols("declare", SymbolTypes.KeyWord);
+        public static readonly Symbols KW_CONTEXT = new Symbols("context", SymbolTypes.KeyWord);
         public static readonly Symbols KW_IF = new Symbols("if", SymbolTypes.KeyWord);
         //public static readonly Symbols KW_AS = new Symbols("as", SymbolTypes.KeyWord);
         public static readonly Symbols KW_ELSE = new Symbols("else", SymbolTypes.KeyWord);
@@ -449,6 +450,7 @@ namespace AuroraScript.Compiler
                     if (name.SequenceEqual("declare")) return KW_DECLARE;
                     if (name.SequenceEqual("include")) return KW_INCLUDE;
                     if (name.SequenceEqual("finally")) return KW_FINALLY;
+                    if (name.SequenceEqual("context")) return KW_CONTEXT;
                     break;
                 case 8:
                     if (name.SequenceEqual("function")) return KW_FUNCTION;

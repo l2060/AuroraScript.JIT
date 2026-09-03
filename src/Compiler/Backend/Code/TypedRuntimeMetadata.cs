@@ -145,7 +145,6 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo SetGlobal = Method(typeof(ScopeOps), nameof(ScopeOps.SetGlobal), typeof(ScriptContext), typeof(string), typeof(ScriptDatum));
         public static readonly MethodInfo GetGlobalObject = Method(typeof(ScopeOps), nameof(ScopeOps.GetGlobalObject), typeof(ScriptContext));
         public static readonly MethodInfo GetUserState = Method(typeof(ScopeOps), nameof(ScopeOps.GetUserState), typeof(ScriptContext));
-        public static readonly MethodInfo GetArgumentsArray = Method(typeof(ScopeOps), nameof(ScopeOps.GetArguments), typeof(Span<ScriptDatum>));
         public static readonly MethodInfo GetEnumerator = Method(typeof(IterationOps), nameof(IterationOps.GetEnumerator), typeof(ScriptDatum));
         public static readonly MethodInfo MoveNext = Method(typeof(IterationOps), nameof(IterationOps.MoveNext), typeof(ScriptEnumerator), typeof(ScriptDatum).MakeByRefType());
         public static readonly MethodInfo ResolveRegex = Method(typeof(RegexManager), nameof(RegexManager.Resolve), typeof(string), typeof(string));

@@ -1380,6 +1380,15 @@ public sealed class AuroraLanguageService
             return null;
         }
 
+        if (context.TypeReference != null &&
+            context.TypeQualifier == null &&
+            globalIndex.TryGet(context.TypeReference.Value, out var typeDeclaration))
+        {
+            return new DefinitionLocation(
+                typeDeclaration.FilePath,
+                TextRange.FromSourceSpan(typeDeclaration.NameRange));
+        }
+
         var ambient = AmbientContractCatalog.Build(globalIndex, snapshot, _parseService);
         return AmbientDeclarationQuery.TryGetDefinition(
             ambient,

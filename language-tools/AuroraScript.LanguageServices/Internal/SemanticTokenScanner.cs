@@ -22,9 +22,7 @@ internal static class SemanticTokenScanner
 
     private static readonly HashSet<string> LanguageVariables = new(StringComparer.Ordinal)
     {
-        "$arg",
-        "$args",
-        "$state"
+        "$arg"
     };
 
     public static SemanticTokensResult Scan(
@@ -737,6 +735,21 @@ internal static class SemanticTokenScanner
                 node.Name,
                 AuroraSemanticTokenTypes.Property,
                 SemanticTokenPriority.Declaration);
+        }
+
+        protected override void VisitContextDeclaration(ContextDeclaration node)
+        {
+            _builder.AddToken(
+                node.Name,
+                AuroraSemanticTokenTypes.Variable,
+                SemanticTokenPriority.Declaration);
+            if (node.DeclaredType != null)
+            {
+                _builder.AddToken(
+                    node.DeclaredType.Token,
+                    AuroraSemanticTokenTypes.Type,
+                    SemanticTokenPriority.Ast);
+            }
         }
 
         protected override void VisitAmbientDeclaration(AmbientDeclaration node)

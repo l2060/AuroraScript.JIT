@@ -20,7 +20,7 @@ public sealed class TextMateGrammarTests
         Assert.Contains("tdoc", document.RootElement.GetProperty("fileTypes").EnumerateArray().Select(item => item.GetString()));
         AssertPattern(repository, "builtins", "support.type.aurora", "Path");
         AssertPattern(repository, "builtins", "support.type.builtin.object.aurora", "JSON console Math HotPatch");
-        AssertPattern(repository, "builtins", "variable.language.aurora", "$args $state global");
+        AssertPattern(repository, "builtins", "variable.language.aurora", "$arg global");
         AssertPattern(repository, "function-calls", "entity.name.function.member.aurora", ".log(");
         AssertPattern(repository, "function-calls", "variable.other.property.aurora", ".PI");
         AssertPattern(repository, "function-calls", "entity.name.function.aurora", " abc(");

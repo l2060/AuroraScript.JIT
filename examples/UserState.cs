@@ -1,21 +1,27 @@
-using AuroraScript.Runtime;
+using AuroraScript.Hosting;
 using AuroraScript.Runtime.Types;
+using System;
 
 namespace Examples
 {
-    internal class UserState : ScriptObject
+    [AuroraNativeType("UserState")]
+    public sealed partial class UserState : ScriptObject
     {
-        public UserState()
+        [AuroraExport("x")] public double X;
+        [AuroraExport("y")] public double Y;
+        [AuroraExport("name")] public String Name = "Hanks";
+        [AuroraExport("identity")] public String Identity = null;
+        [AuroraExport("age")] public int Age = 18;
+
+
+
+        [AuroraExport("test")]
+        public String Test(double offset, string str)
         {
-            Define("Name", ScriptDatum.FromString("Hanks"));
-            Define("Identity", ScriptDatum.Null);
-            Define("Nick", ScriptDatum.FromString("Bpp"));
-            Define("Age", ScriptDatum.FromNumber(18));
-            Define("Context", ScriptDatum.Null);
+            return str + offset;
         }
 
-        public void Test(double offset, string str)
-        {
-        }
+
+
     }
 }

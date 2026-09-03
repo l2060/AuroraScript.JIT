@@ -50,6 +50,7 @@ For default code generation style, also read `docs/script-authoring-best-practic
 - Empty statement: `;`
 - Block: `{ statement* }`
 - Function: `func name(args) { ... }` or `function name(args) { ... }`
+- Execution context: `context name;` or `context name as NativeType;` at module scope. Each name aliases `ScriptContext.UserState`. Typed names require a public `[AuroraNativeType]` listed in `WithNativeTypes`. Do not generate `$state`.
 - External declaration in an `@global()` file: `declare func name(args);`, `declare var name;`, `declare const name;`, `declare type Name { ... }`
 - Variable: `var name;`, `var name = expr;`, `const name = expr;`
 - Destructuring: `var { a, b } = obj;`, `var [ first, ...rest ] = array;`
@@ -115,6 +116,7 @@ Rules:
 - Function declarations inside a block are local to that block.
 - Lambdas use `=>` and may have expression or block bodies.
 - `native func` requires a return contract. Use `void` for a procedure; it is not an alias for `Null`.
+- A NativeType return on `native func` is the CLR type on `$native`. Proven callees keep that instance; only `$typed` converts to `ScriptDatum`.
 
 ```as
 var inc = x => x + 1;

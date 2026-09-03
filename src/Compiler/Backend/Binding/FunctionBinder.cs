@@ -227,6 +227,7 @@ namespace AuroraScript.Compiler.Backend.Binding
                     }
 
                     CollectDeclarations(declaration.Body);
+                    DeclareUsedContexts(declaration.Body);
                     ValidateNativeContract(declaration);
                 }
                 finally
@@ -419,13 +420,6 @@ namespace AuroraScript.Compiler.Backend.Binding
                     NativeVoidReturnValidator.Validate(declaration);
                 }
                 ValidateNativeDefaults(declaration);
-                if (_function.UsesArgumentsObject)
-                {
-                    throw new AuroraCompilationException(
-                        AuroraCompilationStage.Binding,
-                        declaration,
-                        $"Native function '{declaration.Name.Value}' cannot use $args.");
-                }
                 for (var i = 0; i < declaration.Parameters.Count; i++)
                 {
                     var parameter = declaration.Parameters[i];
@@ -656,9 +650,6 @@ namespace AuroraScript.Compiler.Backend.Binding
                     case LambdaExpression lambda:
                         DeclareNestedFunction(lambda.Function, declareName: false);
                         return;
-                    case NameExpression name when name.Identifier?.Value == "$args":
-                        _function.UsesArgumentsObject = true;
-                        return;
                     case TryStatement tryStatement:
                         CollectDeclarations(tryStatement.Body);
                         CollectCatchBlock(tryStatement);
@@ -879,11 +870,78 @@ namespace AuroraScript.Compiler.Backend.Binding
                 return $"{range.FileName} line:{range.StartLine}, column:{range.StartColumn}";
             }
 
+            private void DeclareUsedContexts(AstNode node)
+            {
+                if (node == null ||
+                    _modulePlan.Declaration.Contexts.Count == 0)
+                {
+                    return;
+                }
+
+                if (node is FunctionDeclaration nested &&
+                    !ReferenceEquals(nested, _function.Declaration) ||
+                    node is LambdaExpression)
+                {
+                    return;
+                }
+
+                if (node is NameExpression name)
+                {
+                    var value = name.Identifier?.Value;
+                    if (!string.IsNullOrEmpty(value) &&
+                        _modulePlan.Declaration.TryGetContext(value, out var context) &&
+                        !HasDeclaredLocal(value))
+                    {
+                        DeclareLocal(
+                            value,
+                            BackendSymbolKind.Local,
+                            MemberAccess.Internal,
+                            context,
+                            false);
+                    }
+                    return;
+                }
+
+                var visitor = new ContextUseVisitor(this);
+                AstTraversal.VisitChildren(node, ref visitor);
+            }
+
+            private bool HasDeclaredLocal(string name)
+            {
+                for (var i = 0; i < _localSlots.Count; i++)
+                {
+                    if (StringComparer.Ordinal.Equals(_localSlots[i].Name, name))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            private readonly struct ContextUseVisitor : IAstChildVisitor
+            {
+                private readonly FunctionBodyBinder _owner;
+
+                public ContextUseVisitor(FunctionBodyBinder owner)
+                {
+                    _owner = owner;
+                }
+
+                public void Visit(AstNode node)
+                {
+                    _owner.DeclareUsedContexts(node);
+                }
+            }
+
             private static BackendSymbolFlags GetLocalFlags(AstNode declaration)
             {
-                return declaration is VariableDeclaration { IsConst: true }
-                    ? BackendSymbolFlags.Const
-                    : BackendSymbolFlags.None;
+                if (declaration is VariableDeclaration { IsConst: true } ||
+                    declaration is ContextDeclaration)
+                {
+                    return BackendSymbolFlags.Const;
+                }
+
+                return BackendSymbolFlags.None;
             }
         }
 

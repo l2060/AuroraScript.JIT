@@ -57,6 +57,13 @@ namespace AuroraScript.Compiler
             AfterVisitNode(node);
         }
 
+        public void AcceptContextDeclaration(ContextDeclaration node)
+        {
+            BeforeVisitNode(node);
+            VisitContextDeclaration(node);
+            AfterVisitNode(node);
+        }
+
 
         public void AcceptLambdaExpression(LambdaExpression node)
         {
@@ -397,7 +404,15 @@ namespace AuroraScript.Compiler
             {
                 node.AmbientDeclarations[i].Accept(this);
             }
+            for (var i = 0; i < node.Contexts.Count; i++)
+            {
+                node.Contexts[i].Accept(this);
+            }
             VisitBlock(node);
+        }
+
+        protected virtual void VisitContextDeclaration(ContextDeclaration node)
+        {
         }
 
         protected virtual void VisitFunction(FunctionDeclaration node)

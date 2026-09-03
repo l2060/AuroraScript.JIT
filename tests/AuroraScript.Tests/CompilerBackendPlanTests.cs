@@ -1014,7 +1014,7 @@ public sealed class CompilerBackendPlanTests
                 const localConst = a + b;
                 var { left, right } = { left: 1, right: 2 };
                 var [first, ...rest] = [1, 2, 3];
-                return $args;
+                return rest;
             }
             """,
             root);
@@ -1028,7 +1028,6 @@ public sealed class CompilerBackendPlanTests
         var sample = Assert.Single(Assert.Single(session.Modules).Functions, function => function.Name == "sample");
 
         Assert.True(sample.HasDefaultParameters);
-        Assert.True(sample.UsesArgumentsObject);
         Assert.Equal(
             new[] { "a", "b", "localConst", "left", "right", "first", "rest" },
             sample.LocalSlots.Select(slot => slot.Name).ToArray());
@@ -2802,56 +2801,6 @@ public sealed class CompilerBackendPlanTests
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = runDel(ctx, Span<ScriptDatum>.Empty);
         Assert.Equal(15, result.Number);
-    }
-
-    [Fact]
-    public void TypedEmitterExecutesArgsObjectFunctions()
-    {
-        var root = Path.GetTempPath();
-        var module = Parse(
-            """
-            @module(TEST);
-            func count(a, b = 5) {
-                return a + b + $args.length;
-            }
-            export func run() {
-                return count(2) + count(2, 10);
-            }
-            """,
-            root);
-        var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
-            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
-            .WithRuntime(runtime => runtime.HotReload = false)
-            .WithOptimization(optimization => optimization.ModuleConstInlining = false);
-        var builder = new DynamicBuilder(options);
-        var backend = new BackendCompiler(builder, options);
-
-        var session = backend.CreateModulePlans([module]);
-        var modulePlan = Assert.Single(session.Modules);
-        var countPlan = Assert.Single(modulePlan.Functions, function => function.Name == "count");
-        var report = new EmissionSession(session, builder, emitExecutableCode: true).Emit();
-        var moduleResult = Assert.Single(report.Modules);
-        var count = Assert.Single(moduleResult.Functions, function => function.Name == "count");
-        var run = Assert.Single(moduleResult.Functions, function => function.Name == "run");
-        var engine = new AuroraEngine(options);
-        var domain = engine.CreateEmptyDomain(null);
-        var runtimeModule = CreateRuntimeModule(root);
-        var ctx = new ScriptContext(domain) { Module = runtimeModule };
-
-        Assert.True(countPlan.UsesArgumentsObject);
-        Assert.False(countPlan.IsDirectCallCandidate);
-        Assert.Equal(FunctionCallConvention.Span, countPlan.CallConvention);
-        Assert.True(count.HasExecutableCode);
-        Assert.True(run.HasExecutableCode);
-        Assert.True(moduleResult.HasExecutableInitializer);
-
-        var initialize = (ModuleInitializerDelegate)moduleResult.Initializer.CreateDelegate(typeof(ModuleInitializerDelegate));
-        initialize(ctx, Span<ScriptDatum>.Empty);
-
-        var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
-        var result = runDel(ctx, Span<ScriptDatum>.Empty);
-        Assert.Equal(22, result.Number);
     }
 
     [Fact]

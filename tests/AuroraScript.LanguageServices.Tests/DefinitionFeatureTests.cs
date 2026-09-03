@@ -25,6 +25,40 @@ public sealed class DefinitionFeatureTests : IDisposable
     }
 
     [Fact]
+    public void ResolvesContextAliasAndNativeTypeDefinitions()
+    {
+        var mainPath = Path.Combine(_root, "main.as");
+        var globalPath = Path.Combine(_root, "global.as");
+        var main =
+            """
+            @module(MAIN);
+            context user as UserState;
+            export func player() UserState {
+                return user;
+            }
+            """;
+        var global =
+            """
+            @global();
+            declare type UserState {
+                String name;
+            }
+            """;
+        var service = CreateService();
+        service.OpenOrUpdateDocument(globalPath, global);
+        service.OpenOrUpdateDocument(mainPath, main);
+
+        var typeDefinition = service.GetDefinition(mainPath, PositionOf(main, "UserState"));
+        var aliasDefinition = service.GetDefinition(mainPath, PositionOfLast(main, "user"));
+
+        Assert.NotNull(aliasDefinition);
+        Assert.Equal(ScriptPath.NormalizeFullPath(mainPath), aliasDefinition!.Path);
+        Assert.Equal(1, aliasDefinition.Range.Start.Line);
+        Assert.NotNull(typeDefinition);
+        Assert.Equal(ScriptPath.NormalizeFullPath(globalPath), typeDefinition!.Path);
+    }
+
+    [Fact]
     public void ResolvesImportedModuleMemberDefinition()
     {
         var mainPath = Path.Combine(_root, "main.as");

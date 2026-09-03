@@ -506,7 +506,36 @@ namespace AuroraScript.Compiler.Backend.Code
                         {
                             _localStructuralTypes[i] = parameterStructuralType;
                         }
+                        if (function.LocalSlots[i].Declaration is
+                                ParameterDeclaration nativeParameter &&
+                            TypeReferenceFacts.TryGetNativeObject(
+                                hostExports,
+                                nativeParameter.DeclaredType,
+                                out var parameterNativeType))
+                        {
+                            _localNativeObjectTypes[i] = parameterNativeType;
+                            if (_locals[i] == FlowValueType.None ||
+                                _locals[i] == FlowValueType.Dynamic)
+                            {
+                                _locals[i] = FlowValueType.Object;
+                            }
+                        }
                         parameterIndex++;
+                    }
+                    else if (function.LocalSlots[i].Declaration is ContextDeclaration context)
+                    {
+                        if (TypeReferenceFacts.TryGetNativeObject(
+                            hostExports,
+                            context.DeclaredType,
+                            out var contextNative))
+                        {
+                            _locals[i] = FlowValueType.Object;
+                            _localNativeObjectTypes[i] = contextNative;
+                        }
+                        else
+                        {
+                            _locals[i] = FlowValueType.Dynamic;
+                        }
                     }
                     else if (IsCaptured(function.LocalSlots[i].Id))
                     {
@@ -572,7 +601,8 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     declaredReturnType = TypeReferenceFacts.GetFlowType(
                         _module.Declaration,
-                        _function.Declaration?.ReturnType);
+                        _function.Declaration?.ReturnType,
+                        _hostExports);
                 }
                 if (declaredReturnType != FlowValueType.None &&
                     !(_optimisticDirect &&
@@ -838,7 +868,8 @@ namespace AuroraScript.Compiler.Backend.Code
                         AnalyzeExpression(check.Value);
                         type = TypeReferenceFacts.GetFlowType(
                             _module.Declaration,
-                            check.AssertedType);
+                            check.AssertedType,
+                            _hostExports);
                         break;
                     case TypedDocumentExpression tdoc:
                         var inferredTDocType = AnalyzeExpression(tdoc.Value);
@@ -1179,6 +1210,12 @@ namespace AuroraScript.Compiler.Backend.Code
                             _hostExports.TryGetNativeObject(tdoc.TypeName, out var documentType) &&
                             typeof(INativeTypedDocument).IsAssignableFrom(documentType.ClrType):
                         return documentType;
+                    case CheckExpression check
+                        when TypeReferenceFacts.TryGetNativeObject(
+                            _hostExports,
+                            check.AssertedType,
+                            out var asserted):
+                        return asserted;
                     case NameExpression name
                         when _names.TryGetValue(name, out var binding) && binding.IsLocal:
                         return _localNativeObjectTypes[binding.Local.Value];
@@ -1196,6 +1233,9 @@ namespace AuroraScript.Compiler.Backend.Code
                                 export.Method.ReturnType,
                                 out var returned):
                         return returned;
+                    case FunctionCallExpression call
+                        when TryGetScriptNativeReturn(call, out var scriptReturned):
+                        return scriptReturned;
                     case AssignmentExpression assignment:
                         return _nativeObjectTypes.TryGetValue(assignment.Right, out var assigned)
                             ? assigned
@@ -1209,6 +1249,41 @@ namespace AuroraScript.Compiler.Backend.Code
                     default:
                         return null;
                 }
+            }
+
+            private bool TryGetScriptNativeReturn(
+                FunctionCallExpression call,
+                out HostNativeObjectDescriptor descriptor)
+            {
+                descriptor = null;
+                if (call?.Target is NameExpression target &&
+                    _names.TryGetValue(target, out var binding) &&
+                    binding.DirectFunction.IsValid)
+                {
+                    for (var i = 0; i < _module.Functions.Count; i++)
+                    {
+                        var function = _module.Functions[i];
+                        if (function.Id.Equals(binding.DirectFunction) &&
+                            TypeReferenceFacts.TryGetNativeObject(
+                                _hostExports,
+                                function.Declaration?.ReturnType,
+                                out descriptor))
+                        {
+                            return true;
+                        }
+                    }
+                }
+
+                if (_function.ImportedNativeCalls.TryGetValue(call, out var imported) &&
+                    TypeReferenceFacts.TryGetNativeObject(
+                        _hostExports,
+                        imported.Declaration?.ReturnType,
+                        out descriptor))
+                {
+                    return true;
+                }
+
+                return false;
             }
 
             /// <summary>

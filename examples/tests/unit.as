@@ -4,12 +4,14 @@ import time from 'timer';
 import md5 from 'md5';
 import xxx from './libs/timer';
 include 'constant';
+import ctx from 'ctx';
 import mem from 'seed';
-import debug_test from '../temp/debug_test';
+
+
+context bag;
 
 var __testCases = [];
 mem.go();
-debug_test.run();
 
 
 
@@ -113,10 +115,9 @@ export func testIssue1() {
 	console.log(`my age is = {${ i }} year`);
 
 	var t = global.getModule('TIMER_LIB');
-	$state.Test(123.45, 'abc');
-	var args = $args;
+	return ctx.player().test(123.45, 'abc');
 
-
+	
 }
 
 
@@ -176,8 +177,8 @@ func testClrType() {
 	// JSON.stringify
 	console.log(s);
 	console.log(Math2.Log10(5));
-	// 内置关键字 $state is UserState in ExecuteOptions
-	$state.Test(123.45, 'abc');
+	// context user is UserState in Execute userState
+	ctx.player().test(123.45, 'abc');
 	testIssue1();
 	testIssue2();
 }
@@ -215,16 +216,13 @@ func testProxy() {
 
 func testPeculiarity() {
 
-	// key $state
-	console.log($state);
+	// current UserState through context bag
+	console.log(bag);
 
 	// Dynamically obtain the existing module
 	var timerLib = global.getModule("TIMER_LIB");
 
 	console.log(timerLib.resetCount);
-
-	// key $args get func arguments
-	console.log($args);
 
 }
 

@@ -15,6 +15,6 @@ export const TAG = BASE + '_' + 1;
 export const TEMPLATE = STR + BASE + '_' + TAG;
 
 
-export func log() {
-	console.log(...$args);
+export func log(...args) {
+	console.log(...args);
 }

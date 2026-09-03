@@ -1,5 +1,6 @@
 using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
+using AuroraScript.Compiler.Backend;
 using AuroraScript.Compiler.Backend.Code;
 using AuroraScript.Runtime;
 using System;
@@ -10,18 +11,25 @@ namespace AuroraScript.Compiler.Analyzer
     internal sealed class LinkedTypeReferenceValidator : IAstVisitor
     {
         private readonly ModuleDeclaration _module;
+        private readonly HostExportCatalog _hostExports;
 
-        private LinkedTypeReferenceValidator(ModuleDeclaration module)
+        private LinkedTypeReferenceValidator(
+            ModuleDeclaration module,
+            HostExportCatalog hostExports)
         {
             _module = module ?? throw new ArgumentNullException(nameof(module));
+            _hostExports = hostExports ?? throw new ArgumentNullException(nameof(hostExports));
         }
 
-        public static void Validate(IReadOnlyList<ModuleDeclaration> modules)
+        public static void Validate(
+            IReadOnlyList<ModuleDeclaration> modules,
+            IReadOnlyList<Type> nativeTypes)
         {
             ArgumentNullException.ThrowIfNull(modules);
+            var hostExports = new HostExportCatalog(nativeTypes ?? Array.Empty<Type>());
             for (var i = 0; i < modules.Count; i++)
             {
-                new LinkedTypeReferenceValidator(modules[i]).Apply();
+                new LinkedTypeReferenceValidator(modules[i], hostExports).Apply();
             }
         }
 
@@ -56,6 +64,28 @@ namespace AuroraScript.Compiler.Analyzer
             base.VisitTypeFieldDeclaration(node);
         }
 
+        protected override void VisitContextDeclaration(ContextDeclaration node)
+        {
+            if (node.DeclaredType == null)
+            {
+                return;
+            }
+
+            if (!TypeReferenceFacts.TryGetNativeObject(
+                _hostExports,
+                node.DeclaredType,
+                out _))
+            {
+                throw new AuroraCompilationException(
+                    AuroraCompilationStage.Linking,
+                    _module.Source.FullPath,
+                    node.DeclaredType.Token,
+                    $"Context '{node.Name.Value}' requires a host NativeType, not '{node.DeclaredType.DisplayName}'.");
+            }
+
+            base.VisitContextDeclaration(node);
+        }
+
         protected override void VisitGetPropertyExpression(GetPropertyExpression node)
         {
             RejectTypeUsedAsValue(node.Object, node.Property);
@@ -72,6 +102,7 @@ namespace AuroraScript.Compiler.Analyzer
         {
             if (reference == null ||
                 IsBuiltin(reference) ||
+                TypeReferenceFacts.TryGetNativeObject(_hostExports, reference, out _) ||
                 _module.TryResolveType(reference, out _))
             {
                 return;

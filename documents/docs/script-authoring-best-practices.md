@@ -342,6 +342,7 @@ Use these defaults unless the user asks for a different style:
 - Distinguish packed arrays with `typeof value == "Int8Array"` or `check Int8Array value`; do not compare `typeof` to `"object"` for those values.
 - Packed-array parameters accept `null`. Call `work(null)` without `as Float64Array`; non-null values still require the exact packed-array type.
 - Use `native func name(...) ReturnType { ... }` only for a stable ABI. Use `void` as the return contract for a procedure: fall through or `return;` is valid, `return expression;` is not. Direct native statement calls use a CLR `void` ABI; dynamic calls evaluate to `null`.
+- Bind `ScriptContext.UserState` with module-level `context name;` or `context name as NativeType;`. Do not emit `$state`. A NativeType return from `native func` stays that CLR type on the native entry.
 - Keep `console.log` and `console.error` out of hot paths.
 - Avoid array methods such as `map`, `filter`, or `reduce` in performance-sensitive examples unless clarity matters more and the API is known in `runtime-api.json`.
 

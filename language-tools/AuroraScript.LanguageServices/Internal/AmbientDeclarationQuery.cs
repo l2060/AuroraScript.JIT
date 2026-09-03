@@ -356,13 +356,21 @@ internal static class AmbientDeclarationQuery
         definition = null!;
         if (string.IsNullOrEmpty(ownerName))
         {
-            if (!catalog.TryGetRoot(name, out var root))
+            if (catalog.TryGetRoot(name, out var root))
             {
-                return false;
+                definition = new DefinitionLocation(root.FilePath, TextRange.FromSourceSpan(root.NameRange));
+                return true;
             }
 
-            definition = new DefinitionLocation(root.FilePath, TextRange.FromSourceSpan(root.NameRange));
-            return true;
+            if (catalog.TryGetContainer(name, out var container))
+            {
+                definition = new DefinitionLocation(
+                    container.Name.Range.FileName,
+                    TextRange.FromSourceSpan(container.Name.Range));
+                return true;
+            }
+
+            return false;
         }
 
         if (catalog.TryGetMember(ownerName, name, instanceMembers, out var member))
@@ -539,6 +547,14 @@ internal static class AmbientDeclarationQuery
         instanceMembers = false;
         range = default;
         var localIndex = AuroraLocalSymbolIndex.Build(module);
+        if (context.TypeReference != null)
+        {
+            name = context.TypeReference.Value;
+            range = TextRange.FromSourceSpan(context.TypeReference.Range);
+            return catalog.TryGetRoot(name, out _) ||
+                catalog.TryGetContainer(name, out _);
+        }
+
         if (context.PropertyAccess != null &&
             context.IsOnPropertyName &&
             context.PropertyAccess.Property is NameExpression property)

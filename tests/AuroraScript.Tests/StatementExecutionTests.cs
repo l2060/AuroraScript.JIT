@@ -81,7 +81,7 @@ public sealed class StatementExecutionTests
     }
 
     [Fact]
-    public async Task ExecutesDefaultParametersArgsSpreadAndHighArityCalls()
+    public async Task ExecutesDefaultParametersSpreadAndHighArityCalls()
     {
         using var workspace = new TestWorkspace();
         var (_, domain) = await workspace.CompileModuleAsync(
@@ -90,15 +90,15 @@ public sealed class StatementExecutionTests
             func sum(a, b, c, d, e, f, g, h) {
                 return a + b + c + d + e + f + g + h;
             }
-            func defaults(a, b = 5) { return [a, b, $args.length]; }
+            func defaults(a, b = 5) { return [a, b]; }
             export func run() {
                 var values = [1, 2, 3, 4, 5, 6, 7, 8];
                 var first = defaults(2);
-                return [sum(...values), first[0], first[1], first[2]];
+                return [sum(...values), first[0], first[1]];
             }
             """);
 
-        ScriptAssert.Equal(new object?[] { 36, 2, 5, 1 }, TestWorkspace.Execute(domain, "run"));
+        ScriptAssert.Equal(new object?[] { 36, 2, 5 }, TestWorkspace.Execute(domain, "run"));
     }
 
     [Fact]

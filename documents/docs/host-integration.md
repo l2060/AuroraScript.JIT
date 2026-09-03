@@ -146,6 +146,23 @@ var result = domain.Execute("MAIN", "run");
 
 The entry source in this example must declare `@module(MAIN);`. An anonymous module can still initialize and be imported by other scripts, but host name-based APIs do not expose it.
 
+Pass a `ScriptObject` as `userState` when a module needs per-execution host state. Script code binds that object with module-level `context` aliases. A typed alias requires a **public** `[AuroraNativeType]` listed in `WithNativeTypes`:
+
+```csharp
+using var domain = engine.CreateDomain(userState: new UserState());
+```
+
+```as
+context bag;
+context user as UserState;
+
+export native func player() UserState {
+    return user;
+}
+```
+
+`player$native` returns `UserState`. Proven callers invoke members on that instance. The `$typed` shell still returns `ScriptDatum` for `Execute` and other dynamic calls. An untyped `context bag;` stays on the dynamic property path. There is no `$state` identifier.
+
 ## CompileBlock
 
 `CompileBlock` compiles a function body, not a module. Do not pass `@module`, `@global()`, `import`, `include`, `export`, or `declare` syntax.

@@ -95,6 +95,19 @@
       ]
     },
     {
+      "id": "declaration.context",
+      "syntax": "context name; | context name as NativeType;",
+      "scope": "module",
+      "notes": [
+        "Module-level alias for the current ScriptContext.UserState instance, not a field of a session bag.",
+        "Multiple context names are allowed; each is a separate binding that still names the same UserState object.",
+        "as Type must be a public host NativeType from WithNativeTypes. Each typed name is loaded once per function into a typed local (ldfld UserState + castclass) and then uses native fields and calls.",
+        "An untyped context stays dynamic. A function may use several context names at once; each is cached independently.",
+        "A native function whose return contract is that NativeType returns the CLR type from $native. Proven call sites keep the instance; only $typed converts to ScriptDatum.",
+        "Context names cannot be exported and cannot collide with other module declarations. Parameters and locals of the same name shadow the context."
+      ]
+    },
+    {
       "id": "function.declaration",
       "syntax": "func name(parameters) { statements }",
       "scope": "module-or-block",
@@ -110,6 +123,17 @@
         "Direct native calls used as statements do not materialize a result.",
         "Exported, dynamic, or otherwise value-producing calls observe null.",
         "void is invalid on ordinary functions, parameters, fields, and type assertions."
+      ]
+    },
+    {
+      "id": "function.native-nativetype-return",
+      "syntax": "export native func name() NativeType { return typedContext; }",
+      "scope": "module",
+      "notes": [
+        "A declared host NativeType return is the CLR type on the $native entry, not ScriptDatum.",
+        "Proven script and host call sites invoke NativeType members without FromObject/ToObject round trips.",
+        "The $typed shell still returns ScriptDatum for Execute, unproven calls, and escaped function values.",
+        "The host is responsible for supplying a matching UserState; a mismatch throws InvalidCastException at the context load."
       ]
     },
     {

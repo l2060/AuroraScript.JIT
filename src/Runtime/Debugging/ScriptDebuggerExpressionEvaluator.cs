@@ -1,4 +1,3 @@
-using AuroraScript.Runtime.Types;
 using System;
 using System.Reflection;
 
@@ -32,22 +31,12 @@ namespace AuroraScript.Runtime.Debugging
             return context.Global.GetPropertyDatum(context, name);
         }
 
-        /// <summary>Gets a debugger pseudo variable such as global, $state, or $args.</summary>
-        public static ScriptDatum GetSpecial(ScriptContext context, string name, ScriptDatum[] arguments)
+        /// <summary>Gets a debugger pseudo variable such as global.</summary>
+        public static ScriptDatum GetSpecial(ScriptContext context, string name)
         {
             if (string.Equals(name, "global", StringComparison.Ordinal))
             {
                 return context?.Global != null ? ScriptDatum.FromObject(context.Global) : ScriptDatum.Null;
-            }
-
-            if (string.Equals(name, "$state", StringComparison.Ordinal))
-            {
-                return context?.UserState != null ? ScriptDatum.FromObject(context.UserState) : ScriptDatum.Null;
-            }
-
-            if (string.Equals(name, "$args", StringComparison.Ordinal))
-            {
-                return arguments == null ? ScriptDatum.FromObject(new ScriptArray(0)) : ScriptDatum.FromObject(new ScriptArray(arguments));
             }
 
             return ScriptDatum.Null;
@@ -69,60 +58,6 @@ namespace AuroraScript.Runtime.Debugging
                 (uint)index < (uint)upvalues.Length
                 ? GetUpvalueValue(upvalues.GetValue(index))
                 : ScriptDatum.Null;
-        }
-
-        /// <summary>Packs zero fast-call arguments for the debugger.</summary>
-        public static ScriptDatum[] PackArguments()
-        {
-            return Array.Empty<ScriptDatum>();
-        }
-
-        /// <summary>Packs span-call arguments for the debugger.</summary>
-        public static ScriptDatum[] PackSpanArguments(Span<ScriptDatum> args)
-        {
-            return args.ToArray();
-        }
-
-        /// <summary>Packs one fast-call argument for the debugger.</summary>
-        public static ScriptDatum[] PackArguments(ScriptDatum arg0)
-        {
-            return new[] { arg0 };
-        }
-
-        /// <summary>Packs two fast-call arguments for the debugger.</summary>
-        public static ScriptDatum[] PackArguments(ScriptDatum arg0, ScriptDatum arg1)
-        {
-            return new[] { arg0, arg1 };
-        }
-
-        /// <summary>Packs three fast-call arguments for the debugger.</summary>
-        public static ScriptDatum[] PackArguments(ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2)
-        {
-            return new[] { arg0, arg1, arg2 };
-        }
-
-        /// <summary>Packs four fast-call arguments for the debugger.</summary>
-        public static ScriptDatum[] PackArguments(ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3)
-        {
-            return new[] { arg0, arg1, arg2, arg3 };
-        }
-
-        /// <summary>Packs five fast-call arguments for the debugger.</summary>
-        public static ScriptDatum[] PackArguments(ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4)
-        {
-            return new[] { arg0, arg1, arg2, arg3, arg4 };
-        }
-
-        /// <summary>Packs six fast-call arguments for the debugger.</summary>
-        public static ScriptDatum[] PackArguments(ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5)
-        {
-            return new[] { arg0, arg1, arg2, arg3, arg4, arg5 };
-        }
-
-        /// <summary>Packs seven fast-call arguments for the debugger.</summary>
-        public static ScriptDatum[] PackArguments(ScriptDatum arg0, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6)
-        {
-            return new[] { arg0, arg1, arg2, arg3, arg4, arg5, arg6 };
         }
 
         private static bool TryGetUpvalueArray(ScriptContext context, out Array upvalues)

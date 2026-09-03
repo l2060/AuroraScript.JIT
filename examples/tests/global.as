@@ -29,3 +29,10 @@ declare type Vec2 {
 	static func from(Number x, Number y) Vec2;
 	static func length(Number x, Number y) Number;
 }
+
+
+declare type UserState {
+	Number x;
+	Number y;
+	func test(Number offset, String str) String;
+}

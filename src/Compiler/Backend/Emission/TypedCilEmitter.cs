@@ -56,6 +56,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         private bool _prepared;
         private bool _directMode;
         private StackValueKind _methodReturnKind;
+        private HostNativeObjectDescriptor _methodNativeReturn;
         private DirectParameterType[] _directParameterTypes;
         private TypedModuleCode _moduleCode;
         private FunctionCallConvention _convention;
@@ -205,8 +206,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 var function = _module.Functions[i];
                 if (!function.IsDirectCallCandidate ||
                     (function.HasDefaultParameters &&
-                        !function.IsNativeDeclared) ||
-                    function.UsesArgumentsObject)
+                        !function.IsNativeDeclared))
                 {
                     continue;
                 }
@@ -218,6 +218,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 if (code == null ||
                     code.ReturnType == FlowValueType.None ||
                     FlowValueTypeFacts.ContainsPackedArray(code.ReturnType) ||
+                    (HasContextLocal(function) && !function.IsNativeDeclared) ||
                     (!returnsVoid &&
                         !ReturnsOnAllPaths(function.Declaration.Body as Statement)))
                 {
@@ -293,8 +294,14 @@ namespace AuroraScript.Compiler.Backend.Emission
                 var returnsVoid =
                     function.IsNativeDeclared &&
                     TypeReferenceFacts.IsVoid(function.Declaration.ReturnType);
+                TypeReferenceFacts.TryGetNativeObject(
+                    _session.CompileSession.HostExports,
+                    function.Declaration.ReturnType,
+                    out var nativeReturn);
                 var returnType = returnsVoid
                     ? typeof(void)
+                    : nativeReturn != null
+                        ? nativeReturn.ClrType
                     : code.ReturnType switch
                 {
                     FlowValueType.Int32 => typeof(int),
@@ -316,8 +323,11 @@ namespace AuroraScript.Compiler.Backend.Emission
                     code,
                     parameterTypes,
                     function.IsNativeDeclared,
+                    nativeReturn,
                     returnsVoid
                         ? StackValueKind.Void
+                        : nativeReturn != null
+                            ? StackValueKind.Object
                         : code.ReturnType == FlowValueType.Int32
                         ? StackValueKind.Int32
                         : code.ReturnType == FlowValueType.Int64
@@ -416,6 +426,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                     break;
                 case StackValueKind.Boolean:
                     il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromBoolean);
+                    break;
+                case StackValueKind.Object:
+                    il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
                     break;
             }
             il.Emit(OpCodes.Ret);
@@ -537,6 +550,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     directMode: true,
                     direct.ParameterTypes,
                     direct.ReturnKind,
+                    direct.NativeReturn,
                     out _);
                 direct.Emitted = true;
             }
@@ -566,6 +580,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 directMode: false,
                 directParameterTypes: null,
                 StackValueKind.Datum,
+                nativeReturn: null,
                 out localCount);
             method = prepared.Method;
             return true;
@@ -579,6 +594,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             bool directMode,
             DirectParameterType[] directParameterTypes,
             StackValueKind returnKind,
+            HostNativeObjectDescriptor nativeReturn,
             out int localCount)
         {
             _function = function;
@@ -588,6 +604,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             _convention = convention;
             _directParameterTypes = directParameterTypes;
             _methodReturnKind = returnKind;
+            _methodNativeReturn = nativeReturn;
             _localCount = 0;
             _capturedLocalBySlot = BuildCapturedLocalMap(function);
             FindParameterCaches(code, out _numericCacheNeeded, out _booleanCacheNeeded);
@@ -621,6 +638,8 @@ namespace AuroraScript.Compiler.Backend.Emission
                             StackValueKind.Int64 => typeof(long),
                             StackValueKind.Number => typeof(double),
                             StackValueKind.Boolean => typeof(bool),
+                            StackValueKind.Object when nativeReturn != null =>
+                                nativeReturn.ClrType,
                             _ => typeof(ScriptDatum)
                         });
                     }
@@ -644,10 +663,12 @@ namespace AuroraScript.Compiler.Backend.Emission
                         CreateDebuggerMetadata(function, convention));
                     InitializeParameters(convention);
                 }
+                InitializeContextLocals();
                 EmitStatement(body);
                 if (returnKind is StackValueKind.Int32 or StackValueKind.Boolean) _il.Emit(OpCodes.Ldc_I4_0);
                 else if (returnKind == StackValueKind.Int64) _il.Emit(OpCodes.Ldc_I8, 0L);
                 else if (returnKind == StackValueKind.Number) _il.Emit(OpCodes.Ldc_R8, double.NaN);
+                else if (returnKind == StackValueKind.Object && nativeReturn != null) _il.Emit(OpCodes.Ldnull);
                 else if (returnKind != StackValueKind.Void) EmitNull();
                 if (_usesReturnEpilogue &&
                     returnKind != StackValueKind.Void)
@@ -724,6 +745,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 _argumentBuffers = null;
                 _typedDocumentPath = null;
                 _methodReturnKind = StackValueKind.Datum;
+                _methodNativeReturn = null;
                 _breakLabels.Clear();
                 _continueLabels.Clear();
             }
@@ -972,6 +994,48 @@ namespace AuroraScript.Compiler.Backend.Emission
             throw new NotSupportedException("Unresolved closure upvalue '" + slot.Name + "'.");
         }
 
+        private static bool HasContextLocal(FunctionPlan function)
+        {
+            for (var i = 0; i < function.LocalSlots.Length; i++)
+            {
+                if (function.LocalSlots[i].Declaration is ContextDeclaration)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private void InitializeContextLocals()
+        {
+            if (!HasContextArgument)
+            {
+                return;
+            }
+
+            for (var i = 0; i < _function.LocalSlots.Length; i++)
+            {
+                var slot = _function.LocalSlots[i];
+                if (slot.Declaration is not ContextDeclaration)
+                {
+                    continue;
+                }
+
+                _il.Emit(OpCodes.Ldarg_0);
+                _il.Emit(OpCodes.Ldfld, TypedRuntimeMetadata.ContextUserState);
+                var native = _code.GetLocalNativeObjectType(slot.Id);
+                if (native != null)
+                {
+                    _il.Emit(OpCodes.Castclass, native.ClrType);
+                }
+                else
+                {
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
+                }
+                EmitStoreLocalFromStack(slot.Id);
+            }
+        }
+
         private void InitializeDirectParameters()
         {
             var parameterIndex = 0;
@@ -993,6 +1057,15 @@ namespace AuroraScript.Compiler.Backend.Emission
                 ParameterDeclaration parameter
                     ? parameter.DeclaredType
                     : null;
+            if (TypeReferenceFacts.TryGetNativeObject(
+                _session.CompileSession.HostExports,
+                declaredType,
+                out var nativeParameter))
+            {
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumToObject);
+                _il.Emit(OpCodes.Castclass, nativeParameter.ClrType);
+                return;
+            }
             if (TypeReferenceFacts.TryGetCustomType(
                 _module.Declaration,
                 declaredType,
@@ -1186,6 +1259,14 @@ namespace AuroraScript.Compiler.Backend.Emission
 
             var returnReference = _function.Declaration?.ReturnType;
             var declaredName = returnReference?.Name;
+            if (TypeReferenceFacts.TryGetNativeObject(
+                _session.CompileSession.HostExports,
+                returnReference,
+                out var nativeReturn))
+            {
+                EmitNativeReturn(expression, nativeReturn);
+                return;
+            }
             if (TypeReferenceFacts.TryGetCustomType(
                 _module.Declaration,
                 returnReference,
@@ -1241,6 +1322,43 @@ namespace AuroraScript.Compiler.Backend.Emission
                 if (expression == null) EmitNull();
                 else EmitDatum(expression);
             }
+        }
+
+        private void EmitNativeReturn(
+            Expression expression,
+            HostNativeObjectDescriptor nativeReturn)
+        {
+            if (_methodReturnKind == StackValueKind.Object &&
+                ReferenceEquals(_methodNativeReturn, nativeReturn))
+            {
+                if (expression == null)
+                {
+                    _il.Emit(OpCodes.Ldnull);
+                }
+                else
+                {
+                    EmitNativeObjectReference(expression, nativeReturn);
+                }
+                return;
+            }
+
+            if (expression == null)
+            {
+                EmitNull();
+                return;
+            }
+
+            if (ReferenceEquals(_code.GetNativeObjectType(expression), nativeReturn))
+            {
+                EmitNativeObjectReference(expression, nativeReturn);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
+                return;
+            }
+
+            EmitDatum(expression);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumToObject);
+            _il.Emit(OpCodes.Castclass, nativeReturn.ClrType);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
         }
 
         private static bool ReturnTypeIsProven(
@@ -3257,12 +3375,20 @@ namespace AuroraScript.Compiler.Backend.Emission
                 }
                 return StackValueKind.Void;
             }
+            if (TypeReferenceFacts.TryGetNativeObject(
+                _session.CompileSession.HostExports,
+                target.Declaration.ReturnType,
+                out _))
+            {
+                return StackValueKind.Object;
+            }
             var returnType = TypeReferenceFacts.GetFlowType(
                 target.Declaration.Parent as ModuleDeclaration,
                 target.Declaration.ReturnType);
             return returnType switch
             {
                 FlowValueType.Int32 => StackValueKind.Int32,
+                FlowValueType.Int64 => StackValueKind.Int64,
                 FlowValueType.Number => StackValueKind.Number,
                 FlowValueType.Boolean => StackValueKind.Boolean,
                 _ => StackValueKind.Datum
@@ -4087,22 +4213,6 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
             if (!binding.IsLocal)
             {
-                if (StringComparer.Ordinal.Equals(binding.Name, "$args"))
-                {
-                    if (_convention != FunctionCallConvention.Span)
-                    {
-                        throw new InvalidOperationException("$args requires the span convention.");
-                    }
-                    _il.Emit(OpCodes.Ldarg_1);
-                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetArgumentsArray);
-                    return StackValueKind.Datum;
-                }
-                if (StringComparer.Ordinal.Equals(binding.Name, "$state"))
-                {
-                    _il.Emit(OpCodes.Ldarg_0);
-                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetUserState);
-                    return StackValueKind.Datum;
-                }
                 if (StringComparer.Ordinal.Equals(binding.Name, "global"))
                 {
                     _il.Emit(OpCodes.Ldarg_0);
@@ -6500,7 +6610,6 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             return function.IsDirectCallCandidate &&
                 !function.HasDefaultParameters &&
-                !function.UsesArgumentsObject &&
                 GetParameterCount(function) <= 7
                     ? GetFastConvention(GetParameterCount(function))
                     : FunctionCallConvention.Span;
@@ -7109,6 +7218,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 TypedFunctionCode code,
                 DirectParameterType[] parameterTypes,
                 bool hasContext,
+                HostNativeObjectDescriptor nativeReturn,
                 StackValueKind returnKind)
             {
                 Method = method;
@@ -7116,6 +7226,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 Code = code;
                 ParameterTypes = parameterTypes;
                 HasContext = hasContext;
+                NativeReturn = nativeReturn;
                 ReturnKind = returnKind;
                 Emitted = false;
             }
@@ -7125,6 +7236,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             public TypedFunctionCode Code;
             public DirectParameterType[] ParameterTypes;
             public bool HasContext;
+            public HostNativeObjectDescriptor NativeReturn;
             public StackValueKind ReturnKind;
             public bool Emitted;
             public bool IsDefined => Method != null;
@@ -7289,8 +7401,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 if (directMode &&
                     (function.UpvalueSlots.Length != 0 ||
                         function.CapturedLocalSlots.Length != 0 ||
-                        function.NestedFunctions.Length != 0 ||
-                        function.UsesArgumentsObject))
+                        function.NestedFunctions.Length != 0))
                 {
                     return false;
                 }

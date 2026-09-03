@@ -156,7 +156,6 @@ namespace AuroraScript.Compiler.Backend.Binding
         {
             return function.IsModuleFunction &&
                 (!function.HasDefaultParameters || function.IsNativeDeclared) &&
-                !function.UsesArgumentsObject &&
                 function.UpvalueSlots.Length == 0 &&
                 function.CapturedLocalSlots.Length == 0;
         }

@@ -235,7 +235,6 @@ internal sealed class AuroraInspectionScope
 internal sealed class AuroraClrVariable
 {
     public const string ScriptDatumTypeName = "valuetype [AuroraScript]AuroraScript.Runtime.ScriptDatum";
-    public const string ScriptDatumArrayTypeName = "valuetype [AuroraScript]AuroraScript.Runtime.ScriptDatum[]";
 
     private AuroraClrVariable(string name, int slot, bool isParameter, string cilTypeName)
     {
@@ -578,15 +577,9 @@ internal sealed class AuroraInspectionQuery
         var locals = new List<DkmClrLocalVariableInfo>();
         var methodIndex = 0;
 
-        if (argumentsOnly)
-        {
-            AddLocal(builder, locals, scope, "$args", ref methodIndex);
-        }
-        else
+        if (!argumentsOnly)
         {
             AddLocal(builder, locals, scope, "global", ref methodIndex);
-            AddLocal(builder, locals, scope, "$state", ref methodIndex);
-            AddLocal(builder, locals, scope, "$args", ref methodIndex);
         }
 
         foreach (var variable in scope.Parameters)
@@ -651,10 +644,9 @@ internal sealed class AuroraInspectionQuery
         {
             il.LoadContext(scope);
             il.LoadString(specialName);
-            il.LoadPackedArguments(scope);
             il.Call(
                 "AuroraScript.Runtime.Debugging.ScriptDebuggerExpressionEvaluator::GetSpecial",
-                "class [AuroraScript]AuroraScript.Runtime.ScriptContext, string, " + AuroraClrVariable.ScriptDatumArrayTypeName);
+                "class [AuroraScript]AuroraScript.Runtime.ScriptContext, string");
             return;
         }
 
@@ -902,42 +894,6 @@ internal sealed class AuroraQueryIlBuilder
         LoadVariable(scope.ContextParameter);
     }
 
-    public void LoadPackedArguments(AuroraInspectionScope scope)
-    {
-        if (scope.Metadata.CallConvention == AuroraDebuggerCallConvention.Span)
-        {
-            var argsParameter = scope.Parameters.FirstOrDefault(parameter => parameter.Slot == 1);
-            if (argsParameter == null)
-            {
-                writer.WriteLine("    call valuetype [AuroraScript]AuroraScript.Runtime.ScriptDatum[] [AuroraScript]AuroraScript.Runtime.Debugging.ScriptDebuggerExpressionEvaluator::PackArguments()");
-                return;
-            }
-
-            LoadVariable(argsParameter);
-            writer.WriteLine("    call valuetype [AuroraScript]AuroraScript.Runtime.ScriptDatum[] [AuroraScript]AuroraScript.Runtime.Debugging.ScriptDebuggerExpressionEvaluator::PackSpanArguments(valuetype [System.Runtime]System.Span`1<valuetype [AuroraScript]AuroraScript.Runtime.ScriptDatum>)");
-            return;
-        }
-
-        var args = scope.Parameters.Where(parameter => parameter.Slot > 0).Take(7).ToArray();
-        foreach (var arg in args)
-        {
-            LoadVariable(arg);
-        }
-
-        writer.Write("    call valuetype [AuroraScript]AuroraScript.Runtime.ScriptDatum[] [AuroraScript]AuroraScript.Runtime.Debugging.ScriptDebuggerExpressionEvaluator::PackArguments(");
-        for (var i = 0; i < args.Length; i++)
-        {
-            if (i > 0)
-            {
-                writer.Write(", ");
-            }
-
-            writer.Write("valuetype [AuroraScript]AuroraScript.Runtime.ScriptDatum");
-        }
-
-        writer.WriteLine(")");
-    }
-
     public void LoadString(string value)
     {
         writer.Write("    ldstr ");
@@ -1063,9 +1019,7 @@ internal static class AuroraExpressionName
 
     public static bool IsSpecial(string name)
     {
-        return string.Equals(name, "global", StringComparison.Ordinal) ||
-            string.Equals(name, "$state", StringComparison.Ordinal) ||
-            string.Equals(name, "$args", StringComparison.Ordinal);
+        return string.Equals(name, "global", StringComparison.Ordinal);
     }
 
     public static string? GetSpecialName(string name)
@@ -1075,12 +1029,7 @@ internal static class AuroraExpressionName
             return name;
         }
 
-        if (string.Equals(name, "state", StringComparison.Ordinal))
-        {
-            return "$state";
-        }
-
-        return string.Equals(name, "args", StringComparison.Ordinal) ? "$args" : null;
+        return null;
     }
 
     private static bool IsIdentifierStart(char ch)

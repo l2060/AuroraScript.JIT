@@ -16,6 +16,7 @@ global-declaration = declare-function | declare-variable | declare-type ;
 module-meta        = "@module" "(" identifier ")" ";" ;
 include-declaration = "include" string-literal ";" ;
 import-declaration  = "import" identifier "from" string-literal ";" ;
+context-declaration = "context" identifier [ "as" type-reference ] ";" ;
 
 export-declaration = "export" ( function-declaration
                               | variable-declaration
@@ -29,6 +30,7 @@ statement          = ";"
                    | variable-declaration
                    | enum-declaration
                    | type-declaration
+                   | context-declaration
                    | if-statement
                    | while-statement
                    | for-statement

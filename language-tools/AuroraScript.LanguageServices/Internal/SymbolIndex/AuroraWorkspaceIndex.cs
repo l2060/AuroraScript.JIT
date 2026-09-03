@@ -137,6 +137,18 @@ internal sealed class AuroraWorkspaceIndex
     private void CollectModule(AuroraModuleIndex module)
     {
         var declaration = module.Module;
+        for (var i = 0; i < declaration.Contexts.Count; i++)
+        {
+            var context = declaration.Contexts[i];
+            module.AddSymbol(new AuroraSymbolInfo(
+                context.Name.Value,
+                AuroraSymbolKind.Variable,
+                declaration.Source.ModulePath,
+                module.Path,
+                TextRange.FromSourceSpan(context.Name.Range),
+                exported: false));
+        }
+
         for (var i = 0; i < declaration.Types.Count; i++)
         {
             var type = declaration.Types[i];

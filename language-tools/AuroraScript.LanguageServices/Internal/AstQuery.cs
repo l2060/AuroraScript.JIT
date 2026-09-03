@@ -69,6 +69,9 @@ internal static class AstQuery
                 VisitTypeReference(parameter.DeclaredType, state);
                 Visit(parameter.Initializer, state);
                 return;
+            case ContextDeclaration context:
+                VisitTypeReference(context.DeclaredType, state);
+                return;
             case VariableDeclaration variable:
                 Visit(variable.Initializer, state);
                 return;
@@ -196,6 +199,10 @@ internal static class AstQuery
 
     private static void VisitModule(ModuleDeclaration module, QueryState state)
     {
+        for (var i = 0; i < module.Contexts.Count; i++)
+        {
+            VisitTypeReference(module.Contexts[i].DeclaredType, state);
+        }
         VisitList(module.Types, state);
         VisitList(module.Statements, state);
         VisitList(module.Functions, state);

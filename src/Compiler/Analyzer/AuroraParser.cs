@@ -224,6 +224,18 @@ namespace AuroraScript.Compiler.Analyzer
                                 $"Duplicate ambient declaration '{ambientDeclaration.Name.Value}'.");
                         }
                     }
+                    else if (node is ContextDeclaration contextDeclaration)
+                    {
+                        RejectGlobalNonDeclareStatement(node);
+                        if (!this.Root.AddContext(contextDeclaration))
+                        {
+                            throw new AuroraCompilationException(
+                                AuroraCompilationStage.Parsing,
+                                Lexer.FullPath,
+                                contextDeclaration.Name,
+                                $"Duplicate context declaration '{contextDeclaration.Name.Value}'.");
+                        }
+                    }
                     else
                     {
                         RejectGlobalNonDeclareStatement(node);
@@ -341,6 +353,7 @@ namespace AuroraScript.Compiler.Analyzer
                 symbol == Symbols.KW_INCLUDE ||
                 symbol == Symbols.KW_EXPORT ||
                 symbol == Symbols.KW_DECLARE ||
+                symbol == Symbols.KW_CONTEXT ||
                 IsTypeDeclarationStart())
             {
                 var token = this.Lexer.LookAtHead();
@@ -363,6 +376,7 @@ namespace AuroraScript.Compiler.Analyzer
             if (symbol == Symbols.PT_LEFTBRACE) { var res = ParseBlock(); if (res != null) res.IsIndependent = true; return res; }
             if (symbol == Symbols.KW_IMPORT) { var res = ParseImport(); if (res != null) res.IsIndependent = true; return res; }
             if (symbol == Symbols.KW_INCLUDE) { var res = ParseInclude(); if (res != null) res.IsIndependent = true; return res; }
+            if (symbol == Symbols.KW_CONTEXT) { var res = ParseContextDeclaration(); if (res != null) res.IsIndependent = true; return res; }
             if (symbol == Symbols.KW_EXPORT) { var res = ParseExportStatement(); if (res != null) res.IsIndependent = true; return res; }
             if (IsTypeDeclarationStart()) { var res = ParseTypeDeclaration(MemberAccess.Internal); if (res != null) res.IsIndependent = true; return res; }
             if (IsNativeFunctionDeclarationStart()) { var res = ParseNativeFunctionDeclaration(MemberAccess.Internal); if (res != null) res.IsIndependent = true; return res; }
@@ -1213,6 +1227,14 @@ namespace AuroraScript.Compiler.Analyzer
             {
                 return ParseTypeDeclaration(MemberAccess.Export);
             }
+            else if (symbol == Symbols.KW_CONTEXT)
+            {
+                throw new AuroraCompilationException(
+                    AuroraCompilationStage.Parsing,
+                    Lexer.FullPath,
+                    exportRange,
+                    "export context is not supported.");
+            }
 
             var token = this.Lexer.LookAtHead();
             throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, token, "Invalid keywords appear in export declaration.");
@@ -1253,6 +1275,48 @@ namespace AuroraScript.Compiler.Analyzer
                 FunctionFlags.Native);
             function.NativeToken = start;
             return SetRange(function, start.Range, function.Range);
+        }
+
+        private Statement ParseContextDeclaration()
+        {
+            if (scopeStack.Current != ScopeType.MODULE)
+            {
+                throw new AuroraCompilationException(
+                    AuroraCompilationStage.Parsing,
+                    Lexer.FullPath,
+                    Lexer.LookAtHead(),
+                    "Context declarations are only allowed at module scope.");
+            }
+
+            var start = Lexer.NextRangeOfKind(Symbols.KW_CONTEXT);
+            var name = Lexer.NextOfKind<IdentifierToken>();
+            if (string.Equals(name.Value, "global", StringComparison.Ordinal) ||
+                string.Equals(name.Value, "context", StringComparison.Ordinal))
+            {
+                throw new AuroraCompilationException(
+                    AuroraCompilationStage.Parsing,
+                    Lexer.FullPath,
+                    name,
+                    $"Context name '{name.Value}' is reserved.");
+            }
+
+            TypeReference declaredType = null;
+            if (PeekToken(0) is IdentifierToken { Value: "as" })
+            {
+                Lexer.NextOfKind<IdentifierToken>();
+                declaredType = ParseTypeReference();
+                if (declaredType.Qualifier != null)
+                {
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Parsing,
+                        Lexer.FullPath,
+                        declaredType.Qualifier,
+                        "Context types cannot be qualified.");
+                }
+            }
+
+            var semiRange = Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
+            return SetRange(new ContextDeclaration(name, declaredType), start, semiRange);
         }
 
         private bool IsTypeDeclarationStart()
@@ -3172,6 +3236,12 @@ namespace AuroraScript.Compiler.Analyzer
                 base.VisitTypeFieldDeclaration(node);
             }
 
+            protected override void VisitContextDeclaration(ContextDeclaration node)
+            {
+                Validate(node.DeclaredType);
+                base.VisitContextDeclaration(node);
+            }
+
             private void Validate(TypeReference type)
             {
                 if (type == null)
@@ -3187,18 +3257,6 @@ namespace AuroraScript.Compiler.Analyzer
                         type.Token,
                         "Unknown type 'void'.");
                 }
-                if (IsCheckTypeName(type.Name) ||
-                    type.Qualifier != null ||
-                    _module.TryGetType(type.Name, out _))
-                {
-                    return;
-                }
-
-                throw new AuroraCompilationException(
-                    AuroraCompilationStage.Parsing,
-                    _sourceName,
-                    type.Token,
-                    $"Unknown type '{type.Name}'.");
             }
         }
 

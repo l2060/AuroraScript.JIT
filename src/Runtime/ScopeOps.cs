@@ -1,5 +1,3 @@
-using AuroraScript.Runtime.Types;
-using System;
 using System.Runtime.CompilerServices;
 
 namespace AuroraScript.Runtime
@@ -36,9 +34,5 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum GetUserState(ScriptContext context) =>
             ScriptDatum.FromObject(context.UserState);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static ScriptDatum GetArguments(Span<ScriptDatum> arguments) =>
-            ScriptDatum.FromObject(new ScriptArray(arguments));
     }
 }

@@ -92,7 +92,8 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
         "typeof",
         "delete",
         "debugger",
-        "in"
+        "in",
+        "context"
     };
 
     private static readonly HashSet<string> ReservedWords = new(StringComparer.Ordinal)
@@ -131,15 +132,14 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
         "type",
         "typeof",
         "var",
-        "while"
+        "while",
+        "context"
     };
 
     private static readonly HashSet<string> BuiltinVariables = new(StringComparer.Ordinal)
     {
         "global",
-        "$arg",
-        "$args",
-        "$state"
+        "$arg"
     };
 
     private static readonly HashSet<string> BuiltinObjects = new(StringComparer.Ordinal)
@@ -1022,6 +1022,9 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
                     }
                     break;
                 case "enum":
+                    CollectSimpleNamedSymbol(text, i, currentScope, index);
+                    break;
+                case "context":
                     CollectSimpleNamedSymbol(text, i, currentScope, index);
                     break;
                 case "import":
