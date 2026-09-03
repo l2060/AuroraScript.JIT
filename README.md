@@ -80,7 +80,6 @@ Console.WriteLine(result); // 42
 - [MCP、LSP 与 VSIX](https://github.com/l2060/AuroraScript.JIT/wiki/Tooling)
 - [性能与 Benchmark](https://github.com/l2060/AuroraScript.JIT/wiki/Performance-and-Benchmarks)
 
-Wiki 默认使用中文；每段英文翻译紧随中文正文并以引用块呈现。API 的 `Parameters:`、`Returns` 和参数名保持英文，以方便复制和检索。
 
 ## 从源码构建
 

@@ -80,7 +80,6 @@ The detailed overview, tutorials, per-object API Reference, benchmark data, MCP,
 - [MCP, LSP, and VSIX](https://github.com/l2060/AuroraScript.JIT/wiki/Tooling)
 - [Performance and Benchmarks](https://github.com/l2060/AuroraScript.JIT/wiki/Performance-and-Benchmarks)
 
-The Wiki is Chinese-first: each English translation follows its Chinese source in a quote block. API headings (`Parameters:`, `Returns`) and parameter names remain English for copyability and searchability.
 
 ## Build from Source
 
