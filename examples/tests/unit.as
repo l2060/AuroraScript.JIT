@@ -178,7 +178,9 @@ func testClrType() {
 	console.log(s);
 	console.log(Math2.Log10(5));
 	// context user is UserState in Execute userState
-	ctx.player().test(123.45, 'abc');
+	var a = ctx.player().test(123.45, 'abc');
+	var b = ctx.bagName();
+	console.log("=============================================",a,b);
 	testIssue1();
 	testIssue2();
 }
