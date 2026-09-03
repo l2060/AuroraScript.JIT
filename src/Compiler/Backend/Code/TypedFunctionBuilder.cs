@@ -534,7 +534,7 @@ namespace AuroraScript.Compiler.Backend.Code
                         }
                         else
                         {
-                            _locals[i] = FlowValueType.Dynamic;
+                            _locals[i] = FlowValueType.Object;
                         }
                     }
                     else if (IsCaptured(function.LocalSlots[i].Id))

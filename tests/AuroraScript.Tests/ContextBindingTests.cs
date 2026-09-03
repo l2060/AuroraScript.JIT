@@ -1,4 +1,5 @@
 using AuroraScript.Runtime;
+using AuroraScript.Runtime.Types;
 using AuroraScript.Tests.Host;
 using AuroraScript.Tests.Infrastructure;
 using System;
@@ -74,6 +75,32 @@ public sealed class ContextBindingTests
 
         var domain = engine.CreateDomain(userState: new Vec2(6, 8));
         ScriptAssert.Equal(10, domain.Execute("TEST", "use"));
+    }
+
+        [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+    [InlineData(CompilationMode.OnlyRun)]
+    public async Task UntypedContextReadsAndWritesScriptObjectProperties(CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        var (engine, _) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            context bag;
+            export func run() {
+                bag.count = bag.count + 1;
+                return bag.name;
+            }
+            """,
+            mode);
+
+        var userState = new ScriptObject();
+        userState.Define("name", ScriptDatum.FromString("aurora"));
+        userState.Define("count", ScriptDatum.FromNumber(1));
+        var domain = engine.CreateDomain(userState: userState);
+
+        ScriptAssert.Equal("aurora", domain.Execute("TEST", "run"));
+        ScriptAssert.Equal(2, userState.GetPropertyDatum(null, "count"));
     }
 
     [Fact]

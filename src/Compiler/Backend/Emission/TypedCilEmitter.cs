@@ -763,7 +763,10 @@ namespace AuroraScript.Compiler.Backend.Emission
                     !_capturedLocalBySlot.ContainsKey(i)
                         ? _code.LocalNativeObjectTypes[i]
                         : null;
-                var type = nativeObject?.ClrType ?? (_code.LocalTypes[i] switch
+                var type = nativeObject?.ClrType
+                    ?? (IsUntypedContextObjectLocal(i)
+                        ? typeof(ScriptObject)
+                        : _code.LocalTypes[i] switch
                 {
                     FlowValueType.Int32 => typeof(int),
                     FlowValueType.Int64 => typeof(long),
@@ -1006,6 +1009,24 @@ namespace AuroraScript.Compiler.Backend.Emission
             return false;
         }
 
+        private bool IsUntypedContextObjectLocal(int slotIndex)
+        {
+            if ((uint)slotIndex >= (uint)_function.LocalSlots.Length)
+            {
+                return false;
+            }
+            if (_function.LocalSlots[slotIndex].Declaration is not ContextDeclaration)
+            {
+                return false;
+            }
+            if (_code.GetLocalNativeObjectType(new LocalSlotId(slotIndex)) != null)
+            {
+                return false;
+            }
+            return _capturedLocalBySlot == null ||
+                !_capturedLocalBySlot.ContainsKey(slotIndex);
+        }
+
         private void InitializeContextLocals()
         {
             if (!HasContextArgument)
@@ -1022,14 +1043,19 @@ namespace AuroraScript.Compiler.Backend.Emission
                 }
 
                 _il.Emit(OpCodes.Ldarg_0);
-                _il.Emit(OpCodes.Ldfld, TypedRuntimeMetadata.ContextUserState);
                 var native = _code.GetLocalNativeObjectType(slot.Id);
                 if (native != null)
                 {
+                    _il.Emit(OpCodes.Ldfld, TypedRuntimeMetadata.ContextUserState);
                     _il.Emit(OpCodes.Castclass, native.ClrType);
+                }
+                else if (IsUntypedContextObjectLocal(i))
+                {
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetUserStateObject);
                 }
                 else
                 {
+                    _il.Emit(OpCodes.Ldfld, TypedRuntimeMetadata.ContextUserState);
                     _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
                 }
                 EmitStoreLocalFromStack(slot.Id);
@@ -2073,17 +2099,35 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 return EmitNativeFieldRead(expression.Object, nativeOwner, nativeField);
             }
-            EmitDatum(expression.Object);
-            if (_directMode)
+            var receiverKind = EmitExpression(expression.Object);
+            if (receiverKind == StackValueKind.Object)
             {
-                _session.Builder.LoadStringConstant(_il, name);
-                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetPropertyDirect);
+                if (_directMode)
+                {
+                    _session.Builder.LoadStringConstant(_il, name);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetObjectPropertyDirect);
+                }
+                else
+                {
+                    _il.Emit(OpCodes.Ldarg_0);
+                    _session.Builder.LoadStringConstant(_il, name);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetObjectProperty);
+                }
             }
             else
             {
-                _il.Emit(OpCodes.Ldarg_0);
-                _session.Builder.LoadStringConstant(_il, name);
-                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetProperty);
+                ConvertToDatum(receiverKind);
+                if (_directMode)
+                {
+                    _session.Builder.LoadStringConstant(_il, name);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetPropertyDirect);
+                }
+                else
+                {
+                    _il.Emit(OpCodes.Ldarg_0);
+                    _session.Builder.LoadStringConstant(_il, name);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetProperty);
+                }
             }
 
             var fieldType = _code.GetExpressionType(expression);
@@ -2121,9 +2165,25 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return nativeKind;
             }
 
+            var receiverKind = EmitExpression(expression.Object);
+            if (receiverKind == StackValueKind.Object)
+            {
+                var objectReceiver = DeclareLocal(typeof(ScriptObject));
+                var objectValue = DeclareLocal(typeof(ScriptDatum));
+                _il.Emit(OpCodes.Stloc, objectReceiver);
+                EmitDatum(expression.Value);
+                _il.Emit(OpCodes.Stloc, objectValue);
+                _il.Emit(OpCodes.Ldloc, objectReceiver);
+                _il.Emit(OpCodes.Ldarg_0);
+                _session.Builder.LoadStringConstant(_il, name);
+                _il.Emit(OpCodes.Ldloc, objectValue);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.SetObjectProperty);
+                return StackValueKind.Datum;
+            }
+
+            ConvertToDatum(receiverKind);
             var receiver = DeclareLocal(typeof(ScriptDatum));
             var value = DeclareLocal(typeof(ScriptDatum));
-            EmitDatum(expression.Object);
             _il.Emit(OpCodes.Stloc, receiver);
             EmitDatum(expression.Value);
             _il.Emit(OpCodes.Stloc, value);
@@ -4234,7 +4294,8 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
 
             EmitLoadLocal(binding.Local);
-            if (_code.GetLocalNativeObjectType(binding.Local) != null)
+            if (_code.GetLocalNativeObjectType(binding.Local) != null ||
+                IsUntypedContextObjectLocal(binding.Local.Value))
             {
                 return StackValueKind.Object;
             }
@@ -5001,8 +5062,29 @@ namespace AuroraScript.Compiler.Backend.Emission
             if (expression.Left is GetPropertyExpression property &&
                 TryGetStaticPropertyName(property.Property, out var propertyName))
             {
+                var receiverKind = EmitExpression(property.Object);
+                if (receiverKind == StackValueKind.Object)
+                {
+                    var objectReceiver = DeclareLocal(typeof(ScriptObject));
+                    _il.Emit(OpCodes.Stloc, objectReceiver);
+                    _il.Emit(OpCodes.Ldloc, objectReceiver);
+                    _il.Emit(OpCodes.Ldarg_0);
+                    _session.Builder.LoadStringConstant(_il, propertyName);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetObjectProperty);
+                    EmitDatum(expression.Right);
+                    _il.Emit(OpCodes.Call, GetDynamicBinary(op));
+                    var objectResult = DeclareLocal(typeof(ScriptDatum));
+                    _il.Emit(OpCodes.Stloc, objectResult);
+                    _il.Emit(OpCodes.Ldloc, objectReceiver);
+                    _il.Emit(OpCodes.Ldarg_0);
+                    _session.Builder.LoadStringConstant(_il, propertyName);
+                    _il.Emit(OpCodes.Ldloc, objectResult);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.SetObjectProperty);
+                    return StackValueKind.Datum;
+                }
+
+                ConvertToDatum(receiverKind);
                 var receiver = DeclareLocal(typeof(ScriptDatum));
-                EmitDatum(property.Object);
                 _il.Emit(OpCodes.Stloc, receiver);
                 _il.Emit(OpCodes.Ldloc, receiver);
                 _il.Emit(OpCodes.Ldarg_0);
@@ -5627,21 +5709,42 @@ namespace AuroraScript.Compiler.Backend.Emission
             else if (unary.Expression is GetPropertyExpression property &&
                 TryGetStaticPropertyName(property.Property, out var propertyName))
             {
-                var receiver = DeclareLocal(typeof(ScriptDatum));
-                EmitDatum(property.Object);
-                _il.Emit(OpCodes.Stloc, receiver);
-                _il.Emit(OpCodes.Ldloc, receiver);
-                _il.Emit(OpCodes.Ldarg_0);
-                _session.Builder.LoadStringConstant(_il, propertyName);
-                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetProperty);
-                _il.Emit(OpCodes.Stloc, oldValue);
-                EmitChangedValue(oldValue, newValue, delta);
-                _il.Emit(OpCodes.Ldloc, receiver);
-                _il.Emit(OpCodes.Ldarg_0);
-                _session.Builder.LoadStringConstant(_il, propertyName);
-                _il.Emit(OpCodes.Ldloc, newValue);
-                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.SetProperty);
-                _il.Emit(OpCodes.Pop);
+                var receiverKind = EmitExpression(property.Object);
+                if (receiverKind == StackValueKind.Object)
+                {
+                    var objectReceiver = DeclareLocal(typeof(ScriptObject));
+                    _il.Emit(OpCodes.Stloc, objectReceiver);
+                    _il.Emit(OpCodes.Ldloc, objectReceiver);
+                    _il.Emit(OpCodes.Ldarg_0);
+                    _session.Builder.LoadStringConstant(_il, propertyName);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetObjectProperty);
+                    _il.Emit(OpCodes.Stloc, oldValue);
+                    EmitChangedValue(oldValue, newValue, delta);
+                    _il.Emit(OpCodes.Ldloc, objectReceiver);
+                    _il.Emit(OpCodes.Ldarg_0);
+                    _session.Builder.LoadStringConstant(_il, propertyName);
+                    _il.Emit(OpCodes.Ldloc, newValue);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.SetObjectProperty);
+                    _il.Emit(OpCodes.Pop);
+                }
+                else
+                {
+                    ConvertToDatum(receiverKind);
+                    var receiver = DeclareLocal(typeof(ScriptDatum));
+                    _il.Emit(OpCodes.Stloc, receiver);
+                    _il.Emit(OpCodes.Ldloc, receiver);
+                    _il.Emit(OpCodes.Ldarg_0);
+                    _session.Builder.LoadStringConstant(_il, propertyName);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetProperty);
+                    _il.Emit(OpCodes.Stloc, oldValue);
+                    EmitChangedValue(oldValue, newValue, delta);
+                    _il.Emit(OpCodes.Ldloc, receiver);
+                    _il.Emit(OpCodes.Ldarg_0);
+                    _session.Builder.LoadStringConstant(_il, propertyName);
+                    _il.Emit(OpCodes.Ldloc, newValue);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.SetProperty);
+                    _il.Emit(OpCodes.Pop);
+                }
             }
             else if (unary.Expression is GetElementExpression element)
             {

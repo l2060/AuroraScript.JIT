@@ -104,7 +104,10 @@ namespace AuroraScript.Compiler.Backend.Code
 
         public static readonly MethodInfo GetProperty = Method(typeof(ObjectOps), nameof(ObjectOps.GetProperty), typeof(ScriptDatum), typeof(ScriptContext), typeof(string));
         public static readonly MethodInfo GetPropertyDirect = Method(typeof(ObjectOps), nameof(ObjectOps.GetProperty), typeof(ScriptDatum), typeof(string));
+        public static readonly MethodInfo GetObjectProperty = Method(typeof(ObjectOps), nameof(ObjectOps.GetProperty), typeof(ScriptObject), typeof(ScriptContext), typeof(string));
+        public static readonly MethodInfo GetObjectPropertyDirect = Method(typeof(ObjectOps), nameof(ObjectOps.GetProperty), typeof(ScriptObject), typeof(string));
         public static readonly MethodInfo SetProperty = Method(typeof(ObjectOps), nameof(ObjectOps.SetProperty), typeof(ScriptDatum), typeof(ScriptContext), typeof(string), typeof(ScriptDatum));
+        public static readonly MethodInfo SetObjectProperty = Method(typeof(ObjectOps), nameof(ObjectOps.SetProperty), typeof(ScriptObject), typeof(ScriptContext), typeof(string), typeof(ScriptDatum));
         public static readonly MethodInfo GetElement = Method(typeof(ObjectOps), nameof(ObjectOps.GetElement), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo GetElementNumber = Method(typeof(ObjectOps), nameof(ObjectOps.GetElementNumber), typeof(ScriptDatum), typeof(double));
         public static readonly MethodInfo SetElement = Method(typeof(ObjectOps), nameof(ObjectOps.SetElement), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum));
@@ -145,6 +148,7 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo SetGlobal = Method(typeof(ScopeOps), nameof(ScopeOps.SetGlobal), typeof(ScriptContext), typeof(string), typeof(ScriptDatum));
         public static readonly MethodInfo GetGlobalObject = Method(typeof(ScopeOps), nameof(ScopeOps.GetGlobalObject), typeof(ScriptContext));
         public static readonly MethodInfo GetUserState = Method(typeof(ScopeOps), nameof(ScopeOps.GetUserState), typeof(ScriptContext));
+        public static readonly MethodInfo GetUserStateObject = Method(typeof(ScopeOps), nameof(ScopeOps.GetUserStateObject), typeof(ScriptContext));
         public static readonly MethodInfo GetEnumerator = Method(typeof(IterationOps), nameof(IterationOps.GetEnumerator), typeof(ScriptDatum));
         public static readonly MethodInfo MoveNext = Method(typeof(IterationOps), nameof(IterationOps.MoveNext), typeof(ScriptEnumerator), typeof(ScriptDatum).MakeByRefType());
         public static readonly MethodInfo ResolveRegex = Method(typeof(RegexManager), nameof(RegexManager.Resolve), typeof(string), typeof(string));

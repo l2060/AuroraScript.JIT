@@ -124,7 +124,7 @@ namespace AuroraScript.Compiler
         private void ValidateLinkedTypeReferences(
             IReadOnlyList<ModuleDeclaration> modules)
         {
-            LinkedTypeReferenceValidator.Validate(modules, _options.Compiler.NativeTypes);
+            LinkedTypeReferenceValidator.Validate(modules, Options.Compiler.NativeTypes);
         }
 
         private void ValidateExplicitModuleNames(IReadOnlyList<ModuleDeclaration> modules)

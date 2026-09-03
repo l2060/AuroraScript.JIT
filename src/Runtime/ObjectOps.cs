@@ -40,6 +40,18 @@ namespace AuroraScript.Runtime
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum GetProperty(ScriptObject receiver, string name)
+        {
+            return GetProperty(receiver, null, name);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum GetProperty(ScriptObject receiver, ScriptContext context, string name)
+        {
+            return (receiver ?? ScriptObject.Null).GetPropertyDatum(context, name);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum SetProperty(
             ScriptDatum receiver,
             ScriptContext context,
@@ -47,6 +59,17 @@ namespace AuroraScript.Runtime
             ScriptDatum value)
         {
             ScriptDatum.ToObject(receiver).SetPropertyDatum(context, name, value);
+            return value;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum SetProperty(
+            ScriptObject receiver,
+            ScriptContext context,
+            string name,
+            ScriptDatum value)
+        {
+            (receiver ?? ScriptObject.Null).SetPropertyDatum(context, name, value);
             return value;
         }
 
