@@ -83,7 +83,13 @@ public sealed class TypeCheckTests
 
         foreach (var type in Enum.GetValues<CheckedType>())
         {
-            Assert.Contains("Check" + type, calls);
+            // An int32 assertion calls the variant that validates and answers
+            // System.Int32 in one step, instead of handing the datum back.
+            Assert.Contains(
+                type == CheckedType.Int32
+                    ? nameof(TypeCheckOps.CheckInt32Value)
+                    : "Check" + type,
+                calls);
         }
         Assert.DoesNotContain(nameof(TypeCheckOps.Check), calls);
     }

@@ -120,15 +120,38 @@ namespace AuroraScript.Runtime
         }
 
         /// <summary>
+        /// Validates a dynamic value as an exact signed 32-bit integer and
+        /// returns it as System.Int32. Callers that need the integer skip the
+        /// general numeric coercion, whose string and object cases cannot
+        /// apply once the check has passed.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int CheckInt32Value(ScriptDatum value)
+        {
+            if (value.Kind == ValueKind.Number)
+            {
+                var number = value.Number;
+                var truncated = (int)number;
+                if (truncated == number && (truncated != 0 || IsPositiveZero(number)))
+                {
+                    return truncated;
+                }
+            }
+            Mismatch(CheckedType.Int32, value);
+            return 0;
+        }
+
+        /// <summary>
         /// Validates a Number that is already native double storage and returns
         /// it as System.Int32, without a ScriptDatum round trip.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int CheckInt32Number(double value)
         {
-            if (IsInt32(value))
+            var truncated = (int)value;
+            if (truncated == value && (truncated != 0 || IsPositiveZero(value)))
             {
-                return (int)value;
+                return truncated;
             }
             return MismatchNumber(value);
         }
@@ -145,13 +168,22 @@ namespace AuroraScript.Runtime
         /// Negative zero is excluded because native integer storage cannot
         /// preserve its observable sign.
         /// </summary>
+        /// <remarks>
+        /// The round trip covers range and integrality in one conversion:
+        /// .NET saturates out-of-range double to int and maps NaN to zero, so
+        /// no saturated or fractional value can compare equal to its source.
+        /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool IsInt32(double number) =>
-            number >= int.MinValue &&
-            number <= int.MaxValue &&
-            number == System.Math.Truncate(number) &&
-            (number != 0d ||
-                System.BitConverter.DoubleToInt64Bits(number) >= 0);
+        public static bool IsInt32(double number)
+        {
+            var truncated = (int)number;
+            return truncated == number &&
+                (truncated != 0 || IsPositiveZero(number));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool IsPositiveZero(double number) =>
+            System.BitConverter.DoubleToInt64Bits(number) >= 0;
 
         /// <summary>Validates an exact String value.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

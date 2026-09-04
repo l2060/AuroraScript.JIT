@@ -26,6 +26,7 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo CheckNumber = TypeCheck(nameof(TypeCheckOps.CheckNumber));
         public static readonly MethodInfo CheckInt32 = TypeCheck(nameof(TypeCheckOps.CheckInt32));
         public static readonly MethodInfo CheckInt32Number = Method(typeof(TypeCheckOps), nameof(TypeCheckOps.CheckInt32Number), typeof(double));
+        public static readonly MethodInfo CheckInt32Value = Method(typeof(TypeCheckOps), nameof(TypeCheckOps.CheckInt32Value), typeof(ScriptDatum));
         public static readonly MethodInfo CheckString = TypeCheck(nameof(TypeCheckOps.CheckString));
         public static readonly MethodInfo CheckObject = TypeCheck(nameof(TypeCheckOps.CheckObject));
         public static readonly MethodInfo CheckArray = TypeCheck(nameof(TypeCheckOps.CheckArray));

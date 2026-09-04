@@ -2015,6 +2015,11 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return proven;
             }
             EmitDatum(expression.Value);
+            if (type == FlowValueType.Int32)
+            {
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckInt32Value);
+                return StackValueKind.Int32;
+            }
             _il.Emit(
                 OpCodes.Call,
                 TypedRuntimeMetadata.GetTypeCheck(
@@ -2215,7 +2220,11 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 if (IsDeclaredInt32Field(expression.Object, name))
                 {
-                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckInt32);
+                    // The check already proves an exact int32, so it answers
+                    // the integer directly instead of handing the datum back
+                    // to the general numeric coercion.
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckInt32Value);
+                    return StackValueKind.Int32;
                 }
                 ConvertStackToInt32(StackValueKind.Datum, truncateThroughInt64: false);
                 return StackValueKind.Int32;
