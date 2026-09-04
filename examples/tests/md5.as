@@ -75,7 +75,7 @@ export native function MD5(String input) String {
 	// Count UTF-8 bytes without allocating an intermediate encoded string.
 	// CRLF is normalized to LF to preserve the previous implementation.
 	var sourceLength = input.length;
-	var byteLength = 0;
+	var byteLength = 0i;
 	for (var n = 0; n < sourceLength; n++) {
 		var code = input.charCodeAt(n);
 		if (code == 13 && n + 1 < sourceLength && input.charCodeAt(n + 1) == 10) {

@@ -50,6 +50,12 @@ namespace AuroraScript.Runtime.Types
                         ThrowIndexOutOfRange(index, int8._items.Length);
                     }
                     return ScriptDatum.FromNumber(int8._items[index]);
+                case ScriptFloat32Array float32:
+                    if ((uint)index >= (uint)float32._items.Length)
+                    {
+                        ThrowIndexOutOfRange(index, float32._items.Length);
+                    }
+                    return ScriptDatum.FromNumber(float32._items[index]);
                 case ScriptFloat64Array float64:
                     if ((uint)index >= (uint)float64._items.Length)
                     {
@@ -122,6 +128,13 @@ namespace AuroraScript.Runtime.Types
                         ThrowIndexOutOfRange(index, int8._items.Length);
                     }
                     int8._items[index] = unchecked((sbyte)(int)ValueOps.ToArithmeticNumber(value));
+                    return;
+                case ScriptFloat32Array float32:
+                    if ((uint)index >= (uint)float32._items.Length)
+                    {
+                        ThrowIndexOutOfRange(index, float32._items.Length);
+                    }
+                    float32._items[index] = (float)ValueOps.ToArithmeticNumber(value);
                     return;
                 case ScriptFloat64Array float64:
                     if ((uint)index >= (uint)float64._items.Length)
@@ -416,6 +429,49 @@ namespace AuroraScript.Runtime.Types
 
         /// <inheritdoc />
         protected internal override ScriptDatum TypeOfValue => TypeNames.Int8Array;
+    }
+
+    /// <summary>A fixed-length array backed by a CLR <see cref="float"/> array.</summary>
+    public sealed class ScriptFloat32Array : ScriptPackedArray
+    {
+        internal readonly float[] _items;
+
+        /// <summary>Creates a zero-initialized array with the supplied length.</summary>
+        public ScriptFloat32Array(int length)
+        {
+            _items = new float[length];
+        }
+
+        internal ScriptFloat32Array(float[] items)
+        {
+            _items = items;
+        }
+
+        /// <inheritdoc />
+        public override int Length => _items.Length;
+
+        /// <summary>Gets an element without dynamic value conversion.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public float GetElement(int index) => _items[index];
+
+        /// <summary>Sets an element without dynamic value conversion.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void SetElement(int index, float value) => _items[index] = value;
+
+        internal override ScriptDatum GetElementDatumUnchecked(int index) =>
+            ScriptDatum.FromNumber(_items[index]);
+
+        internal override void SetElementDatumUnchecked(int index, ScriptDatum value) =>
+            _items[index] = (float)ValueOps.ToArithmeticNumber(value);
+
+        internal override void FillDatum(ScriptDatum value) =>
+            Array.Fill(_items, (float)ValueOps.ToArithmeticNumber(value));
+
+        internal override ScriptPackedArray ClonePackedArray() =>
+            new ScriptFloat32Array((float[])_items.Clone());
+
+        /// <inheritdoc />
+        protected internal override ScriptDatum TypeOfValue => TypeNames.Float32Array;
     }
 
     /// <summary>A fixed-length array backed by a CLR <see cref="double"/> array.</summary>

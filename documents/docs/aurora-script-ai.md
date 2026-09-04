@@ -166,6 +166,14 @@ a = { b: 1234 };
 Literals:
 
 - number: `1`, `1.5`, `10000D` (force `Number`), `1L` (force `Int64`), `100000` (inferred `Int32` when it fits), hexadecimal `0xFFFF` (integer by default)
+- integer constraint: lowercase `int32` is allowed on parameters, returns,
+  shape fields, and `value as int32`. It requires an exact signed 32-bit
+  integer at checked boundaries but keeps script `Number` identity
+  (`typeof` is `"number"`). A local whose every assignment is an integer keeps
+  32-bit storage and wraps like CLR `int` instead of widening to `Number`, so
+  it cannot hold negative zero or `NaN`: `-14 % 7` is `0` and `x % 0` raises.
+  Expressions from those locals wrap too (`currentX - 1`). `/` stays `Number`;
+  an exact integer quotient uses `((a - b) / c) as int32` (parentheses required).
 - string: `'text'`, `"text"`
 - template string: `` `value=${expr}` ``
 - regex literal
@@ -212,8 +220,8 @@ Assignments are right-associative.
 `typeof` results:
 
 - lowercase for primitives and privileged kinds: `"null"`, `"boolean"`, `"number"`, `"string"`, `"object"`, `"array"`, `"date"`, `"regex"`, `"function"`, `"type"`, `"error"`, `"clr:function"`, `"clr:bonding"`
-- `"type"` for infrastructure NativeTypes (`Math`, `JSON`, `TDoc`, `console`, `HotPatch`) and host types registered with `WithNativeTypes`
-- constructor names for native objects stored as `ValueKind.Object`: `"Int8Array"`, `"UInt8Array"`, `"Int16Array"`, `"UInt16Array"`, `"Int32Array"`, `"UInt32Array"`, `"Int64Array"`, `"UInt64Array"`, `"Float64Array"`, `"BooleanArray"`, `"StringBuffer"`, `"HashMap"`, `"Path"`
+- `"type"` for infrastructure NativeTypes (`Math`, `JSON`, `TDoc`, `console`, `Conv8`, `HotPatch`) and host types registered with `WithNativeTypes`
+- constructor names for native objects stored as `ValueKind.Object`: `"Int8Array"`, `"UInt8Array"`, `"Int16Array"`, `"UInt16Array"`, `"Int32Array"`, `"UInt32Array"`, `"Int64Array"`, `"UInt64Array"`, `"Float32Array"`, `"Float64Array"`, `"BooleanArray"`, `"StringBuffer"`, `"HashMap"`, `"Path"`
 - Do not assume JavaScript `typeof new Int8Array() === "object"`. Use `typeof bytes == "Int8Array"` or `check Int8Array bytes`.
 - Do not add a new `ValueKind` member for a native type; identity lives on the object (`TypeOfValue`).
 
@@ -236,8 +244,8 @@ Constructors and globals:
 
 - `Array`, `String`, `Boolean`, `Object`, `Number`, `Date`
 - `Error`, `HashMap`, `Regex`, `Proxy`, `StringBuffer`, `Path`
-- Packed arrays: `Int8Array`, `UInt8Array`, `Int16Array`, `UInt16Array`, `Int32Array`, `UInt32Array`, `Int64Array`, `UInt64Array`, `Float64Array`, `BooleanArray`
-- Infrastructure Types (`typeof` is `"type"`; `new` fails): `console`, `JSON`, `TDoc`, `Math`, `HotPatch`
+- Packed arrays: `Int8Array`, `UInt8Array`, `Int16Array`, `UInt16Array`, `Int32Array`, `UInt32Array`, `Int64Array`, `UInt64Array`, `Float32Array`, `Float64Array`, `BooleanArray`
+- Infrastructure Types (`typeof` is `"type"`; `new` fails): `console`, `JSON`, `TDoc`, `Math`, `Conv8`, `HotPatch`
 
 Common APIs:
 
@@ -247,6 +255,7 @@ Common APIs:
 - `TDoc.parse(text)`, `TDoc.stringify(value, indented = false, emitTypes = false)`；`emitTypes = true` 强制输出所有可用类型名
 - Native TDoc literals use `tdoc [TypeName] value`, for example `const value = tdoc Object { readonly String id $(user.id), enabled true, };`. Host NativeTypes that implement `INativeTypedDocument` can be named directly (`tdoc Vec2 { x 3, y 4 }`, `tdoc Vec2 [3, 4]`, `tdoc Flag false`, `tdoc User "a,b"`). `WriteTypedDocument` chooses the canonical object, array, or scalar body. Only value positions may use `$(expression)`; property names and type names are static. Standalone `.tdoc` documents omit the `tdoc` prefix and do not allow interpolation.
 - `Math.PI`, `Math.E`, `Math.Tau`, `Math.abs`, `Math.max`, `Math.min`, `Math.random`, `Math.log`, `Math.pow`, `Math.exp`, `Math.cos`, `Math.sin`, `Math.tan`, `Math.acos`, `Math.asin`, `Math.atan`, `Math.floor`, `Math.round`
+- `Conv8` on `UInt8Array` only: `BYTES1`/`BYTES2`/`BYTES4`/`BYTES8`; `get`/`set` for bool, int8–64, uint8–64, float32/64 (`littleEndian` default `true`); `getString(buffer, offset, byteLength)` / `setString(buffer, offset, value)` as UTF-8. `int64`/`uint64` round-trip through `Number`.
 - Array: `length`, `push`, `pop`, `sort`, `join`, `slice`, `reverse`, `unshift`, `shift`, `concat`, `find`, `findIndex`, `findLast`, `findLastIndex`, `map`, `filter`, `some`, `every`, `flat`, `reduce`, `indexOf`, `lastIndexOf`, `has`
 - String: `length`, `contains`, `indexOf`, `lastIndexOf`, `startsWith`, `endsWith`, `substring`, `split`, `match`, `matchAll`, `replace`, `padLeft`, `padRight`, `trim`, `trimLeft`, `trimRight`, `slice`, `toString`, `charCodeAt`, `toLowerCase`, `toUpperCase`
 - StringBuffer: `append`, `insert`, `appendLine`, `clear`, `release`, `stringAndRelease`, `toString`
@@ -319,6 +328,11 @@ import http from "http";
   declared parameter type and does not require `as Float64Array`. Non-null
   values still require the exact packed-array type.
 - Use `native func` only when a stable native ABI and direct-call behavior are required. Its defaults must be trailing compiler-foldable primitive constants; when a parameter has an explicit type, the default type must match it exactly.
+- Use lowercase `int32` for indices, lengths, counters, and IDs that must stay
+  in signed 32-bit range. It is a checked compile/ABI constraint, not a
+  constructor or runtime type; do not spell it `Int32`. Integer locals wrap;
+  script `/` is not integer division — write `((a - b) / c) as int32` for an
+  exact quotient, not `Math.floor`.
 - Use `native func work(...) void { ... }` for a procedure. Falling through
   and `return;` are valid; returning an expression is invalid. Direct native
   statement calls use a CLR `void` ABI, while dynamic calls evaluate to `null`.

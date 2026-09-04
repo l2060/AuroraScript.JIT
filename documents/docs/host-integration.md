@@ -605,9 +605,12 @@ options = EngineOptions.Default.WithCompiler(compiler =>
 nested object instead. Types selected through the compiler options are global,
 engine-scoped registrations.
 
-The engine always registers `Math`, `JSON`, `TDoc`, `console`, and `HotPatch`.
-`typeof Math` and `typeof console` are `"type"`; `new Math()` and `new console()`
+The engine always registers `Math`, `JSON`, `TDoc`, `console`, `Conv8`, and `HotPatch`.
+`typeof Math`, `typeof console`, and `typeof Conv8` are `"type"`; `new Math()`, `new console()`, and `new Conv8()`
 fail because those Types have no exported constructor.
+
+`Conv8` reads and writes scalars and UTF-8 text on a `UInt8Array` only. Multi-byte
+values take `littleEndian` (default `true`). There is no script `Encoding` global.
 
 ### Native instances
 
@@ -778,6 +781,13 @@ Rules:
 Supported Core parameter and return types:
 
 - `double`, `int`, `bool`, `string`
+- CLR `int` aligns with the lowercase script `int32` constraint. Source
+  `int32` boundaries and `[AuroraParam(MatchLevel.Exact)] int` require an
+  exact integral Number in signed 32-bit range; weak host adapters retain
+  their existing coercion behavior. Proven direct calls use the native
+  `System.Int32` ABI. Integer locals and expressions that stay on that ABI
+  wrap like CLR `int` for `+`, `-`, `*`, `%`, and increments; they are not
+  widened to `double` at overflow.
 - `void` returns: a CLR `void` method is a procedure. Direct native calls used as statements do not materialize a result. Dynamic, exported, or otherwise value-producing calls observe script `null`, matching script `native func work(...) void`.
 - `ScriptDatum`
 - any `ScriptObject` subclass (`ScriptArray`, packed arrays, `Path`, `Proxy`, `Regex`, `Date`, `HashMap`, `Error`, `ClosureFunction`, wrappers)

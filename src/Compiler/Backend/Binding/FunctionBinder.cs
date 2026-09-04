@@ -522,7 +522,7 @@ namespace AuroraScript.Compiler.Backend.Binding
 
                     if (!MatchesDeclaredDefaultType(
                             parameter.DeclaredType?.Name,
-                            value.Kind))
+                            value))
                     {
                         throw new AuroraCompilationException(
                             AuroraCompilationStage.Binding,
@@ -540,14 +540,23 @@ namespace AuroraScript.Compiler.Backend.Binding
 
             private static bool MatchesDeclaredDefaultType(
                 string declaredType,
-                ValueKind valueKind)
+                ScriptDatum value)
             {
                 if (declaredType == null)
                 {
                     return true;
                 }
 
-                return (declaredType, valueKind) switch
+                if (string.Equals(declaredType, "int32", StringComparison.Ordinal))
+                {
+                    if (value.Kind != ValueKind.Number)
+                    {
+                        return false;
+                    }
+                    return TypeCheckOps.IsInt32(value.Number);
+                }
+
+                return (declaredType, value.Kind) switch
                 {
                     ("Null", ValueKind.Null) => true,
                     ("Boolean", ValueKind.Boolean) => true,

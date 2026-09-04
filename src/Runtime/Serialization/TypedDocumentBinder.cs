@@ -68,6 +68,13 @@ namespace AuroraScript.Runtime.Serialization
                         path,
                         index);
                     return;
+                case ScriptFloat32Array float32:
+                    if (value.Kind != ValueKind.Number || !double.IsFinite(value.Number))
+                    {
+                        throw Error("Float32Array elements must be finite numbers.", ElementPath(path, index));
+                    }
+                    float32._items[index] = (float)value.Number;
+                    return;
                 case ScriptFloat64Array float64:
                     if (value.Kind != ValueKind.Number || !double.IsFinite(value.Number))
                     {
@@ -172,6 +179,8 @@ namespace AuroraScript.Runtime.Serialization
                 case "Int32Array":
                     return BindPacked(typeName, value, path);
                 case "Int8Array":
+                    return BindPacked(typeName, value, path);
+                case "Float32Array":
                     return BindPacked(typeName, value, path);
                 case "Float64Array":
                     return BindPacked(typeName, value, path);
@@ -541,6 +550,18 @@ namespace AuroraScript.Runtime.Serialization
                     var uint64 = new ulong[length];
                     for (var i = 0; i < length; i++) uint64[i] = ReadUInt64(sourceItems[i], ulong.MaxValue, typeName, path, i);
                     return ScriptDatum.FromObject(new ScriptUInt64Array(uint64));
+                case "Float32Array":
+                    var float32 = new float[length];
+                    for (var i = 0; i < length; i++)
+                    {
+                        var element = sourceItems[i];
+                        if (element.Kind != ValueKind.Number || !double.IsFinite(element.Number))
+                        {
+                            throw Error($"{typeName} elements must be finite numbers.", ElementPath(path, i));
+                        }
+                        float32[i] = (float)element.Number;
+                    }
+                    return ScriptDatum.FromObject(new ScriptFloat32Array(float32));
                 case "Float64Array":
                     var float64 = new double[length];
                     for (var i = 0; i < length; i++)
@@ -581,6 +602,7 @@ namespace AuroraScript.Runtime.Serialization
             {
                 ("Int32Array", ScriptInt32Array) or
                 ("Int8Array", ScriptInt8Array) or
+                ("Float32Array", ScriptFloat32Array) or
                 ("Float64Array", ScriptFloat64Array) or
                 ("BooleanArray", ScriptBooleanArray) or
                 ("UInt8Array", ScriptUInt8Array) or
@@ -622,7 +644,7 @@ namespace AuroraScript.Runtime.Serialization
         {
             return kind switch
             {
-                TypedDocumentPackedKind.Float64 or TypedDocumentPackedKind.Boolean => true,
+                TypedDocumentPackedKind.Float32 or TypedDocumentPackedKind.Float64 or TypedDocumentPackedKind.Boolean => true,
                 TypedDocumentPackedKind.Int8 => number >= sbyte.MinValue && number <= sbyte.MaxValue,
                 TypedDocumentPackedKind.UInt8 => number >= byte.MinValue && number <= byte.MaxValue,
                 TypedDocumentPackedKind.Int16 => number >= short.MinValue && number <= short.MaxValue,
@@ -640,6 +662,7 @@ namespace AuroraScript.Runtime.Serialization
             {
                 "Int32Array" => TypedDocumentPackedKind.Int32,
                 "Int8Array" => TypedDocumentPackedKind.Int8,
+                "Float32Array" => TypedDocumentPackedKind.Float32,
                 "Float64Array" => TypedDocumentPackedKind.Float64,
                 "BooleanArray" => TypedDocumentPackedKind.Boolean,
                 "UInt8Array" => TypedDocumentPackedKind.UInt8,

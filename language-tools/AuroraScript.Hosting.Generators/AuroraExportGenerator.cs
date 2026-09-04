@@ -444,7 +444,7 @@ namespace AuroraScript.Hosting.Generators
                 AppendFailureReturn(builder, export, indent: "                ");
                 builder.AppendLine("            }");
                 builder.AppendLine("            var " + parameter.VariableName + "Datum = args[" + parameter.Index + "];");
-                builder.AppendLine("            TypeCheckOps.CheckNumber(" + parameter.VariableName + "Datum);");
+                builder.AppendLine("            TypeCheckOps.CheckInt32(" + parameter.VariableName + "Datum);");
                 builder.AppendLine("            var " + parameter.VariableName + " = (int)" + parameter.VariableName + "Datum.Number;");
                 return;
             }

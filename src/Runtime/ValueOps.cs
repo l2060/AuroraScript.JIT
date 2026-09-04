@@ -285,6 +285,26 @@ namespace AuroraScript.Runtime
                     : double.NaN);
         }
 
+        /// <summary>
+        /// Implements remainder for values already proven to be exact signed
+        /// 32-bit integers. An integer slot cannot hold the negative zero or
+        /// NaN that the Number path would produce, so a zero divisor is an
+        /// error and <c>MinValue % -1</c> answers zero instead of overflowing.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int ModuloInt32(int left, int right)
+        {
+            if (right == 0) return ZeroDivisor();
+            return right == -1 ? 0 : left % right;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static int ZeroDivisor()
+        {
+            throw new AuroraRuntimeException(
+                "Integer remainder by zero. Use a Number operand to get NaN.");
+        }
+
         /// <summary>Computes the truthiness of a dynamic remainder result.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool ModuloBoolean(ScriptDatum left, ScriptDatum right)

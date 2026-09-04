@@ -466,6 +466,7 @@ namespace AuroraScript.Runtime.Interop
             {
                 ScriptInt32Array int32 => int32._items,
                 ScriptInt8Array int8 => int8._items,
+                ScriptFloat32Array float32 => float32._items,
                 ScriptFloat64Array float64 => float64._items,
                 ScriptBooleanArray boolean => boolean._items,
                 ScriptUInt8Array uint8 => uint8._items,

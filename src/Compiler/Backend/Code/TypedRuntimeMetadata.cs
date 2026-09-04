@@ -24,11 +24,14 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo CheckNull = TypeCheck(nameof(TypeCheckOps.CheckNull));
         public static readonly MethodInfo CheckBoolean = TypeCheck(nameof(TypeCheckOps.CheckBoolean));
         public static readonly MethodInfo CheckNumber = TypeCheck(nameof(TypeCheckOps.CheckNumber));
+        public static readonly MethodInfo CheckInt32 = TypeCheck(nameof(TypeCheckOps.CheckInt32));
+        public static readonly MethodInfo CheckInt32Number = Method(typeof(TypeCheckOps), nameof(TypeCheckOps.CheckInt32Number), typeof(double));
         public static readonly MethodInfo CheckString = TypeCheck(nameof(TypeCheckOps.CheckString));
         public static readonly MethodInfo CheckObject = TypeCheck(nameof(TypeCheckOps.CheckObject));
         public static readonly MethodInfo CheckArray = TypeCheck(nameof(TypeCheckOps.CheckArray));
         public static readonly MethodInfo CheckInt32Array = TypeCheck(nameof(TypeCheckOps.CheckInt32Array));
         public static readonly MethodInfo CheckInt8Array = TypeCheck(nameof(TypeCheckOps.CheckInt8Array));
+        public static readonly MethodInfo CheckFloat32Array = TypeCheck(nameof(TypeCheckOps.CheckFloat32Array));
         public static readonly MethodInfo CheckFloat64Array = TypeCheck(nameof(TypeCheckOps.CheckFloat64Array));
         public static readonly MethodInfo CheckBooleanArray = TypeCheck(nameof(TypeCheckOps.CheckBooleanArray));
         public static readonly MethodInfo CheckUInt8Array = TypeCheck(nameof(TypeCheckOps.CheckUInt8Array));
@@ -72,6 +75,7 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo DivideBoolean = Method(typeof(ValueOps), nameof(ValueOps.DivideBoolean), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo Modulo = Method(typeof(ValueOps), nameof(ValueOps.Modulo), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo ModuloBoolean = Method(typeof(ValueOps), nameof(ValueOps.ModuloBoolean), typeof(ScriptDatum), typeof(ScriptDatum));
+        public static readonly MethodInfo ModuloInt32 = Method(typeof(ValueOps), nameof(ValueOps.ModuloInt32), typeof(int), typeof(int));
         public static readonly MethodInfo Equal = Method(typeof(ValueOps), nameof(ValueOps.Equal), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo EqualBoolean = Method(typeof(ValueOps), nameof(ValueOps.EqualBoolean), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo NotEqual = Method(typeof(ValueOps), nameof(ValueOps.NotEqual), typeof(ScriptDatum), typeof(ScriptDatum));
@@ -219,6 +223,7 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo ToExactUInt64Number = Method(typeof(ScriptPackedArray), nameof(ScriptPackedArray.ToExactUInt64Number), typeof(ulong), typeof(int));
         public static readonly ConstructorInfo ScriptInt32ArrayConstructor = Constructor(typeof(ScriptInt32Array), typeof(int));
         public static readonly ConstructorInfo ScriptInt8ArrayConstructor = Constructor(typeof(ScriptInt8Array), typeof(int));
+        public static readonly ConstructorInfo ScriptFloat32ArrayConstructor = Constructor(typeof(ScriptFloat32Array), typeof(int));
         public static readonly ConstructorInfo ScriptFloat64ArrayConstructor = Constructor(typeof(ScriptFloat64Array), typeof(int));
         public static readonly ConstructorInfo ScriptBooleanArrayConstructor = Constructor(typeof(ScriptBooleanArray), typeof(int));
         public static readonly ConstructorInfo ScriptUInt8ArrayConstructor = Constructor(typeof(ScriptUInt8Array), typeof(int));
@@ -232,6 +237,7 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo ScriptHashMapPut = InstanceMethod(typeof(ScriptHashMap), nameof(ScriptHashMap.Put), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly FieldInfo ScriptInt32ArrayItems = Field(typeof(ScriptInt32Array), "_items");
         public static readonly FieldInfo ScriptInt8ArrayItems = Field(typeof(ScriptInt8Array), "_items");
+        public static readonly FieldInfo ScriptFloat32ArrayItems = Field(typeof(ScriptFloat32Array), "_items");
         public static readonly FieldInfo ScriptFloat64ArrayItems = Field(typeof(ScriptFloat64Array), "_items");
         public static readonly FieldInfo ScriptBooleanArrayItems = Field(typeof(ScriptBooleanArray), "_items");
         public static readonly FieldInfo ScriptUInt8ArrayItems = Field(typeof(ScriptUInt8Array), "_items");
@@ -272,11 +278,13 @@ namespace AuroraScript.Compiler.Backend.Code
                 CheckedType.Null => CheckNull,
                 CheckedType.Boolean => CheckBoolean,
                 CheckedType.Number => CheckNumber,
+                CheckedType.Int32 => CheckInt32,
                 CheckedType.String => CheckString,
                 CheckedType.Object => CheckObject,
                 CheckedType.Array => CheckArray,
                 CheckedType.Int32Array => CheckInt32Array,
                 CheckedType.Int8Array => CheckInt8Array,
+                CheckedType.Float32Array => CheckFloat32Array,
                 CheckedType.Float64Array => CheckFloat64Array,
                 CheckedType.BooleanArray => CheckBooleanArray,
                 CheckedType.UInt8Array => CheckUInt8Array,

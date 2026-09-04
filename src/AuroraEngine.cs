@@ -101,6 +101,7 @@ namespace AuroraScript
             Global.Define("Array", ArrayConstructor.INSTANCE, writeable: false, enumerable: false);
             Global.Define("Int32Array", PackedArrayConstructor.Int32, writeable: false, enumerable: false);
             Global.Define("Int8Array", PackedArrayConstructor.Int8, writeable: false, enumerable: false);
+            Global.Define("Float32Array", PackedArrayConstructor.Float32, writeable: false, enumerable: false);
             Global.Define("Float64Array", PackedArrayConstructor.Float64, writeable: false, enumerable: false);
             Global.Define("BooleanArray", PackedArrayConstructor.Boolean, writeable: false, enumerable: false);
             Global.Define("UInt8Array", PackedArrayConstructor.UInt8, writeable: false, enumerable: false);
@@ -128,6 +129,7 @@ namespace AuroraScript
             JsonSupport.Register(Global);
             TDocSupport.Register(Global);
             MathSupport.Register(Global);
+            Conv8Support.Register(Global);
             HotPatchSupport.Register(Global);
             RegisterNativeTypes(Options.Compiler.NativeTypes);
         }

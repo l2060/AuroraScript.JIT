@@ -497,6 +497,13 @@ namespace AuroraScript.Compiler.Backend.Code
                                 : directParameter.Type != FlowValueType.None
                                     ? FlowValueTypeFacts.GetDirectLocalType(directParameter)
                                     : FlowValueType.Dynamic;
+                        // Only a declared type that is also the storage pins the
+                        // slot. A declared Number that every use narrows to a
+                        // bitwise Int32 must stay free to widen again.
+                        if (checkedType != FlowValueType.None && _locals[i] == checkedType)
+                        {
+                            _forcedLocalTypes[i] = checkedType;
+                        }
                         if (function.LocalSlots[i].Declaration is
                                 ParameterDeclaration typedParameter &&
                             TypeReferenceFacts.TryGetCustomType(
@@ -541,6 +548,24 @@ namespace AuroraScript.Compiler.Backend.Code
                     {
                         _locals[i] = FlowValueType.Dynamic;
                     }
+                    else if (function.LocalSlots[i].Declaration is
+                            VariableDeclaration
+                            {
+                                Pattern: null,
+                                Initializer: CheckExpression declaredCheck
+                            } &&
+                        TypeReferenceFacts.GetFlowType(
+                            module.Declaration,
+                            declaredCheck.AssertedType,
+                            hostExports) is
+                            var declaredLocalType and
+                            (FlowValueType.Int32 or FlowValueType.Int64))
+                    {
+                        // `var index = expr as int32` is an explicit storage
+                        // contract, so the conservative overflow rules that
+                        // widen inferred integers must not apply to it.
+                        _forcedLocalTypes[i] = declaredLocalType;
+                    }
                 }
             }
 
@@ -560,7 +585,8 @@ namespace AuroraScript.Compiler.Backend.Code
                     if (!_changed) break;
                 }
 
-                var storageChanged = ApplyExactNumericStorage(body);
+                var storageChanged = ApplyInt32ContractStorage(body);
+                storageChanged |= ApplyExactNumericStorage(body);
                 storageChanged |= ApplyLocalCoercionStorage(body);
                 if (storageChanged)
                 {
@@ -893,6 +919,7 @@ namespace AuroraScript.Compiler.Backend.Code
                         type = inductionArithmetic != FlowValueType.None
                             ? inductionArithmetic
                             : AnalyzeBinary(
+                                this,
                                 binary.Operator,
                                 binary.Left,
                                 binary.Right,
@@ -941,6 +968,7 @@ namespace AuroraScript.Compiler.Backend.Code
                         type = inductionCompound != FlowValueType.None
                             ? inductionCompound
                             : AnalyzeBinary(
+                                this,
                                 compound.Operator.SimplerOperator,
                                 compound.Left,
                                 compound.Right,
@@ -958,6 +986,12 @@ namespace AuroraScript.Compiler.Backend.Code
                             {
                                 type = ranged;
                             }
+                        }
+                        if (TryGetDeclaredNumericType(compound.Left, out var declaredCompound) &&
+                            FlowValueTypeFacts.IsNumeric(type) &&
+                            FlowValueTypeFacts.IsNumeric(declaredCompound))
+                        {
+                            type = declaredCompound;
                         }
                         WriteTarget(compound.Left, type, null);
                         NoteIntegerWrite(compound.Left, type, compound.Operator.SimplerOperator, compound.Right);
@@ -1710,6 +1744,7 @@ namespace AuroraScript.Compiler.Backend.Code
                         "Array" => FlowValueType.Array,
                         "Int32Array" => FlowValueType.Int32Array,
                         "Int8Array" => FlowValueType.Int8Array,
+                        "Float32Array" => FlowValueType.Float32Array,
                         "Float64Array" => FlowValueType.Float64Array,
                         "BooleanArray" => FlowValueType.BooleanArray,
                         "UInt8Array" => FlowValueType.UInt8Array,
@@ -1732,6 +1767,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     "Array" => FlowValueType.Array,
                     "Int32Array" => FlowValueType.Int32Array,
                     "Int8Array" => FlowValueType.Int8Array,
+                    "Float32Array" => FlowValueType.Float32Array,
                     "Float64Array" => FlowValueType.Float64Array,
                     "BooleanArray" => FlowValueType.BooleanArray,
                     "UInt8Array" => FlowValueType.UInt8Array,
@@ -2646,6 +2682,219 @@ namespace AuroraScript.Compiler.Backend.Code
                 return changed;
             }
 
+            /// <summary>
+            /// Pins locals whose every definition is an integer form to Int32
+            /// storage. Writing `var i = 0` is an integer annotation, so the
+            /// conservative overflow rules must not widen the local to
+            /// <see cref="FlowValueType.Number"/>: it wraps like a native
+            /// integer and the script owns that risk. `var d = 2.0` and any
+            /// non-integer assignment keep Number storage.
+            /// </summary>
+            private bool ApplyInt32ContractStorage(AstNode body)
+            {
+                var definitions = new LocalDefinitionCollector(
+                    _function,
+                    _names,
+                    IsCaptured).Analyze(body, out var candidates);
+                // Locals start optimistic and drop out once a definition can
+                // hold a non-integer, so counters that refer to each other -
+                // `length` and `length - 1` - settle together instead of
+                // widening each other one pass at a time.
+                var integral = new bool[candidates.Length];
+                for (var i = 0; i < candidates.Length; i++)
+                {
+                    integral[i] = candidates[i] &&
+                        definitions[i].Count > 0 &&
+                        _forcedLocalTypes[i] == FlowValueType.None;
+                }
+                bool changed;
+                do
+                {
+                    changed = false;
+                    for (var i = 0; i < integral.Length; i++)
+                    {
+                        if (!integral[i] || AllDefinitionsAreIntegers(definitions[i], integral))
+                        {
+                            continue;
+                        }
+                        integral[i] = false;
+                        changed = true;
+                    }
+                }
+                while (changed);
+
+                var applied = false;
+                for (var i = 0; i < integral.Length; i++)
+                {
+                    if (!integral[i])
+                    {
+                        continue;
+                    }
+                    // Pin even when the local already reads as Int32, so that
+                    // expressions built from it - `currentX - 1` - are treated
+                    // as integer arithmetic rather than widened for overflow.
+                    _forcedLocalTypes[i] = FlowValueType.Int32;
+                    _locals[i] = FlowValueType.Int32;
+                    applied = true;
+                }
+                return applied;
+            }
+
+            private bool AllDefinitionsAreIntegers(
+                List<Expression> definitions,
+                bool[] integral)
+            {
+                for (var i = 0; i < definitions.Count; i++)
+                {
+                    if (!IsIntegerDefinition(definitions[i], integral))
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            /// <summary>
+            /// Returns whether an expression can only ever produce a signed
+            /// 32-bit integer, allowing wrap-around on overflow.
+            /// </summary>
+            private bool IsIntegerDefinition(Expression expression, bool[] integral)
+            {
+                expression = UnwrapGroups(expression);
+                switch (expression)
+                {
+                    case null:
+                        return false;
+                    case CheckExpression check:
+                        return TypeReferenceFacts.GetFlowType(
+                            _module.Declaration,
+                            check.AssertedType,
+                            _hostExports) == FlowValueType.Int32;
+                    case LiteralExpression literal:
+                        return GetLiteralType(literal) == FlowValueType.Int32;
+                    case NameExpression name:
+                        return IsIntegerName(name, integral);
+                    case GetPropertyExpression property:
+                        return IsInt32ConstraintExpression(property);
+                    case GetElementExpression element:
+                        return IsInt32PackedElement(element);
+                    case FunctionCallExpression call:
+                        return GetDeclaredCallReturnType(call) == FlowValueType.Int32;
+                    case UnaryExpression unary:
+                        if (unary.Operator == Operator.BitwiseNot)
+                        {
+                            return true;
+                        }
+                        if (IsMutation(unary.Operator))
+                        {
+                            return IsIntegerDefinition(unary.Expression, integral);
+                        }
+                        // Negation is left to flow analysis because `-0` is a
+                        // number a 32-bit slot cannot represent.
+                        return unary.Operator == Operator.Negate &&
+                            _expressionTypes.TryGetValue(expression, out var negated) &&
+                            negated == FlowValueType.Int32;
+                    case BinaryExpression binary:
+                        return IsIntegerArithmetic(
+                            binary.Operator,
+                            binary.Left,
+                            binary.Right,
+                            integral);
+                    case CompoundExpression compound:
+                        return IsIntegerArithmetic(
+                            compound.Operator.SimplerOperator,
+                            compound.Left,
+                            compound.Right,
+                            integral);
+                    default:
+                        return false;
+                }
+            }
+
+            private bool IsIntegerName(NameExpression name, bool[] integral)
+            {
+                if (!_names.TryGetValue(name, out var binding))
+                {
+                    return false;
+                }
+                if (binding.HasConstant)
+                {
+                    return binding.Constant.Kind == ValueKind.Number &&
+                        NumericLiteralFacts.IsExactInt32(binding.Constant.Number);
+                }
+                if (!binding.IsLocal)
+                {
+                    return false;
+                }
+                var slot = binding.Local.Value;
+                return integral[slot] ||
+                    _forcedLocalTypes[slot] == FlowValueType.Int32 ||
+                    _locals[slot] == FlowValueType.Int32;
+            }
+
+            private bool IsIntegerArithmetic(
+                Operator op,
+                Expression leftExpression,
+                Expression rightExpression,
+                bool[] integral)
+            {
+                if (op == Operator.BitwiseAnd ||
+                    op == Operator.BitwiseOr ||
+                    op == Operator.BitwiseXor ||
+                    op == Operator.LeftShift ||
+                    op == Operator.SignedRightShift)
+                {
+                    // Script bitwise operators are defined on signed 32-bit
+                    // values, so their result is always in range.
+                    return true;
+                }
+                // Division is excluded because script division is not integer
+                // division.
+                if (op != Operator.Add &&
+                    op != Operator.Subtract &&
+                    op != Operator.Multiply &&
+                    op != Operator.Modulo)
+                {
+                    return false;
+                }
+                return IsIntegerDefinition(leftExpression, integral) &&
+                    IsIntegerDefinition(rightExpression, integral);
+            }
+
+            private bool IsInt32PackedElement(GetElementExpression element)
+            {
+                return _expressionTypes.TryGetValue(element.Object, out var owner) &&
+                    owner is FlowValueType.Int32Array or
+                        FlowValueType.Int8Array or
+                        FlowValueType.Int16Array or
+                        FlowValueType.UInt8Array or
+                        FlowValueType.UInt16Array;
+            }
+
+            private FlowValueType GetDeclaredCallReturnType(FunctionCallExpression call)
+            {
+                if (call.Target is not NameExpression target ||
+                    !_names.TryGetValue(target, out var binding) ||
+                    !binding.DirectFunction.IsValid)
+                {
+                    return FlowValueType.None;
+                }
+                for (var i = 0; i < _module.Functions.Count; i++)
+                {
+                    var function = _module.Functions[i];
+                    if (!function.Id.Equals(binding.DirectFunction) ||
+                        function.Declaration == null)
+                    {
+                        continue;
+                    }
+                    return TypeReferenceFacts.GetFlowType(
+                        _module.Declaration,
+                        function.Declaration.ReturnType,
+                        _hostExports);
+                }
+                return FlowValueType.None;
+            }
+
             private bool ApplyExactNumericStorage(AstNode body)
             {
                 var candidates = new ExactNumericDefinitionAnalyzer(
@@ -3208,6 +3457,7 @@ namespace AuroraScript.Compiler.Backend.Code
             }
 
             private static FlowValueType AnalyzeBinary(
+                TypeAnalyzer analyzer,
                 Operator op,
                 Expression leftExpression,
                 Expression rightExpression,
@@ -3229,7 +3479,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     if (left == FlowValueType.String || right == FlowValueType.String) return FlowValueType.String;
                     var nonNumeric = FlowValueType.String | FlowValueType.Object |
                         FlowValueType.Int32Array | FlowValueType.Int8Array |
-                        FlowValueType.BooleanArray | FlowValueType.Float64Array |
+                        FlowValueType.BooleanArray | FlowValueType.Float32Array | FlowValueType.Float64Array |
                         FlowValueType.UInt8Array | FlowValueType.Int16Array |
                         FlowValueType.UInt16Array | FlowValueType.UInt32Array |
                         FlowValueType.Int64Array | FlowValueType.UInt64Array |
@@ -3238,7 +3488,13 @@ namespace AuroraScript.Compiler.Backend.Code
                     {
                         return FlowValueType.Dynamic;
                     }
-                    return CanKeepInt32Arithmetic(op, leftExpression, rightExpression, left, right)
+                    return CanKeepInt32Arithmetic(
+                            analyzer,
+                            op,
+                            leftExpression,
+                            rightExpression,
+                            left,
+                            right)
                         ? FlowValueType.Int32
                         : CanKeepInt64Arithmetic(op, leftExpression, rightExpression, left, right)
                             ? FlowValueType.Int64
@@ -3258,7 +3514,13 @@ namespace AuroraScript.Compiler.Backend.Code
                 }
                 if (op == Operator.Subtract || op == Operator.Multiply)
                 {
-                    return CanKeepInt32Arithmetic(op, leftExpression, rightExpression, left, right)
+                    return CanKeepInt32Arithmetic(
+                            analyzer,
+                            op,
+                            leftExpression,
+                            rightExpression,
+                            left,
+                            right)
                         ? FlowValueType.Int32
                         : CanKeepInt64Arithmetic(op, leftExpression, rightExpression, left, right)
                             ? FlowValueType.Int64
@@ -3269,8 +3531,15 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     return FlowValueType.Int32;
                 }
-                if (op == Operator.Divide || op == Operator.Modulo ||
-                    op == Operator.UnSignedRightShift)
+                if (op == Operator.Modulo)
+                {
+                    // Two integers cannot produce the negative zero or NaN that
+                    // would need a Number, so the remainder stays an integer.
+                    return left == FlowValueType.Int32 && right == FlowValueType.Int32
+                        ? FlowValueType.Int32
+                        : FlowValueType.Number;
+                }
+                if (op == Operator.Divide || op == Operator.UnSignedRightShift)
                 {
                     return FlowValueType.Number;
                 }
@@ -3278,6 +3547,7 @@ namespace AuroraScript.Compiler.Backend.Code
             }
 
             private static bool CanKeepInt32Arithmetic(
+                TypeAnalyzer analyzer,
                 Operator op,
                 Expression leftExpression,
                 Expression rightExpression,
@@ -3287,6 +3557,18 @@ namespace AuroraScript.Compiler.Backend.Code
                 if (left != FlowValueType.Int32 || right != FlowValueType.Int32)
                 {
                     return false;
+                }
+                if (op != Operator.Add &&
+                    op != Operator.Subtract &&
+                    op != Operator.Multiply)
+                {
+                    return false;
+                }
+                if (analyzer != null &&
+                    (analyzer.ContainsInt32Constraint(leftExpression) ||
+                        analyzer.ContainsInt32Constraint(rightExpression)))
+                {
+                    return true;
                 }
                 if (TryEvaluateInt32Arithmetic(op, leftExpression, rightExpression, out _))
                 {
@@ -3305,6 +3587,82 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     return IsInt32Constant(leftExpression, 1) ||
                         IsInt32Constant(rightExpression, 1);
+                }
+                return false;
+            }
+
+            private bool ContainsInt32Constraint(Expression expression)
+            {
+                expression = UnwrapGroups(expression);
+                if (IsInt32ConstraintExpression(expression))
+                {
+                    return true;
+                }
+                if (expression is BinaryExpression binary)
+                {
+                    return ContainsInt32Constraint(binary.Left) ||
+                        ContainsInt32Constraint(binary.Right);
+                }
+                if (expression is UnaryExpression unary)
+                {
+                    return ContainsInt32Constraint(unary.Expression);
+                }
+                return false;
+            }
+
+            private bool IsInt32ConstraintExpression(Expression expression)
+            {
+                return TryGetDeclaredNumericType(expression, out var type) &&
+                    type == FlowValueType.Int32;
+            }
+
+            private bool TryGetDeclaredNumericType(
+                Expression expression,
+                out FlowValueType type)
+            {
+                type = FlowValueType.None;
+                expression = UnwrapGroups(expression);
+                if (expression is CheckExpression check)
+                {
+                    type = TypeReferenceFacts.GetFlowType(
+                        _module.Declaration,
+                        check.AssertedType,
+                        _hostExports);
+                    return type is FlowValueType.Int32 or
+                        FlowValueType.Int64 or
+                        FlowValueType.Number;
+                }
+                if (expression is NameExpression name &&
+                    _names.TryGetValue(name, out var binding) &&
+                    binding.IsLocal)
+                {
+                    type = _forcedLocalTypes[binding.Local.Value];
+                    return type is FlowValueType.Int32 or
+                        FlowValueType.Int64 or
+                        FlowValueType.Number;
+                }
+                if (expression is GetElementExpression element &&
+                    IsInt32PackedElement(element))
+                {
+                    type = FlowValueType.Int32;
+                    return true;
+                }
+                if (expression is GetPropertyExpression property &&
+                    TryGetStaticPropertyName(property.Property, out var fieldName) &&
+                    _structuralTypes.TryGetValue(property.Object, out var owner))
+                {
+                    var module = GetTypeModule(owner);
+                    for (var i = 0; i < owner.Fields.Count; i++)
+                    {
+                        var field = owner.Fields[i];
+                        if (StringComparer.Ordinal.Equals(field.Name.Value, fieldName))
+                        {
+                            type = TypeReferenceFacts.GetFlowType(module, field.Type);
+                            return type is FlowValueType.Int32 or
+                                FlowValueType.Int64 or
+                                FlowValueType.Number;
+                        }
+                    }
                 }
                 return false;
             }
@@ -3561,6 +3919,10 @@ namespace AuroraScript.Compiler.Backend.Code
 
             private FlowValueType GetMutationWriteType(UnaryExpression expression)
             {
+                if (TryGetDeclaredNumericType(expression.Expression, out var declared))
+                {
+                    return declared;
+                }
                 if (GetInductionType(expression.Expression) is var induction &&
                     induction != FlowValueType.None)
                 {
@@ -4212,6 +4574,7 @@ namespace AuroraScript.Compiler.Backend.Code
                             var compoundRight = AnalyzeExpression(compound.Right, locals);
                             var knownCompound = GetKnownType(compound);
                             var compoundType = AnalyzeBinary(
+                                null,
                                 compound.Operator.SimplerOperator,
                                 compound.Left,
                                 compound.Right,
@@ -4254,6 +4617,7 @@ namespace AuroraScript.Compiler.Backend.Code
                                 return knownBinary;
                             }
                             return AnalyzeBinary(
+                                null,
                                 binary.Operator,
                                 binary.Left,
                                 binary.Right,
@@ -4299,6 +4663,122 @@ namespace AuroraScript.Compiler.Backend.Code
                     for (var i = 0; i < target.Length; i++)
                     {
                         target[i] = FlowValueTypeFacts.Merge(left[i], right[i]);
+                    }
+                }
+            }
+
+            /// <summary>
+            /// Collects every expression that can become the value of a local,
+            /// so a storage decision can be proven over all of them at once.
+            /// </summary>
+            private sealed class LocalDefinitionCollector
+            {
+                private readonly FunctionPlan _function;
+                private readonly IReadOnlyDictionary<NameExpression, BoundName> _names;
+                private readonly List<Expression>[] _definitions;
+                private readonly bool[] _candidates;
+
+                public LocalDefinitionCollector(
+                    FunctionPlan function,
+                    IReadOnlyDictionary<NameExpression, BoundName> names,
+                    Func<LocalSlotId, bool> isCaptured)
+                {
+                    _function = function;
+                    _names = names;
+                    _definitions = new List<Expression>[function.LocalSlots.Length];
+                    _candidates = new bool[function.LocalSlots.Length];
+                    for (var i = 0; i < function.LocalSlots.Length; i++)
+                    {
+                        var slot = function.LocalSlots[i];
+                        _definitions[i] = new List<Expression>();
+                        _candidates[i] = !slot.IsParameter &&
+                            !isCaptured(slot.Id) &&
+                            slot.Declaration is not ContextDeclaration &&
+                            slot.Declaration is not VariableDeclaration { Pattern: not null };
+                    }
+                }
+
+                public List<Expression>[] Analyze(AstNode body, out bool[] candidates)
+                {
+                    Visit(body);
+                    candidates = _candidates;
+                    return _definitions;
+                }
+
+                private void Visit(AstNode node)
+                {
+                    if (node == null || node is FunctionDeclaration or LambdaExpression)
+                    {
+                        return;
+                    }
+                    switch (node)
+                    {
+                        case VariableDeclaration declaration:
+                            for (var i = 0; i < _function.LocalSlots.Length; i++)
+                            {
+                                if (!ReferenceEquals(
+                                    _function.LocalSlots[i].Declaration,
+                                    declaration))
+                                {
+                                    continue;
+                                }
+                                if (declaration.Pattern != null)
+                                {
+                                    _candidates[i] = false;
+                                }
+                                else
+                                {
+                                    _definitions[i].Add(declaration.Initializer);
+                                }
+                            }
+                            break;
+                        case AssignmentExpression assignment
+                            when TryGetLocal(assignment.Left, out var assignmentSlot):
+                            _definitions[assignmentSlot.Value].Add(assignment.Right);
+                            break;
+                        case CompoundExpression compound
+                            when TryGetLocal(compound.Left, out var compoundSlot):
+                            _definitions[compoundSlot.Value].Add(compound);
+                            break;
+                        case UnaryExpression unary
+                            when IsMutation(unary.Operator) &&
+                                TryGetLocal(unary.Expression, out var mutationSlot):
+                            _definitions[mutationSlot.Value].Add(unary);
+                            break;
+                        case ForInStatement forIn
+                            when TryGetLocal(forIn.Iterator?.Left, out var iteratorSlot):
+                            _candidates[iteratorSlot.Value] = false;
+                            break;
+                    }
+                    var visitor = new CollectorChildVisitor(this);
+                    AstTraversal.VisitChildren(node, ref visitor);
+                }
+
+                private bool TryGetLocal(Expression expression, out LocalSlotId slot)
+                {
+                    if (expression is NameExpression name &&
+                        _names.TryGetValue(name, out var binding) &&
+                        binding.IsLocal)
+                    {
+                        slot = binding.Local;
+                        return true;
+                    }
+                    slot = LocalSlotId.Invalid;
+                    return false;
+                }
+
+                private readonly struct CollectorChildVisitor : IAstChildVisitor
+                {
+                    private readonly LocalDefinitionCollector _owner;
+
+                    public CollectorChildVisitor(LocalDefinitionCollector owner)
+                    {
+                        _owner = owner;
+                    }
+
+                    public void Visit(AstNode node)
+                    {
+                        _owner.Visit(node);
                     }
                 }
             }
@@ -4852,6 +5332,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     {
                         Runtime.Types.ScriptInt32Array => FlowValueType.Int32Array,
                         Runtime.Types.ScriptInt8Array => FlowValueType.Int8Array,
+                        Runtime.Types.ScriptFloat32Array => FlowValueType.Float32Array,
                         Runtime.Types.ScriptFloat64Array => FlowValueType.Float64Array,
                         Runtime.Types.ScriptBooleanArray => FlowValueType.BooleanArray,
                         Runtime.Types.ScriptUInt8Array => FlowValueType.UInt8Array,

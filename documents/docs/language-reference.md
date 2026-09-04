@@ -189,6 +189,7 @@ The source-level primitive and collection forms are:
 | Type | Script spelling and construction | Notes |
 | --- | --- | --- |
 | `number` | `42`, `3.14`, `6e2`, `10000D`, `100_00` | Double-precision. Unsuffixed integers that fit `Int32` stay `Int32`; wider exact integers stay `Int64`. Suffix `D`/`d` forces `Number`. |
+| `int32` constraint | `func index(int32 value) int32` | Compile-time/ABI constraint for an exact signed 32-bit integer. The runtime value remains a number and `typeof` remains `"number"`; `new int32` is invalid. |
 | integer hex | `0xFFFF`, `0x100000000L` | Hexadecimal literals default to integer (`Int32` if they fit, otherwise `Int64`). Suffix `L`/`l` forces `Int64`; `I`/`i` forces `Int32`. `D` is a hex digit, so it is not a hex suffix. |
 | `string` | `'text'`, `"text"`, `` `value=${expr}` ``, `|> line` | Immutable UTF-16 text; templates interpolate expressions and block strings preserve physical newlines. |
 | `boolean` | `true`, `false` | Boolean value. |
@@ -221,9 +222,28 @@ also granted the shape, so `return { x: 1, y: 2 }` and `sum(Point p)` of
 every branch agrees. Missing or ill-typed fields still follow ordinary weak
 coercion (for example arithmetic becomes `NaN`); they are not rejected as a
 `Point` mismatch. Runtime exact checks remain only on builtin native types
-(`Number`, `Boolean`, packed arrays, and the other `CheckedType` names) at
-typed parameters, declared native returns that are not already proven, and
-`value as Number`. Packed-array checks are nullable:
+(`Number`, `Boolean`, packed arrays, and the other `CheckedType` names) and
+the lowercase `int32` numeric constraint at typed parameters, declared
+returns that are not already proven, and assertions such as
+`value as Number` or `value as int32`. `int32` accepts only finite integral
+numbers in `-2147483648..2147483647` and rejects negative zero because native
+integer storage cannot preserve its sign. Checked boundaries do not truncate
+or wrap. A local whose every assignment is an integer keeps 32-bit storage:
+integer literals, `int32` parameters, fields, and returns, `as int32` values,
+`Int32Array` elements, signed bitwise results, and `+`, `-`, `*`, `%` over
+those. Such a local is never conservatively widened to `Number`; it wraps like
+CLR `int` instead, so `var max = 2147483647; max + 1` is `-2147483648`.
+Expressions built from those locals wrap the same way (`currentX - 1` stays
+`int32`). Write `2147483647D` or any fractional assignment to opt a local back
+into `Number`. Integer `%` likewise cannot represent the negative zero or `NaN`
+a `Number` remainder would produce, so `-14 % 7` is `0` and a zero divisor
+raises a runtime error; give either operand `Number` storage to keep those
+values. `/` is script number division. When the quotient is an exact integer,
+assert it with `((current - currentX) / width) as int32`. Parentheses are
+required because `as` binds tighter than `/`; `Math.floor` is not a substitute
+because it returns `Number` and would hide a non-integral quotient.
+`int32` does not add a runtime type identity, introduce a
+global constructor, or act as a TDoc type name. Packed-array checks are nullable:
 `null as Float64Array` returns `null`, and a `null` argument is inferred from
 a declared `Float64Array` parameter without requiring `as`. Non-null values
 must still match the exact packed-array type.
@@ -290,13 +310,13 @@ properties or object checks. Using an imported type as a value
 itself is still the module instance: `models.add` is a function, `models.Point`
 is not a property.
 
-There is no separate `Unit`/`void` value type in the script language, and the current runtime provides `Float64Array` but not `Float32Array`.
+There is no separate `Unit`/`void` value type in the script language.
 
 Common object-like built-ins are `Date`, `Error`, `HashMap`, `Path`, `Proxy`, `Regex`, and `StringBuffer`. Construct them with `new` and use the members documented in `schema/runtime-api.json` and the Script API pages. `TDoc` additionally provides the compiler-recognized `tdoc` expression for typed document values.
 
 ### 7. Use packed arrays for homogeneous data
 
-The runtime exposes ten fixed-length packed arrays:
+The runtime exposes eleven fixed-length packed arrays:
 
 ```as
 var signedBytes = new Int8Array(size);
@@ -307,11 +327,14 @@ var ints = new Int32Array(size);
 var unsignedInts = new UInt32Array(size);
 var longs = new Int64Array(size);
 var unsignedLongs = new UInt64Array(size);
+var singles = new Float32Array(size);
 var fractions = new Float64Array(size);
 var flags = new BooleanArray(size);
 ```
 
 Each constructor accepts an optional non-negative length and zero-initializes contiguous primitive storage. `length` is read-only; `push`, `pop`, and element deletion are not supported. Use a general `Array` when the collection must grow or contain mixed values. Script numbers are doubles, so values read from `Int64Array` and `UInt64Array` must be exactly representable as a script number; use TDoc typed values when exact 64-bit persistence is required.
+
+`Conv8` reads and writes scalars and UTF-8 text on a `UInt8Array` only. Multi-byte integers and floats take `littleEndian` (default `true`). `typeof Conv8` is `"type"`; `new Conv8()` fails. There is no script `Encoding` global.
 
 `typeof` reports the constructor name for these packed arrays (`"Int8Array"`, `"UInt8Array"`, and so on). They remain object-backed `ScriptDatum` values; they do not consume a dedicated `ValueKind` bit. `value as Int8Array` is the exact assertion used by the typed backend, while `typeof value == "Int8Array"` is the dynamic name check.
 
@@ -540,6 +563,7 @@ typeof 1;                      // "number"
 typeof [];                     // "array"
 typeof {};                     // "object"
 typeof Math;                   // "type"
+typeof Conv8;                  // "type"
 typeof console;                // "type"
 typeof new Int8Array(2);       // "Int8Array"
 typeof new StringBuffer("");   // "StringBuffer"
@@ -577,8 +601,8 @@ Object values:
 - hash map (`typeof` → `"HashMap"`)
 - string buffer (`typeof` → `"StringBuffer"`)
 - path (`typeof` → `"Path"`)
-- packed arrays (`typeof` → `"Int8Array"`, `"UInt8Array"`, `"Int16Array"`, `"UInt16Array"`, `"Int32Array"`, `"UInt32Array"`, `"Int64Array"`, `"UInt64Array"`, `"Float64Array"`, `"BooleanArray"`)
-- infrastructure and host NativeTypes (`typeof` → `"type"`): `Math`, `JSON`, `TDoc`, `console`, `HotPatch`, and types selected with `WithNativeTypes`
+- packed arrays (`typeof` → `"Int8Array"`, `"UInt8Array"`, `"Int16Array"`, `"UInt16Array"`, `"Int32Array"`, `"UInt32Array"`, `"Int64Array"`, `"UInt64Array"`, `"Float32Array"`, `"Float64Array"`, `"BooleanArray"`)
+- infrastructure and host NativeTypes (`typeof` → `"type"`): `Math`, `JSON`, `TDoc`, `console`, `Conv8`, `HotPatch`, and types selected with `WithNativeTypes`
 - CLR interop objects exposed by the host
 
 ## Runtime Constructors

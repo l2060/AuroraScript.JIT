@@ -72,7 +72,9 @@ Host types declared with `[AuroraNativeType]` / `[AuroraExport]` use the same
 direct-call idea on the C# side. Unshadowed `Math.abs(x)` with a proven number
 calls `AbsCore` directly. Unshadowed `Math.PI` loads `MathSupport.PI` with
 `ldsfld`. `params` members such as `Math.max` stay on the generated adapter.
-Shadowing the global (`var Math = other`) disables both paths.
+Unshadowed `Conv8.getInt32(bytes, offset)` with a proven `UInt8Array` and integer
+offset calls the Core method. Shadowing the global (`var Math = other`) disables
+both paths.
 
 Proven native-instance locals use the same idea. Keep a `Vec2` (or similar) in
 a local that is never reassigned to an unproven value and never captured by a
@@ -164,7 +166,7 @@ Prefer `Array.withCapacity(count)` when the final capacity is known but the logi
 
 ## Packed Primitive Arrays
 
-Use `Int32Array`, `Float64Array`, `Int8Array`, or `BooleanArray` for fixed-size homogeneous data instead of a general `Array`:
+Use `Int32Array`, `Float32Array`, `Float64Array`, `Int8Array`, or `BooleanArray` for fixed-size homogeneous data instead of a general `Array`:
 
 ```as
 var distances = new Int32Array(nodeCount);
@@ -189,22 +191,23 @@ occurs only at the boundary, not on element access.
 
 `typeof` reports the constructor name (`"Int8Array"`, `"Float64Array"`, …). The datum `Kind` stays `Object`; do not treat `ValueKind` as the packed-array type registry.
 
-Within a specialized direct-call graph, packed-array parameters and locals are passed as raw `int[]`, `double[]`, `sbyte[]`, or `bool[]` storage. Native helper-to-helper calls therefore do not reload wrapper fields or allocate replacement wrappers.
+Within a specialized direct-call graph, packed-array parameters and locals are passed as raw `int[]`, `float[]`, `double[]`, `sbyte[]`, or `bool[]` storage. Native helper-to-helper calls therefore do not reload wrapper fields or allocate replacement wrappers.
 
 Keep the array in an exact local or pass it directly to a `native func` helper. Storing it in an ordinary object and reading it back erases the compile-time element type; access remains allocation-free apart from the array itself, but it uses the dynamic helper path and is measurably slower. This explicit boundary keeps the runtime small and predictable without speculative object-shape optimization.
 
 Choose the narrowest type that matches the required semantics:
 
 - `Int32Array`: signed 32-bit indexes, distances, parents, and queue tables.
+- `Float32Array`: compact IEEE-754 binary32 values; script numbers round on store.
 - `Float64Array`: fractional values, `NaN`, infinities, and general script-number data.
 - `Int8Array`: compact signed values in the `-128..127` range.
 - `BooleanArray`: flags and visited/closed tables.
 
 ## Integer Kernels
 
-Use signed bitwise operations and `Int32Array`/`Int8Array` values when the algorithm is naturally 32-bit. The compiler keeps proven-safe integer literals, packed-array loads, signed bitwise results, bounded loop induction variables, and straight-line integer locals whose `++`/`--`/`+=`/`-=` results still fit the same integer domain as native CIL `int` or `long` values. Integer remainder also stays native when inferred operand ranges exclude a zero divisor, negative zero, and the signed overflow case. It widens to `double` whenever script number semantics require it, including possible arithmetic overflow, division, unsafe remainder, unsigned right shift, negative zero, `NaN`, and infinity.
+Use signed bitwise operations and `Int32Array`/`Int8Array` values when the algorithm is naturally 32-bit. A local whose every assignment is an integer — integer literals, `int32` parameters, fields, and returns, packed-array loads, signed bitwise results, and `+`, `-`, `*`, `%` over those — keeps native CIL `int` storage for its whole lifetime and wraps on overflow. Expressions built from those locals wrap the same way, so `astarHeuristic(currentX - 1, currentY, ...)` stays on the `int` ABI. It is not conservatively widened to `double`. Division, unsigned right shift, and any fractional or `Number` assignment still produce `double`, as do the operations that need `NaN` or infinity.
 
-This means an integer-oriented loop can avoid repeated `double` conversions without changing observable numeric behavior. Do not add manual casts solely for performance; keep values type-stable and let the flow analysis widen at the first operation that needs number semantics.
+This means an integer-oriented loop avoids repeated `double` conversions. The trade-off is that such a local cannot hold negative zero or `NaN`, so an integer `%` with a zero divisor raises a runtime error instead. When a `/` quotient is an exact integer, assert it with `((current - currentX) / width) as int32` (parentheses required: `as` binds tighter than `/`). Do not add `Math.floor` solely to recover an `int`; if a value genuinely needs number semantics, give it `Number` storage with a `D` suffix or a fractional assignment.
 
 ## Console
 

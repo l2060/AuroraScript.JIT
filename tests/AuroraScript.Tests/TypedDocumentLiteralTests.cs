@@ -233,6 +233,7 @@ public sealed class TypedDocumentLiteralTests
 
             export func int32(value) { return tdoc Int32Array [-1, $(value), 1]; }
             export func int8(value) { return tdoc Int8Array [-1, $(value), 1]; }
+            export func float32(value) { return tdoc Float32Array [1.5, $(value), 2.5]; }
             export func float64(value) { return tdoc Float64Array [1.5, $(value), 2.5]; }
             export func boolean(value) { return tdoc BooleanArray [true, $(value), false]; }
             export func uint8(value) { return tdoc UInt8Array [0, $(value), 255]; }
@@ -248,6 +249,7 @@ public sealed class TypedDocumentLiteralTests
         var one = ScriptDatum.FromNumber(1);
         Assert.Equal(1, Assert.IsType<ScriptInt32Array>(TestWorkspace.Execute(domain, "int32", "TEST", one).Object).GetElement(1));
         Assert.Equal((sbyte)1, Assert.IsType<ScriptInt8Array>(TestWorkspace.Execute(domain, "int8", "TEST", one).Object).GetElement(1));
+        Assert.Equal(1f, Assert.IsType<ScriptFloat32Array>(TestWorkspace.Execute(domain, "float32", "TEST", one).Object).GetElement(1));
         Assert.Equal(1d, Assert.IsType<ScriptFloat64Array>(TestWorkspace.Execute(domain, "float64", "TEST", one).Object).GetElement(1));
         Assert.True(Assert.IsType<ScriptBooleanArray>(TestWorkspace.Execute(domain, "boolean", "TEST", one).Object).GetElement(1));
         Assert.Equal((byte)1, Assert.IsType<ScriptUInt8Array>(TestWorkspace.Execute(domain, "uint8", "TEST", one).Object).GetElement(1));
@@ -260,6 +262,7 @@ public sealed class TypedDocumentLiteralTests
 
         AssertPackedElementError(domain, "int32", 2147483648d);
         AssertPackedElementError(domain, "int8", 128d);
+        AssertPackedElementError(domain, "float32", double.PositiveInfinity);
         AssertPackedElementError(domain, "float64", double.PositiveInfinity);
         AssertPackedElementError(domain, "boolean", 2d);
         AssertPackedElementError(domain, "uint8", 256d);

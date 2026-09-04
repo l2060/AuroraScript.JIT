@@ -89,8 +89,10 @@ public sealed class CompilerBackendPlanTests
         var code = TypedFunctionBuilder.Build(modulePlan, function);
 
         Assert.Equal(FlowValueType.Dynamic, code.GetLocalType(function.LocalSlots.Single(slot => slot.Name == "iterations").Id));
+        // `sum` accumulates `i / 2`, which is not integer division, so it stays
+        // a Number. `i` only ever holds integers and keeps native int storage.
         Assert.Equal(FlowValueType.Number, code.GetLocalType(function.LocalSlots.Single(slot => slot.Name == "sum").Id));
-        Assert.Equal(FlowValueType.Number, code.GetLocalType(function.LocalSlots.Single(slot => slot.Name == "i").Id));
+        Assert.Equal(FlowValueType.Int32, code.GetLocalType(function.LocalSlots.Single(slot => slot.Name == "i").Id));
         Assert.Equal(FlowValueType.Boolean, code.GetLocalType(function.LocalSlots.Single(slot => slot.Name == "enabled").Id));
         Assert.Equal(FlowValueType.String, code.GetLocalType(function.LocalSlots.Single(slot => slot.Name == "label").Id));
     }
@@ -453,12 +455,15 @@ public sealed class CompilerBackendPlanTests
         Assert.Equal(FlowValueType.Int32, LocalType("n"));
         Assert.Equal(FlowValueType.Int32, LocalType("k"));
         Assert.Equal(FlowValueType.Int64, LocalType("wideK"));
-        Assert.Equal(FlowValueType.Number, LocalType("signedZero"));
-        Assert.Equal(FlowValueType.Number, LocalType("invalid"));
+        // Integer remainder cannot hold negative zero or NaN, so both stay ints
+        // and a zero divisor reports an error at runtime instead.
+        Assert.Equal(FlowValueType.Int32, LocalType("signedZero"));
+        Assert.Equal(FlowValueType.Int32, LocalType("invalid"));
         Assert.Equal(FlowValueType.Int32, LocalType("v"));
         Assert.Equal(FlowValueType.Int32, LocalType("m"));
-        Assert.Equal(FlowValueType.Number, LocalType("overflow"));
-        Assert.Equal(FlowValueType.Number, LocalType("max"));
+        // Integer-only locals keep native int storage and wrap on overflow.
+        Assert.Equal(FlowValueType.Int32, LocalType("overflow"));
+        Assert.Equal(FlowValueType.Int32, LocalType("max"));
     }
 
     [Fact]

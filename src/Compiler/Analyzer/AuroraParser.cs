@@ -1,6 +1,7 @@
 using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Ast.Statements;
+using AuroraScript.Compiler.Backend.Code;
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Serialization;
 using AuroraScript.Source;
@@ -2461,7 +2462,7 @@ namespace AuroraScript.Compiler.Analyzer
                 "Null" => raw is LiteralExpression { Token: NullToken },
                 "Object" => raw is MapExpression,
                 "Array" => raw is ArrayLiteralExpression,
-                "Int32Array" or "Int8Array" or "Float64Array" or "BooleanArray" or
+                "Int32Array" or "Int8Array" or "Float32Array" or "Float64Array" or "BooleanArray" or
                     "UInt8Array" or "Int16Array" or "UInt16Array" or "UInt32Array" or
                     "Int64Array" or "UInt64Array" => ValidateTDocPackedArray(typeName, raw, token),
                 "String" => IsTDocScalar(raw, typeof(StringToken)),
@@ -2523,7 +2524,7 @@ namespace AuroraScript.Compiler.Analyzer
                         value.Range,
                         TDocPathMessage($"{typeName} elements must be finite numbers.", index));
                 }
-                if (typeName != "Float64Array" && Math.Truncate(number) != number)
+                if (typeName is not ("Float32Array" or "Float64Array") && Math.Truncate(number) != number)
                 {
                     throw new AuroraCompilationException(
                         AuroraCompilationStage.Parsing,
@@ -2994,11 +2995,7 @@ namespace AuroraScript.Compiler.Analyzer
 
         private static bool IsCheckTypeName(string typeName)
         {
-            return Enum.TryParse<CheckedType>(
-                    typeName,
-                    ignoreCase: false,
-                    out var checkedType) &&
-                Enum.IsDefined(checkedType);
+            return FlowValueTypeFacts.IsCheckedTypeName(typeName);
         }
 
         // Helper for Infix Lambda

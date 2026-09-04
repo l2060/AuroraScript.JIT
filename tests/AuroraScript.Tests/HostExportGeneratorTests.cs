@@ -1,6 +1,7 @@
 using AuroraScript.Tests.Host;
 using AuroraScript.Tests.Infrastructure;
 using AuroraScript.Compiler.Backend;
+using AuroraScript.Runtime;
 using AuroraScript.Runtime.Types;
 using System;
 using System.Buffers.Binary;
@@ -312,13 +313,28 @@ public sealed class HostExportGeneratorTests
         var (_, domain) = await workspace.CompileModuleAsync(
             """
             @module(TEST);
-            export func run() {
-                return Stats.chat("piece-", 7);
+            export func run(value) {
+                return Stats.chat("piece-", value);
             }
             """,
             nativeTypes: true);
 
-        ScriptAssert.Equal("piece-7", TestWorkspace.Execute(domain, "run"));
+        ScriptAssert.Equal(
+            "piece-7",
+            TestWorkspace.Execute(
+                domain,
+                "run",
+                arguments: [ScriptDatum.FromNumber(7)]));
+        Assert.Throws<AuroraRuntimeException>(() =>
+            TestWorkspace.Execute(
+                domain,
+                "run",
+                arguments: [ScriptDatum.FromNumber(1.5)]));
+        Assert.Throws<AuroraRuntimeException>(() =>
+            TestWorkspace.Execute(
+                domain,
+                "run",
+                arguments: [ScriptDatum.FromNumber((double)int.MaxValue + 1)]));
     }
 
     [Fact]

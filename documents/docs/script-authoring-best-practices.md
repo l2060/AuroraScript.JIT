@@ -340,6 +340,9 @@ Use these defaults unless the user asks for a different style:
 - Use `const` for module constants and local values that do not change.
 - Use `StringBuffer` for large loop-built strings.
 - Distinguish packed arrays with `typeof value == "Int8Array"` or `check Int8Array value`; do not compare `typeof` to `"object"` for those values.
+- Encode binary layouts on `UInt8Array` with `Conv8` (`littleEndian` default `true`; strings are UTF-8). Do not invent an `Encoding` global or pass `Int8Array` to `Conv8`.
+- Integer locals from unsuffixed integer literals (`var i = 0;`) keep `int32` storage and wrap on overflow, including `i++` and `i - 1`. Use `0D` or a fractional assignment when Number remainder/`NaN` semantics are required.
+- Script `/` is floating division. For an exact integer quotient write `((a - b) / c) as int32`. Parentheses are required because `as` binds tighter than `/`. Do not wrap with `Math.floor` if a non-integral result should fail.
 - Packed-array parameters accept `null`. Call `work(null)` without `as Float64Array`; non-null values still require the exact packed-array type.
 - Use `native func name(...) ReturnType { ... }` only for a stable ABI. Use `void` as the return contract for a procedure: fall through or `return;` is valid, `return expression;` is not. Direct native statement calls use a CLR `void` ABI; dynamic calls evaluate to `null`.
 - Bind `ScriptContext.UserState` with module-level `context name;` or `context name as NativeType;`. Do not emit `$state`. A NativeType return from `native func` stays that CLR type on the native entry.

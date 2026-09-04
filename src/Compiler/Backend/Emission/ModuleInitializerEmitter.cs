@@ -1460,7 +1460,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             return typeName is "Null" or "Object" or "Array" or "String" or "Number" or
                 "Boolean" or "StringBuffer" or "Date" or "Regex" or "Path" or "HashMap" or
-                "Int32Array" or "Int8Array" or "Float64Array" or "BooleanArray" or
+                "Int32Array" or "Int8Array" or "Float32Array" or "Float64Array" or "BooleanArray" or
                 "UInt8Array" or "Int16Array" or "UInt16Array" or "UInt32Array" or
                 "Int64Array" or "UInt64Array";
         }
@@ -1571,6 +1571,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                 case "Int8Array":
                     EmitTypedPackedDocument(array, typeName, typeof(ScriptInt8Array), TypedRuntimeMetadata.ScriptInt8ArrayConstructor, TypedRuntimeMetadata.ScriptInt8ArrayItems);
                     return true;
+                case "Float32Array":
+                    EmitTypedPackedDocument(array, typeName, typeof(ScriptFloat32Array), TypedRuntimeMetadata.ScriptFloat32ArrayConstructor, TypedRuntimeMetadata.ScriptFloat32ArrayItems);
+                    return true;
                 case "Float64Array":
                     EmitTypedPackedDocument(array, typeName, typeof(ScriptFloat64Array), TypedRuntimeMetadata.ScriptFloat64ArrayConstructor, TypedRuntimeMetadata.ScriptFloat64ArrayItems);
                     return true;
@@ -1650,6 +1653,10 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 switch (typeName)
                 {
+                    case "Float32Array":
+                        _il.Emit(OpCodes.Ldc_R4, (float)number);
+                        _il.Emit(OpCodes.Stelem_R4);
+                        return;
                     case "Float64Array":
                         _il.Emit(OpCodes.Ldc_R8, number);
                         _il.Emit(OpCodes.Stelem_R8);

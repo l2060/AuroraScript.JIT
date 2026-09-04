@@ -33,18 +33,23 @@ public sealed class PackedArrayTests
     {
         var int32 = new ScriptInt32Array(1_000);
         var int8 = new ScriptInt8Array(1_000);
+        var float32 = new ScriptFloat32Array(1_000);
         var float64 = new ScriptFloat64Array(1_000);
         var boolean = new ScriptBooleanArray(1_000);
 
         Assert.IsType<int[]>(int32._items);
         Assert.IsType<sbyte[]>(int8._items);
+        Assert.IsType<float[]>(float32._items);
         Assert.IsType<double[]>(float64._items);
         Assert.IsType<bool[]>(boolean._items);
         Assert.Equal(1_000, int32.Length);
         Assert.Equal(1_000, int8.Length);
+        Assert.Equal(1_000, float32.Length);
         Assert.Equal(1_000, float64.Length);
         Assert.Equal(1_000, boolean.Length);
 
+        Assert.True(ClrMarshaller.TryConvertArgument(float32, typeof(float[]), out var float32Storage));
+        Assert.Same(float32._items, float32Storage);
         Assert.True(ClrMarshaller.TryConvertArgument(float64, typeof(double[]), out var storage));
         Assert.Same(float64._items, storage);
     }
@@ -52,6 +57,7 @@ public sealed class PackedArrayTests
     [Fact]
     public void NativeObjectsKeepObjectKindAndReportConstructorTypeNames()
     {
+        AssertNativeType(new ScriptFloat32Array(1), "Float32Array");
         AssertNativeType(new ScriptInt8Array(1), "Int8Array");
         AssertNativeType(new ScriptUInt8Array(1), "UInt8Array");
         AssertNativeType(new ScriptInt32Array(1), "Int32Array");
@@ -66,6 +72,58 @@ public sealed class PackedArrayTests
         Assert.Equal(ValueKind.Object, datum.Kind);
         Assert.Equal(typeName, ScriptDatum.GetTypeName(datum));
         Assert.Equal(typeName, ScriptDatum.TypeOf(datum).StringText);
+    }
+
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+    [InlineData(CompilationMode.OnlyRun)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
+    public async Task Float32ArraysStayNativeAndPreserveNumberSemantics(CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        var (engine, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+
+            native func floatWork(Float32Array values, Number count) Number {
+                for (var i = 0; i < count; i++) values[i] = i + 0.25;
+                values[1] *= 2;
+                values[2]++;
+                var sum = 0;
+                for (var j = 0; j < count; j++) sum += values[j];
+                return sum;
+            }
+
+            export func run() {
+                var values = new Float32Array(4);
+                var sum = floatWork(values, values.length);
+                var clone = Object.clone(values);
+                var equalBefore = Object.deepEqual(values, clone);
+                clone[0] = 9.5;
+                var spread = [...values];
+                var filled = new Float32Array(2);
+                filled.fill("1.5");
+                return [
+                    sum, values.length, values[0], values[1], values[2], values[3],
+                    spread[2], equalBefore, Object.deepEqual(values, clone),
+                    filled[0], filled[1], JSON.stringify(values), typeof values
+                ];
+            }
+            """,
+            mode);
+
+        var expected = new object?[]
+        {
+            9.25, 4, 0.25, 2.5, 3.25, 3.25,
+            3.25, true, false, 1.5, 1.5, "[0.25,2.5,3.25,3.25]", "Float32Array"
+        };
+        ScriptAssert.Equal(expected, TestWorkspace.Execute(domain, "run"));
+        if (mode == CompilationMode.Persistence)
+        {
+            ScriptAssert.Equal(expected, TestWorkspace.Execute(engine.CreateDomain(), "run"));
+        }
     }
 
     [Theory]
@@ -841,10 +899,12 @@ public sealed class PackedArrayTests
                 "packedWork$native",
                 StringComparison.Ordinal)));
         var method = reader.GetMethodDefinition(methodHandle);
-        // DEFAULT, four parameters, return R8, then int[], sbyte[], bool[], int.
+        // DEFAULT, four parameters, then int[], sbyte[], bool[], int. The
+        // declared Number return narrows to I4 because `sum` only ever holds
+        // integers.
         var signature = reader.GetBlobBytes(method.Signature);
         Assert.Equal(5, signature[1]); // ScriptContext plus four parameters.
-        Assert.Equal(0x0d, signature[2]);
+        Assert.Equal(0x08, signature[2]);
         Assert.Equal(3, signature.Count(value => value == 0x1d));
         var il = peReader.GetMethodBody(method.RelativeVirtualAddress).GetILBytes();
         var opcodes = ReadOpCodes(il.AsSpan());

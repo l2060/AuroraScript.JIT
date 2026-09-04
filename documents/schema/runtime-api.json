@@ -607,6 +607,38 @@
         ]
       }
     },
+    "Float32Array": {
+      "kind": "constructor",
+      "callable": false,
+      "constructors": [
+        {
+          "parameters": [
+            {
+              "name": "length",
+              "type": "number",
+              "optional": true
+            }
+          ],
+          "returns": "Float32Array",
+          "notes": {
+            "en": [
+              "Creates a fixed-length, zero-initialized 32-bit floating-point array."
+            ],
+            "zh-CN": [
+              "创建固定长度、以零初始化的 32 位浮点数数组。"
+            ]
+          }
+        }
+      ],
+      "notes": {
+        "en": [
+          "Primitive-backed array for compact IEEE-754 binary32 storage. Script numbers are doubles; stores round to float32."
+        ],
+        "zh-CN": [
+          "使用原生单精度浮点存储。脚本 Number 是双精度，写入时舍入为 float32。"
+        ]
+      }
+    },
     "Float64Array": {
       "kind": "constructor",
       "callable": false,
@@ -2138,6 +2170,270 @@
         ]
       }
     },
+    "Conv8": {
+      "kind": "type",
+      "members": {
+        "BYTES1": { "kind": "constant", "returns": "number", "notes": { "en": ["1-byte width (bool, int8, uint8)."], "zh-CN": ["1 字节宽度（bool、int8、uint8）。"] } },
+        "BYTES2": { "kind": "constant", "returns": "number", "notes": { "en": ["2-byte width (int16, uint16)."], "zh-CN": ["2 字节宽度（int16、uint16）。"] } },
+        "BYTES4": { "kind": "constant", "returns": "number", "notes": { "en": ["4-byte width (int32, uint32, float32)."], "zh-CN": ["4 字节宽度（int32、uint32、float32）。"] } },
+        "BYTES8": { "kind": "constant", "returns": "number", "notes": { "en": ["8-byte width (int64, uint64, float64)."], "zh-CN": ["8 字节宽度（int64、uint64、float64）。"] } },
+        "getBool": {
+          "kind": "method",
+          "parameters": [
+            { "name": "buffer", "type": "UInt8Array" },
+            { "name": "offset", "type": "number" }
+          ],
+          "returns": "boolean",
+          "notes": { "en": ["Reads a 1-byte boolean. Non-zero is true."], "zh-CN": ["读取 1 字节布尔值，非 0 为 true。"] }
+        },
+        "setBool": {
+          "kind": "method",
+          "parameters": [
+            { "name": "buffer", "type": "UInt8Array" },
+            { "name": "offset", "type": "number" },
+            { "name": "value", "type": "boolean" }
+          ],
+          "returns": "null",
+          "notes": { "en": ["Writes a 1-byte boolean as 0 or 1."], "zh-CN": ["将布尔值写成 1 字节的 0 或 1。"] }
+        },
+        "getInt8": {
+          "kind": "method",
+          "parameters": [
+            { "name": "buffer", "type": "UInt8Array" },
+            { "name": "offset", "type": "number" }
+          ],
+          "returns": "number",
+          "notes": { "en": ["Reads a signed 8-bit integer."], "zh-CN": ["读取有符号 8 位整数。"] }
+        },
+        "setInt8": {
+          "kind": "method",
+          "parameters": [
+            { "name": "buffer", "type": "UInt8Array" },
+            { "name": "offset", "type": "number" },
+            { "name": "value", "type": "number" }
+          ],
+          "returns": "null",
+          "notes": { "en": ["Writes a signed 8-bit integer."], "zh-CN": ["写入有符号 8 位整数。"] }
+        },
+        "getUInt8": {
+          "kind": "method",
+          "parameters": [
+            { "name": "buffer", "type": "UInt8Array" },
+            { "name": "offset", "type": "number" }
+          ],
+          "returns": "number",
+          "notes": { "en": ["Reads an unsigned 8-bit integer."], "zh-CN": ["读取无符号 8 位整数。"] }
+        },
+        "setUInt8": {
+          "kind": "method",
+          "parameters": [
+            { "name": "buffer", "type": "UInt8Array" },
+            { "name": "offset", "type": "number" },
+            { "name": "value", "type": "number" }
+          ],
+          "returns": "null",
+          "notes": { "en": ["Writes an unsigned 8-bit integer."], "zh-CN": ["写入无符号 8 位整数。"] }
+        },
+        "getInt16": {
+          "kind": "method",
+          "parameters": [
+            { "name": "buffer", "type": "UInt8Array" },
+            { "name": "offset", "type": "number" },
+            { "name": "littleEndian", "type": "boolean", "optional": true }
+          ],
+          "returns": "number",
+          "notes": { "en": ["Reads a signed 16-bit integer. littleEndian defaults to true."], "zh-CN": ["读取有符号 16 位整数。littleEndian 默认为 true。"] }
+        },
+        "setInt16": {
+          "kind": "method",
+          "parameters": [
+            { "name": "buffer", "type": "UInt8Array" },
+            { "name": "offset", "type": "number" },
+            { "name": "value", "type": "number" },
+            { "name": "littleEndian", "type": "boolean", "optional": true }
+          ],
+          "returns": "null",
+          "notes": { "en": ["Writes a signed 16-bit integer. littleEndian defaults to true."], "zh-CN": ["写入有符号 16 位整数。littleEndian 默认为 true。"] }
+        },
+        "getUInt16": {
+          "kind": "method",
+          "parameters": [
+            { "name": "buffer", "type": "UInt8Array" },
+            { "name": "offset", "type": "number" },
+            { "name": "littleEndian", "type": "boolean", "optional": true }
+          ],
+          "returns": "number",
+          "notes": { "en": ["Reads an unsigned 16-bit integer. littleEndian defaults to true."], "zh-CN": ["读取无符号 16 位整数。littleEndian 默认为 true。"] }
+        },
+        "setUInt16": {
+          "kind": "method",
+          "parameters": [
+            { "name": "buffer", "type": "UInt8Array" },
+            { "name": "offset", "type": "number" },
+            { "name": "value", "type": "number" },
+            { "name": "littleEndian", "type": "boolean", "optional": true }
+          ],
+          "returns": "null",
+          "notes": { "en": ["Writes an unsigned 16-bit integer. littleEndian defaults to true."], "zh-CN": ["写入无符号 16 位整数。littleEndian 默认为 true。"] }
+        },
+        "getInt32": {
+          "kind": "method",
+          "parameters": [
+            { "name": "buffer", "type": "UInt8Array" },
+            { "name": "offset", "type": "number" },
+            { "name": "littleEndian", "type": "boolean", "optional": true }
+          ],
+          "returns": "number",
+          "notes": { "en": ["Reads a signed 32-bit integer. littleEndian defaults to true."], "zh-CN": ["读取有符号 32 位整数。littleEndian 默认为 true。"] }
+        },
+        "setInt32": {
+          "kind": "method",
+          "parameters": [
+            { "name": "buffer", "type": "UInt8Array" },
+            { "name": "offset", "type": "number" },
+            { "name": "value", "type": "number" },
+            { "name": "littleEndian", "type": "boolean", "optional": true }
+          ],
+          "returns": "null",
+          "notes": { "en": ["Writes a signed 32-bit integer. littleEndian defaults to true."], "zh-CN": ["写入有符号 32 位整数。littleEndian 默认为 true。"] }
+        },
+        "getUInt32": {
+          "kind": "method",
+          "parameters": [
+            { "name": "buffer", "type": "UInt8Array" },
+            { "name": "offset", "type": "number" },
+            { "name": "littleEndian", "type": "boolean", "optional": true }
+          ],
+          "returns": "number",
+          "notes": { "en": ["Reads an unsigned 32-bit integer. littleEndian defaults to true."], "zh-CN": ["读取无符号 32 位整数。littleEndian 默认为 true。"] }
+        },
+        "setUInt32": {
+          "kind": "method",
+          "parameters": [
+            { "name": "buffer", "type": "UInt8Array" },
+            { "name": "offset", "type": "number" },
+            { "name": "value", "type": "number" },
+            { "name": "littleEndian", "type": "boolean", "optional": true }
+          ],
+          "returns": "null",
+          "notes": { "en": ["Writes an unsigned 32-bit integer. littleEndian defaults to true."], "zh-CN": ["写入无符号 32 位整数。littleEndian 默认为 true。"] }
+        },
+        "getInt64": {
+          "kind": "method",
+          "parameters": [
+            { "name": "buffer", "type": "UInt8Array" },
+            { "name": "offset", "type": "number" },
+            { "name": "littleEndian", "type": "boolean", "optional": true }
+          ],
+          "returns": "number",
+          "notes": { "en": ["Reads a signed 64-bit integer as Number. Values outside the exact-integer range lose precision."], "zh-CN": ["读取有符号 64 位整数为 Number。超出精确整数范围会丢失精度。"] }
+        },
+        "setInt64": {
+          "kind": "method",
+          "parameters": [
+            { "name": "buffer", "type": "UInt8Array" },
+            { "name": "offset", "type": "number" },
+            { "name": "value", "type": "number" },
+            { "name": "littleEndian", "type": "boolean", "optional": true }
+          ],
+          "returns": "null",
+          "notes": { "en": ["Writes a signed 64-bit integer from Number."], "zh-CN": ["从 Number 写入有符号 64 位整数。"] }
+        },
+        "getUInt64": {
+          "kind": "method",
+          "parameters": [
+            { "name": "buffer", "type": "UInt8Array" },
+            { "name": "offset", "type": "number" },
+            { "name": "littleEndian", "type": "boolean", "optional": true }
+          ],
+          "returns": "number",
+          "notes": { "en": ["Reads an unsigned 64-bit integer as Number. Values outside the exact-integer range lose precision."], "zh-CN": ["读取无符号 64 位整数为 Number。超出精确整数范围会丢失精度。"] }
+        },
+        "setUInt64": {
+          "kind": "method",
+          "parameters": [
+            { "name": "buffer", "type": "UInt8Array" },
+            { "name": "offset", "type": "number" },
+            { "name": "value", "type": "number" },
+            { "name": "littleEndian", "type": "boolean", "optional": true }
+          ],
+          "returns": "null",
+          "notes": { "en": ["Writes an unsigned 64-bit integer from Number."], "zh-CN": ["从 Number 写入无符号 64 位整数。"] }
+        },
+        "getFloat32": {
+          "kind": "method",
+          "parameters": [
+            { "name": "buffer", "type": "UInt8Array" },
+            { "name": "offset", "type": "number" },
+            { "name": "littleEndian", "type": "boolean", "optional": true }
+          ],
+          "returns": "number",
+          "notes": { "en": ["Reads an IEEE-754 binary32 value."], "zh-CN": ["读取 IEEE-754 binary32 值。"] }
+        },
+        "setFloat32": {
+          "kind": "method",
+          "parameters": [
+            { "name": "buffer", "type": "UInt8Array" },
+            { "name": "offset", "type": "number" },
+            { "name": "value", "type": "number" },
+            { "name": "littleEndian", "type": "boolean", "optional": true }
+          ],
+          "returns": "null",
+          "notes": { "en": ["Writes an IEEE-754 binary32 value."], "zh-CN": ["写入 IEEE-754 binary32 值。"] }
+        },
+        "getFloat64": {
+          "kind": "method",
+          "parameters": [
+            { "name": "buffer", "type": "UInt8Array" },
+            { "name": "offset", "type": "number" },
+            { "name": "littleEndian", "type": "boolean", "optional": true }
+          ],
+          "returns": "number",
+          "notes": { "en": ["Reads an IEEE-754 binary64 value."], "zh-CN": ["读取 IEEE-754 binary64 值。"] }
+        },
+        "setFloat64": {
+          "kind": "method",
+          "parameters": [
+            { "name": "buffer", "type": "UInt8Array" },
+            { "name": "offset", "type": "number" },
+            { "name": "value", "type": "number" },
+            { "name": "littleEndian", "type": "boolean", "optional": true }
+          ],
+          "returns": "null",
+          "notes": { "en": ["Writes an IEEE-754 binary64 value."], "zh-CN": ["写入 IEEE-754 binary64 值。"] }
+        },
+        "getString": {
+          "kind": "method",
+          "parameters": [
+            { "name": "buffer", "type": "UInt8Array" },
+            { "name": "offset", "type": "number" },
+            { "name": "byteLength", "type": "number" }
+          ],
+          "returns": "string",
+          "notes": { "en": ["Reads a UTF-8 string of the given byte length."], "zh-CN": ["按给定字节长度读取 UTF-8 字符串。"] }
+        },
+        "setString": {
+          "kind": "method",
+          "parameters": [
+            { "name": "buffer", "type": "UInt8Array" },
+            { "name": "offset", "type": "number" },
+            { "name": "value", "type": "string" }
+          ],
+          "returns": "number",
+          "notes": { "en": ["Writes a UTF-8 string and returns the number of bytes written."], "zh-CN": ["写入 UTF-8 字符串并返回写入的字节数。"] }
+        }
+      },
+      "notes": {
+        "en": [
+          "Static binary codec for UInt8Array. Not constructible.",
+          "Multi-byte reads and writes take littleEndian, defaulting to true (low byte first)."
+        ],
+        "zh-CN": [
+          "面向 UInt8Array 的静态二进制编解码帮助类型，不可实例化。",
+          "多字节读写通过 littleEndian 控制高低位，默认 true（低字节在前）。"
+        ]
+      }
+    },
     "Path": {
       "kind": "constructor",
       "callable": false,
@@ -3045,6 +3341,39 @@
           ],
           "zh-CN": [
             "将值转换为 8 位有符号整数后填充全部元素。"
+          ]
+        }
+      }
+    },
+    "Float32Array": {
+      "length": {
+        "kind": "property",
+        "returns": "number",
+        "notes": {
+          "en": [
+            "Returns the fixed array length."
+          ],
+          "zh-CN": [
+            "返回不可变的数组长度。"
+          ]
+        }
+      },
+      "fill": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "value",
+            "type": "number",
+            "optional": true
+          }
+        ],
+        "returns": "Float32Array",
+        "notes": {
+          "en": [
+            "Fills every element after converting the value to a 32-bit float."
+          ],
+          "zh-CN": [
+            "将值转换为 32 位浮点后填充全部元素。"
           ]
         }
       }

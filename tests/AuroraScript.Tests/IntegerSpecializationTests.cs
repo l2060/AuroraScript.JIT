@@ -77,6 +77,138 @@ public sealed class IntegerSpecializationTests
 #if NET9_0_OR_GREATER
     [InlineData(CompilationMode.Persistence)]
 #endif
+    public async Task LowercaseInt32ContractsCheckBoundariesAndKeepNumberIdentity(
+        CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+
+            export type Counter {
+                int32 value;
+            }
+
+            export native func increment(int32 value) int32 {
+                return value + 1;
+            }
+
+            export native func bump(int32 value) int32 {
+                value++;
+                return value;
+            }
+
+            export native func index(int32 x, int32 y, int32 width) int32 {
+                return y * width + x;
+            }
+
+            func relay(int32 value) int32 {
+                return increment(value);
+            }
+
+            export func run(value) {
+                var checked = value as int32;
+                var counter = { value: checked } as Counter;
+                return [relay(counter.value), typeof checked];
+            }
+
+            export func readField(value) int32 {
+                var counter = { value: value } as Counter;
+                return counter.value;
+            }
+            """,
+            mode);
+
+        ScriptAssert.Equal(
+            new object?[] { 42, "number" },
+            TestWorkspace.Execute(
+                domain,
+                "run",
+                arguments: [ScriptDatum.FromNumber(41)]));
+        ScriptAssert.Equal(
+            int.MinValue,
+            TestWorkspace.Execute(
+                domain,
+                "readField",
+                arguments: [ScriptDatum.FromNumber(int.MinValue)]));
+        ScriptAssert.Equal(
+            42,
+            TestWorkspace.Execute(
+                domain,
+                "bump",
+                arguments: [ScriptDatum.FromNumber(41)]));
+        ScriptAssert.Equal(
+            int.MinValue,
+            TestWorkspace.Execute(
+                domain,
+                "bump",
+                arguments: [ScriptDatum.FromNumber(int.MaxValue)]));
+        ScriptAssert.Equal(
+            32,
+            TestWorkspace.Execute(
+                domain,
+                "index",
+                arguments: [
+                    ScriptDatum.FromNumber(2),
+                    ScriptDatum.FromNumber(3),
+                    ScriptDatum.FromNumber(10)]));
+        ScriptAssert.Equal(
+            int.MinValue,
+            TestWorkspace.Execute(
+                domain,
+                "increment",
+                arguments: [ScriptDatum.FromNumber(int.MaxValue)]));
+
+        Assert.Throws<AuroraRuntimeException>(() =>
+            TestWorkspace.Execute(
+                domain,
+                "run",
+                arguments: [ScriptDatum.FromNumber(1.5)]));
+        Assert.Throws<AuroraRuntimeException>(() =>
+            TestWorkspace.Execute(
+                domain,
+                "increment",
+                arguments: [ScriptDatum.FromNumber(1.5)]));
+        Assert.Throws<AuroraRuntimeException>(() =>
+            TestWorkspace.Execute(
+                domain,
+                "increment",
+                arguments: [
+                    ScriptDatum.FromNumber(
+                        BitConverter.Int64BitsToDouble(long.MinValue))]));
+        Assert.Throws<AuroraRuntimeException>(() =>
+            TestWorkspace.Execute(
+                domain,
+                "run",
+                arguments: [ScriptDatum.FromNumber((double)int.MaxValue + 1)]));
+        Assert.Throws<AuroraRuntimeException>(() =>
+            TestWorkspace.Execute(
+                domain,
+                "readField",
+                arguments: [ScriptDatum.FromNumber(1.5)]));
+    }
+
+    [Fact]
+    public async Task PascalCaseInt32IsNotAConstraintType()
+    {
+        using var workspace = new TestWorkspace();
+        await Assert.ThrowsAsync<AuroraCompilationException>(() =>
+            workspace.CompileModuleAsync(
+                """
+                @module(TEST);
+                export func run(Int32 value) {
+                    return value;
+                }
+                """,
+                CompilationMode.Dynamic));
+    }
+
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+    [InlineData(CompilationMode.OnlyRun)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
     public async Task IntegerKernelsStayCorrectAcrossCompilationModes(CompilationMode mode)
     {
         using var workspace = new TestWorkspace();
@@ -96,7 +228,7 @@ public sealed class IntegerSpecializationTests
 #if NET9_0_OR_GREATER
     [InlineData(CompilationMode.Persistence)]
 #endif
-    public async Task Int32SpecializationWidensAtNumberSemanticBoundaries(CompilationMode mode)
+    public async Task IntegerLocalsWrapWhileNumberLocalsKeepScriptSemantics(CompilationMode mode)
     {
         using var workspace = new TestWorkspace();
         var (_, domain) = await workspace.CompileModuleAsync(
@@ -128,17 +260,20 @@ public sealed class IntegerSpecializationTests
             """,
             mode);
 
+        // `max` and `fromArray` only ever hold integers, so they keep native
+        // int storage and wrap. `merged` is assigned 0.5 on one branch, so it
+        // stays a Number, and `-0` keeps its sign because a 32-bit slot cannot.
         ScriptAssert.Equal(
             new object?[]
             {
-                2147483648d, 2147483648d, 2147483648d, 2147483647d,
+                int.MinValue, int.MinValue, int.MinValue, 2147483647d,
                 double.NegativeInfinity, -1, 4294967295d, int.MinValue
             },
             TestWorkspace.Execute(domain, "run", arguments: ScriptDatum.FromBoolean(false)));
         ScriptAssert.Equal(
             new object?[]
             {
-                2147483648d, 2147483648d, 2147483648d, 0.5d,
+                int.MinValue, int.MinValue, int.MinValue, 0.5d,
                 double.NegativeInfinity, -1, 4294967295d, int.MinValue
             },
             TestWorkspace.Execute(domain, "run", arguments: ScriptDatum.FromBoolean(true)));
@@ -150,7 +285,7 @@ public sealed class IntegerSpecializationTests
 #if NET9_0_OR_GREATER
     [InlineData(CompilationMode.Persistence)]
 #endif
-    public async Task IntegerRemainderUsesInferredRangesWithoutChangingNumberSemantics(
+    public async Task IntegerRemainderStaysIntegralWhileNumberRemainderKeepsScriptSemantics(
         CompilationMode mode)
     {
         using var workspace = new TestWorkspace();
@@ -169,16 +304,31 @@ public sealed class IntegerSpecializationTests
 
                 var negative = -14;
                 var signedZero = negative % divisor;
+
+                var fraction = 14.5;
+                var numberRemainder = fraction % divisor;
+                var nan = fraction % 0;
+                return [narrow, wideRemainder, 1 / signedZero, numberRemainder, nan];
+            }
+
+            export func remainderByZero() {
+                var value = 10;
                 var zero = 0;
-                var invalid = value % zero;
-                return [narrow, wideRemainder, 1 / signedZero, invalid];
+                return value % zero;
             }
             """,
             mode);
 
+        // Both operands are integers, so the remainder is an integer and
+        // cannot carry the negative zero a Number remainder would.
         ScriptAssert.Equal(
-            new object?[] { 1, 4L, double.NegativeInfinity, double.NaN },
+            new object?[]
+            {
+                1, 4L, double.PositiveInfinity, 0.5d, double.NaN
+            },
             TestWorkspace.Execute(domain, "run"));
+        Assert.Throws<AuroraRuntimeException>(() =>
+            TestWorkspace.Execute(domain, "remainderByZero"));
     }
 
     [Theory]

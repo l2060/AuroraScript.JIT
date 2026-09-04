@@ -377,8 +377,10 @@ namespace AuroraScript.Compiler.Backend.Code
                     code.LocalTypes[i] != FlowValueTypeFacts.GetDirectLocalType(parameterType))
                 {
                     result ??= (DirectParameterType[])parameterTypes.Clone();
-                    result[parameterIndex] = parameterType.IsInt32Coercion &&
-                        code.LocalTypes[i] == FlowValueType.Number
+                    result[parameterIndex] =
+                        code.LocalTypes[i] == FlowValueType.Number &&
+                        (parameterType.IsInt32Coercion ||
+                            FlowValueTypeFacts.IsNumeric(parameterType.Type))
                             ? new DirectParameterType(FlowValueType.Number)
                             : new DirectParameterType(FlowValueType.Dynamic);
                 }

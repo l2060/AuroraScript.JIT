@@ -26,6 +26,13 @@ namespace AuroraScript.Runtime
                 ? null
                 : ToInt8Storage((ScriptInt8Array)value.Object);
 
+        /// <summary>Converts a nullable datum to single-precision storage.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float[] ToFloat32Storage(ScriptDatum value) =>
+            value.Kind == ValueKind.Null
+                ? null
+                : ToFloat32Storage((ScriptFloat32Array)value.Object);
+
         /// <summary>Converts a nullable datum to double-precision storage.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static double[] ToFloat64Storage(ScriptDatum value) =>
@@ -96,6 +103,13 @@ namespace AuroraScript.Runtime
                 ? null
                 : (ScriptInt8Array)TypeCheckOps.CheckInt8Array(value).Object;
 
+        /// <summary>Converts a nullable datum to a Float32Array wrapper.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptFloat32Array ToFloat32Array(ScriptDatum value) =>
+            value.Kind == ValueKind.Null
+                ? null
+                : (ScriptFloat32Array)TypeCheckOps.CheckFloat32Array(value).Object;
+
         /// <summary>Converts a nullable datum to a Float64Array wrapper.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptFloat64Array ToFloat64Array(ScriptDatum value) =>
@@ -164,6 +178,12 @@ namespace AuroraScript.Runtime
             value as ScriptInt8Array ??
                 (ScriptInt8Array)Reject(value, CheckedType.Int8Array);
 
+        /// <summary>Narrows a nullable object to a Float32Array wrapper.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptFloat32Array ToFloat32Array(ScriptObject value) =>
+            value as ScriptFloat32Array ??
+                (ScriptFloat32Array)Reject(value, CheckedType.Float32Array);
+
         /// <summary>Narrows a nullable object to a Float64Array wrapper.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptFloat64Array ToFloat64Array(ScriptObject value) =>
@@ -222,6 +242,11 @@ namespace AuroraScript.Runtime
         public static sbyte[] ToInt8Storage(ScriptInt8Array value) =>
             Remember(value, value?._items);
 
+        /// <summary>Extracts single-precision storage and preserves wrapper identity.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float[] ToFloat32Storage(ScriptFloat32Array value) =>
+            Remember(value, value?._items);
+
         /// <summary>Extracts double storage and preserves wrapper identity.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static double[] ToFloat64Storage(ScriptFloat64Array value) =>
@@ -271,6 +296,11 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum FromInt8Storage(sbyte[] value) =>
             Box(value, static storage => new ScriptInt8Array(storage));
+
+        /// <summary>Boxes nullable single-precision storage without copying it.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum FromFloat32Storage(float[] value) =>
+            Box(value, static storage => new ScriptFloat32Array(storage));
 
         /// <summary>Boxes nullable double storage without copying it.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

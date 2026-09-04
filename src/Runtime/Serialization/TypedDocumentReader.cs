@@ -12,6 +12,7 @@ namespace AuroraScript.Runtime.Serialization
     {
         Int32,
         Int8,
+        Float32,
         Float64,
         Boolean,
         UInt8,
@@ -186,6 +187,7 @@ namespace AuroraScript.Runtime.Serialization
             if (TypeEquals(typeToken, "HashMap")) return ReadHashMap();
             if (TypeEquals(typeToken, "Int32Array")) return ReadPackedArray(TypedDocumentPackedKind.Int32);
             if (TypeEquals(typeToken, "Int8Array")) return ReadPackedArray(TypedDocumentPackedKind.Int8);
+            if (TypeEquals(typeToken, "Float32Array")) return ReadPackedArray(TypedDocumentPackedKind.Float32);
             if (TypeEquals(typeToken, "Float64Array")) return ReadPackedArray(TypedDocumentPackedKind.Float64);
             if (TypeEquals(typeToken, "BooleanArray")) return ReadPackedArray(TypedDocumentPackedKind.Boolean);
             if (TypeEquals(typeToken, "UInt8Array")) return ReadPackedArray(TypedDocumentPackedKind.UInt8);
@@ -516,6 +518,7 @@ namespace AuroraScript.Runtime.Serialization
             {
                 TypedDocumentPackedKind.Int32 => ReadInt32PackedArray(),
                 TypedDocumentPackedKind.Int8 => ReadInt8PackedArray(),
+                TypedDocumentPackedKind.Float32 => ReadFloat32PackedArray(),
                 TypedDocumentPackedKind.Float64 => ReadFloat64PackedArray(),
                 TypedDocumentPackedKind.Boolean => ReadBooleanPackedArray(),
                 TypedDocumentPackedKind.UInt8 => ReadUInt8PackedArray(),
@@ -725,7 +728,7 @@ namespace AuroraScript.Runtime.Serialization
             {
                 throw PackedElementError(token, index, $"{PackedTypeName(kind)} elements must be finite numbers.");
             }
-            if (kind != TypedDocumentPackedKind.Float64 && Math.Truncate(number) != number)
+            if (kind is not (TypedDocumentPackedKind.Float32 or TypedDocumentPackedKind.Float64) && Math.Truncate(number) != number)
             {
                 throw PackedElementError(token, index, $"{PackedTypeName(kind)} elements must be integers.");
             }
@@ -856,6 +859,71 @@ namespace AuroraScript.Runtime.Serialization
             else
             {
                 _current = _scanner.Read();
+            }
+        }
+
+        private ScriptDatum ReadFloat32PackedArray()
+        {
+            Expect(TypedDocumentTokenKind.LeftBracket, "Type 'Float32Array' requires an array value.");
+            if (Current().Kind != TypedDocumentTokenKind.RightBracket)
+            {
+                var first = CurrentPacked(0);
+                EnsurePackedElementDepth(first, 0);
+                if (!_hasLookahead &&
+                    first.Kind == TypedDocumentTokenKind.Number &&
+                    _scanner.TryReadEntireSimpleFloat64Array(first, out var directItems))
+                {
+                    AdvancePacked();
+                    Expect(TypedDocumentTokenKind.RightBracket, "Expected ']'.");
+                    var converted = new float[directItems.Length];
+                    for (var i = 0; i < directItems.Length; i++)
+                    {
+                        converted[i] = (float)directItems[i];
+                    }
+                    return ScriptDatum.FromObject(new ScriptFloat32Array(converted));
+                }
+            }
+            var buffer = new TypedDocumentPooledBuffer<float>(8);
+            try
+            {
+                if (!Match(TypedDocumentTokenKind.RightBracket))
+                {
+                    EnsurePackedElementDepth(CurrentPacked(0), 0);
+                    var index = 0;
+                    while (true)
+                    {
+                        if (TryReadRawPackedNumber(index, out var location))
+                        {
+                            buffer.Add((float)ReadRawPackedNumber(
+                                TypedDocumentPackedKind.Float32,
+                                index,
+                                location));
+                        }
+                        else
+                        {
+                            _path.PushIndex(index);
+                            try
+                            {
+                                location = Current();
+                                var value = ReadTypedValue();
+                                ValidatePackedElement(TypedDocumentPackedKind.Float32, value, location);
+                                buffer.Add((float)value.Number);
+                            }
+                            finally
+                            {
+                                _path.Pop();
+                            }
+                        }
+                        index++;
+                        if (ReadPackedArraySeparator()) break;
+                    }
+                }
+
+                return ScriptDatum.FromObject(new ScriptFloat32Array(buffer.ToArray()));
+            }
+            finally
+            {
+                buffer.Dispose();
             }
         }
 
@@ -1760,7 +1828,7 @@ namespace AuroraScript.Runtime.Serialization
             {
                 throw Error(location, $"{PackedTypeName(kind)} elements must be finite numbers.");
             }
-            if (kind == TypedDocumentPackedKind.Float64) return;
+            if (kind is TypedDocumentPackedKind.Float32 or TypedDocumentPackedKind.Float64) return;
             if (Math.Truncate(value.Number) != value.Number)
             {
                 throw Error(location, $"{PackedTypeName(kind)} elements must be integers.");
@@ -1873,6 +1941,7 @@ namespace AuroraScript.Runtime.Serialization
             {
                 TypedDocumentPackedKind.Int32 => "Int32Array",
                 TypedDocumentPackedKind.Int8 => "Int8Array",
+                TypedDocumentPackedKind.Float32 => "Float32Array",
                 TypedDocumentPackedKind.Float64 => "Float64Array",
                 TypedDocumentPackedKind.Boolean => "BooleanArray",
                 TypedDocumentPackedKind.UInt8 => "UInt8Array",

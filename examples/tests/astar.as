@@ -6,28 +6,28 @@ export const ASTAR_SQRT2 = 1.4142135623730951;
 export const ASTAR_MAX_SEARCH_ID = 2147483646;
 
 export type Map {
-	Number width;
-	Number height;
+	int32 width;
+	int32 height;
 	Int8Array data;
 }
 
 export type Point {
-	Number x;
-	Number y;
+	int32 x;
+	int32 y;
 }
 
 type SeededRng {
-	Number seed;
+	int32 seed;
 }
 
 export type AStar {
-	Number width;
-	Number height;
-	Number size;
+	int32 width;
+	int32 height;
+	int32 size;
 	Number minCost;
 	Boolean uniformCost;
-	Number searchId;
-	Number expanded;
+	int32 searchId;
+	int32 expanded;
 	Int8Array walkable;
 	Float64Array costs;
 	Float64Array gScore;
@@ -40,7 +40,7 @@ export type AStar {
 	// func add(Number a, Number b) Number;
 }
 
-native func astarHeuristic(Number x, Number y, Number goalX, Number goalY, Boolean allowDiagonal, Number minCost) Number {
+native func astarHeuristic(int32 x, int32 y, int32 goalX, int32 goalY, Boolean allowDiagonal, Number minCost) Number {
 	var dx = x - goalX;
 	if (dx < 0) {
 		dx = -dx;
@@ -62,7 +62,7 @@ native func astarHeuristic(Number x, Number y, Number goalX, Number goalY, Boole
 	return(dx + dy) * minCost;
 }
 
-native func astarHeapPush(Int32Array heapNodes, Float64Array heapScores, Float64Array heapTies, Number heapLength, Number node, Number score, Number tie) Number {
+native func astarHeapPush(Int32Array heapNodes, Float64Array heapScores, Float64Array heapTies, int32 heapLength, int32 node, Number score, Number tie) int32 {
 	var i = heapLength;
 	heapLength++;
 
@@ -182,7 +182,7 @@ export native func createAStar(Map map, Float64Array costs) AStar {
 	};
 }
 
-export func toIndex(AStar astar, Number x, Number y) Number {
+export func toIndex(AStar astar, int32 x, int32 y) int32 {
 	if (astar == null) {
 		return -1;
 	}
@@ -194,16 +194,16 @@ export func toIndex(AStar astar, Number x, Number y) Number {
 	return y * astar.width + x;
 }
 
-export func indexX(AStar astar, Number index) Number {
+export func indexX(AStar astar, int32 index) int32 {
 	return index % astar.width;
 }
 
-export func indexY(AStar astar, Number index) Number {
+export func indexY(AStar astar, int32 index) int32 {
 	var x = index % astar.width;
 	return(index - x) / astar.width;
 }
 
-export func setWalkable(AStar astar, Number x, Number y, Boolean canWalk) Boolean {
+export func setWalkable(AStar astar, int32 x, int32 y, Boolean canWalk) Boolean {
 	var index = toIndex(astar, x, y);
 	if (index < 0) {
 		return false;
@@ -218,7 +218,7 @@ export func setWalkable(AStar astar, Number x, Number y, Boolean canWalk) Boolea
 	return true;
 }
 
-export func setCost(AStar astar, Number x, Number y, Number cost) Boolean {
+export func setCost(AStar astar, int32 x, int32 y, Number cost) Boolean {
 	var index = toIndex(astar, x, y);
 	if (index < 0 || cost <= 0) {
 		return false;
@@ -237,7 +237,7 @@ export func newPathBuffer(AStar astar) Array {
 	return Array.withCapacity(astar.width + astar.height);
 }
 
-export native func findPathInto(AStar astar, Number startX, Number startY, Number goalX, Number goalY, Array outPath, Boolean allowDiagonal, Boolean avoidCornerCut) Number {
+export native func findPathInto(AStar astar, int32 startX, int32 startY, int32 goalX, int32 goalY, Array outPath, Boolean allowDiagonal, Boolean avoidCornerCut) int32 {
 	if (astar == null) {
 		throw "astar is required";
 	}
@@ -421,7 +421,8 @@ export native func findPathInto(AStar astar, Number startX, Number startY, Numbe
 		}
 
 		var currentX = current % width;
-		var currentY = (current - currentX) / width;
+		// current - currentX is a multiple of width, so this division is exact.
+		var currentY = ((current - currentX) / width) as int32;
 		var baseG = gScore[current];
 
 		if (currentX > 0) {
@@ -603,13 +604,13 @@ export native func findPathInto(AStar astar, Number startX, Number startY, Numbe
 	return 0;
 }
 
-export func findPathIndexes(AStar astar, Number startX, Number startY, Number goalX, Number goalY, Boolean allowDiagonal = true, Boolean avoidCornerCut = true) Array {
+export func findPathIndexes(AStar astar, int32 startX, int32 startY, int32 goalX, int32 goalY, Boolean allowDiagonal = true, Boolean avoidCornerCut = true) Array {
 	var path = newPathBuffer(astar);
 	findPathInto(astar, startX, startY, goalX, goalY, path, allowDiagonal, avoidCornerCut);
 	return path;
 }
 
-export func findPath(AStar astar, Number startX, Number startY, Number goalX, Number goalY, Boolean allowDiagonal = true, Boolean avoidCornerCut = true) Array {
+export func findPath(AStar astar, int32 startX, int32 startY, int32 goalX, int32 goalY, Boolean allowDiagonal = true, Boolean avoidCornerCut = true) Array {
 	var indexes = findPathIndexes(astar, startX, startY, goalX, goalY, allowDiagonal, avoidCornerCut);
 	var count = indexes.length;
 	var result = Array.withCapacity(count);
@@ -659,7 +660,7 @@ native func astarRand01(SeededRng rng) Number {
 	return(x % 1000000) / 1000000;
 }
 
-export func makeMap(Number w, Number h, Number rate, Number rngSeed) Map {
+export func makeMap(int32 w, int32 h, Number rate, int32 rngSeed) Map {
 	var n = w * h;
 	var _map = new Int8Array(n);
 	var rng = { seed: rngSeed } as SeededRng;
@@ -716,7 +717,7 @@ init();
 export func runExample() {
 
 	console.time("astar");
-	var pathLength = findPathInto(astar as AStar, startX as Number, startY as Number, goalX as Number, goalY as Number, pathBuffer as Array, true, true);
+	var pathLength = findPathInto(astar as AStar, startX, startY, goalX, goalY, pathBuffer as Array, true, true);
 	console.timeEnd("astar");
 
 	console.log("expanded =", astar.expanded);

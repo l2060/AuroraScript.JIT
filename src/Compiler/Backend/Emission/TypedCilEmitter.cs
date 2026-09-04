@@ -776,6 +776,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     FlowValueType.Array => typeof(ScriptArray),
                     FlowValueType.Int32Array => GetPackedLocalClrType(FlowValueType.Int32Array),
                     FlowValueType.Int8Array => GetPackedLocalClrType(FlowValueType.Int8Array),
+                    FlowValueType.Float32Array => GetPackedLocalClrType(FlowValueType.Float32Array),
                     FlowValueType.Float64Array => GetPackedLocalClrType(FlowValueType.Float64Array),
                     FlowValueType.BooleanArray => GetPackedLocalClrType(FlowValueType.BooleanArray),
                     FlowValueType.UInt8Array => GetPackedLocalClrType(FlowValueType.UInt8Array),
@@ -1107,7 +1108,26 @@ namespace AuroraScript.Compiler.Backend.Emission
                     TypedRuntimeMetadata.GetTypeCheck(
                         FlowValueTypeFacts.GetCheckedType(declaredType.Name)));
                 var kind = EmitCheckedDatumConversion(type);
-                if (type == FlowValueType.Object)
+                var storageType = _code.GetLocalType(slot);
+                if (storageType == FlowValueType.Number)
+                {
+                    ConvertStackToNumber(kind);
+                }
+                else if (storageType == FlowValueType.Int32)
+                {
+                    ConvertStackToInt32(kind, truncateThroughInt64: false);
+                }
+                else if (storageType == FlowValueType.Int64)
+                {
+                    ConvertStackToInt64(kind);
+                }
+                else if (storageType == FlowValueType.Boolean)
+                {
+                    ConvertStackToBoolean(kind);
+                }
+                else if (storageType != FlowValueType.String &&
+                    storageType != FlowValueType.Array &&
+                    !FlowValueTypeFacts.IsPackedArray(storageType))
                 {
                     ConvertToDatum(kind);
                 }
@@ -1488,6 +1508,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     break;
                 case FlowValueType.Int32Array:
                 case FlowValueType.Int8Array:
+                case FlowValueType.Float32Array:
                 case FlowValueType.Float64Array:
                 case FlowValueType.BooleanArray:
                 case FlowValueType.UInt8Array:
@@ -1980,20 +2001,67 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private StackValueKind EmitCheck(CheckExpression expression)
         {
-            EmitDatum(expression.Value);
             if (TypeReferenceFacts.TryGetCustomType(
                 _module.Declaration,
                 expression.AssertedType,
                 out _))
             {
+                EmitDatum(expression.Value);
                 return StackValueKind.Datum;
             }
             var type = FlowValueTypeFacts.FromCheckedTypeName(expression.TypeName);
+            if (TryEmitProvenCheck(expression.Value, type, out var proven))
+            {
+                return proven;
+            }
+            EmitDatum(expression.Value);
             _il.Emit(
                 OpCodes.Call,
                 TypedRuntimeMetadata.GetTypeCheck(
                     FlowValueTypeFacts.GetCheckedType(expression.TypeName)));
             return EmitCheckedDatumConversion(type);
+        }
+
+        /// <summary>
+        /// Emits an assertion whose result flow analysis already proved, without
+        /// the ScriptDatum round trip the runtime check would need.
+        /// </summary>
+        private bool TryEmitProvenCheck(
+            Expression value,
+            FlowValueType type,
+            out StackValueKind kind)
+        {
+            var actual = _code.GetExpressionType(value);
+            if (type == FlowValueType.Int32 && actual == FlowValueType.Int32)
+            {
+                EmitInt32Value(value);
+                kind = StackValueKind.Int32;
+                return true;
+            }
+            if (type == FlowValueType.Int32 && actual == FlowValueType.Number)
+            {
+                // The range/integrality check still runs, but native double
+                // storage does not need to become a ScriptDatum to do it.
+                EmitNumber(value);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckInt32Number);
+                kind = StackValueKind.Int32;
+                return true;
+            }
+            if (type == FlowValueType.Number &&
+                actual is FlowValueType.Number or FlowValueType.Int32 or FlowValueType.Int64)
+            {
+                EmitNumber(value);
+                kind = StackValueKind.Number;
+                return true;
+            }
+            if (type == FlowValueType.Boolean && actual == FlowValueType.Boolean)
+            {
+                EmitCondition(value);
+                kind = StackValueKind.Boolean;
+                return true;
+            }
+            kind = StackValueKind.Datum;
+            return false;
         }
 
         private StackValueKind EmitCheckedDatumConversion(FlowValueType type)
@@ -2005,6 +2073,13 @@ namespace AuroraScript.Compiler.Backend.Emission
                 _il.Emit(OpCodes.Ldloca, value);
                 _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumNumber);
                 return StackValueKind.Number;
+            }
+            if (type == FlowValueType.Int32)
+            {
+                _il.Emit(OpCodes.Ldloca, value);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumNumber);
+                _il.Emit(OpCodes.Conv_I4);
+                return StackValueKind.Int32;
             }
             if (type == FlowValueType.Boolean)
             {
@@ -2138,6 +2213,10 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
             if (fieldType == FlowValueType.Int32)
             {
+                if (IsDeclaredInt32Field(expression.Object, name))
+                {
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckInt32);
+                }
                 ConvertStackToInt32(StackValueKind.Datum, truncateThroughInt64: false);
                 return StackValueKind.Int32;
             }
@@ -2152,6 +2231,25 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return StackValueKind.String;
             }
             return StackValueKind.Datum;
+        }
+
+        private bool IsDeclaredInt32Field(Expression owner, string name)
+        {
+            var declaration = _code.GetStructuralType(owner);
+            if (declaration == null)
+            {
+                return false;
+            }
+            for (var i = 0; i < declaration.Fields.Count; i++)
+            {
+                var field = declaration.Fields[i];
+                if (StringComparer.Ordinal.Equals(field.Name.Value, name))
+                {
+                    return FlowValueTypeFacts.FromCheckedTypeName(field.Type?.Name) ==
+                        FlowValueType.Int32;
+                }
+            }
+            return false;
         }
 
         private StackValueKind EmitSetProperty(SetPropertyExpression expression)
@@ -2312,6 +2410,10 @@ namespace AuroraScript.Compiler.Backend.Emission
                 case FlowValueType.Int8Array:
                     _il.Emit(OpCodes.Ldelem_I1);
                     return StackValueKind.Int32;
+                case FlowValueType.Float32Array:
+                    _il.Emit(OpCodes.Ldelem_R4);
+                    _il.Emit(OpCodes.Conv_R8);
+                    return StackValueKind.Number;
                 case FlowValueType.Float64Array:
                     _il.Emit(OpCodes.Ldelem_R8);
                     return StackValueKind.Number;
@@ -2381,7 +2483,13 @@ namespace AuroraScript.Compiler.Backend.Emission
             _il.Emit(OpCodes.Ldloc, receiver);
             _il.Emit(OpCodes.Ldloc, index);
             _il.Emit(OpCodes.Ldloc, stored);
-            if (arrayType == FlowValueType.Float64Array)
+            if (arrayType == FlowValueType.Float32Array)
+            {
+                ConvertStackToNumber(storedKind);
+                _il.Emit(OpCodes.Conv_R4);
+                _il.Emit(OpCodes.Stelem_R4);
+            }
+            else if (arrayType == FlowValueType.Float64Array)
             {
                 ConvertStackToNumber(storedKind);
                 _il.Emit(OpCodes.Stelem_R8);
@@ -2648,6 +2756,8 @@ namespace AuroraScript.Compiler.Backend.Emission
                     return EmitTypedPackedArray(expression.Value, FlowValueType.Int32Array);
                 case "Int8Array":
                     return EmitTypedPackedArray(expression.Value, FlowValueType.Int8Array);
+                case "Float32Array":
+                    return EmitTypedPackedArray(expression.Value, FlowValueType.Float32Array);
                 case "Float64Array":
                     return EmitTypedPackedArray(expression.Value, FlowValueType.Float64Array);
                 case "BooleanArray":
@@ -2834,7 +2944,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             return typeName is "Null" or "Object" or "Array" or "String" or "Number" or
                 "Boolean" or "StringBuffer" or "Date" or "Regex" or "Path" or "HashMap" or
-                "Int32Array" or "Int8Array" or "Float64Array" or "BooleanArray" or
+                "Int32Array" or "Int8Array" or "Float32Array" or "Float64Array" or "BooleanArray" or
                 "UInt8Array" or "Int16Array" or "UInt16Array" or "UInt32Array" or
                 "Int64Array" or "UInt64Array";
         }
@@ -3015,6 +3125,13 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 EmitCondition(value);
                 _il.Emit(OpCodes.Stelem_I1);
+                return;
+            }
+            if (arrayType == FlowValueType.Float32Array)
+            {
+                EmitNumber(value);
+                _il.Emit(OpCodes.Conv_R4);
+                _il.Emit(OpCodes.Stelem_R4);
                 return;
             }
             if (arrayType == FlowValueType.Float64Array)
@@ -3479,7 +3596,17 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
             else if (parameter.Type == FlowValueType.Int32)
             {
-                EmitInt32Value(argument);
+                if (_code.GetExpressionType(argument) == FlowValueType.Int32)
+                {
+                    EmitInt32Value(argument);
+                }
+                else
+                {
+                    // The declared int32 boundary rejects fractions and
+                    // out-of-range values instead of truncating them.
+                    EmitNumber(argument);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckInt32Number);
+                }
             }
             else if (parameter.Type == FlowValueType.Int64)
             {
@@ -4309,6 +4436,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 FlowValueType.Array => StackValueKind.Array,
                 FlowValueType.Int32Array => GetPackedLocalStackKind(FlowValueType.Int32Array),
                 FlowValueType.Int8Array => GetPackedLocalStackKind(FlowValueType.Int8Array),
+                FlowValueType.Float32Array => GetPackedLocalStackKind(FlowValueType.Float32Array),
                 FlowValueType.Float64Array => GetPackedLocalStackKind(FlowValueType.Float64Array),
                 FlowValueType.BooleanArray => GetPackedLocalStackKind(FlowValueType.BooleanArray),
                 FlowValueType.UInt8Array => GetPackedLocalStackKind(FlowValueType.UInt8Array),
@@ -4371,9 +4499,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 EmitInt32Value(binary.Left);
                 EmitInt32Value(binary.Right);
-                _il.Emit(op == Operator.Add ? OpCodes.Add :
-                    op == Operator.Subtract ? OpCodes.Sub :
-                    op == Operator.Multiply ? OpCodes.Mul : OpCodes.Rem);
+                EmitInt32ArithmeticOperator(op);
                 return StackValueKind.Int32;
             }
             if ((op == Operator.Add || op == Operator.Subtract ||
@@ -5223,6 +5349,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 FlowValueType.Int32Array => OpCodes.Ldelem_I4,
                 FlowValueType.Int8Array => OpCodes.Ldelem_I1,
+                FlowValueType.Float32Array => OpCodes.Ldelem_R4,
                 FlowValueType.Float64Array => OpCodes.Ldelem_R8,
                 FlowValueType.BooleanArray => OpCodes.Ldelem_U1,
                 FlowValueType.UInt8Array => OpCodes.Ldelem_U1,
@@ -5326,6 +5453,22 @@ namespace AuroraScript.Compiler.Backend.Emission
             throw new NotSupportedException("Native compound operator.");
         }
 
+        /// <summary>
+        /// Emits the native operator for Int32 arithmetic. Remainder goes
+        /// through a helper so a zero divisor reports a script error instead of
+        /// a CLR one, and <c>MinValue % -1</c> does not overflow.
+        /// </summary>
+        private void EmitInt32ArithmeticOperator(Operator op)
+        {
+            if (op == Operator.Modulo)
+            {
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ModuloInt32);
+                return;
+            }
+            _il.Emit(op == Operator.Add ? OpCodes.Add :
+                op == Operator.Subtract ? OpCodes.Sub : OpCodes.Mul);
+        }
+
         private void EmitInt32Binary(Operator op, Expression left, Expression right)
         {
             if (op == Operator.Add || op == Operator.Subtract ||
@@ -5333,9 +5476,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 EmitInt32Value(left);
                 EmitInt32Value(right);
-                _il.Emit(op == Operator.Add ? OpCodes.Add :
-                    op == Operator.Subtract ? OpCodes.Sub :
-                    op == Operator.Multiply ? OpCodes.Mul : OpCodes.Rem);
+                EmitInt32ArithmeticOperator(op);
                 return;
             }
             if (op == Operator.BitwiseAnd || op == Operator.BitwiseOr ||
@@ -5397,6 +5538,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                         break;
                     case FlowValueType.Int32Array:
                     case FlowValueType.Int8Array:
+                    case FlowValueType.Float32Array:
                     case FlowValueType.Float64Array:
                     case FlowValueType.BooleanArray:
                     case FlowValueType.UInt8Array:
@@ -5607,6 +5749,10 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             switch (arrayType)
             {
+                case FlowValueType.Float32Array:
+                    _il.Emit(OpCodes.Conv_R4);
+                    _il.Emit(OpCodes.Stelem_R4);
+                    return;
                 case FlowValueType.Float64Array:
                     _il.Emit(OpCodes.Stelem_R8);
                     return;
@@ -5959,6 +6105,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     return;
                 case StackValueKind.Int32Array:
                 case StackValueKind.Int8Array:
+                case StackValueKind.Float32Array:
                 case StackValueKind.Float64Array:
                 case StackValueKind.BooleanArray:
                 case StackValueKind.UInt8Array:
@@ -5974,6 +6121,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                     return;
                 case StackValueKind.Int8Buffer:
                     _il.Emit(OpCodes.Call, GetPackedFromStorageMethod(FlowValueType.Int8Array));
+                    return;
+                case StackValueKind.Float32Buffer:
+                    _il.Emit(OpCodes.Call, GetPackedFromStorageMethod(FlowValueType.Float32Array));
                     return;
                 case StackValueKind.Float64Buffer:
                     _il.Emit(OpCodes.Call, GetPackedFromStorageMethod(FlowValueType.Float64Array));
@@ -6316,6 +6466,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     return;
                 case StackValueKind.Int32Array:
                 case StackValueKind.Int8Array:
+                case StackValueKind.Float32Array:
                 case StackValueKind.Float64Array:
                 case StackValueKind.BooleanArray:
                 case StackValueKind.UInt8Array:
@@ -6328,6 +6479,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     return;
                 case StackValueKind.Int32Buffer:
                 case StackValueKind.Int8Buffer:
+                case StackValueKind.Float32Buffer:
                 case StackValueKind.Float64Buffer:
                 case StackValueKind.BooleanBuffer:
                 case StackValueKind.UInt8Buffer:
@@ -6350,6 +6502,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             return kind is StackValueKind.Int32Array or
                 StackValueKind.Int8Array or
+                StackValueKind.Float32Array or
                 StackValueKind.Float64Array or
                 StackValueKind.BooleanArray or
                 StackValueKind.UInt8Array or
@@ -6360,6 +6513,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 StackValueKind.UInt64Array or
                 StackValueKind.Int32Buffer or
                 StackValueKind.Int8Buffer or
+                StackValueKind.Float32Buffer or
                 StackValueKind.Float64Buffer or
                 StackValueKind.BooleanBuffer or
                 StackValueKind.UInt8Buffer or
@@ -6376,6 +6530,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 FlowValueType.Int32Array => StackValueKind.Int32Array,
                 FlowValueType.Int8Array => StackValueKind.Int8Array,
+                FlowValueType.Float32Array => StackValueKind.Float32Array,
                 FlowValueType.Float64Array => StackValueKind.Float64Array,
                 FlowValueType.BooleanArray => StackValueKind.BooleanArray,
                 FlowValueType.UInt8Array => StackValueKind.UInt8Array,
@@ -6394,6 +6549,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 FlowValueType.Int32Array => StackValueKind.Int32Buffer,
                 FlowValueType.Int8Array => StackValueKind.Int8Buffer,
+                FlowValueType.Float32Array => StackValueKind.Float32Buffer,
                 FlowValueType.Float64Array => StackValueKind.Float64Buffer,
                 FlowValueType.BooleanArray => StackValueKind.BooleanBuffer,
                 FlowValueType.UInt8Array => StackValueKind.UInt8Buffer,
@@ -6419,6 +6575,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 FlowValueType.Int32Array => typeof(ScriptInt32Array),
                 FlowValueType.Int8Array => typeof(ScriptInt8Array),
+                FlowValueType.Float32Array => typeof(ScriptFloat32Array),
                 FlowValueType.Float64Array => typeof(ScriptFloat64Array),
                 FlowValueType.BooleanArray => typeof(ScriptBooleanArray),
                 FlowValueType.UInt8Array => typeof(ScriptUInt8Array),
@@ -6437,6 +6594,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 FlowValueType.Int32Array => typeof(int[]),
                 FlowValueType.Int8Array => typeof(sbyte[]),
+                FlowValueType.Float32Array => typeof(float[]),
                 FlowValueType.Float64Array => typeof(double[]),
                 FlowValueType.BooleanArray => typeof(bool[]),
                 FlowValueType.UInt8Array => typeof(byte[]),
@@ -6481,6 +6639,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 StackValueKind.Array => typeof(ScriptArray),
                 StackValueKind.Int32Array => typeof(ScriptInt32Array),
                 StackValueKind.Int8Array => typeof(ScriptInt8Array),
+                StackValueKind.Float32Array => typeof(ScriptFloat32Array),
                 StackValueKind.Float64Array => typeof(ScriptFloat64Array),
                 StackValueKind.BooleanArray => typeof(ScriptBooleanArray),
                 StackValueKind.UInt8Array => typeof(ScriptUInt8Array),
@@ -6491,6 +6650,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 StackValueKind.UInt64Array => typeof(ScriptUInt64Array),
                 StackValueKind.Int32Buffer => typeof(int[]),
                 StackValueKind.Int8Buffer => typeof(sbyte[]),
+                StackValueKind.Float32Buffer => typeof(float[]),
                 StackValueKind.Float64Buffer => typeof(double[]),
                 StackValueKind.BooleanBuffer => typeof(bool[]),
                 StackValueKind.UInt8Buffer => typeof(byte[]),
@@ -6509,6 +6669,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 FlowValueType.Int32Array => TypedRuntimeMetadata.ScriptInt32ArrayItems,
                 FlowValueType.Int8Array => TypedRuntimeMetadata.ScriptInt8ArrayItems,
+                FlowValueType.Float32Array => TypedRuntimeMetadata.ScriptFloat32ArrayItems,
                 FlowValueType.Float64Array => TypedRuntimeMetadata.ScriptFloat64ArrayItems,
                 FlowValueType.BooleanArray => TypedRuntimeMetadata.ScriptBooleanArrayItems,
                 FlowValueType.UInt8Array => TypedRuntimeMetadata.ScriptUInt8ArrayItems,
@@ -6553,6 +6714,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 FlowValueType.Int32Array => "Int32",
                 FlowValueType.Int8Array => "Int8",
+                FlowValueType.Float32Array => "Float32",
                 FlowValueType.Float64Array => "Float64",
                 FlowValueType.BooleanArray => "Boolean",
                 FlowValueType.UInt8Array => "UInt8",
@@ -6571,6 +6733,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 FlowValueType.Int32Array => TypedRuntimeMetadata.ScriptInt32ArrayConstructor,
                 FlowValueType.Int8Array => TypedRuntimeMetadata.ScriptInt8ArrayConstructor,
+                FlowValueType.Float32Array => TypedRuntimeMetadata.ScriptFloat32ArrayConstructor,
                 FlowValueType.Float64Array => TypedRuntimeMetadata.ScriptFloat64ArrayConstructor,
                 FlowValueType.BooleanArray => TypedRuntimeMetadata.ScriptBooleanArrayConstructor,
                 FlowValueType.UInt8Array => TypedRuntimeMetadata.ScriptUInt8ArrayConstructor,
@@ -7077,6 +7240,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             Array,
             Int32Array,
             Int8Array,
+            Float32Array,
             Float64Array,
             BooleanArray,
             UInt8Array,
@@ -7087,6 +7251,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             UInt64Array,
             Int32Buffer,
             Int8Buffer,
+            Float32Buffer,
             Float64Buffer,
             BooleanBuffer,
             UInt8Buffer,

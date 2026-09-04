@@ -45,7 +45,7 @@ Use this map when changing language behavior.
 - Calls and lightweight frames: `src/Runtime/CallOps.cs`, `src/Runtime/CallFrameOps.cs`
 - Scope and exception boundaries: `src/Runtime/ScopeOps.cs`, `src/Runtime/ExceptionOps.cs`
 - Prototypes: `src/Runtime/Types/Prototypes.cs`
-- Console/JSON/TDoc/Math/HotPatch (NativeType): `src/Runtime/Builtin`
+- Console/JSON/TDoc/Math/Conv8/HotPatch (NativeType): `src/Runtime/Builtin`
 - NativeType source generator: `language-tools/AuroraScript.Hosting.Generators/AuroraNativeObjectGenerator.cs`
 - Host export attributes: `src/Hosting` (`AuroraNativeTypeAttribute`, `AuroraExportAttribute`)
 - Compiler native-type catalog: `src/Compiler/Backend/HostExportCatalog.cs`; application types come from `CompilerOptions.NativeTypes`
@@ -56,6 +56,7 @@ Use this map when changing language behavior.
 - Syntax and parser behavior: `tests/AuroraScript.Tests/ParserSyntaxTests.cs`
 - Lexer behavior: `tests/AuroraScript.Tests/LexerTests.cs`
 - Backend plans and diagnostics: `tests/AuroraScript.Tests/CompilerBackendPlanTests.cs`
+- Integer storage, wrapping arithmetic, and remainder: `tests/AuroraScript.Tests/IntegerSpecializationTests.cs`, `tests/AuroraScript.Tests/CompilerBackendPlanTests.cs`
 - Runtime language behavior: `tests/AuroraScript.Tests/LanguageFeatureExecutionTests.cs`, `tests/AuroraScript.Tests/StatementExecutionTests.cs`
 - `typeof` and native object names: `tests/AuroraScript.Tests/ExpressionExecutionTests.cs`, `tests/AuroraScript.Tests/PackedArrayTests.cs`
 - Exact `check` assertions: `tests/AuroraScript.Tests/TypeCheckTests.cs`

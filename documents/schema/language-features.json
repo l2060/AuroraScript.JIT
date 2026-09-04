@@ -80,7 +80,7 @@
         "Editor-only script contract for an [AuroraNativeType]; member signatures are not used for compiler inference.",
         "Do not use declare class, declare module, or a structural type declaration for host Types.",
         "Static-only Types omit constructor and mark members static; at most one constructor describes a constructible Type.",
-        "Application native types are selected with CompilerOptionsBuilder.WithNativeTypes; Math, JSON, TDoc, console, and HotPatch are always available.",
+        "Application native types are selected with CompilerOptionsBuilder.WithNativeTypes; Math, JSON, TDoc, console, Conv8, and HotPatch are always available.",
         "typeof of these globals is \"type\"; new fails when the Type has no exported constructor."
       ]
     },
@@ -112,6 +112,21 @@
       "syntax": "func name(parameters) { statements }",
       "scope": "module-or-block",
       "notes": ["function is also accepted as a keyword."]
+    },
+    {
+      "id": "constraint.int32",
+      "syntax": "func name(int32 value) int32 { ... } | value as int32 | type Shape { int32 field; }",
+      "scope": "type-contract",
+      "notes": [
+        "int32 is a lowercase numeric constraint, not a script runtime type or global constructor.",
+        "It accepts only finite integral Number values in -2147483648..2147483647, rejects negative zero, and never truncates or wraps at a checked boundary.",
+        "A local whose every assignment is an integer (integer literals, int32 parameters/fields/returns, Int32Array elements, signed bitwise results, and +/-/*/% over those) keeps 32-bit storage and wraps like CLR int instead of being widened to Number.",
+        "Expressions built from those locals also wrap: currentX - 1 stays int32 and is passed to an int32 parameter without a Number round-trip.",
+        "Integer storage cannot hold negative zero or NaN, so -14 % 7 is 0 and an integer remainder by zero raises a runtime error; give an operand Number storage to keep script remainder semantics.",
+        "/ remains Number division. An exact integer quotient uses ((a - b) / c) as int32; parentheses are required because as binds tighter than /.",
+        "Native/direct parameters and returns use CLR System.Int32; dynamic boundaries perform an exact range and integrality check.",
+        "Values retain Number identity, so typeof remains \"number\"."
+      ]
     },
     {
       "id": "function.native-void",
@@ -155,8 +170,8 @@
       "notes": [
         "Returns an interned type-name string.",
         "Primitives and privileged kinds use lowercase names: null, boolean, number, string, object, array, date, regex, function, type, error, clr:function, clr:bonding.",
-        "Native objects stored as ValueKind.Object report constructor names: Int8Array, UInt8Array, Int16Array, UInt16Array, Int32Array, UInt32Array, Int64Array, UInt64Array, Float64Array, BooleanArray, StringBuffer, HashMap, Path.",
-        "Infrastructure NativeTypes (Math, JSON, TDoc, console, HotPatch) and host NativeTypes report \"type\".",
+        "Native objects stored as ValueKind.Object report constructor names: Int8Array, UInt8Array, Int16Array, UInt16Array, Int32Array, UInt32Array, Int64Array, UInt64Array, Float32Array, Float64Array, BooleanArray, StringBuffer, HashMap, Path.",
+        "Infrastructure NativeTypes (Math, JSON, TDoc, console, Conv8, HotPatch) and host NativeTypes report \"type\".",
         "Do not add ValueKind members for new native types; override ScriptObject.TypeOfValue instead.",
         "check TypeName value is a separate exact runtime assertion used by the typed backend."
       ]

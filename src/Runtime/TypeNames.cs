@@ -44,6 +44,8 @@ namespace AuroraScript.Runtime
         public static readonly ScriptDatum Int32Array = ScriptDatum.FromString(new StringValue("Int32Array"));
         /// <summary> Standard identifier for Int8Array. </summary>
         public static readonly ScriptDatum Int8Array = ScriptDatum.FromString(new StringValue("Int8Array"));
+        /// <summary> Standard identifier for Float32Array. </summary>
+        public static readonly ScriptDatum Float32Array = ScriptDatum.FromString(new StringValue("Float32Array"));
         /// <summary> Standard identifier for Float64Array. </summary>
         public static readonly ScriptDatum Float64Array = ScriptDatum.FromString(new StringValue("Float64Array"));
         /// <summary> Standard identifier for BooleanArray. </summary>

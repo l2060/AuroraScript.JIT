@@ -22,6 +22,7 @@ namespace AuroraScript.Compiler.Backend.Code
         BooleanArray = 1 << 7,
         Int32 = 1 << 8,
         Array = 1 << 9,
+        Float32Array = 1 << 11,
         Float64Array = 1 << 10,
         UInt8Array = 1 << 13,
         Int16Array = 1 << 14,
@@ -31,7 +32,7 @@ namespace AuroraScript.Compiler.Backend.Code
         UInt64Array = 1 << 18,
         Int64 = 1 << 19,
         Dynamic = Null | Boolean | Number | String | Object |
-            Int32Array | Int8Array | BooleanArray | Float64Array |
+            Int32Array | Int8Array | BooleanArray | Float32Array | Float64Array |
             UInt8Array | Int16Array | UInt16Array | UInt32Array | Int64Array | UInt64Array | Array
     }
 
@@ -112,11 +113,13 @@ namespace AuroraScript.Compiler.Backend.Code
                     Runtime.CheckedType.Null => FlowValueType.Null,
                     Runtime.CheckedType.Boolean => FlowValueType.Boolean,
                     Runtime.CheckedType.Number => FlowValueType.Number,
+                    Runtime.CheckedType.Int32 => FlowValueType.Int32,
                     Runtime.CheckedType.String => FlowValueType.String,
                     Runtime.CheckedType.Object => FlowValueType.Object,
                     Runtime.CheckedType.Array => FlowValueType.Array,
                     Runtime.CheckedType.Int32Array => FlowValueType.Int32Array,
                     Runtime.CheckedType.Int8Array => FlowValueType.Int8Array,
+                    Runtime.CheckedType.Float32Array => FlowValueType.Float32Array,
                     Runtime.CheckedType.Float64Array => FlowValueType.Float64Array,
                     Runtime.CheckedType.BooleanArray => FlowValueType.BooleanArray,
                     Runtime.CheckedType.UInt8Array => FlowValueType.UInt8Array,
@@ -142,10 +145,28 @@ namespace AuroraScript.Compiler.Backend.Code
                 "Unsupported checked type.");
         }
 
+        public static bool IsCheckedTypeName(string typeName)
+        {
+            return TryGetCheckedType(typeName, out _);
+        }
+
         private static bool TryGetCheckedType(
             string typeName,
             out Runtime.CheckedType checkedType)
         {
+            if (string.Equals(typeName, "int32", StringComparison.Ordinal))
+            {
+                checkedType = Runtime.CheckedType.Int32;
+                return true;
+            }
+            if (string.Equals(
+                    typeName,
+                    nameof(Runtime.CheckedType.Int32),
+                    StringComparison.Ordinal))
+            {
+                checkedType = default;
+                return false;
+            }
             return Enum.TryParse(
                     typeName,
                     ignoreCase: false,
@@ -157,6 +178,7 @@ namespace AuroraScript.Compiler.Backend.Code
         {
             return type is FlowValueType.Int32Array or
                 FlowValueType.Int8Array or
+                FlowValueType.Float32Array or
                 FlowValueType.Float64Array or
                 FlowValueType.BooleanArray or
                 FlowValueType.UInt8Array or
@@ -171,6 +193,7 @@ namespace AuroraScript.Compiler.Backend.Code
         {
             const FlowValueType packed = FlowValueType.Int32Array |
                 FlowValueType.Int8Array |
+                FlowValueType.Float32Array |
                 FlowValueType.Float64Array |
                 FlowValueType.BooleanArray |
                 FlowValueType.UInt8Array |
@@ -215,6 +238,11 @@ namespace AuroraScript.Compiler.Backend.Code
                     argumentType == FlowValueType.Null) ||
                 (parameterType == FlowValueType.Number &&
                     argumentType is FlowValueType.Int32 or FlowValueType.Int64) ||
+                // A declared int32 accepts any number natively: the call site
+                // still runs the exact range check, it just does not need a
+                // ScriptDatum or a dynamic dispatch to do it.
+                (parameterType == FlowValueType.Int32 &&
+                    argumentType is FlowValueType.Number or FlowValueType.Int64) ||
                 (parameter.IsInt32Coercion && IsNumeric(argumentType));
         }
 
@@ -240,7 +268,7 @@ namespace AuroraScript.Compiler.Backend.Code
         {
             return type == FlowValueType.BooleanArray
                 ? FlowValueType.Boolean
-                : type == FlowValueType.Float64Array
+                : type is FlowValueType.Float32Array or FlowValueType.Float64Array
                     ? FlowValueType.Number
                 : type is FlowValueType.UInt8Array or FlowValueType.Int16Array or
                     FlowValueType.UInt16Array or FlowValueType.UInt32Array or
@@ -257,6 +285,7 @@ namespace AuroraScript.Compiler.Backend.Code
             {
                 "Int32Array" => FlowValueType.Int32Array,
                 "Int8Array" => FlowValueType.Int8Array,
+                "Float32Array" => FlowValueType.Float32Array,
                 "Float64Array" => FlowValueType.Float64Array,
                 "BooleanArray" => FlowValueType.BooleanArray,
                 "UInt8Array" => FlowValueType.UInt8Array,

@@ -70,6 +70,8 @@ namespace AuroraScript.Compiler.Backend.Code
                     argumentType == FlowValueType.Int32Array) ||
                 (parameterType == typeof(ScriptInt8Array) &&
                     argumentType == FlowValueType.Int8Array) ||
+                (parameterType == typeof(ScriptFloat32Array) &&
+                    argumentType == FlowValueType.Float32Array) ||
                 (parameterType == typeof(ScriptFloat64Array) &&
                     argumentType == FlowValueType.Float64Array) ||
                 (parameterType == typeof(ScriptBooleanArray) &&

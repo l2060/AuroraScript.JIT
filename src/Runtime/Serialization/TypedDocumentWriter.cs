@@ -195,6 +195,9 @@ namespace AuroraScript.Runtime.Serialization
                 case ScriptInt8Array int8:
                     WritePackedArray(int8);
                     return;
+                case ScriptFloat32Array float32:
+                    WritePackedArray(float32);
+                    return;
                 case ScriptFloat64Array float64:
                     WritePackedArray(float64);
                     return;
@@ -450,6 +453,9 @@ namespace AuroraScript.Runtime.Serialization
                 case ScriptInt8Array int8:
                     WritePackedInt8Elements(int8._items);
                     break;
+                case ScriptFloat32Array float32:
+                    WritePackedFloat32Elements(float32._items);
+                    break;
                 case ScriptFloat64Array float64:
                     WritePackedFloat64Elements(float64._items);
                     break;
@@ -508,6 +514,23 @@ namespace AuroraScript.Runtime.Serialization
                 {
                     EnterValue();
                     try { WriteInt32(values[index]); }
+                    finally { _valueDepth--; }
+                }
+                finally { _path.Pop(); }
+                WriteItemEnd();
+            }
+        }
+
+        private void WritePackedFloat32Elements(float[] values)
+        {
+            for (var index = 0; index < values.Length; index++)
+            {
+                WriteIndent();
+                _path.PushIndex(index);
+                try
+                {
+                    EnterValue();
+                    try { WriteNumber(values[index]); }
                     finally { _valueDepth--; }
                 }
                 finally { _path.Pop(); }
@@ -936,6 +959,9 @@ namespace AuroraScript.Runtime.Serialization
                 case ScriptInt8Array:
                     typeName = "Int8Array";
                     return true;
+                case ScriptFloat32Array:
+                    typeName = "Float32Array";
+                    return true;
                 case ScriptFloat64Array:
                     typeName = "Float64Array";
                     return true;
@@ -1225,7 +1251,7 @@ namespace AuroraScript.Runtime.Serialization
         {
             return value is "Object" or "Array" or "String" or "Number" or "Boolean" or
                 "StringBuffer" or "Date" or "Regex" or "Path" or "HashMap" or
-                "Int32Array" or "Int8Array" or "Float64Array" or "BooleanArray" or
+                "Int32Array" or "Int8Array" or "Float32Array" or "Float64Array" or "BooleanArray" or
                 "UInt8Array" or "Int16Array" or "UInt16Array" or "UInt32Array" or
                 "Int64Array" or "UInt64Array";
         }

@@ -22,6 +22,8 @@ namespace AuroraScript.Runtime
         Int32Array,
         /// <summary>Signed 8-bit packed array.</summary>
         Int8Array,
+        /// <summary>Single-precision packed array.</summary>
+        Float32Array,
         /// <summary>Double-precision packed array.</summary>
         Float64Array,
         /// <summary>Boolean packed array.</summary>
@@ -37,7 +39,12 @@ namespace AuroraScript.Runtime
         /// <summary>Signed 64-bit packed array.</summary>
         Int64Array,
         /// <summary>Unsigned 64-bit packed array.</summary>
-        UInt64Array
+        UInt64Array,
+        /// <summary>
+        /// Number constrained to an exact signed 32-bit integer.
+        /// This remains a script number at runtime.
+        /// </summary>
+        Int32
     }
 
     /// <summary>
@@ -59,11 +66,13 @@ namespace AuroraScript.Runtime
                 CheckedType.Null => CheckNull(value),
                 CheckedType.Boolean => CheckBoolean(value),
                 CheckedType.Number => CheckNumber(value),
+                CheckedType.Int32 => CheckInt32(value),
                 CheckedType.String => CheckString(value),
                 CheckedType.Object => CheckObject(value),
                 CheckedType.Array => CheckArray(value),
                 CheckedType.Int32Array => CheckInt32Array(value),
                 CheckedType.Int8Array => CheckInt8Array(value),
+                CheckedType.Float32Array => CheckFloat32Array(value),
                 CheckedType.Float64Array => CheckFloat64Array(value),
                 CheckedType.BooleanArray => CheckBooleanArray(value),
                 CheckedType.UInt8Array => CheckUInt8Array(value),
@@ -96,6 +105,53 @@ namespace AuroraScript.Runtime
             value.Kind == ValueKind.Number
                 ? value
                 : Mismatch(CheckedType.Number, value);
+
+        /// <summary>
+        /// Validates a Number whose value is an exact signed 32-bit integer.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum CheckInt32(ScriptDatum value)
+        {
+            if (value.Kind == ValueKind.Number && IsInt32(value.Number))
+            {
+                return value;
+            }
+            return Mismatch(CheckedType.Int32, value);
+        }
+
+        /// <summary>
+        /// Validates a Number that is already native double storage and returns
+        /// it as System.Int32, without a ScriptDatum round trip.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int CheckInt32Number(double value)
+        {
+            if (IsInt32(value))
+            {
+                return (int)value;
+            }
+            return MismatchNumber(value);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static int MismatchNumber(double value)
+        {
+            Mismatch(CheckedType.Int32, ScriptDatum.FromNumber(value));
+            return 0;
+        }
+
+        /// <summary>
+        /// Returns whether a Number is represented exactly by System.Int32.
+        /// Negative zero is excluded because native integer storage cannot
+        /// preserve its observable sign.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsInt32(double number) =>
+            number >= int.MinValue &&
+            number <= int.MaxValue &&
+            number == System.Math.Truncate(number) &&
+            (number != 0d ||
+                System.BitConverter.DoubleToInt64Bits(number) >= 0);
 
         /// <summary>Validates an exact String value.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -133,6 +189,14 @@ namespace AuroraScript.Runtime
             value.Reference is ScriptInt8Array
                 ? value
                 : Mismatch(CheckedType.Int8Array, value);
+
+        /// <summary>Validates an exact Float32Array value.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum CheckFloat32Array(ScriptDatum value) =>
+            value.Kind == ValueKind.Null ||
+            value.Reference is ScriptFloat32Array
+                ? value
+                : Mismatch(CheckedType.Float32Array, value);
 
         /// <summary>Validates an exact Float64Array value.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -204,7 +268,8 @@ namespace AuroraScript.Runtime
             ScriptDatum actual)
         {
             throw new AuroraRuntimeException(
-                "Type check failed: expected " + expected +
+                "Type check failed: expected " +
+                (expected == CheckedType.Int32 ? "int32" : expected) +
                 ", actual " + ScriptDatum.GetTypeName(actual) + ".");
         }
     }

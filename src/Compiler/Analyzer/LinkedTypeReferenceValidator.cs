@@ -196,11 +196,7 @@ namespace AuroraScript.Compiler.Analyzer
         private static bool IsBuiltin(TypeReference reference)
         {
             return reference.Qualifier == null &&
-                Enum.TryParse<CheckedType>(
-                    reference.Name,
-                    ignoreCase: false,
-                    out var checkedType) &&
-                Enum.IsDefined(checkedType);
+                FlowValueTypeFacts.IsCheckedTypeName(reference.Name);
         }
 
     }

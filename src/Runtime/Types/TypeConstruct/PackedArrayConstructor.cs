@@ -7,6 +7,7 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
     {
         internal static readonly PackedArrayConstructor Int32 = new("Int32Array", PackedArrayKind.Int32);
         internal static readonly PackedArrayConstructor Int8 = new("Int8Array", PackedArrayKind.Int8);
+        internal static readonly PackedArrayConstructor Float32 = new("Float32Array", PackedArrayKind.Float32);
         internal static readonly PackedArrayConstructor Float64 = new("Float64Array", PackedArrayKind.Float64);
         internal static readonly PackedArrayConstructor Boolean = new("BooleanArray", PackedArrayKind.Boolean);
         internal static readonly PackedArrayConstructor UInt8 = new("UInt8Array", PackedArrayKind.UInt8);
@@ -38,6 +39,7 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
             {
                 PackedArrayKind.Int32 => new ScriptInt32Array(length),
                 PackedArrayKind.Int8 => new ScriptInt8Array(length),
+                PackedArrayKind.Float32 => new ScriptFloat32Array(length),
                 PackedArrayKind.Float64 => new ScriptFloat64Array(length),
                 PackedArrayKind.Boolean => new ScriptBooleanArray(length),
                 PackedArrayKind.UInt8 => new ScriptUInt8Array(length),
@@ -55,6 +57,7 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
         {
             Int32,
             Int8,
+            Float32,
             Float64,
             Boolean,
             UInt8,
