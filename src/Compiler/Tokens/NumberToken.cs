@@ -60,6 +60,38 @@ namespace AuroraScript.Tokens
                 }
             }
 
+            ValidateSuffix();
+
+            // Only large numbers need their original spelling for TDoc's exact
+            // Int64/UInt64 checks. Normal numeric tokens retain the existing lazy
+            // Value allocation behavior.
+            if (Math.Abs(this.NumberValue) > 9007199254740991d)
+            {
+                base.Value = value.ToString();
+            }
+        }
+
+        internal NumberToken(double value)
+            : this(value, NumericLiteralSuffix.None)
+        {
+        }
+
+        internal NumberToken(double value, NumericLiteralSuffix suffix)
+        {
+            this.Type = ValueType.Number;
+            this.NumberValue = value;
+            Suffix = suffix;
+            ValidateSuffix();
+        }
+
+        public NumericLiteralSuffix Suffix { get; }
+
+        public bool IsHexadecimal { get; }
+
+        public bool HasFractionOrExponent { get; }
+
+        private void ValidateSuffix()
+        {
             if (Suffix == NumericLiteralSuffix.Int32 &&
                 !NumericLiteralFacts.IsExactInt32(this.NumberValue))
             {
@@ -72,26 +104,12 @@ namespace AuroraScript.Tokens
                 throw new FormatException("Integer suffix L requires a 64-bit integer literal.");
             }
 
-            // Only large numbers need their original spelling for TDoc's exact
-            // Int64/UInt64 checks. Normal numeric tokens retain the existing lazy
-            // Value allocation behavior.
-            if (Math.Abs(this.NumberValue) > 9007199254740991d)
+            if (Suffix == NumericLiteralSuffix.UInt32 &&
+                !NumericLiteralFacts.IsExactUInt32(this.NumberValue))
             {
-                base.Value = value.ToString();
+                throw new FormatException("Integer suffix U requires an unsigned 32-bit integer literal.");
             }
         }
-
-        internal NumberToken(double value)
-        {
-            this.Type = ValueType.Number;
-            this.NumberValue = value;
-        }
-
-        public NumericLiteralSuffix Suffix { get; }
-
-        public bool IsHexadecimal { get; }
-
-        public bool HasFractionOrExponent { get; }
 
         private static bool ContainsFractionOrExponent(ReadOnlySpan<char> value)
         {

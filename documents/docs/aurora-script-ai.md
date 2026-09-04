@@ -165,7 +165,7 @@ a = { b: 1234 };
 
 Literals:
 
-- number: `1`, `1.5`, `10000D` (force `Number`), `1L` (force `Int64`), `100000` (inferred `Int32` when it fits), hexadecimal `0xFFFF` (integer by default)
+- number: `1`, `1.5`, `10000D` (force `Number`), `1L` (force `Int64`), `0xD76AA478u` (force `UInt32`), `100000` (inferred `Int32` when it fits), hexadecimal `0xFFFF` (integer by default)
 - integer constraint: lowercase `int32` is allowed on parameters, returns,
   shape fields, and `value as int32`. It requires an exact signed 32-bit
   integer at checked boundaries but keeps script `Number` identity
@@ -174,6 +174,12 @@ Literals:
   it cannot hold negative zero or `NaN`: `-14 % 7` is `0` and `x % 0` raises.
   Expressions from those locals wrap too (`currentX - 1`). `/` stays `Number`;
   an exact integer quotient uses `((a - b) / c) as int32` (parentheses required).
+- unsigned integer constraint: lowercase `uint32` is allowed on parameters,
+  returns, shape fields, and `value as uint32`. Checked boundaries require an
+  exact value in `0..4294967295` and reject negative zero. Suffix `U`/`u`
+  selects `UInt32` literal storage without changing unsuffixed inference.
+  Arithmetic wraps modulo 2^32, bitwise results stay unsigned, `>>` is logical,
+  and runtime identity remains Number (`typeof` is `"number"`).
 - string: `'text'`, `"text"`
 - template string: `` `value=${expr}` ``
 - regex literal
@@ -333,6 +339,9 @@ import http from "http";
   constructor or runtime type; do not spell it `Int32`. Integer locals wrap;
   script `/` is not integer division — write `((a - b) / c) as int32` for an
   exact quotient, not `Math.floor`.
+- Use lowercase `uint32`, `UInt32Array`, and `U`/`u` constants for unsigned
+  32-bit hash/checksum words. It is a checked CLR `uint` ABI constraint, not a
+  constructor; do not spell the scalar type `UInt32`.
 - Use `native func work(...) void { ... }` for a procedure. Falling through
   and `return;` are valid; returning an expression is invalid. Direct native
   statement calls use a CLR `void` ABI, while dynamic calls evaluate to `null`.

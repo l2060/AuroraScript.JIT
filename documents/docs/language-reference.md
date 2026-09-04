@@ -190,7 +190,8 @@ The source-level primitive and collection forms are:
 | --- | --- | --- |
 | `number` | `42`, `3.14`, `6e2`, `10000D`, `100_00` | Double-precision. Unsuffixed integers that fit `Int32` stay `Int32`; wider exact integers stay `Int64`. Suffix `D`/`d` forces `Number`. |
 | `int32` constraint | `func index(int32 value) int32` | Compile-time/ABI constraint for an exact signed 32-bit integer. The runtime value remains a number and `typeof` remains `"number"`; `new int32` is invalid. |
-| integer hex | `0xFFFF`, `0x100000000L` | Hexadecimal literals default to integer (`Int32` if they fit, otherwise `Int64`). Suffix `L`/`l` forces `Int64`; `I`/`i` forces `Int32`. `D` is a hex digit, so it is not a hex suffix. |
+| `uint32` constraint | `func word(uint32 value) uint32`, `0xD76AA478u` | Compile-time/ABI constraint for an exact unsigned 32-bit integer. The runtime value remains a number and `typeof` remains `"number"`; suffix `U`/`u` selects unsigned 32-bit storage. |
+| integer hex | `0xFFFF`, `0xD76AA478u`, `0x100000000L` | Hexadecimal literals default to integer (`Int32` if they fit, otherwise `Int64`). Suffix `L`/`l` forces `Int64`; `I`/`i` forces `Int32`; `U`/`u` forces `UInt32`. `D` is a hex digit, so it is not a hex suffix. |
 | `string` | `'text'`, `"text"`, `` `value=${expr}` ``, `|> line` | Immutable UTF-16 text; templates interpolate expressions and block strings preserve physical newlines. |
 | `boolean` | `true`, `false` | Boolean value. |
 | `null` | `null` | Missing value. |
@@ -223,12 +224,13 @@ every branch agrees. Missing or ill-typed fields still follow ordinary weak
 coercion (for example arithmetic becomes `NaN`); they are not rejected as a
 `Point` mismatch. Runtime exact checks remain only on builtin native types
 (`Number`, `Boolean`, packed arrays, and the other `CheckedType` names) and
-the lowercase `int32` numeric constraint at typed parameters, declared
+the lowercase `int32` and `uint32` numeric constraints at typed parameters, declared
 returns that are not already proven, and assertions such as
-`value as Number` or `value as int32`. `int32` accepts only finite integral
+`value as Number`, `value as int32`, or `value as uint32`. `int32` accepts only finite integral
 numbers in `-2147483648..2147483647` and rejects negative zero because native
-integer storage cannot preserve its sign. Checked boundaries do not truncate
-or wrap. A local whose every assignment is an integer keeps 32-bit storage:
+integer storage cannot preserve its sign. `uint32` accepts `0..4294967295`
+with the same exactness and negative-zero rules. Checked boundaries do not
+truncate or wrap. A local whose every assignment is an integer keeps 32-bit storage:
 integer literals, `int32` parameters, fields, and returns, `as int32` values,
 `Int32Array` elements, signed bitwise results, and `+`, `-`, `*`, `%` over
 those. Such a local is never conservatively widened to `Number`; it wraps like
@@ -242,7 +244,10 @@ values. `/` is script number division. When the quotient is an exact integer,
 assert it with `((current - currentX) / width) as int32`. Parentheses are
 required because `as` binds tighter than `/`; `Math.floor` is not a substitute
 because it returns `Number` and would hide a non-integral quotient.
-`int32` does not add a runtime type identity, introduce a
+For unsigned word algorithms, use `uint32`, `UInt32Array`, and `U`/`u`
+literal suffixes. Unsuffixed literal inference is unchanged. Native `uint32`
+arithmetic wraps modulo 2^32, bitwise results remain unsigned, and `>>` is a
+logical right shift. `int32` and `uint32` do not add a runtime type identity, introduce a
 global constructor, or act as a TDoc type name. Packed-array checks are nullable:
 `null as Float64Array` returns `null`, and a `null` argument is inferred from
 a declared `Float64Array` parameter without requiring `as`. Non-null values

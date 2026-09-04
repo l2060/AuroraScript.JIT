@@ -27,7 +27,8 @@ namespace AuroraScript.Compiler.Backend.Code
             return parameterKind switch
             {
                 AuroraExportValueKind.Number =>
-                    argumentType is FlowValueType.Number or FlowValueType.Int32 or FlowValueType.Int64,
+                    argumentType is FlowValueType.Number or FlowValueType.Int32 or
+                        FlowValueType.UInt32 or FlowValueType.Int64,
                 AuroraExportValueKind.Int32 =>
                     argumentType == FlowValueType.Int32,
                 AuroraExportValueKind.Boolean =>

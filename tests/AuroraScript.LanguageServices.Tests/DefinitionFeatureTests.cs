@@ -866,10 +866,10 @@ public sealed class DefinitionFeatureTests : IDisposable
         var source = File.ReadAllText(sourcePath);
         var service = CreateService();
 
-        var definition = service.GetDefinition(sourcePath, source, PositionOf(source, "Int32Array"));
+        var definition = service.GetDefinition(sourcePath, source, PositionOf(source, "UInt32Array"));
 
         Assert.NotNull(definition);
-        Assert.Equal("aurora-builtin:/Int32Array.as", definition!.Path);
+        Assert.Equal("aurora-builtin:/UInt32Array.as", definition!.Path);
     }
 
     [Fact]

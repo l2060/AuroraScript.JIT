@@ -162,6 +162,7 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
         "Int64Array",
         "Int8Array",
         "int32",
+        "uint32",
         "JSON",
         "Conv8",
         "Math",
@@ -2282,7 +2283,7 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
         }
 
         var current = text[index];
-        var suffix = current is 'L' or 'l' or 'I' or 'i' ||
+        var suffix = current is 'L' or 'l' or 'I' or 'i' or 'U' or 'u' ||
             (!hexadecimal && current is 'D' or 'd');
         if (!suffix)
         {

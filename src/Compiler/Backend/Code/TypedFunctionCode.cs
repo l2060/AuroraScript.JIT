@@ -3,6 +3,7 @@ using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Compiler.Backend.Plans;
 using AuroraScript.Runtime;
+using AuroraScript.Tokens;
 using System;
 using System.Collections.Generic;
 
@@ -31,6 +32,7 @@ namespace AuroraScript.Compiler.Backend.Code
         Int64Array = 1 << 17,
         UInt64Array = 1 << 18,
         Int64 = 1 << 19,
+        UInt32 = 1 << 20,
         Dynamic = Null | Boolean | Number | String | Object |
             Int32Array | Int8Array | BooleanArray | Float32Array | Float64Array |
             UInt8Array | Int16Array | UInt16Array | UInt32Array | Int64Array | UInt64Array | Array
@@ -114,6 +116,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     Runtime.CheckedType.Boolean => FlowValueType.Boolean,
                     Runtime.CheckedType.Number => FlowValueType.Number,
                     Runtime.CheckedType.Int32 => FlowValueType.Int32,
+                    Runtime.CheckedType.UInt32 => FlowValueType.UInt32,
                     Runtime.CheckedType.String => FlowValueType.String,
                     Runtime.CheckedType.Object => FlowValueType.Object,
                     Runtime.CheckedType.Array => FlowValueType.Array,
@@ -159,9 +162,18 @@ namespace AuroraScript.Compiler.Backend.Code
                 checkedType = Runtime.CheckedType.Int32;
                 return true;
             }
+            if (string.Equals(typeName, "uint32", StringComparison.Ordinal))
+            {
+                checkedType = Runtime.CheckedType.UInt32;
+                return true;
+            }
             if (string.Equals(
                     typeName,
                     nameof(Runtime.CheckedType.Int32),
+                    StringComparison.Ordinal) ||
+                string.Equals(
+                    typeName,
+                    nameof(Runtime.CheckedType.UInt32),
                     StringComparison.Ordinal))
             {
                 checkedType = default;
@@ -220,7 +232,8 @@ namespace AuroraScript.Compiler.Backend.Code
 
         public static bool IsNumeric(FlowValueType type)
         {
-            return type is FlowValueType.Int32 or FlowValueType.Int64 or FlowValueType.Number;
+            return type is FlowValueType.Int32 or FlowValueType.UInt32 or
+                FlowValueType.Int64 or FlowValueType.Number;
         }
 
         public static bool CanPassNativeArgument(
@@ -237,12 +250,17 @@ namespace AuroraScript.Compiler.Backend.Code
                 (IsPackedArray(parameterType) &&
                     argumentType == FlowValueType.Null) ||
                 (parameterType == FlowValueType.Number &&
-                    argumentType is FlowValueType.Int32 or FlowValueType.Int64) ||
+                    argumentType is FlowValueType.Int32 or FlowValueType.UInt32 or
+                        FlowValueType.Int64) ||
                 // A declared int32 accepts any number natively: the call site
                 // still runs the exact range check, it just does not need a
                 // ScriptDatum or a dynamic dispatch to do it.
                 (parameterType == FlowValueType.Int32 &&
-                    argumentType is FlowValueType.Number or FlowValueType.Int64) ||
+                    argumentType is FlowValueType.Number or FlowValueType.UInt32 or
+                        FlowValueType.Int64) ||
+                (parameterType == FlowValueType.UInt32 &&
+                    argumentType is FlowValueType.Number or FlowValueType.Int32 or
+                        FlowValueType.Int64) ||
                 (parameter.IsInt32Coercion && IsNumeric(argumentType));
         }
 
@@ -251,15 +269,23 @@ namespace AuroraScript.Compiler.Backend.Code
             if (left == FlowValueType.None) return right;
             if (right == FlowValueType.None) return left;
             var merged = left | right;
-            // Number is the semantic widening of both internal integer
-            // representations. Int64 similarly widens Int32.
+            // Number is the semantic widening of every internal integer
+            // representation. Int64 can hold both signed and unsigned 32-bit
+            // values exactly.
             if ((merged & FlowValueType.Number) != 0)
             {
-                merged &= ~(FlowValueType.Int32 | FlowValueType.Int64);
+                merged &= ~(FlowValueType.Int32 | FlowValueType.UInt32 |
+                    FlowValueType.Int64);
             }
             else if ((merged & FlowValueType.Int64) != 0)
             {
-                merged &= ~FlowValueType.Int32;
+                merged &= ~(FlowValueType.Int32 | FlowValueType.UInt32);
+            }
+            else if ((merged & FlowValueType.Int32) != 0 &&
+                (merged & FlowValueType.UInt32) != 0)
+            {
+                merged &= ~(FlowValueType.Int32 | FlowValueType.UInt32);
+                merged |= FlowValueType.Int64;
             }
             return merged;
         }
@@ -268,11 +294,13 @@ namespace AuroraScript.Compiler.Backend.Code
         {
             return type == FlowValueType.BooleanArray
                 ? FlowValueType.Boolean
+                : type == FlowValueType.UInt32Array
+                    ? FlowValueType.UInt32
                 : type is FlowValueType.Float32Array or FlowValueType.Float64Array
                     ? FlowValueType.Number
                 : type is FlowValueType.UInt8Array or FlowValueType.Int16Array or
-                    FlowValueType.UInt16Array or FlowValueType.UInt32Array or
-                    FlowValueType.Int64Array or FlowValueType.UInt64Array
+                    FlowValueType.UInt16Array or FlowValueType.Int64Array or
+                    FlowValueType.UInt64Array
                     ? FlowValueType.Number
                 : IsPackedArray(type)
                     ? FlowValueType.Int32
@@ -309,6 +337,7 @@ namespace AuroraScript.Compiler.Backend.Code
             SymbolId.Invalid,
             FunctionId.Invalid,
             default,
+            NumericLiteralSuffix.None,
             hasConstant: false,
             isDeclaredOnly: false);
 
@@ -319,6 +348,7 @@ namespace AuroraScript.Compiler.Backend.Code
             SymbolId moduleSymbol,
             FunctionId directFunction,
             ScriptDatum constant,
+            NumericLiteralSuffix constantNumericHint,
             bool hasConstant,
             bool isDeclaredOnly = false)
         {
@@ -328,6 +358,7 @@ namespace AuroraScript.Compiler.Backend.Code
             ModuleSymbol = moduleSymbol;
             DirectFunction = directFunction;
             Constant = constant;
+            ConstantNumericHint = constantNumericHint;
             HasConstant = hasConstant;
             IsDeclaredOnly = isDeclaredOnly;
         }
@@ -338,6 +369,7 @@ namespace AuroraScript.Compiler.Backend.Code
         public SymbolId ModuleSymbol { get; }
         public FunctionId DirectFunction { get; }
         public ScriptDatum Constant { get; }
+        public NumericLiteralSuffix ConstantNumericHint { get; }
         public bool HasConstant { get; }
         public bool IsDeclaredOnly { get; }
         public bool IsLocal => Local.IsValid && !ModuleSymbol.IsValid;

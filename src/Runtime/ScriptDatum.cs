@@ -168,6 +168,12 @@ namespace AuroraScript.Runtime
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ScriptDatum CreateNumber(uint value)
+        {
+            return new ScriptDatum(null, EncodeNumber(value));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ScriptDatum CreateNumber(long value)
         {
             return new ScriptDatum(null, EncodeNumber(value));
@@ -297,6 +303,12 @@ namespace AuroraScript.Runtime
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong EncodeNumber(int value)
+        {
+            return EncodeNumber((double)value);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong EncodeNumber(uint value)
         {
             return EncodeNumber((double)value);
         }

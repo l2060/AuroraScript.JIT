@@ -481,6 +481,7 @@ public sealed class CompilerBackendPlanTests
                 var wide = 3000000000;
                 var d = 10000D;
                 var longValue = 1L;
+                var unsigned = 0xD76AA478u;
                 var real = 123.0;
                 var grouped = 123_456;
                 var fraction = 123_456.78;
@@ -504,6 +505,7 @@ public sealed class CompilerBackendPlanTests
         Assert.Equal(FlowValueType.Int64, LocalType("wide"));
         Assert.Equal(FlowValueType.Number, LocalType("d"));
         Assert.Equal(FlowValueType.Int64, LocalType("longValue"));
+        Assert.Equal(FlowValueType.UInt32, LocalType("unsigned"));
         Assert.Equal(FlowValueType.Number, LocalType("real"));
         Assert.Equal(FlowValueType.Int32, LocalType("grouped"));
         Assert.Equal(FlowValueType.Number, LocalType("fraction"));
@@ -1350,6 +1352,37 @@ public sealed class CompilerBackendPlanTests
         Assert.Equal(5, constant.Number);
         Assert.True(binding.HasConstant);
         Assert.Equal(5, binding.Constant.Number);
+    }
+
+    [Fact]
+    public void ModuleConstInliningPreservesNumericLiteralStorageHints()
+    {
+        var root = Path.GetTempPath();
+        var module = Parse(
+            """
+            @module(TEST);
+            export const WORD = 0xD76AA478u;
+            export const WORD_ALIAS = WORD;
+            export const REAL = 0.0;
+            export func run() { return [WORD, WORD_ALIAS, REAL]; }
+            """,
+            root);
+        var options = EngineOptions.Default
+            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
+            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
+            .WithOptimization(optimization => optimization.ModuleConstInlining = true);
+        var backend = new BackendCompiler(new DynamicBuilder(options), options);
+
+        var session = backend.CreateModulePlans([module]);
+        var modulePlan = Assert.Single(session.Modules);
+        var returned = GetSingleReturnExpression(modulePlan, "run");
+        var array = Assert.IsType<ArrayLiteralExpression>(returned);
+        var run = Assert.Single(modulePlan.Functions, function => function.Name == "run");
+        var code = TypedFunctionBuilder.Build(modulePlan, run);
+
+        Assert.Equal(FlowValueType.UInt32, code.GetExpressionType(array.Elements[0]));
+        Assert.Equal(FlowValueType.UInt32, code.GetExpressionType(array.Elements[1]));
+        Assert.Equal(FlowValueType.Number, code.GetExpressionType(array.Elements[2]));
     }
 
     [Fact]

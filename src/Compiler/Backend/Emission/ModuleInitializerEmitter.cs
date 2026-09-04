@@ -248,7 +248,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             _session.Builder.LoadStringConstant(_il, name);
             if (_module.TryGetSymbol(name, out var symbolId) &&
                 ReferenceEquals(_session.CompileSession.Symbols[symbolId].Declaration, declaration) &&
-                _module.TryGetInlineConstant(symbolId, out var constant))
+                _module.TryGetInlineConstantInfo(symbolId, out var constant))
             {
                 EmitLiteral(ModuleConstInliningAnalyzer.CreateLiteralExpression(constant, SourceSpan.None));
             }

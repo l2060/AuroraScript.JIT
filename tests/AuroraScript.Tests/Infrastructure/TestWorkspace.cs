@@ -93,7 +93,8 @@ internal sealed class TestWorkspace : IDisposable
         int maxDegreeOfParallelism = 4,
         CancellationToken cancellationToken = default,
         string? dateTimeFormat = null,
-        bool nativeTypes = false)
+        bool nativeTypes = false,
+        bool enableModuleConstInlining = false)
     {
         var assemblyOut = mode == CompilationMode.Persistence ? Path.Combine(Root, "test-output.dll") : null;
         var engine = CreateEngine(
@@ -102,6 +103,7 @@ internal sealed class TestWorkspace : IDisposable
             enableConfused,
             maxDegreeOfParallelism,
             assemblyOut,
+            enableModuleConstInlining: enableModuleConstInlining,
             dateTimeFormat: dateTimeFormat,
             nativeTypes: nativeTypes);
         WriteSource("main.as", source);

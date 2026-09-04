@@ -6,6 +6,7 @@ namespace AuroraScript.Tokens
     {
         None,
         Int32,
+        UInt32,
         Int64,
         Number
     }
@@ -28,6 +29,7 @@ namespace AuroraScript.Tokens
             {
                 'L' or 'l' => NumericLiteralSuffix.Int64,
                 'I' or 'i' => NumericLiteralSuffix.Int32,
+                'U' or 'u' => NumericLiteralSuffix.UInt32,
                 'D' or 'd' when !hexadecimal => NumericLiteralSuffix.Number,
                 _ => NumericLiteralSuffix.None
             };
@@ -65,6 +67,13 @@ namespace AuroraScript.Tokens
         public static bool IsExactInt32(double value)
         {
             return value >= int.MinValue && value <= int.MaxValue &&
+                value == Math.Truncate(value) &&
+                (value != 0d || BitConverter.DoubleToInt64Bits(value) >= 0);
+        }
+
+        public static bool IsExactUInt32(double value)
+        {
+            return value >= uint.MinValue && value <= uint.MaxValue &&
                 value == Math.Truncate(value) &&
                 (value != 0d || BitConverter.DoubleToInt64Bits(value) >= 0);
         }

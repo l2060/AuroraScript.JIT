@@ -101,6 +101,13 @@ namespace AuroraScript.Runtime
             return CreateNumber(value);
         }
 
+        /// <summary> Creates a new numeric datum from a UInt32 without signed widening. </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum FromNumber(uint value)
+        {
+            return CreateNumber(value);
+        }
+
         /// <summary> Creates a new numeric datum from an Int64 without widening at the call site. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum FromNumber(long value)

@@ -4,6 +4,7 @@ using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Compiler.Backend.Binding;
 using AuroraScript.Core;
 using AuroraScript.Runtime;
+using AuroraScript.Tokens;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
@@ -28,6 +29,22 @@ namespace AuroraScript.Compiler.Backend.Plans
         Fast5,
         Fast6,
         Fast7
+    }
+
+    internal readonly struct InlineConstant
+    {
+        public InlineConstant(
+            ScriptDatum value,
+            NumericLiteralSuffix numericHint = NumericLiteralSuffix.None)
+        {
+            Value = value;
+            NumericHint = value.Kind == ValueKind.Number
+                ? numericHint
+                : NumericLiteralSuffix.None;
+        }
+
+        public ScriptDatum Value { get; }
+        public NumericLiteralSuffix NumericHint { get; }
     }
 
     internal readonly struct LocalSlot
@@ -133,7 +150,7 @@ namespace AuroraScript.Compiler.Backend.Plans
                 new Dictionary<FunctionCallExpression, FunctionPlan>(
                     ReferenceEqualityComparer.Instance);
             CompileTimeProperties =
-                new Dictionary<GetPropertyExpression, ScriptDatum>(
+                new Dictionary<GetPropertyExpression, InlineConstant>(
                     ReferenceEqualityComparer.Instance);
         }
 
@@ -160,7 +177,7 @@ namespace AuroraScript.Compiler.Backend.Plans
         public int ParentLocalScopeId { get; set; }
         public Dictionary<FunctionCallExpression, FunctionPlan>
             ImportedNativeCalls { get; }
-        public Dictionary<GetPropertyExpression, ScriptDatum>
+        public Dictionary<GetPropertyExpression, InlineConstant>
             CompileTimeProperties { get; }
         public bool IsLambda => Declaration?.Flags == FunctionFlags.Lambda;
         public bool IsNativeDeclared => Declaration?.IsNative == true;
@@ -172,7 +189,7 @@ namespace AuroraScript.Compiler.Backend.Plans
     {
         private readonly List<FunctionPlan> _functions;
         private readonly Dictionary<string, SymbolId> _symbolsByName;
-        private Dictionary<SymbolId, ScriptDatum> _inlineConstants;
+        private Dictionary<SymbolId, InlineConstant> _inlineConstants;
         private HashSet<string> _declaredOnlyNames;
 
         public ModulePlan(ModuleId id, ModuleDeclaration declaration)
@@ -222,20 +239,37 @@ namespace AuroraScript.Compiler.Backend.Plans
                 _declaredOnlyNames.Contains(name);
         }
 
-        public void SetInlineConstant(SymbolId symbol, ScriptDatum value)
+        public void SetInlineConstant(
+            SymbolId symbol,
+            ScriptDatum value,
+            NumericLiteralSuffix numericHint = NumericLiteralSuffix.None)
         {
-            _inlineConstants ??= new Dictionary<SymbolId, ScriptDatum>();
-            _inlineConstants[symbol] = value;
+            _inlineConstants ??= new Dictionary<SymbolId, InlineConstant>();
+            _inlineConstants[symbol] = new InlineConstant(value, numericHint);
         }
 
         public bool TryGetInlineConstant(SymbolId symbol, out ScriptDatum value)
         {
-            if (_inlineConstants != null)
+            if (TryGetInlineConstantInfo(symbol, out var constant))
             {
-                return _inlineConstants.TryGetValue(symbol, out value);
+                value = constant.Value;
+                return true;
             }
 
             value = default;
+            return false;
+        }
+
+        public bool TryGetInlineConstantInfo(
+            SymbolId symbol,
+            out InlineConstant constant)
+        {
+            if (_inlineConstants != null)
+            {
+                return _inlineConstants.TryGetValue(symbol, out constant);
+            }
+
+            constant = default;
             return false;
         }
 

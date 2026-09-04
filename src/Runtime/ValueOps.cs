@@ -298,6 +298,17 @@ namespace AuroraScript.Runtime
             return right == -1 ? 0 : left % right;
         }
 
+        /// <summary>
+        /// Implements remainder for values already proven to be exact unsigned
+        /// 32-bit integers.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static uint ModuloUInt32(uint left, uint right)
+        {
+            if (right == 0) return unchecked((uint)ZeroDivisor());
+            return left % right;
+        }
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static int ZeroDivisor()
         {

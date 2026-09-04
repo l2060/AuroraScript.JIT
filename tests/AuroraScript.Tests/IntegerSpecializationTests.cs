@@ -8,6 +8,7 @@ using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Reflection.Metadata;
+using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
 using System.Threading.Tasks;
 using Xunit;
@@ -36,6 +37,11 @@ public sealed class IntegerSpecializationTests
 
         native func addUnsigned(Number left, Number right) Number {
             return (left + right) | 0;
+        }
+
+        native func allocate(int32 count) int32 {
+            var values = new Int8Array(count);
+            return values.length;
         }
 
         native func fillAndHash(Int32Array values, Number count, Number seed) Number {
@@ -188,6 +194,142 @@ public sealed class IntegerSpecializationTests
                 arguments: [ScriptDatum.FromNumber(1.5)]));
     }
 
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+    [InlineData(CompilationMode.OnlyRun)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
+    public async Task LowercaseUInt32ContractsPreserveUnsignedWordSemantics(
+        CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+
+            export type Word {
+                uint32 value;
+            }
+
+            export native func identity(uint32 value) uint32 {
+                return value;
+            }
+
+            export func check(value) {
+                var checked = value as uint32;
+                var word = { value: checked } as Word;
+                return [identity(word.value), typeof checked];
+            }
+
+            export func readField(value) uint32 {
+                var word = { value: value } as Word;
+                return word.value;
+            }
+
+            export func checkedReturn(value) uint32 {
+                return value;
+            }
+
+            export native func operations() Array {
+                var values = new UInt32Array(2);
+                values[0] = 0xFFFFFFFFu;
+                values[1] = values[0] + 1u;
+                var max = values[0];
+                max += 1u;
+                var post = values[0]++;
+                var pre = ++values[0];
+                values[0] -= 2u;
+                var divided = new UInt32Array(1);
+                divided[0] = 0xFFFFFFFFu;
+                var quotient = divided[0] /= 1D;
+                return [
+                    values[0],
+                    values[1],
+                    max,
+                    post,
+                    pre,
+                    0u - 1u,
+                    0x80000000u * 2u,
+                    0xFFFFFFFFu % 16u,
+                    0x80000000u >> 31,
+                    1u << 31,
+                    ~0u,
+                    divided[0],
+                    quotient,
+                    0xFFFFFFFFu > 1u,
+                    0xFFFFFFFFu < 1u,
+                    typeof values[0]
+                ];
+            }
+
+            export func negativeZero() {
+                return 1 / -0u;
+            }
+
+            export func remainderByZero() {
+                return 1u % 0u;
+            }
+            """,
+            mode);
+
+        ScriptAssert.Equal(
+            new object?[] { uint.MaxValue, "number" },
+            TestWorkspace.Execute(
+                domain,
+                "check",
+                arguments: [ScriptDatum.FromNumber(uint.MaxValue)]));
+        ScriptAssert.Equal(
+            uint.MaxValue,
+            TestWorkspace.Execute(
+                domain,
+                "readField",
+                arguments: [ScriptDatum.FromNumber(uint.MaxValue)]));
+        ScriptAssert.Equal(
+            new object?[]
+            {
+                uint.MaxValue, 0u, 0u, uint.MaxValue, 1u, uint.MaxValue, 0u, 15u,
+                1u, 0x80000000u, uint.MaxValue, uint.MaxValue, uint.MaxValue,
+                true, false, "number"
+            },
+            TestWorkspace.Execute(domain, "operations"));
+        ScriptAssert.Equal(
+            double.NegativeInfinity,
+            TestWorkspace.Execute(domain, "negativeZero"));
+
+        foreach (var invalid in new[]
+        {
+            -1d,
+            1.5d,
+            (double)uint.MaxValue + 1d,
+            BitConverter.Int64BitsToDouble(long.MinValue)
+        })
+        {
+            Assert.Throws<AuroraRuntimeException>(() =>
+                TestWorkspace.Execute(
+                    domain,
+                    "identity",
+                    arguments: [ScriptDatum.FromNumber(invalid)]));
+            Assert.Throws<AuroraRuntimeException>(() =>
+                TestWorkspace.Execute(
+                    domain,
+                    "check",
+                    arguments: [ScriptDatum.FromNumber(invalid)]));
+            Assert.Throws<AuroraRuntimeException>(() =>
+                TestWorkspace.Execute(
+                    domain,
+                    "readField",
+                    arguments: [ScriptDatum.FromNumber(invalid)]));
+            Assert.Throws<AuroraRuntimeException>(() =>
+                TestWorkspace.Execute(
+                    domain,
+                    "checkedReturn",
+                    arguments: [ScriptDatum.FromNumber(invalid)]));
+        }
+        Assert.Throws<AuroraRuntimeException>(() =>
+            TestWorkspace.Execute(domain, "remainderByZero"));
+    }
+
     [Fact]
     public async Task PascalCaseInt32IsNotAConstraintType()
     {
@@ -201,6 +343,29 @@ public sealed class IntegerSpecializationTests
                 }
                 """,
                 CompilationMode.Dynamic));
+    }
+
+    [Fact]
+    public async Task UInt32LiteralAndTypeSpellingsAreValidated()
+    {
+        using var workspace = new TestWorkspace();
+        await Assert.ThrowsAsync<AuroraCompilationException>(() =>
+            workspace.CompileModuleAsync(
+                """
+                @module(TEST);
+                export func run(UInt32 value) {
+                    return value;
+                }
+                """,
+                CompilationMode.Dynamic));
+
+        foreach (var literal in new[] { "4294967296u", "1.5u" })
+        {
+            await Assert.ThrowsAsync<AuroraCompilationException>(() =>
+                workspace.CompileModuleAsync(
+                    "@module(TEST); export func run() { return " + literal + "; }",
+                    CompilationMode.Dynamic));
+        }
     }
 
     [Theory]
@@ -488,6 +653,72 @@ public sealed class IntegerSpecializationTests
 
 #if NET9_0_OR_GREATER
     [Fact]
+    public async Task PersistenceEmitsNativeUInt32WordKernel()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+
+            const ADDEND = 0xD76AA478u;
+
+            native func rotate(uint32 value, int32 shift) uint32 {
+                return (value << shift) | (value >> (32 - shift));
+            }
+
+            native func step(uint32 value, uint32 addend) uint32 {
+                return rotate(value + addend, 7);
+            }
+
+            export native func process(UInt32Array values) uint32 {
+                values[1] = 1;
+                values[0] = step(values[0], ADDEND);
+                values[0] += 1u;
+                values[0]--;
+                return values[0];
+            }
+            """,
+            CompilationMode.Persistence,
+            enableModuleConstInlining: true);
+
+        using var stream = File.OpenRead(Path.Combine(workspace.Root, "test-output.dll"));
+        using var peReader = new PEReader(stream);
+        var reader = peReader.GetMetadataReader();
+
+        var rotate = FindMethod(reader, "rotate$native");
+        var rotateSignature = reader.GetBlobBytes(rotate.Signature);
+        Assert.Equal(3, rotateSignature[1]);
+        Assert.Equal(0x09, rotateSignature[2]); // System.UInt32 return.
+        var rotateIl = peReader.GetMethodBody(rotate.RelativeVirtualAddress).GetILBytes();
+        var rotateOpcodes = ReadOpCodes(rotateIl.AsSpan());
+        Assert.Contains(OpCodes.Shl, rotateOpcodes);
+        Assert.Contains(OpCodes.Shr_Un, rotateOpcodes);
+        Assert.Contains(OpCodes.Or, rotateOpcodes);
+        Assert.DoesNotContain(OpCodes.Conv_R8, rotateOpcodes);
+        Assert.DoesNotContain(OpCodes.Conv_R_Un, rotateOpcodes);
+        AssertNoNumericChecks(reader, rotateIl);
+
+        var step = FindMethod(reader, "step$native");
+        Assert.Equal(0x09, reader.GetBlobBytes(step.Signature)[2]);
+        var stepIl = peReader.GetMethodBody(step.RelativeVirtualAddress).GetILBytes();
+        var stepOpcodes = ReadOpCodes(stepIl.AsSpan());
+        Assert.Contains(OpCodes.Add, stepOpcodes);
+        Assert.DoesNotContain(OpCodes.Conv_R8, stepOpcodes);
+        Assert.DoesNotContain(OpCodes.Conv_R_Un, stepOpcodes);
+        AssertNoNumericChecks(reader, stepIl);
+
+        var process = FindMethod(reader, "process$native");
+        Assert.Equal(0x09, reader.GetBlobBytes(process.Signature)[2]);
+        var processIl = peReader.GetMethodBody(process.RelativeVirtualAddress).GetILBytes();
+        var processOpcodes = ReadOpCodes(processIl.AsSpan());
+        Assert.Contains(OpCodes.Ldelem_U4, processOpcodes);
+        Assert.Contains(OpCodes.Stelem_I4, processOpcodes);
+        Assert.DoesNotContain(OpCodes.Conv_R8, processOpcodes);
+        Assert.DoesNotContain(OpCodes.Conv_R_Un, processOpcodes);
+        AssertNoNumericChecks(reader, processIl);
+    }
+
+    [Fact]
     public async Task PersistenceEmitsExplicitNativeRawArraySignatures()
     {
         using var workspace = new TestWorkspace();
@@ -529,6 +760,12 @@ public sealed class IntegerSpecializationTests
         Assert.Contains(OpCodes.Add, addUnsignedOpcodes);
         Assert.Contains(OpCodes.Or, addUnsignedOpcodes);
         Assert.DoesNotContain(OpCodes.Conv_R8, addUnsignedOpcodes);
+
+        var allocate = FindMethod(reader, "allocate$native");
+        var allocateOpcodes = ReadOpCodes(
+            peReader.GetMethodBody(allocate.RelativeVirtualAddress).GetILBytes().AsSpan());
+        Assert.Contains(OpCodes.Newarr, allocateOpcodes);
+        Assert.DoesNotContain(OpCodes.Conv_R8, allocateOpcodes);
     }
 
     [Fact]
@@ -582,6 +819,53 @@ public sealed class IntegerSpecializationTests
             Assert.True(offset <= il.Length, "Truncated CIL operand.");
         }
         return result;
+    }
+
+    private static void AssertNoNumericChecks(MetadataReader reader, ReadOnlySpan<byte> il)
+    {
+        foreach (var methodName in new[]
+        {
+            nameof(TypeCheckOps.CheckInt32Number),
+            nameof(TypeCheckOps.CheckUInt32Number),
+            nameof(ValueOps.ToArithmeticNumber)
+        })
+        {
+            var tokens = reader.MemberReferences
+                .Where(handle =>
+                {
+                    var member = reader.GetMemberReference(handle);
+                    return member.Parent.Kind == HandleKind.TypeReference &&
+                        string.Equals(
+                            reader.GetString(member.Name),
+                            methodName,
+                            StringComparison.Ordinal);
+                })
+                .Select(handle => MetadataTokens.GetToken(handle))
+                .ToHashSet();
+            Assert.Equal(0, CountCalls(il, tokens));
+        }
+    }
+
+    private static int CountCalls(ReadOnlySpan<byte> il, HashSet<int> metadataTokens)
+    {
+        var count = 0;
+        var offset = 0;
+        while (offset < il.Length)
+        {
+            ushort value = il[offset++];
+            if (value == 0xfe)
+            {
+                value = (ushort)(0xfe00 | il[offset++]);
+            }
+            var opcode = CilOpCodes[value];
+            if (opcode == OpCodes.Call &&
+                metadataTokens.Contains(BinaryPrimitives.ReadInt32LittleEndian(il.Slice(offset, 4))))
+            {
+                count++;
+            }
+            offset += GetOperandSize(opcode.OperandType, il.Slice(offset));
+        }
+        return count;
     }
 
     private static int GetOperandSize(OperandType operandType, ReadOnlySpan<byte> remaining)

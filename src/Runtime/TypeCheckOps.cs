@@ -44,7 +44,12 @@ namespace AuroraScript.Runtime
         /// Number constrained to an exact signed 32-bit integer.
         /// This remains a script number at runtime.
         /// </summary>
-        Int32
+        Int32,
+        /// <summary>
+        /// Number constrained to an exact unsigned 32-bit integer.
+        /// This remains a script number at runtime.
+        /// </summary>
+        UInt32
     }
 
     /// <summary>
@@ -67,6 +72,7 @@ namespace AuroraScript.Runtime
                 CheckedType.Boolean => CheckBoolean(value),
                 CheckedType.Number => CheckNumber(value),
                 CheckedType.Int32 => CheckInt32(value),
+                CheckedType.UInt32 => CheckUInt32(value),
                 CheckedType.String => CheckString(value),
                 CheckedType.Object => CheckObject(value),
                 CheckedType.Array => CheckArray(value),
@@ -179,6 +185,73 @@ namespace AuroraScript.Runtime
             var truncated = (int)number;
             return truncated == number &&
                 (truncated != 0 || IsPositiveZero(number));
+        }
+
+        /// <summary>
+        /// Validates a Number whose value is an exact unsigned 32-bit integer.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum CheckUInt32(ScriptDatum value)
+        {
+            if (value.Kind == ValueKind.Number && IsUInt32(value.Number))
+            {
+                return value;
+            }
+            return Mismatch(CheckedType.UInt32, value);
+        }
+
+        /// <summary>
+        /// Validates a dynamic value as an exact unsigned 32-bit integer and
+        /// returns it as System.UInt32.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static uint CheckUInt32Value(ScriptDatum value)
+        {
+            if (value.Kind == ValueKind.Number)
+            {
+                var number = value.Number;
+                if (IsUInt32(number))
+                {
+                    return (uint)number;
+                }
+            }
+            Mismatch(CheckedType.UInt32, value);
+            return 0;
+        }
+
+        /// <summary>
+        /// Validates a Number that is already native double storage and returns
+        /// it as System.UInt32, without a ScriptDatum round trip.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static uint CheckUInt32Number(double value)
+        {
+            if (IsUInt32(value))
+            {
+                return (uint)value;
+            }
+            return MismatchUInt32Number(value);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static uint MismatchUInt32Number(double value)
+        {
+            Mismatch(CheckedType.UInt32, ScriptDatum.FromNumber(value));
+            return 0;
+        }
+
+        /// <summary>
+        /// Returns whether a Number is represented exactly by System.UInt32.
+        /// Negative zero is excluded because native integer storage cannot
+        /// preserve its observable sign.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsUInt32(double number)
+        {
+            return number >= uint.MinValue &&
+                number <= uint.MaxValue &&
+                number == System.Math.Truncate(number) &&
+                (number != 0d || IsPositiveZero(number));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -301,7 +374,9 @@ namespace AuroraScript.Runtime
         {
             throw new AuroraRuntimeException(
                 "Type check failed: expected " +
-                (expected == CheckedType.Int32 ? "int32" : expected) +
+                (expected == CheckedType.Int32
+                    ? "int32"
+                    : expected == CheckedType.UInt32 ? "uint32" : expected) +
                 ", actual " + ScriptDatum.GetTypeName(actual) + ".");
         }
     }

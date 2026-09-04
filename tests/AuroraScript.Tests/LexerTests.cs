@@ -40,6 +40,8 @@ public sealed class LexerTests
     [InlineData("0Xabcdef", 11259375d)]
     [InlineData("10000D", 10000d)]
     [InlineData("1L", 1d)]
+    [InlineData("0u", 0d)]
+    [InlineData("0xFFFFFFFFU", uint.MaxValue)]
     [InlineData("0xFFFF", 65535d)]
     [InlineData("0xFFFFL", 65535d)]
     public void ParsesSupportedNumberFormats(string source, double expected)
@@ -66,6 +68,11 @@ public sealed class LexerTests
         using var lng = CreateLexer("1L");
         var l = Assert.IsType<NumberToken>(lng.Next());
         Assert.Equal(NumericLiteralSuffix.Int64, l.Suffix);
+
+        using var unsigned = CreateLexer("0xFFFFFFFFu");
+        var u = Assert.IsType<NumberToken>(unsigned.Next());
+        Assert.Equal(NumericLiteralSuffix.UInt32, u.Suffix);
+        Assert.Equal(uint.MaxValue, u.NumberValue);
 
         using var hex = CreateLexer("0xFFFF");
         var h = Assert.IsType<NumberToken>(hex.Next());
@@ -168,6 +175,13 @@ public sealed class LexerTests
     public void RejectsMalformedNumericLiterals(string source)
     {
         Assert.Throws<AuroraCompilationException>(() => CreateLexer(source));
+    }
+
+    [Fact]
+    public void RejectsOutOfRangeUInt32SuffixWhenTokenIsRead()
+    {
+        using var lexer = CreateLexer("4294967296u");
+        Assert.Throws<AuroraCompilationException>(() => lexer.Next());
     }
 
     [Fact]

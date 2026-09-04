@@ -129,6 +129,19 @@
       ]
     },
     {
+      "id": "constraint.uint32",
+      "syntax": "func name(uint32 value) uint32 { ... } | value as uint32 | type Shape { uint32 field; } | 0xD76AA478u",
+      "scope": "type-contract",
+      "notes": [
+        "uint32 is a lowercase numeric constraint, not a script runtime type or global constructor.",
+        "It accepts only finite integral Number values in 0..4294967295, rejects negative zero, and never truncates or wraps at a checked boundary.",
+        "U/u suffixes select UInt32 literal storage; unsuffixed literal inference is unchanged.",
+        "Native/direct parameters and returns use CLR System.UInt32, while UInt32Array element reads preserve the same scalar flow type.",
+        "Arithmetic wraps modulo 2^32, bitwise results remain UInt32, and >> is a logical right shift.",
+        "Values retain Number identity, so typeof remains \"number\"."
+      ]
+    },
+    {
       "id": "function.native-void",
       "syntax": "native func name(parameters) void { statements; return; }",
       "scope": "module",

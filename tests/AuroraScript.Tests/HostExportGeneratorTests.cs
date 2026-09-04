@@ -155,7 +155,7 @@ public sealed class HostExportGeneratorTests
             """
             @module(TEST);
             export func run() Number {
-                return Stats.mean(3, 5);
+                return Stats.mean(3u, 5u);
             }
             """);
 

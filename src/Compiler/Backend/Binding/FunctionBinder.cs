@@ -283,13 +283,13 @@ namespace AuroraScript.Compiler.Backend.Binding
                     return;
                 }
 
-                if (ModuleConstInliningAnalyzer.TryResolvePropertyConstant(
+                if (ModuleConstInliningAnalyzer.TryResolvePropertyConstantInfo(
                         _session,
                         _modulePlan,
                         property,
-                        out var value))
+                        out var constant))
                 {
-                    _function.CompileTimeProperties[property] = value;
+                    _function.CompileTimeProperties[property] = constant;
                 }
             }
 
@@ -554,6 +554,15 @@ namespace AuroraScript.Compiler.Backend.Binding
                         return false;
                     }
                     return TypeCheckOps.IsInt32(value.Number);
+                }
+
+                if (string.Equals(declaredType, "uint32", StringComparison.Ordinal))
+                {
+                    if (value.Kind != ValueKind.Number)
+                    {
+                        return false;
+                    }
+                    return TypeCheckOps.IsUInt32(value.Number);
                 }
 
                 return (declaredType, value.Kind) switch

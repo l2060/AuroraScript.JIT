@@ -40,13 +40,16 @@ public sealed class TextMateGrammarTests
         AssertPattern(repository, "keywords", "keyword.control.return.aurora", "return value");
         AssertPattern(repository, "keywords", "keyword.control.throw.aurora", "throw error");
         AssertPattern(repository, "keywords", "keyword.operator.type-check.aurora", "value as Number");
+        AssertPattern(repository, "keywords", "keyword.operator.type-check.aurora", "value as uint32");
         AssertPatternDoesNotMatch(repository, "keywords", "keyword.operator.type-check.aurora", "as(value)");
         AssertPattern(repository, "map-keys", "variable.other.member.map-key.aurora", "name: value");
         AssertPattern(repository, "map-keys", "meta.object-literal.key.string.aurora", "\"path\": value");
         AssertPattern(repository, "map-keys", "meta.object-literal.key.literal.aurora", "3: value");
         AssertPattern(repository, "map-keys", "meta.object-literal.key.literal.aurora", "0xFDE5380C: value");
         AssertPattern(repository, "numbers", "constant.numeric.hex.aurora", "0xFDE5380C");
+        AssertPattern(repository, "numbers", "constant.numeric.hex.aurora", "0xD76AA478u");
         AssertPattern(repository, "numbers", "constant.numeric.decimal.aurora", "123");
+        AssertPattern(repository, "numbers", "constant.numeric.decimal.aurora", "4294967295U");
         AssertPattern(repository, "numbers", "constant.numeric.decimal.aurora", "12.34");
         AssertPattern(repository, "punctuation", "punctuation.section.brace.aurora", "{");
         AssertPattern(repository, "punctuation", "punctuation.section.bracket.aurora", "[");

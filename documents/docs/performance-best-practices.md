@@ -198,6 +198,7 @@ Keep the array in an exact local or pass it directly to a `native func` helper. 
 Choose the narrowest type that matches the required semantics:
 
 - `Int32Array`: signed 32-bit indexes, distances, parents, and queue tables.
+- `UInt32Array`: unsigned 32-bit words for hashes, checksums, and bit-mixing kernels.
 - `Float32Array`: compact IEEE-754 binary32 values; script numbers round on store.
 - `Float64Array`: fractional values, `NaN`, infinities, and general script-number data.
 - `Int8Array`: compact signed values in the `-128..127` range.
@@ -208,6 +209,12 @@ Choose the narrowest type that matches the required semantics:
 Use signed bitwise operations and `Int32Array`/`Int8Array` values when the algorithm is naturally 32-bit. A local whose every assignment is an integer — integer literals, `int32` parameters, fields, and returns, packed-array loads, signed bitwise results, and `+`, `-`, `*`, `%` over those — keeps native CIL `int` storage for its whole lifetime and wraps on overflow. Expressions built from those locals wrap the same way, so `astarHeuristic(currentX - 1, currentY, ...)` stays on the `int` ABI. It is not conservatively widened to `double`. Division, unsigned right shift, and any fractional or `Number` assignment still produce `double`, as do the operations that need `NaN` or infinity.
 
 This means an integer-oriented loop avoids repeated `double` conversions. The trade-off is that such a local cannot hold negative zero or `NaN`, so an integer `%` with a zero divisor raises a runtime error instead. When a `/` quotient is an exact integer, assert it with `((current - currentX) / width) as int32` (parentheses required: `as` binds tighter than `/`). Do not add `Math.floor` solely to recover an `int`; if a value genuinely needs number semantics, give it `Number` storage with a `D` suffix or a fractional assignment.
+
+For unsigned 32-bit word kernels, declare parameters, returns, and shape fields
+as `uint32`, store words in `UInt32Array`, and suffix constants with `U`/`u`
+such as `0xD76AA478u`. These values use the CLR `uint` ABI, `+`, `-`, and `*`
+wrap modulo 2^32, and `>>` is logical. Unsuffixed literals retain the normal
+`Int32`/`Int64` inference rules.
 
 ## Console
 

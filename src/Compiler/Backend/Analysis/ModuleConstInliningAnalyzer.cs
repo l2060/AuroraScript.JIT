@@ -61,22 +61,33 @@ namespace AuroraScript.Compiler.Backend.Analysis
 
                 if (evaluator.TryEvaluate(variable.Initializer, ref value))
                 {
-                    modulePlan.SetInlineConstant(symbolId, value);
+                    modulePlan.SetInlineConstant(
+                        symbolId,
+                        value,
+                        GetNumericHint(session, modulePlan, variable.Initializer));
                 }
             }
         }
 
         public static LiteralExpression CreateLiteralExpression(ScriptDatum value, SourceSpan range)
         {
-            var expression = new LiteralExpression(CreateToken(value))
+            return CreateLiteralExpression(new InlineConstant(value), range);
+        }
+
+        public static LiteralExpression CreateLiteralExpression(
+            InlineConstant constant,
+            SourceSpan range)
+        {
+            var expression = new LiteralExpression(CreateToken(constant))
             {
                 Range = range
             };
             return expression;
         }
 
-        private static ValueToken CreateToken(ScriptDatum value)
+        private static ValueToken CreateToken(InlineConstant constant)
         {
+            var value = constant.Value;
             switch (value.Kind)
             {
                 case ValueKind.Null:
@@ -84,11 +95,45 @@ namespace AuroraScript.Compiler.Backend.Analysis
                 case ValueKind.Boolean:
                     return new BooleanToken(value.Boolean);
                 case ValueKind.Number:
-                    return new NumberToken(value.Number);
+                    return new NumberToken(value.Number, constant.NumericHint);
                 case ValueKind.String:
                     return new StringToken { Value = value.StringText ?? string.Empty };
                 default:
                     throw new ArgumentException("Only primitive const values can be inlined.", nameof(value));
+            }
+        }
+
+        private static NumericLiteralSuffix GetNumericHint(
+            CompileSession session,
+            ModulePlan modulePlan,
+            Expression expression)
+        {
+            switch (expression)
+            {
+                case TypedDocumentExpression tdoc:
+                    return GetNumericHint(session, modulePlan, tdoc.Value);
+                case GroupExpression group:
+                    return GetNumericHint(session, modulePlan, group.Expression);
+                case LiteralExpression { Token: NumberToken number }:
+                    return number.Suffix != NumericLiteralSuffix.None
+                        ? number.Suffix
+                        : number.HasFractionOrExponent
+                            ? NumericLiteralSuffix.Number
+                            : NumericLiteralSuffix.None;
+                case NameExpression name
+                    when !string.IsNullOrEmpty(name.Identifier?.Value) &&
+                        modulePlan.TryGetSymbol(name.Identifier.Value, out var symbolId) &&
+                        modulePlan.TryGetInlineConstantInfo(symbolId, out var constant):
+                    return constant.NumericHint;
+                case GetPropertyExpression property
+                    when TryResolvePropertyConstantInfo(
+                        session,
+                        modulePlan,
+                        property,
+                        out var propertyConstant):
+                    return propertyConstant.NumericHint;
+                default:
+                    return NumericLiteralSuffix.None;
             }
         }
 
@@ -350,7 +395,27 @@ namespace AuroraScript.Compiler.Backend.Analysis
             GetPropertyExpression property,
             out ScriptDatum value)
         {
+            if (TryResolvePropertyConstantInfo(
+                session,
+                modulePlan,
+                property,
+                out var constant))
+            {
+                value = constant.Value;
+                return true;
+            }
+
             value = default;
+            return false;
+        }
+
+        public static bool TryResolvePropertyConstantInfo(
+            CompileSession session,
+            ModulePlan modulePlan,
+            GetPropertyExpression property,
+            out InlineConstant constant)
+        {
+            constant = default;
             if (property?.Property is not NameExpression member ||
                 string.IsNullOrEmpty(member.Identifier?.Value))
             {
@@ -366,8 +431,9 @@ namespace AuroraScript.Compiler.Backend.Analysis
                         ownerName,
                         member.Identifier.Value,
                         requireExport: false,
-                        out value))
+                        out var enumValue))
                 {
+                    constant = new InlineConstant(enumValue);
                     return true;
                 }
 
@@ -383,7 +449,7 @@ namespace AuroraScript.Compiler.Backend.Analysis
                         symbol.Kind == BackendSymbolKind.ModuleProperty &&
                         symbol.HasFlag(BackendSymbolFlags.Const) &&
                         symbol.HasFlag(BackendSymbolFlags.Exported) &&
-                        imported.TryGetInlineConstant(symbolId, out value);
+                        imported.TryGetInlineConstantInfo(symbolId, out constant);
                 }
                 return false;
             }
@@ -399,13 +465,17 @@ namespace AuroraScript.Compiler.Backend.Analysis
                     alias.Identifier?.Value,
                     out var enumModule))
             {
-                return TryResolveEnumMember(
+                if (TryResolveEnumMember(
                     session,
                     enumModule,
                     enumeration.Identifier?.Value,
                     member.Identifier.Value,
                     requireExport: true,
-                    out value);
+                    out var enumValue))
+                {
+                    constant = new InlineConstant(enumValue);
+                    return true;
+                }
             }
 
             return false;
