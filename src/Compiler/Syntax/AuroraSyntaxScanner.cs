@@ -261,9 +261,14 @@ namespace AuroraScript.Compiler.Syntax
                 return false;
             }
 
-            if (NumericLiteralFacts.TryConsumeSuffix(span, i, hexadecimal: true, out _))
+            if (NumericLiteralFacts.TryConsumeSuffix(
+                    span,
+                    i,
+                    hexadecimal: true,
+                    out _,
+                    out var suffixLength))
             {
-                i++;
+                i += suffixLength;
             }
 
             result = ScanResult.Token(SyntaxTokenKind.Number, i);
@@ -318,10 +323,15 @@ namespace AuroraScript.Compiler.Syntax
                 return false;
             }
 
-            if (NumericLiteralFacts.TryConsumeSuffix(span, i, hexadecimal: false, out var suffix) &&
+            if (NumericLiteralFacts.TryConsumeSuffix(
+                    span,
+                    i,
+                    hexadecimal: false,
+                    out var suffix,
+                    out var suffixLength) &&
                 (suffix == NumericLiteralSuffix.Number || dot < 0))
             {
-                i++;
+                i += suffixLength;
             }
 
             result = ScanResult.Token(SyntaxTokenKind.Number, i);

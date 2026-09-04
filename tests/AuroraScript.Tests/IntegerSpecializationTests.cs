@@ -769,7 +769,7 @@ public sealed class IntegerSpecializationTests
     }
 
     [Fact]
-    public async Task PersistenceUsesInt64ForExactLargeIntegerAndDoubleForFraction()
+    public async Task PersistenceUsesDoubleForUnsuffixedLargeIntegerAndNativeTypesForSuffixes()
     {
         using var workspace = new TestWorkspace();
         await workspace.CompileModuleAsync(
@@ -777,15 +777,74 @@ public sealed class IntegerSpecializationTests
             @module(TEST);
             native func largeValue() Number { return 3000000000; }
             native func fractionalValue() Number { return 1.25; }
-            export func run() { return [largeValue(), fractionalValue()]; }
+            native func signedValue() int64 { return 3000000000L; }
+            native func unsignedValue() uint64 { return 3000000000UL; }
+            export func run() { return [largeValue(), fractionalValue(), signedValue(), unsignedValue()]; }
             """,
             CompilationMode.Persistence);
 
         using var stream = File.OpenRead(Path.Combine(workspace.Root, "test-output.dll"));
         using var peReader = new PEReader(stream);
         var reader = peReader.GetMetadataReader();
-        Assert.Equal(0x0a, reader.GetBlobBytes(FindMethod(reader, "largeValue$native").Signature)[2]);
+        Assert.Equal(0x0d, reader.GetBlobBytes(FindMethod(reader, "largeValue$native").Signature)[2]);
         Assert.Equal(0x0d, reader.GetBlobBytes(FindMethod(reader, "fractionalValue$native").Signature)[2]);
+        Assert.Equal(0x0a, reader.GetBlobBytes(FindMethod(reader, "signedValue$native").Signature)[2]);
+        Assert.Equal(0x0b, reader.GetBlobBytes(FindMethod(reader, "unsignedValue$native").Signature)[2]);
+    }
+
+    [Fact]
+    public async Task PersistenceEmitsNativeInt64AndUInt64Kernels()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+
+            native func signedKernel(int64 value, int64 addend, int64 shift) int64 {
+                return (value + addend) ^ (value << shift);
+            }
+
+            native func unsignedKernel(uint64 value, uint64 addend, uint64 shift) uint64 {
+                return (value + addend) ^ (value >> shift);
+            }
+
+            export func run() {
+                return [signedKernel(1L, 2L, 3L), unsignedKernel(8UL, 1UL, 2UL)];
+            }
+            """,
+            CompilationMode.Persistence);
+
+        using var stream = File.OpenRead(Path.Combine(workspace.Root, "test-output.dll"));
+        using var peReader = new PEReader(stream);
+        var reader = peReader.GetMetadataReader();
+
+        var signed = FindMethod(reader, "signedKernel$native");
+        var signedSignature = reader.GetBlobBytes(signed.Signature);
+        Assert.Equal(4, signedSignature[1]); // ScriptContext plus three Int64 parameters.
+        Assert.Equal(0x0a, signedSignature[2]);
+        Assert.Equal(new byte[] { 0x0a, 0x0a, 0x0a }, signedSignature[^3..]);
+        var signedIl = peReader.GetMethodBody(signed.RelativeVirtualAddress).GetILBytes();
+        var signedOpcodes = ReadOpCodes(signedIl.AsSpan());
+        Assert.Contains(OpCodes.Add, signedOpcodes);
+        Assert.Contains(OpCodes.Xor, signedOpcodes);
+        Assert.Contains(OpCodes.Shl, signedOpcodes);
+        Assert.DoesNotContain(OpCodes.Conv_R8, signedOpcodes);
+        Assert.DoesNotContain(OpCodes.Conv_R_Un, signedOpcodes);
+        AssertNoNumericChecks(reader, signedIl);
+
+        var unsigned = FindMethod(reader, "unsignedKernel$native");
+        var unsignedSignature = reader.GetBlobBytes(unsigned.Signature);
+        Assert.Equal(4, unsignedSignature[1]); // ScriptContext plus three UInt64 parameters.
+        Assert.Equal(0x0b, unsignedSignature[2]);
+        Assert.Equal(new byte[] { 0x0b, 0x0b, 0x0b }, unsignedSignature[^3..]);
+        var unsignedIl = peReader.GetMethodBody(unsigned.RelativeVirtualAddress).GetILBytes();
+        var unsignedOpcodes = ReadOpCodes(unsignedIl.AsSpan());
+        Assert.Contains(OpCodes.Add, unsignedOpcodes);
+        Assert.Contains(OpCodes.Xor, unsignedOpcodes);
+        Assert.Contains(OpCodes.Shr_Un, unsignedOpcodes);
+        Assert.DoesNotContain(OpCodes.Conv_R8, unsignedOpcodes);
+        Assert.DoesNotContain(OpCodes.Conv_R_Un, unsignedOpcodes);
+        AssertNoNumericChecks(reader, unsignedIl);
     }
 
     private static MethodDefinition FindMethod(MetadataReader reader, string name)

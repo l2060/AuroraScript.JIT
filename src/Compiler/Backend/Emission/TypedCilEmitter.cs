@@ -307,6 +307,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     FlowValueType.Int32 => typeof(int),
                     FlowValueType.UInt32 => typeof(uint),
                     FlowValueType.Int64 => typeof(long),
+                    FlowValueType.UInt64 => typeof(ulong),
                     FlowValueType.Boolean => typeof(bool),
                     FlowValueType.Number => typeof(double),
                     _ => typeof(ScriptDatum)
@@ -335,6 +336,8 @@ namespace AuroraScript.Compiler.Backend.Emission
                             ? StackValueKind.UInt32
                         : code.ReturnType == FlowValueType.Int64
                             ? StackValueKind.Int64
+                        : code.ReturnType == FlowValueType.UInt64
+                            ? StackValueKind.UInt64
                         : code.ReturnType == FlowValueType.Boolean
                             ? StackValueKind.Boolean
                         : code.ReturnType == FlowValueType.Number
@@ -427,6 +430,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                 case StackValueKind.Int64:
                     il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromInt64);
                     break;
+                case StackValueKind.UInt64:
+                    il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromUInt64);
+                    break;
                 case StackValueKind.Number:
                     il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromNumber);
                     break;
@@ -468,10 +474,23 @@ namespace AuroraScript.Compiler.Backend.Emission
                         TypedRuntimeMetadata.DatumFromBoolean);
                     return;
                 case NumberToken number:
-                    il.Emit(OpCodes.Ldc_R8, number.NumberValue);
-                    il.Emit(
-                        OpCodes.Call,
-                        TypedRuntimeMetadata.DatumFromNumber);
+                    if (number.Suffix == NumericLiteralSuffix.Int64 &&
+                        number.TryGetInt64(out var int64))
+                    {
+                        il.Emit(OpCodes.Ldc_I8, int64);
+                        il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromInt64);
+                    }
+                    else if (number.Suffix == NumericLiteralSuffix.UInt64 &&
+                        number.TryGetUInt64(out var uint64))
+                    {
+                        il.Emit(OpCodes.Ldc_I8, unchecked((long)uint64));
+                        il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromUInt64);
+                    }
+                    else
+                    {
+                        il.Emit(OpCodes.Ldc_R8, number.NumberValue);
+                        il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromNumber);
+                    }
                     return;
                 case StringToken text:
                     _session.Builder.LoadStringConstant(il, text.Value);
@@ -504,8 +523,18 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
             if (type == FlowValueType.Int64)
             {
-                il.Emit(OpCodes.Call, TypedRuntimeMetadata.ToArithmeticNumber);
-                il.Emit(OpCodes.Conv_I8);
+                var datum = il.DeclareLocal(typeof(ScriptDatum));
+                il.Emit(OpCodes.Stloc, datum);
+                il.Emit(OpCodes.Ldloca, datum);
+                il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumInt64);
+                return;
+            }
+            if (type == FlowValueType.UInt64)
+            {
+                var datum = il.DeclareLocal(typeof(ScriptDatum));
+                il.Emit(OpCodes.Stloc, datum);
+                il.Emit(OpCodes.Ldloca, datum);
+                il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumUInt64);
                 return;
             }
             if (type == FlowValueType.Number)
@@ -649,6 +678,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                             StackValueKind.Int32 => typeof(int),
                             StackValueKind.UInt32 => typeof(uint),
                             StackValueKind.Int64 => typeof(long),
+                            StackValueKind.UInt64 => typeof(ulong),
                             StackValueKind.Number => typeof(double),
                             StackValueKind.Boolean => typeof(bool),
                             StackValueKind.Object when nativeReturn != null =>
@@ -680,7 +710,8 @@ namespace AuroraScript.Compiler.Backend.Emission
                 EmitStatement(body);
                 if (returnKind is StackValueKind.Int32 or StackValueKind.UInt32 or
                     StackValueKind.Boolean) _il.Emit(OpCodes.Ldc_I4_0);
-                else if (returnKind == StackValueKind.Int64) _il.Emit(OpCodes.Ldc_I8, 0L);
+                else if (returnKind is StackValueKind.Int64 or StackValueKind.UInt64)
+                    _il.Emit(OpCodes.Ldc_I8, 0L);
                 else if (returnKind == StackValueKind.Number) _il.Emit(OpCodes.Ldc_R8, double.NaN);
                 else if (returnKind == StackValueKind.Object && nativeReturn != null) _il.Emit(OpCodes.Ldnull);
                 else if (returnKind != StackValueKind.Void) EmitNull();
@@ -785,6 +816,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     FlowValueType.Int32 => typeof(int),
                     FlowValueType.UInt32 => typeof(uint),
                     FlowValueType.Int64 => typeof(long),
+                    FlowValueType.UInt64 => typeof(ulong),
                     FlowValueType.Number => typeof(double),
                     FlowValueType.Boolean => typeof(bool),
                     FlowValueType.String => typeof(string),
@@ -1140,6 +1172,10 @@ namespace AuroraScript.Compiler.Backend.Emission
                 {
                     ConvertStackToInt64(kind);
                 }
+                else if (storageType == FlowValueType.UInt64)
+                {
+                    ConvertStackToUInt64(kind);
+                }
                 else if (storageType == FlowValueType.Boolean)
                 {
                     ConvertStackToBoolean(kind);
@@ -1162,6 +1198,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                     return;
                 case FlowValueType.Int64:
                     ConvertStackToInt64(StackValueKind.Datum);
+                    return;
+                case FlowValueType.UInt64:
+                    ConvertStackToUInt64(StackValueKind.Datum);
                     return;
                 case FlowValueType.Number:
                     ConvertStackToNumber(StackValueKind.Datum);
@@ -1380,6 +1419,11 @@ namespace AuroraScript.Compiler.Backend.Emission
                 if (expression == null) _il.Emit(OpCodes.Ldc_I8, 0L);
                 else EmitInt64Value(expression);
             }
+            else if (_methodReturnKind == StackValueKind.UInt64)
+            {
+                if (expression == null) _il.Emit(OpCodes.Ldc_I8, 0L);
+                else EmitUInt64Value(expression);
+            }
             else if (_methodReturnKind == StackValueKind.Number)
             {
                 if (expression == null) _il.Emit(OpCodes.Ldc_R8, double.NaN);
@@ -1441,7 +1485,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             if (declared == FlowValueType.Number)
             {
                 return actual is FlowValueType.Number or FlowValueType.Int32 or
-                    FlowValueType.UInt32 or FlowValueType.Int64;
+                    FlowValueType.UInt32;
             }
             return actual == declared;
         }
@@ -1462,6 +1506,11 @@ namespace AuroraScript.Compiler.Backend.Emission
             if (_methodReturnKind == StackValueKind.Int64)
             {
                 ConvertStackToInt64(kind);
+                return;
+            }
+            if (_methodReturnKind == StackValueKind.UInt64)
+            {
+                ConvertStackToUInt64(kind);
                 return;
             }
             if (_methodReturnKind == StackValueKind.Number)
@@ -1517,7 +1566,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 case FlowValueType.Int32:
                     if (variable.Initializer == null) _il.Emit(OpCodes.Ldc_I4_0);
-                    else EmitInt32Value(variable.Initializer);
+                    else EmitInt32Operand(variable.Initializer, truncateThroughInt64: true);
                     break;
                 case FlowValueType.UInt32:
                     if (variable.Initializer == null) _il.Emit(OpCodes.Ldc_I4_0);
@@ -1526,6 +1575,10 @@ namespace AuroraScript.Compiler.Backend.Emission
                 case FlowValueType.Int64:
                     if (variable.Initializer == null) _il.Emit(OpCodes.Ldc_I8, 0L);
                     else EmitInt64Value(variable.Initializer);
+                    break;
+                case FlowValueType.UInt64:
+                    if (variable.Initializer == null) _il.Emit(OpCodes.Ldc_I8, 0L);
+                    else EmitUInt64Value(variable.Initializer);
                     break;
                 case FlowValueType.Number:
                     if (variable.Initializer == null) _il.Emit(OpCodes.Ldc_R8, 0d);
@@ -2062,6 +2115,16 @@ namespace AuroraScript.Compiler.Backend.Emission
                 _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckUInt32Value);
                 return StackValueKind.UInt32;
             }
+            if (type == FlowValueType.Int64)
+            {
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckInt64Value);
+                return StackValueKind.Int64;
+            }
+            if (type == FlowValueType.UInt64)
+            {
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckUInt64Value);
+                return StackValueKind.UInt64;
+            }
             _il.Emit(
                 OpCodes.Call,
                 TypedRuntimeMetadata.GetTypeCheck(
@@ -2101,8 +2164,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return true;
             }
             if (type == FlowValueType.UInt32 &&
-                actual is FlowValueType.Number or FlowValueType.Int32 or
-                    FlowValueType.Int64)
+                actual is FlowValueType.Number or FlowValueType.Int32)
             {
                 EmitNumber(value);
                 _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckUInt32Number);
@@ -2111,10 +2173,22 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
             if (type == FlowValueType.Number &&
                 actual is FlowValueType.Number or FlowValueType.Int32 or
-                    FlowValueType.UInt32 or FlowValueType.Int64)
+                    FlowValueType.UInt32)
             {
                 EmitNumber(value);
                 kind = StackValueKind.Number;
+                return true;
+            }
+            if (type == FlowValueType.Int64 && FlowValueTypeFacts.IsNumeric(actual))
+            {
+                EmitInt64Value(value);
+                kind = StackValueKind.Int64;
+                return true;
+            }
+            if (type == FlowValueType.UInt64 && FlowValueTypeFacts.IsNumeric(actual))
+            {
+                EmitUInt64Value(value);
+                kind = StackValueKind.UInt64;
                 return true;
             }
             if (type == FlowValueType.Boolean && actual == FlowValueType.Boolean)
@@ -2150,6 +2224,18 @@ namespace AuroraScript.Compiler.Backend.Emission
                 _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumNumber);
                 _il.Emit(OpCodes.Conv_U4);
                 return StackValueKind.UInt32;
+            }
+            if (type == FlowValueType.Int64)
+            {
+                _il.Emit(OpCodes.Ldloca, value);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumInt64);
+                return StackValueKind.Int64;
+            }
+            if (type == FlowValueType.UInt64)
+            {
+                _il.Emit(OpCodes.Ldloca, value);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumUInt64);
+                return StackValueKind.UInt64;
             }
             if (type == FlowValueType.Boolean)
             {
@@ -2303,6 +2389,16 @@ namespace AuroraScript.Compiler.Backend.Emission
                 }
                 ConvertStackToUInt32(StackValueKind.Datum);
                 return StackValueKind.UInt32;
+            }
+            if (fieldType == FlowValueType.Int64)
+            {
+                ConvertStackToInt64(StackValueKind.Datum);
+                return StackValueKind.Int64;
+            }
+            if (fieldType == FlowValueType.UInt64)
+            {
+                ConvertStackToUInt64(StackValueKind.Datum);
+                return StackValueKind.UInt64;
             }
             if (fieldType == FlowValueType.Boolean)
             {
@@ -2493,18 +2589,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             FlowValueType arrayType)
         {
             EmitPackedArrayStorage(receiver, arrayType);
-            LocalBuilder indexLocal = null;
-            if (arrayType is FlowValueType.Int64Array or FlowValueType.UInt64Array)
-            {
-                indexLocal = DeclareLocal(typeof(int));
-                EmitInt32Value(index);
-                _il.Emit(OpCodes.Stloc, indexLocal);
-                _il.Emit(OpCodes.Ldloc, indexLocal);
-            }
-            else
-            {
-                EmitInt32Value(index);
-            }
+            EmitInt32Value(index);
             switch (arrayType)
             {
                 case FlowValueType.Int32Array:
@@ -2540,15 +2625,10 @@ namespace AuroraScript.Compiler.Backend.Emission
                     return StackValueKind.UInt32;
                 case FlowValueType.Int64Array:
                     _il.Emit(OpCodes.Ldelem_I8);
-                    _il.Emit(OpCodes.Ldloc, indexLocal);
-                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ToExactInt64Number);
-                    return StackValueKind.Number;
+                    return StackValueKind.Int64;
                 case FlowValueType.UInt64Array:
                     _il.Emit(OpCodes.Ldelem_I8);
-                    _il.Emit(OpCodes.Conv_U8);
-                    _il.Emit(OpCodes.Ldloc, indexLocal);
-                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ToExactUInt64Number);
-                    return StackValueKind.Number;
+                    return StackValueKind.UInt64;
                 default:
                     throw new NotSupportedException("Unknown packed-array element type.");
             }
@@ -2624,8 +2704,14 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
             else if (arrayType is FlowValueType.Int64Array or FlowValueType.UInt64Array)
             {
-                ConvertStackToNumber(storedKind);
-                _il.Emit(arrayType == FlowValueType.UInt64Array ? OpCodes.Conv_U8 : OpCodes.Conv_I8);
+                if (arrayType == FlowValueType.Int64Array)
+                {
+                    ConvertStackToInt64(storedKind);
+                }
+                else
+                {
+                    ConvertStackToUInt64(storedKind);
+                }
                 _il.Emit(OpCodes.Stelem_I8);
             }
             else
@@ -2842,6 +2928,30 @@ namespace AuroraScript.Compiler.Backend.Emission
                 case "Number":
                     EmitNumber(expression.Value);
                     return StackValueKind.Number;
+                case "Int64":
+                    if (TypedDocumentLiteralConstants.TryGetInt64(
+                        expression.Value,
+                        out var int64))
+                    {
+                        _il.Emit(OpCodes.Ldc_I8, int64);
+                    }
+                    else
+                    {
+                        EmitInt64Value(expression.Value);
+                    }
+                    return StackValueKind.Int64;
+                case "UInt64":
+                    if (TypedDocumentLiteralConstants.TryGetUInt64(
+                        expression.Value,
+                        out var uint64))
+                    {
+                        _il.Emit(OpCodes.Ldc_I8, unchecked((long)uint64));
+                    }
+                    else
+                    {
+                        EmitUInt64Value(expression.Value);
+                    }
+                    return StackValueKind.UInt64;
                 case "Boolean":
                     EmitCondition(expression.Value);
                     return StackValueKind.Boolean;
@@ -3048,7 +3158,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         private static bool IsBuiltInTDocTypeName(string typeName)
         {
             return typeName is "Null" or "Object" or "Array" or "String" or "Number" or
-                "Boolean" or "StringBuffer" or "Date" or "Regex" or "Path" or "HashMap" or
+                "Int64" or "UInt64" or "Boolean" or "StringBuffer" or "Date" or "Regex" or "Path" or "HashMap" or
                 "Int32Array" or "Int8Array" or "Float32Array" or "Float64Array" or "BooleanArray" or
                 "UInt8Array" or "Int16Array" or "UInt16Array" or "UInt32Array" or
                 "Int64Array" or "UInt64Array";
@@ -3672,6 +3782,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 FlowValueType.Int32 => StackValueKind.Int32,
                 FlowValueType.UInt32 => StackValueKind.UInt32,
                 FlowValueType.Int64 => StackValueKind.Int64,
+                FlowValueType.UInt64 => StackValueKind.UInt64,
                 FlowValueType.Number => StackValueKind.Number,
                 FlowValueType.Boolean => StackValueKind.Boolean,
                 _ => StackValueKind.Datum
@@ -3729,6 +3840,10 @@ namespace AuroraScript.Compiler.Backend.Emission
             else if (parameter.Type == FlowValueType.Int64)
             {
                 EmitInt64Value(argument);
+            }
+            else if (parameter.Type == FlowValueType.UInt64)
+            {
+                EmitUInt64Value(argument);
             }
             else if (parameter.Type == FlowValueType.Number)
             {
@@ -4396,7 +4511,8 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             var type = _code.GetExpressionType(expression);
             if ((type & (FlowValueType.Int32 | FlowValueType.UInt32 |
-                    FlowValueType.Int64 | FlowValueType.Number)) != 0 ||
+                    FlowValueType.Int64 | FlowValueType.UInt64 |
+                    FlowValueType.Number)) != 0 ||
                 type == FlowValueType.Dynamic)
             {
                 EmitDatum(expression);
@@ -4488,20 +4604,26 @@ namespace AuroraScript.Compiler.Backend.Emission
             switch (literal.Token)
             {
                 case NumberToken number:
-                    if (_code.GetExpressionType(literal) == FlowValueType.Int32)
+                    var type = _code.GetExpressionType(literal);
+                    if (type == FlowValueType.Int32)
                     {
                         EmitInt32((int)number.NumberValue);
                         return StackValueKind.Int32;
                     }
-                    if (_code.GetExpressionType(literal) == FlowValueType.UInt32)
+                    if (type == FlowValueType.UInt32)
                     {
                         EmitInt32(unchecked((int)(uint)number.NumberValue));
                         return StackValueKind.UInt32;
                     }
-                    if (_code.GetExpressionType(literal) == FlowValueType.Int64)
+                    if (type == FlowValueType.Int64 && number.TryGetInt64(out var int64))
                     {
-                        _il.Emit(OpCodes.Ldc_I8, (long)number.NumberValue);
+                        _il.Emit(OpCodes.Ldc_I8, int64);
                         return StackValueKind.Int64;
+                    }
+                    if (type == FlowValueType.UInt64 && number.TryGetUInt64(out var uint64))
+                    {
+                        _il.Emit(OpCodes.Ldc_I8, unchecked((long)uint64));
+                        return StackValueKind.UInt64;
                     }
                     _il.Emit(OpCodes.Ldc_R8, number.NumberValue);
                     return StackValueKind.Number;
@@ -4565,6 +4687,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 FlowValueType.Int32 => StackValueKind.Int32,
                 FlowValueType.UInt32 => StackValueKind.UInt32,
                 FlowValueType.Int64 => StackValueKind.Int64,
+                FlowValueType.UInt64 => StackValueKind.UInt64,
                 FlowValueType.Number => StackValueKind.Number,
                 FlowValueType.Boolean => StackValueKind.Boolean,
                 FlowValueType.String => StackValueKind.String,
@@ -4610,8 +4733,19 @@ namespace AuroraScript.Compiler.Backend.Emission
                         _il.Emit(OpCodes.Ldc_I8, (long)value.Number);
                         return StackValueKind.Int64;
                     }
+                    if (type == FlowValueType.UInt64)
+                    {
+                        _il.Emit(OpCodes.Ldc_I8, unchecked((long)(ulong)value.Number));
+                        return StackValueKind.UInt64;
+                    }
                     _il.Emit(OpCodes.Ldc_R8, value.Number);
                     return StackValueKind.Number;
+                case ValueKind.Int64:
+                    _il.Emit(OpCodes.Ldc_I8, value.Int64);
+                    return StackValueKind.Int64;
+                case ValueKind.UInt64:
+                    _il.Emit(OpCodes.Ldc_I8, unchecked((long)value.UInt64));
+                    return StackValueKind.UInt64;
                 case ValueKind.String:
                     _session.Builder.LoadStringConstant(_il, value.StringText ?? string.Empty);
                     return StackValueKind.String;
@@ -4651,16 +4785,19 @@ namespace AuroraScript.Compiler.Backend.Emission
                 EmitInt32ArithmeticOperator(op);
                 return StackValueKind.Int32;
             }
-            if ((op == Operator.Add || op == Operator.Subtract ||
-                    op == Operator.Multiply || op == Operator.Modulo) &&
-                _code.GetExpressionType(binary) == FlowValueType.Int64)
+            if (IsArithmetic(op) &&
+                _code.GetExpressionType(binary.Left) == FlowValueType.Int64 &&
+                _code.GetExpressionType(binary.Right) == FlowValueType.Int64)
             {
-                EmitInt64Value(binary.Left);
-                EmitInt64Value(binary.Right);
-                _il.Emit(op == Operator.Add ? OpCodes.Add :
-                    op == Operator.Subtract ? OpCodes.Sub :
-                    op == Operator.Multiply ? OpCodes.Mul : OpCodes.Rem);
+                EmitInt64Binary(op, binary.Left, binary.Right);
                 return StackValueKind.Int64;
+            }
+            if (IsArithmetic(op) &&
+                _code.GetExpressionType(binary.Left) == FlowValueType.UInt64 &&
+                _code.GetExpressionType(binary.Right) == FlowValueType.UInt64)
+            {
+                EmitUInt64Binary(op, binary.Left, binary.Right);
+                return StackValueKind.UInt64;
             }
 
             if (op == Operator.Add && _code.GetExpressionType(binary) == FlowValueType.Number)
@@ -4671,8 +4808,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return StackValueKind.Number;
             }
 
-            if (op == Operator.Subtract || op == Operator.Multiply ||
-                op == Operator.Divide || op == Operator.Modulo)
+            if ((op == Operator.Subtract || op == Operator.Multiply ||
+                    op == Operator.Divide || op == Operator.Modulo) &&
+                _code.GetExpressionType(binary) == FlowValueType.Number)
             {
                 EmitArithmeticNumber(binary.Left);
                 EmitArithmeticNumber(binary.Right);
@@ -4807,13 +4945,28 @@ namespace AuroraScript.Compiler.Backend.Emission
                 EmitNativeUInt32Comparison(op);
                 return;
             }
-            if (leftType is FlowValueType.Int32 or FlowValueType.Int64 &&
-                rightType is FlowValueType.Int32 or FlowValueType.Int64 &&
-                (leftType == FlowValueType.Int64 || rightType == FlowValueType.Int64))
+            if (leftType == FlowValueType.Int64 && rightType == FlowValueType.Int64)
             {
                 EmitInt64Value(binary.Left);
                 EmitInt64Value(binary.Right);
                 EmitNativeInt32Comparison(op);
+                return;
+            }
+            if (leftType == FlowValueType.UInt64 && rightType == FlowValueType.UInt64)
+            {
+                EmitUInt64Value(binary.Left);
+                EmitUInt64Value(binary.Right);
+                EmitNativeUInt32Comparison(op);
+                return;
+            }
+            if (leftType == FlowValueType.Int64 && rightType == FlowValueType.UInt64)
+            {
+                EmitInt64UInt64Comparison(binary.Left, binary.Right, op);
+                return;
+            }
+            if (leftType == FlowValueType.UInt64 && rightType == FlowValueType.Int64)
+            {
+                EmitUInt64Int64Comparison(binary.Left, binary.Right, op);
                 return;
             }
             if (FlowValueTypeFacts.IsNumeric(leftType) &&
@@ -4949,22 +5102,22 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             // TryToNumber never fails for these kinds, so the runtime guard is
             // only required on the opposite operand.
-            return FlowValueTypeFacts.IsNumeric(type) || type == FlowValueType.Boolean;
+            return FlowValueTypeFacts.IsNumberCompatible(type) ||
+                type == FlowValueType.Boolean;
         }
 
         private bool TryEmitCachedParameterComparison(BinaryExpression binary)
         {
             var leftCached = TryGetCachedParameter(binary.Left, out var leftValue, out var leftValid);
             var rightCached = TryGetCachedParameter(binary.Right, out var rightValue, out var rightValid);
-            if ((binary.Operator == Operator.Equal || binary.Operator == Operator.NotEqual) &&
-                leftCached && rightCached)
+            if (leftCached && rightCached)
             {
-                // Same-kind strings use ordinal equality, so two dynamically typed
-                // parameters cannot be reduced to their numeric coercions alone.
+                // Dynamic operands may both be exact 64-bit integers. Their
+                // comparison cannot be reduced to lossy numeric shadows.
                 return false;
             }
-            if ((!leftCached && !FlowValueTypeFacts.IsNumeric(_code.GetExpressionType(binary.Left))) ||
-                (!rightCached && !FlowValueTypeFacts.IsNumeric(_code.GetExpressionType(binary.Right))) ||
+            if ((!leftCached && !FlowValueTypeFacts.IsNumberCompatible(_code.GetExpressionType(binary.Left))) ||
+                (!rightCached && !FlowValueTypeFacts.IsNumberCompatible(_code.GetExpressionType(binary.Right))) ||
                 (!leftCached && !rightCached))
             {
                 return false;
@@ -5144,16 +5297,92 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
         }
 
+        private void EmitInt64UInt64Comparison(
+            Expression leftExpression,
+            Expression rightExpression,
+            Operator op)
+        {
+            var left = DeclareLocal(typeof(long));
+            var right = DeclareLocal(typeof(ulong));
+            EmitInt64Value(leftExpression);
+            _il.Emit(OpCodes.Stloc, left);
+            EmitUInt64Value(rightExpression);
+            _il.Emit(OpCodes.Stloc, right);
+
+            var nonNegative = _il.DefineLabel();
+            var end = _il.DefineLabel();
+            _il.Emit(OpCodes.Ldloc, left);
+            _il.Emit(OpCodes.Ldc_I8, 0L);
+            _il.Emit(OpCodes.Bge, nonNegative);
+            _il.Emit(
+                op == Operator.NotEqual ||
+                    op == Operator.LessThan ||
+                    op == Operator.LessThanOrEqual
+                    ? OpCodes.Ldc_I4_1
+                    : OpCodes.Ldc_I4_0);
+            _il.Emit(OpCodes.Br, end);
+            _il.MarkLabel(nonNegative);
+            _il.Emit(OpCodes.Ldloc, left);
+            _il.Emit(OpCodes.Ldloc, right);
+            EmitNativeUInt32Comparison(op);
+            _il.MarkLabel(end);
+        }
+
+        private void EmitUInt64Int64Comparison(
+            Expression leftExpression,
+            Expression rightExpression,
+            Operator op)
+        {
+            var left = DeclareLocal(typeof(ulong));
+            var right = DeclareLocal(typeof(long));
+            EmitUInt64Value(leftExpression);
+            _il.Emit(OpCodes.Stloc, left);
+            EmitInt64Value(rightExpression);
+            _il.Emit(OpCodes.Stloc, right);
+
+            var nonNegative = _il.DefineLabel();
+            var end = _il.DefineLabel();
+            _il.Emit(OpCodes.Ldloc, right);
+            _il.Emit(OpCodes.Ldc_I8, 0L);
+            _il.Emit(OpCodes.Bge, nonNegative);
+            _il.Emit(
+                op == Operator.NotEqual ||
+                    op == Operator.GreaterThan ||
+                    op == Operator.GreaterThanOrEqual
+                    ? OpCodes.Ldc_I4_1
+                    : OpCodes.Ldc_I4_0);
+            _il.Emit(OpCodes.Br, end);
+            _il.MarkLabel(nonNegative);
+            _il.Emit(OpCodes.Ldloc, left);
+            _il.Emit(OpCodes.Ldloc, right);
+            EmitNativeUInt32Comparison(op);
+            _il.MarkLabel(end);
+        }
+
         private StackValueKind EmitBitwise(BinaryExpression binary)
         {
             var op = binary.Operator;
+            var leftType = _code.GetExpressionType(binary.Left);
+            var rightType = _code.GetExpressionType(binary.Right);
+            if (leftType == FlowValueType.Int64 && rightType == FlowValueType.Int64)
+            {
+                EmitInt64Bitwise(op, binary.Left, binary.Right);
+                return op == Operator.UnSignedRightShift
+                    ? StackValueKind.UInt64
+                    : StackValueKind.Int64;
+            }
+            if (leftType == FlowValueType.UInt64 && rightType == FlowValueType.UInt64)
+            {
+                EmitUInt64Bitwise(op, binary.Left, binary.Right);
+                return StackValueKind.UInt64;
+            }
             if (FlowValueTypeFacts.IsNumeric(_code.GetExpressionType(binary.Left)) &&
                 FlowValueTypeFacts.IsNumeric(_code.GetExpressionType(binary.Right)))
             {
                 var truncateThroughInt64 = op == Operator.BitwiseAnd ||
                     op == Operator.BitwiseOr || op == Operator.BitwiseXor;
-                EmitInt32Operand(binary.Left, truncateThroughInt64);
-                EmitInt32Operand(binary.Right, truncateThroughInt64);
+                EmitNumberBitwiseOperand(binary.Left, truncateThroughInt64);
+                EmitNumberBitwiseOperand(binary.Right, truncateThroughInt64);
                 var resultType = _code.GetExpressionType(binary);
                 _il.Emit(op == Operator.BitwiseAnd ? OpCodes.And :
                     op == Operator.BitwiseOr ? OpCodes.Or :
@@ -5213,6 +5442,20 @@ namespace AuroraScript.Compiler.Backend.Emission
             ConvertStackToInt32(kind, truncateThroughInt64);
         }
 
+        private void EmitNumberBitwiseOperand(
+            Expression expression,
+            bool truncateThroughInt64)
+        {
+            if (_code.GetExpressionType(expression) is
+                FlowValueType.Int64 or FlowValueType.UInt64)
+            {
+                EmitNumber(expression);
+                ConvertStackToInt32(StackValueKind.Number, truncateThroughInt64);
+                return;
+            }
+            EmitInt32Operand(expression, truncateThroughInt64);
+        }
+
         private StackValueKind EmitAssignment(AssignmentExpression assignment)
         {
             if (assignment.Left is not NameExpression name)
@@ -5251,7 +5494,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
             if (localType == FlowValueType.Int32)
             {
-                EmitInt32Value(assignment.Right);
+                EmitInt32Operand(assignment.Right, truncateThroughInt64: true);
                 _il.Emit(OpCodes.Dup);
                 _il.Emit(OpCodes.Stloc, _locals[binding.Local.Value]);
                 return StackValueKind.Int32;
@@ -5269,6 +5512,13 @@ namespace AuroraScript.Compiler.Backend.Emission
                 _il.Emit(OpCodes.Dup);
                 _il.Emit(OpCodes.Stloc, _locals[binding.Local.Value]);
                 return StackValueKind.Int64;
+            }
+            if (localType == FlowValueType.UInt64)
+            {
+                EmitUInt64Value(assignment.Right);
+                _il.Emit(OpCodes.Dup);
+                _il.Emit(OpCodes.Stloc, _locals[binding.Local.Value]);
+                return StackValueKind.UInt64;
             }
             if (localType == FlowValueType.Number)
             {
@@ -5319,7 +5569,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 ConvertToDatum(valueKind);
                 _il.Emit(OpCodes.Stloc, _locals[binding.Local.Value]);
                 if (valueKind is StackValueKind.Number or StackValueKind.Int64 or
-                    StackValueKind.Int32 or StackValueKind.UInt32 or
+                    StackValueKind.UInt64 or StackValueKind.Int32 or StackValueKind.UInt32 or
                     StackValueKind.Boolean)
                 {
                     _il.Emit(OpCodes.Ldloc, value);
@@ -5373,10 +5623,39 @@ namespace AuroraScript.Compiler.Backend.Emission
                     _code.GetLocalType(binding.Local) == FlowValueType.Int64 &&
                     _code.GetExpressionType(expression) == FlowValueType.Int64)
                 {
-                    EmitInt64Binary(op, name, expression.Right);
+                    if (_code.GetExpressionType(expression.Right) == FlowValueType.Int64)
+                    {
+                        EmitInt64Binary(op, name, expression.Right);
+                        if (op == Operator.UnSignedRightShift)
+                        {
+                            ConvertStackToInt64(StackValueKind.UInt64);
+                        }
+                    }
+                    else
+                    {
+                        EmitNumericBinary(op, name, expression.Right);
+                        _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckInt64Number);
+                    }
                     _il.Emit(OpCodes.Dup);
                     _il.Emit(OpCodes.Stloc, _locals[binding.Local.Value]);
                     return StackValueKind.Int64;
+                }
+                if (binding.IsLocal &&
+                    _code.GetLocalType(binding.Local) == FlowValueType.UInt64 &&
+                    _code.GetExpressionType(expression) == FlowValueType.UInt64)
+                {
+                    if (_code.GetExpressionType(expression.Right) == FlowValueType.UInt64)
+                    {
+                        EmitUInt64Binary(op, name, expression.Right);
+                    }
+                    else
+                    {
+                        EmitNumericBinary(op, name, expression.Right);
+                        _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckUInt64Number);
+                    }
+                    _il.Emit(OpCodes.Dup);
+                    _il.Emit(OpCodes.Stloc, _locals[binding.Local.Value]);
+                    return StackValueKind.UInt64;
                 }
                 if (binding.IsLocal && _code.GetLocalType(binding.Local) == FlowValueType.Number)
                 {
@@ -5456,6 +5735,16 @@ namespace AuroraScript.Compiler.Backend.Emission
                         op != Operator.Divide)
                     {
                         return EmitPackedUInt32Compound(expression, element, op);
+                    }
+                    if (arrayType == FlowValueType.Int64Array &&
+                        _code.GetExpressionType(expression) == FlowValueType.Int64)
+                    {
+                        return EmitPackedInt64Compound(expression, element, op);
+                    }
+                    if (arrayType == FlowValueType.UInt64Array &&
+                        _code.GetExpressionType(expression) == FlowValueType.UInt64)
+                    {
+                        return EmitPackedUInt64Compound(expression, element, op);
                     }
                     return EmitPackedNumericCompound(expression, element, arrayType, op);
                 }
@@ -5583,6 +5872,84 @@ namespace AuroraScript.Compiler.Backend.Emission
             return StackValueKind.UInt32;
         }
 
+        private StackValueKind EmitPackedInt64Compound(
+            CompoundExpression expression,
+            GetElementExpression element,
+            Operator op)
+        {
+            var receiver = DeclareLocal(typeof(long[]));
+            EmitPackedArrayStorage(element.Object, FlowValueType.Int64Array);
+            _il.Emit(OpCodes.Stloc, receiver);
+
+            var index = DeclareLocal(typeof(int));
+            EmitInt32Value(element.Index);
+            _il.Emit(OpCodes.Stloc, index);
+
+            _il.Emit(OpCodes.Ldloc, receiver);
+            _il.Emit(OpCodes.Ldloc, index);
+            _il.Emit(OpCodes.Ldelem_I8);
+            if (_code.GetExpressionType(expression.Right) == FlowValueType.Int64)
+            {
+                EmitInt64BinaryRight(op, expression.Right);
+                if (op == Operator.UnSignedRightShift)
+                {
+                    ConvertStackToInt64(StackValueKind.UInt64);
+                }
+            }
+            else
+            {
+                _il.Emit(OpCodes.Conv_R8);
+                EmitNumericBinaryRight(op, expression.Right);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckInt64Number);
+            }
+
+            var result = DeclareLocal(typeof(long));
+            _il.Emit(OpCodes.Stloc, result);
+            _il.Emit(OpCodes.Ldloc, receiver);
+            _il.Emit(OpCodes.Ldloc, index);
+            _il.Emit(OpCodes.Ldloc, result);
+            _il.Emit(OpCodes.Stelem_I8);
+            _il.Emit(OpCodes.Ldloc, result);
+            return StackValueKind.Int64;
+        }
+
+        private StackValueKind EmitPackedUInt64Compound(
+            CompoundExpression expression,
+            GetElementExpression element,
+            Operator op)
+        {
+            var receiver = DeclareLocal(typeof(ulong[]));
+            EmitPackedArrayStorage(element.Object, FlowValueType.UInt64Array);
+            _il.Emit(OpCodes.Stloc, receiver);
+
+            var index = DeclareLocal(typeof(int));
+            EmitInt32Value(element.Index);
+            _il.Emit(OpCodes.Stloc, index);
+
+            _il.Emit(OpCodes.Ldloc, receiver);
+            _il.Emit(OpCodes.Ldloc, index);
+            _il.Emit(OpCodes.Ldelem_I8);
+            if (_code.GetExpressionType(expression.Right) == FlowValueType.UInt64)
+            {
+                EmitUInt64BinaryRight(op, expression.Right);
+            }
+            else
+            {
+                _il.Emit(OpCodes.Conv_R_Un);
+                EmitNumericBinaryRight(op, expression.Right);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckUInt64Number);
+            }
+
+            var result = DeclareLocal(typeof(ulong));
+            _il.Emit(OpCodes.Stloc, result);
+            _il.Emit(OpCodes.Ldloc, receiver);
+            _il.Emit(OpCodes.Ldloc, index);
+            _il.Emit(OpCodes.Ldloc, result);
+            _il.Emit(OpCodes.Stelem_I8);
+            _il.Emit(OpCodes.Ldloc, result);
+            return StackValueKind.UInt64;
+        }
+
         private void EmitPackedNumericElement(
             LocalBuilder receiver,
             LocalBuilder index,
@@ -5607,14 +5974,11 @@ namespace AuroraScript.Compiler.Backend.Emission
             });
             if (arrayType == FlowValueType.Int64Array)
             {
-                _il.Emit(OpCodes.Ldloc, index);
-                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ToExactInt64Number);
+                _il.Emit(OpCodes.Conv_R8);
             }
             else if (arrayType == FlowValueType.UInt64Array)
             {
-                _il.Emit(OpCodes.Conv_U8);
-                _il.Emit(OpCodes.Ldloc, index);
-                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ToExactUInt64Number);
+                _il.Emit(OpCodes.Conv_R_Un);
             }
             else if (arrayType == FlowValueType.UInt32Array)
             {
@@ -5644,7 +6008,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     op == Operator.BitwiseOr || op == Operator.BitwiseXor;
                 if (truncateThroughInt64) _il.Emit(OpCodes.Conv_I8);
                 _il.Emit(OpCodes.Conv_I4);
-                EmitInt32Operand(right, truncateThroughInt64);
+                EmitNumberBitwiseOperand(right, truncateThroughInt64);
                 _il.Emit(op == Operator.BitwiseAnd ? OpCodes.And :
                     op == Operator.BitwiseOr ? OpCodes.Or :
                     op == Operator.BitwiseXor ? OpCodes.Xor :
@@ -5681,8 +6045,8 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 var truncateThroughInt64 = op == Operator.BitwiseAnd ||
                     op == Operator.BitwiseOr || op == Operator.BitwiseXor;
-                EmitInt32Operand(left, truncateThroughInt64);
-                EmitInt32Operand(right, truncateThroughInt64);
+                EmitNumberBitwiseOperand(left, truncateThroughInt64);
+                EmitNumberBitwiseOperand(right, truncateThroughInt64);
                 _il.Emit(op == Operator.BitwiseAnd ? OpCodes.And :
                     op == Operator.BitwiseOr ? OpCodes.Or :
                     op == Operator.BitwiseXor ? OpCodes.Xor :
@@ -5786,16 +6150,124 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitInt64Binary(Operator op, Expression left, Expression right)
         {
-            if (op != Operator.Add && op != Operator.Subtract &&
-                op != Operator.Multiply && op != Operator.Modulo)
+            EmitInt64Value(left);
+            EmitInt64BinaryRight(op, right);
+        }
+
+        private void EmitUInt64Binary(Operator op, Expression left, Expression right)
+        {
+            EmitUInt64Value(left);
+            EmitUInt64BinaryRight(op, right);
+        }
+
+        private void EmitInt64BinaryRight(Operator op, Expression right)
+        {
+            EmitInt64Value(right);
+            if (IsArithmetic(op))
             {
-                throw new NotSupportedException("Native Int64 compound operator.");
+                EmitInt64ArithmeticOperator(op);
+                return;
             }
+            EmitInt64BitwiseOperator(op);
+        }
+
+        private void EmitUInt64BinaryRight(Operator op, Expression right)
+        {
+            EmitUInt64Value(right);
+            if (IsArithmetic(op))
+            {
+                EmitUInt64ArithmeticOperator(op);
+                return;
+            }
+            EmitUInt64BitwiseOperator(op);
+        }
+
+        private void EmitInt64ArithmeticOperator(Operator op)
+        {
+            if (op == Operator.Divide)
+            {
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DivideInt64);
+                return;
+            }
+            if (op == Operator.Modulo)
+            {
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ModuloInt64);
+                return;
+            }
+            if (op != Operator.Add && op != Operator.Subtract &&
+                op != Operator.Multiply)
+            {
+                throw new NotSupportedException("Native Int64 arithmetic operator.");
+            }
+            _il.Emit(op == Operator.Add ? OpCodes.Add :
+                op == Operator.Subtract ? OpCodes.Sub : OpCodes.Mul);
+        }
+
+        private void EmitUInt64ArithmeticOperator(Operator op)
+        {
+            if (op == Operator.Divide)
+            {
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DivideUInt64);
+                return;
+            }
+            if (op == Operator.Modulo)
+            {
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ModuloUInt64);
+                return;
+            }
+            if (op != Operator.Add && op != Operator.Subtract &&
+                op != Operator.Multiply)
+            {
+                throw new NotSupportedException("Native UInt64 arithmetic operator.");
+            }
+            _il.Emit(op == Operator.Add ? OpCodes.Add :
+                op == Operator.Subtract ? OpCodes.Sub : OpCodes.Mul);
+        }
+
+        private void EmitInt64Bitwise(Operator op, Expression left, Expression right)
+        {
             EmitInt64Value(left);
             EmitInt64Value(right);
-            _il.Emit(op == Operator.Add ? OpCodes.Add :
-                op == Operator.Subtract ? OpCodes.Sub :
-                op == Operator.Multiply ? OpCodes.Mul : OpCodes.Rem);
+            EmitInt64BitwiseOperator(op);
+        }
+
+        private void EmitInt64BitwiseOperator(Operator op)
+        {
+            if (op == Operator.LeftShift || op == Operator.SignedRightShift ||
+                op == Operator.UnSignedRightShift)
+            {
+                _il.Emit(OpCodes.Conv_I4);
+            }
+            _il.Emit(op == Operator.BitwiseAnd ? OpCodes.And :
+                op == Operator.BitwiseOr ? OpCodes.Or :
+                op == Operator.BitwiseXor ? OpCodes.Xor :
+                op == Operator.LeftShift ? OpCodes.Shl :
+                op == Operator.SignedRightShift ? OpCodes.Shr :
+                op == Operator.UnSignedRightShift ? OpCodes.Shr_Un :
+                throw new NotSupportedException("Native Int64 bitwise operator."));
+        }
+
+        private void EmitUInt64Bitwise(Operator op, Expression left, Expression right)
+        {
+            EmitUInt64Value(left);
+            EmitUInt64Value(right);
+            EmitUInt64BitwiseOperator(op);
+        }
+
+        private void EmitUInt64BitwiseOperator(Operator op)
+        {
+            if (op == Operator.LeftShift || op == Operator.SignedRightShift ||
+                op == Operator.UnSignedRightShift)
+            {
+                _il.Emit(OpCodes.Conv_I4);
+            }
+            _il.Emit(op == Operator.BitwiseAnd ? OpCodes.And :
+                op == Operator.BitwiseOr ? OpCodes.Or :
+                op == Operator.BitwiseXor ? OpCodes.Xor :
+                op == Operator.LeftShift ? OpCodes.Shl :
+                op == Operator.SignedRightShift || op == Operator.UnSignedRightShift
+                    ? OpCodes.Shr_Un
+                    : throw new NotSupportedException("Native UInt64 bitwise operator."));
         }
 
         private void EmitStoreBoundName(BoundName binding, LocalBuilder value)
@@ -5814,8 +6286,10 @@ namespace AuroraScript.Compiler.Backend.Emission
                         _il.Emit(OpCodes.Conv_U4);
                         break;
                     case FlowValueType.Int64:
-                        _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ToArithmeticNumber);
-                        _il.Emit(OpCodes.Conv_I8);
+                        _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckInt64Value);
+                        break;
+                    case FlowValueType.UInt64:
+                        _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckUInt64Value);
                         break;
                     case FlowValueType.Number:
                         _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ToArithmeticNumber);
@@ -5881,6 +6355,19 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
             if (op == Operator.Negate)
             {
+                if (_code.GetExpressionType(unary) == FlowValueType.Int64 &&
+                    unary.Expression is LiteralExpression
+                    {
+                        Token: NumberToken
+                        {
+                            Suffix: NumericLiteralSuffix.Int64
+                        } number
+                    } &&
+                    number.TryGetNegatedInt64(out var negated))
+                {
+                    _il.Emit(OpCodes.Ldc_I8, negated);
+                    return StackValueKind.Int64;
+                }
                 if (_code.GetExpressionType(unary) == FlowValueType.Int32)
                 {
                     EmitInt32Value(unary.Expression);
@@ -5893,9 +6380,21 @@ namespace AuroraScript.Compiler.Backend.Emission
                     _il.Emit(OpCodes.Neg);
                     return StackValueKind.Int64;
                 }
-                EmitArithmeticNumber(unary.Expression);
-                _il.Emit(OpCodes.Neg);
-                return StackValueKind.Number;
+                if (_code.GetExpressionType(unary) == FlowValueType.UInt64)
+                {
+                    EmitUInt64Value(unary.Expression);
+                    _il.Emit(OpCodes.Neg);
+                    return StackValueKind.UInt64;
+                }
+                if (_code.GetExpressionType(unary) == FlowValueType.Number)
+                {
+                    EmitArithmeticNumber(unary.Expression);
+                    _il.Emit(OpCodes.Neg);
+                    return StackValueKind.Number;
+                }
+                EmitDatum(unary.Expression);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.Negate);
+                return StackValueKind.Datum;
             }
             if (op == Operator.LogicalNot)
             {
@@ -5905,6 +6404,18 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
             if (op == Operator.BitwiseNot)
             {
+                if (_code.GetExpressionType(unary) == FlowValueType.Int64)
+                {
+                    EmitInt64Value(unary.Expression);
+                    _il.Emit(OpCodes.Not);
+                    return StackValueKind.Int64;
+                }
+                if (_code.GetExpressionType(unary) == FlowValueType.UInt64)
+                {
+                    EmitUInt64Value(unary.Expression);
+                    _il.Emit(OpCodes.Not);
+                    return StackValueKind.UInt64;
+                }
                 if (FlowValueTypeFacts.IsNumeric(_code.GetExpressionType(unary.Expression)))
                 {
                     if (_code.GetExpressionType(unary) == FlowValueType.UInt32)
@@ -5921,9 +6432,14 @@ namespace AuroraScript.Compiler.Backend.Emission
                 {
                     EmitDatum(unary.Expression);
                     _il.Emit(OpCodes.Call, TypedRuntimeMetadata.BitwiseNot);
-                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ToArithmeticNumber);
-                    _il.Emit(OpCodes.Conv_I8);
-                    _il.Emit(OpCodes.Conv_I4);
+                    if (_code.GetExpressionType(unary) == FlowValueType.Int32)
+                    {
+                        _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ToArithmeticNumber);
+                        _il.Emit(OpCodes.Conv_I8);
+                        _il.Emit(OpCodes.Conv_I4);
+                        return StackValueKind.Int32;
+                    }
+                    return StackValueKind.Datum;
                 }
                 return _code.GetExpressionType(unary) == FlowValueType.UInt32
                     ? StackValueKind.UInt32
@@ -5964,6 +6480,16 @@ namespace AuroraScript.Compiler.Backend.Emission
                         _code.GetExpressionType(unary) == FlowValueType.UInt32)
                     {
                         return EmitPackedUInt32Mutation(unary, element);
+                    }
+                    if (arrayType == FlowValueType.Int64Array &&
+                        _code.GetExpressionType(unary) == FlowValueType.Int64)
+                    {
+                        return EmitPackedInt64Mutation(unary, element);
+                    }
+                    if (arrayType == FlowValueType.UInt64Array &&
+                        _code.GetExpressionType(unary) == FlowValueType.UInt64)
+                    {
+                        return EmitPackedUInt64Mutation(unary, element);
                     }
                     return EmitPackedNumericMutation(unary, element, arrayType);
                 }
@@ -6013,6 +6539,17 @@ namespace AuroraScript.Compiler.Backend.Emission
                 if (!postfix) _il.Emit(OpCodes.Dup);
                 _il.Emit(OpCodes.Stloc, _locals[binding.Local.Value]);
                 return StackValueKind.Int64;
+            }
+            if (_code.GetLocalType(binding.Local) == FlowValueType.UInt64 &&
+                _code.GetExpressionType(unary) == FlowValueType.UInt64)
+            {
+                _il.Emit(OpCodes.Ldloc, _locals[binding.Local.Value]);
+                if (postfix) _il.Emit(OpCodes.Dup);
+                _il.Emit(OpCodes.Ldc_I8, 1L);
+                _il.Emit(increment ? OpCodes.Add : OpCodes.Sub);
+                if (!postfix) _il.Emit(OpCodes.Dup);
+                _il.Emit(OpCodes.Stloc, _locals[binding.Local.Value]);
+                return StackValueKind.UInt64;
             }
             if (_code.GetLocalType(binding.Local) != FlowValueType.Number)
             {
@@ -6101,6 +6638,84 @@ namespace AuroraScript.Compiler.Backend.Emission
                 unary.Operator == Operator.PostDecrement;
             _il.Emit(OpCodes.Ldloc, postfix ? previous : current);
             return StackValueKind.UInt32;
+        }
+
+        private StackValueKind EmitPackedInt64Mutation(
+            UnaryExpression unary,
+            GetElementExpression element)
+        {
+            var receiver = DeclareLocal(typeof(long[]));
+            EmitPackedArrayStorage(element.Object, FlowValueType.Int64Array);
+            _il.Emit(OpCodes.Stloc, receiver);
+
+            var index = DeclareLocal(typeof(int));
+            EmitInt32Value(element.Index);
+            _il.Emit(OpCodes.Stloc, index);
+
+            var previous = DeclareLocal(typeof(long));
+            _il.Emit(OpCodes.Ldloc, receiver);
+            _il.Emit(OpCodes.Ldloc, index);
+            _il.Emit(OpCodes.Ldelem_I8);
+            _il.Emit(OpCodes.Stloc, previous);
+
+            var current = DeclareLocal(typeof(long));
+            _il.Emit(OpCodes.Ldloc, previous);
+            _il.Emit(OpCodes.Ldc_I8, 1L);
+            _il.Emit(
+                unary.Operator == Operator.PreIncrement ||
+                    unary.Operator == Operator.PostIncrement
+                    ? OpCodes.Add
+                    : OpCodes.Sub);
+            _il.Emit(OpCodes.Stloc, current);
+
+            _il.Emit(OpCodes.Ldloc, receiver);
+            _il.Emit(OpCodes.Ldloc, index);
+            _il.Emit(OpCodes.Ldloc, current);
+            _il.Emit(OpCodes.Stelem_I8);
+
+            var postfix = unary.Operator == Operator.PostIncrement ||
+                unary.Operator == Operator.PostDecrement;
+            _il.Emit(OpCodes.Ldloc, postfix ? previous : current);
+            return StackValueKind.Int64;
+        }
+
+        private StackValueKind EmitPackedUInt64Mutation(
+            UnaryExpression unary,
+            GetElementExpression element)
+        {
+            var receiver = DeclareLocal(typeof(ulong[]));
+            EmitPackedArrayStorage(element.Object, FlowValueType.UInt64Array);
+            _il.Emit(OpCodes.Stloc, receiver);
+
+            var index = DeclareLocal(typeof(int));
+            EmitInt32Value(element.Index);
+            _il.Emit(OpCodes.Stloc, index);
+
+            var previous = DeclareLocal(typeof(ulong));
+            _il.Emit(OpCodes.Ldloc, receiver);
+            _il.Emit(OpCodes.Ldloc, index);
+            _il.Emit(OpCodes.Ldelem_I8);
+            _il.Emit(OpCodes.Stloc, previous);
+
+            var current = DeclareLocal(typeof(ulong));
+            _il.Emit(OpCodes.Ldloc, previous);
+            _il.Emit(OpCodes.Ldc_I8, 1L);
+            _il.Emit(
+                unary.Operator == Operator.PreIncrement ||
+                    unary.Operator == Operator.PostIncrement
+                    ? OpCodes.Add
+                    : OpCodes.Sub);
+            _il.Emit(OpCodes.Stloc, current);
+
+            _il.Emit(OpCodes.Ldloc, receiver);
+            _il.Emit(OpCodes.Ldloc, index);
+            _il.Emit(OpCodes.Ldloc, current);
+            _il.Emit(OpCodes.Stelem_I8);
+
+            var postfix = unary.Operator == Operator.PostIncrement ||
+                unary.Operator == Operator.PostDecrement;
+            _il.Emit(OpCodes.Ldloc, postfix ? previous : current);
+            return StackValueKind.UInt64;
         }
 
         private void EmitPackedNumberStore(FlowValueType arrayType)
@@ -6303,6 +6918,13 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitDatum(Expression expression)
         {
+            var expressionType = _code.GetExpressionType(expression);
+            if (expressionType is FlowValueType.Int64 or FlowValueType.UInt64)
+            {
+                var exactKind = EmitExpression(expression);
+                ConvertToDatum(exactKind);
+                return;
+            }
             if (TryGetNumericConstant(expression, out var constant))
             {
                 if (constant >= int.MinValue && constant <= int.MaxValue &&
@@ -6318,7 +6940,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     Math.Truncate(constant) == constant)
                 {
                     _il.Emit(OpCodes.Ldc_I8, (long)constant);
-                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromInt64);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromNumberInt64);
                 }
                 else
                 {
@@ -6450,6 +7072,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                     return;
                 case StackValueKind.Int64:
                     _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromInt64);
+                    return;
+                case StackValueKind.UInt64:
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromUInt64);
                     return;
                 case StackValueKind.Number:
                     _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromNumber);
@@ -6612,6 +7237,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                 case StackValueKind.Int64:
                     _il.Emit(OpCodes.Conv_R8);
                     return;
+                case StackValueKind.UInt64:
+                    _il.Emit(OpCodes.Conv_R_Un);
+                    return;
                 case StackValueKind.Boolean:
                     _il.Emit(OpCodes.Conv_R8);
                     return;
@@ -6667,15 +7295,22 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitInt64Value(Expression expression)
         {
-            if (TryGetNumericConstant(expression, out var constant) &&
-                Math.Floor(constant) == constant &&
-                constant >= long.MinValue && constant <= long.MaxValue)
+            if (FlowValueTypeFacts.IsNumberCompatible(
+                    _code.GetExpressionType(expression)) &&
+                TryGetNumericConstant(expression, out var constant) &&
+                TypeCheckOps.IsInt64(constant))
             {
                 _il.Emit(OpCodes.Ldc_I8, (long)constant);
                 return;
             }
             var kind = EmitExpression(expression);
             ConvertStackToInt64(kind);
+        }
+
+        private void EmitUInt64Value(Expression expression)
+        {
+            var kind = EmitExpression(expression);
+            ConvertStackToUInt64(kind);
         }
 
         private void EmitUInt32Value(Expression expression)
@@ -6715,23 +7350,54 @@ namespace AuroraScript.Compiler.Backend.Emission
                 case StackValueKind.Int64:
                     return;
                 case StackValueKind.Int32:
-                case StackValueKind.Boolean:
                     _il.Emit(OpCodes.Conv_I8);
                     return;
                 case StackValueKind.UInt32:
                     _il.Emit(OpCodes.Conv_U8);
                     return;
                 case StackValueKind.Number:
-                    _il.Emit(OpCodes.Conv_I8);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckInt64Number);
+                    return;
+                case StackValueKind.UInt64:
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromUInt64);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckInt64Value);
                     return;
                 case StackValueKind.Datum:
-                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ToArithmeticNumber);
-                    _il.Emit(OpCodes.Conv_I8);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckInt64Value);
                     return;
                 default:
                     ConvertToDatum(kind);
-                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ToArithmeticNumber);
-                    _il.Emit(OpCodes.Conv_I8);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckInt64Value);
+                    return;
+            }
+        }
+
+        private void ConvertStackToUInt64(StackValueKind kind)
+        {
+            switch (kind)
+            {
+                case StackValueKind.UInt64:
+                    return;
+                case StackValueKind.UInt32:
+                    _il.Emit(OpCodes.Conv_U8);
+                    return;
+                case StackValueKind.Int32:
+                    _il.Emit(OpCodes.Conv_R8);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckUInt64Number);
+                    return;
+                case StackValueKind.Number:
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckUInt64Number);
+                    return;
+                case StackValueKind.Int64:
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromInt64);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckUInt64Value);
+                    return;
+                case StackValueKind.Datum:
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckUInt64Value);
+                    return;
+                default:
+                    ConvertToDatum(kind);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CheckUInt64Value);
                     return;
             }
         }
@@ -6744,6 +7410,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 case StackValueKind.UInt32:
                     return;
                 case StackValueKind.Int64:
+                case StackValueKind.UInt64:
                     _il.Emit(OpCodes.Conv_I4);
                     return;
                 case StackValueKind.Boolean:
@@ -6848,6 +7515,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     EmitBooleanNot();
                     return;
                 case StackValueKind.Int64:
+                case StackValueKind.UInt64:
                     _il.Emit(OpCodes.Ldc_I8, 0L);
                     _il.Emit(OpCodes.Ceq);
                     EmitBooleanNot();
@@ -7017,6 +7685,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             if (type == FlowValueType.Int32) return typeof(int);
             if (type == FlowValueType.UInt32) return typeof(uint);
             if (type == FlowValueType.Int64) return typeof(long);
+            if (type == FlowValueType.UInt64) return typeof(ulong);
             if (type == FlowValueType.Number) return typeof(double);
             if (type == FlowValueType.Boolean) return typeof(bool);
             if (type == FlowValueType.String) return typeof(string);
@@ -7033,6 +7702,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 StackValueKind.Int32 => typeof(int),
                 StackValueKind.UInt32 => typeof(uint),
                 StackValueKind.Int64 => typeof(long),
+                StackValueKind.UInt64 => typeof(ulong),
                 StackValueKind.Number => typeof(double),
                 StackValueKind.Boolean => typeof(bool),
                 StackValueKind.String => typeof(string),
@@ -7169,6 +7839,13 @@ namespace AuroraScript.Compiler.Backend.Emission
             return op == Operator.Equal || op == Operator.NotEqual ||
                 op == Operator.LessThan || op == Operator.LessThanOrEqual ||
                 op == Operator.GreaterThan || op == Operator.GreaterThanOrEqual;
+        }
+
+        private static bool IsArithmetic(Operator op)
+        {
+            return op == Operator.Add || op == Operator.Subtract ||
+                op == Operator.Multiply || op == Operator.Divide ||
+                op == Operator.Modulo;
         }
 
         private static bool IsRelationalComparison(Operator op)
@@ -7635,6 +8312,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             Int32,
             UInt32,
             Int64,
+            UInt64,
             Number,
             Boolean,
             String,
@@ -8506,6 +9184,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 FlowValueType.Int32 or
                 FlowValueType.UInt32 or
                 FlowValueType.Int64 or
+                FlowValueType.UInt64 or
                 FlowValueType.Boolean or
                 FlowValueType.String ||
                 code.GetStructuralType(property) != null;

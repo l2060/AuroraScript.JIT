@@ -173,6 +173,8 @@ namespace AuroraScript.Runtime.Serialization
             if (TypeEquals(typeToken, "Array")) return ReadArray();
             if (TypeEquals(typeToken, "String")) return ReadStringValue("String");
             if (TypeEquals(typeToken, "Number")) return ReadNumberValue("Number");
+            if (TypeEquals(typeToken, "Int64")) return ReadInt64Value();
+            if (TypeEquals(typeToken, "UInt64")) return ReadUInt64Value();
             if (TypeEquals(typeToken, "Boolean")) return ReadBooleanValue("Boolean");
             if (TypeEquals(typeToken, "StringBuffer"))
             {
@@ -312,6 +314,30 @@ namespace AuroraScript.Runtime.Serialization
             }
             Advance();
             return ScriptDatum.FromNumber(token.Number);
+        }
+
+        private ScriptDatum ReadInt64Value()
+        {
+            var token = Current();
+            if (token.Kind != TypedDocumentTokenKind.Number ||
+                !_scanner.TryGetInt64Exact(token, out var value))
+            {
+                throw Error(token, "Type 'Int64' requires a signed 64-bit integer value.");
+            }
+            Advance();
+            return ScriptDatum.FromInt64(value);
+        }
+
+        private ScriptDatum ReadUInt64Value()
+        {
+            var token = Current();
+            if (token.Kind != TypedDocumentTokenKind.Number ||
+                !_scanner.TryGetUInt64Exact(token, out var value))
+            {
+                throw Error(token, "Type 'UInt64' requires an unsigned 64-bit integer value.");
+            }
+            Advance();
+            return ScriptDatum.FromUInt64(value);
         }
 
         private ScriptDatum ReadBooleanValue(string typeName)
@@ -571,7 +597,8 @@ namespace AuroraScript.Runtime.Serialization
                                 location = Current();
                                 var value = ReadTypedValue();
                                 ValidatePackedElement(TypedDocumentPackedKind.Int32, value, location);
-                                buffer.Add((int)value.Number);
+                                TryGetPackedInt64(value, out var integer);
+                                buffer.Add((int)integer);
                             }
                             finally
                             {
@@ -652,7 +679,8 @@ namespace AuroraScript.Runtime.Serialization
                             var location = Current();
                             var value = ReadTypedValue();
                             ValidatePackedElement(TypedDocumentPackedKind.Int8, value, location);
-                            buffer.Add((sbyte)value.Number);
+                            TryGetPackedInt64(value, out var integer);
+                            buffer.Add((sbyte)integer);
                         }
                         finally
                         {
@@ -1084,7 +1112,8 @@ namespace AuroraScript.Runtime.Serialization
                             location = Current();
                             var value = ReadTypedValue();
                             ValidatePackedElement(TypedDocumentPackedKind.UInt8, value, location);
-                            buffer.Add((byte)value.Number);
+                            TryGetPackedUInt64(value, out var integer);
+                            buffer.Add((byte)integer);
                         }
                         finally
                         {
@@ -1142,7 +1171,8 @@ namespace AuroraScript.Runtime.Serialization
                                 location = Current();
                                 var value = ReadTypedValue();
                                 ValidatePackedElement(TypedDocumentPackedKind.Int16, value, location);
-                                buffer.Add((short)value.Number);
+                                TryGetPackedInt64(value, out var integer);
+                                buffer.Add((short)integer);
                             }
                             finally
                             {
@@ -1201,7 +1231,8 @@ namespace AuroraScript.Runtime.Serialization
                                 location = Current();
                                 var value = ReadTypedValue();
                                 ValidatePackedElement(TypedDocumentPackedKind.UInt16, value, location);
-                                buffer.Add((ushort)value.Number);
+                                TryGetPackedUInt64(value, out var integer);
+                                buffer.Add((ushort)integer);
                             }
                             finally
                             {
@@ -1260,7 +1291,8 @@ namespace AuroraScript.Runtime.Serialization
                                 location = Current();
                                 var value = ReadTypedValue();
                                 ValidatePackedElement(TypedDocumentPackedKind.UInt32, value, location);
-                                buffer.Add((uint)value.Number);
+                                TryGetPackedUInt64(value, out var integer);
+                                buffer.Add((uint)integer);
                             }
                             finally
                             {
@@ -1316,10 +1348,7 @@ namespace AuroraScript.Runtime.Serialization
                                 var location = Current();
                                 var value = ReadTypedValue();
                                 ValidatePackedElement(TypedDocumentPackedKind.Int64, value, location);
-                                if (!_scanner.TryGetInt64Exact(location, out exact))
-                                {
-                                    throw Error(location, "Int64Array elements must be exactly representable integers.");
-                                }
+                                TryGetPackedInt64(value, out exact);
                                 buffer.Add(exact);
                             }
                             finally
@@ -1376,10 +1405,7 @@ namespace AuroraScript.Runtime.Serialization
                                 var location = Current();
                                 var value = ReadTypedValue();
                                 ValidatePackedElement(TypedDocumentPackedKind.UInt64, value, location);
-                                if (!_scanner.TryGetUInt64Exact(location, out exact))
-                                {
-                                    throw Error(location, "UInt64Array elements must be exactly representable integers.");
-                                }
+                                TryGetPackedUInt64(value, out exact);
                                 buffer.Add(exact);
                             }
                             finally
@@ -1824,18 +1850,84 @@ namespace AuroraScript.Runtime.Serialization
                 }
                 throw Error(location, "BooleanArray elements must be true, false, 0, or 1.");
             }
-            if (value.Kind != ValueKind.Number || !double.IsFinite(value.Number))
+            if (kind is TypedDocumentPackedKind.Float32 or TypedDocumentPackedKind.Float64)
             {
+                if (value.Kind == ValueKind.Number && double.IsFinite(value.Number))
+                {
+                    return;
+                }
                 throw Error(location, $"{PackedTypeName(kind)} elements must be finite numbers.");
             }
-            if (kind is TypedDocumentPackedKind.Float32 or TypedDocumentPackedKind.Float64) return;
-            if (Math.Truncate(value.Number) != value.Number)
+
+            if (kind is TypedDocumentPackedKind.Int32 or
+                TypedDocumentPackedKind.Int8 or
+                TypedDocumentPackedKind.Int16 or
+                TypedDocumentPackedKind.Int64)
             {
-                throw Error(location, $"{PackedTypeName(kind)} elements must be integers.");
+                if (!TryGetPackedInt64(value, out var integer))
+                {
+                    throw Error(location, $"{PackedTypeName(kind)} elements must be finite integers.");
+                }
+
+                var inRange = kind switch
+                {
+                    TypedDocumentPackedKind.Int8 => integer >= sbyte.MinValue && integer <= sbyte.MaxValue,
+                    TypedDocumentPackedKind.Int16 => integer >= short.MinValue && integer <= short.MaxValue,
+                    TypedDocumentPackedKind.Int32 => integer >= int.MinValue && integer <= int.MaxValue,
+                    _ => true
+                };
+                if (inRange) return;
             }
-            if (!TypedDocumentBinder.IsPackedRange(kind, value.Number))
+            else if (TryGetPackedUInt64(value, out var integer))
             {
-                throw Error(location, $"{PackedTypeName(kind)} value is outside its supported range.");
+                var inRange = kind switch
+                {
+                    TypedDocumentPackedKind.UInt8 => integer <= byte.MaxValue,
+                    TypedDocumentPackedKind.UInt16 => integer <= ushort.MaxValue,
+                    TypedDocumentPackedKind.UInt32 => integer <= uint.MaxValue,
+                    _ => true
+                };
+                if (inRange) return;
+            }
+
+            throw Error(location, $"{PackedTypeName(kind)} value is outside its supported range.");
+        }
+
+        private static bool TryGetPackedInt64(ScriptDatum value, out long integer)
+        {
+            switch (value.Kind)
+            {
+                case ValueKind.Int64:
+                    integer = value.Int64;
+                    return true;
+                case ValueKind.UInt64 when value.UInt64 <= long.MaxValue:
+                    integer = (long)value.UInt64;
+                    return true;
+                case ValueKind.Number when TypeCheckOps.IsInt64(value.Number):
+                    integer = (long)value.Number;
+                    return true;
+                default:
+                    integer = 0;
+                    return false;
+            }
+        }
+
+        private static bool TryGetPackedUInt64(ScriptDatum value, out ulong integer)
+        {
+            switch (value.Kind)
+            {
+                case ValueKind.UInt64:
+                    integer = value.UInt64;
+                    return true;
+                case ValueKind.Int64 when value.Int64 >= 0:
+                    integer = (ulong)value.Int64;
+                    return true;
+                case ValueKind.Number when TypeCheckOps.IsUInt64(value.Number):
+                    integer = (ulong)value.Number;
+                    return true;
+                default:
+                    integer = 0;
+                    return false;
             }
         }
 

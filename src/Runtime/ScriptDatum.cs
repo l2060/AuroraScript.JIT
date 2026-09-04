@@ -24,6 +24,8 @@ namespace AuroraScript.Runtime
         private const ulong EncodedSubnormalTwo = 0x7ff8_0000_0000_0003UL;
         private const ulong EncodedNaN = 0x7ff8_0000_0000_0004UL;
         private static readonly object s_kindMarker = new();
+        private static readonly object s_int64Marker = new();
+        private static readonly object s_uint64Marker = new();
 
         private object reference;
         private ulong payload;
@@ -43,6 +45,8 @@ namespace AuroraScript.Runtime
             {
                 if (reference != null)
                 {
+                    if (ReferenceEquals(reference, s_int64Marker)) return ValueKind.Int64;
+                    if (ReferenceEquals(reference, s_uint64Marker)) return ValueKind.UInt64;
                     return (ValueKind)(short)payload;
                 }
 
@@ -67,6 +71,12 @@ namespace AuroraScript.Runtime
                         return;
                     case ValueKind.Number:
                         SetNumber(currentKind == ValueKind.Number ? Number : 0d);
+                        return;
+                    case ValueKind.Int64:
+                        SetInt64(currentKind == ValueKind.Int64 ? Int64 : 0L);
+                        return;
+                    case ValueKind.UInt64:
+                        SetUInt64(currentKind == ValueKind.UInt64 ? UInt64 : 0UL);
                         return;
                     case ValueKind.String:
                         SetString(reference switch
@@ -117,20 +127,7 @@ namespace AuroraScript.Runtime
 
                 return reference is string text ? StringValue.Of(text) : null;
             }
-            set
-            {
-                var kind = Kind;
-                if (kind == ValueKind.String && value is StringValue text)
-                {
-                    SetString(text.Value);
-                    return;
-                }
-
-                reference = value ?? (kind is ValueKind.Null or ValueKind.Boolean or ValueKind.Number
-                    ? null
-                    : s_kindMarker);
-                payload = (ulong)(short)kind;
-            }
+            set => WriteObject(ref this, value);
         }
 
         /// <summary>
@@ -167,6 +164,24 @@ namespace AuroraScript.Runtime
             return new ScriptDatum(null, EncodeNumber(value));
         }
 
+        /// <summary>Gets the exact signed 64-bit integer payload.</summary>
+        public long Int64
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            readonly get => unchecked((long)payload);
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            set => SetInt64(value);
+        }
+
+        /// <summary>Gets the exact unsigned 64-bit integer payload.</summary>
+        public ulong UInt64
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            readonly get => payload;
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            set => SetUInt64(value);
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ScriptDatum CreateNumber(uint value)
         {
@@ -177,6 +192,18 @@ namespace AuroraScript.Runtime
         private static ScriptDatum CreateNumber(long value)
         {
             return new ScriptDatum(null, EncodeNumber(value));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ScriptDatum CreateInt64(long value)
+        {
+            return new ScriptDatum(s_int64Marker, unchecked((ulong)value));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ScriptDatum CreateUInt64(ulong value)
+        {
+            return new ScriptDatum(s_uint64Marker, value);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -212,6 +239,20 @@ namespace AuroraScript.Runtime
         {
             reference = null;
             payload = EncodeNumber(value);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void SetInt64(long value)
+        {
+            reference = s_int64Marker;
+            payload = unchecked((ulong)value);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void SetUInt64(ulong value)
+        {
+            reference = s_uint64Marker;
+            payload = value;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -254,6 +295,8 @@ namespace AuroraScript.Runtime
                 ValueKind.Null => ScriptObject.Null.GetHashCode(),
                 ValueKind.Boolean => Boolean.GetHashCode(),
                 ValueKind.Number => Number.GetHashCode(),
+                ValueKind.Int64 => Int64.GetHashCode(),
+                ValueKind.UInt64 => UInt64.GetHashCode(),
                 ValueKind.String => StringText.GetHashCode(StringComparison.Ordinal),
                 _ => reference.GetHashCode(),
             };
@@ -271,6 +314,8 @@ namespace AuroraScript.Runtime
                     ValueKind.Null => true,
                     ValueKind.Boolean => a.Boolean == b.Boolean,
                     ValueKind.Number => a.Number == b.Number,
+                    ValueKind.Int64 => a.Int64 == b.Int64,
+                    ValueKind.UInt64 => a.UInt64 == b.UInt64,
                     ValueKind.String => a.StringText == b.StringText,
                     _ => ReferenceEquals(a.reference, b.reference),
                 };
@@ -278,6 +323,14 @@ namespace AuroraScript.Runtime
 
             if (TryToNumber(a, out var na) && TryToNumber(b, out var nb))
             {
+                if (a.Kind == ValueKind.Int64 && b.Kind == ValueKind.UInt64)
+                {
+                    return a.Int64 >= 0 && (ulong)a.Int64 == b.UInt64;
+                }
+                if (a.Kind == ValueKind.UInt64 && b.Kind == ValueKind.Int64)
+                {
+                    return b.Int64 >= 0 && a.UInt64 == (ulong)b.Int64;
+                }
                 return na == nb;
             }
             return false;

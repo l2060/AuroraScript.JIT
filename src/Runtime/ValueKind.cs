@@ -22,6 +22,12 @@ namespace AuroraScript.Runtime
         /// <summary> Represents a base object-based value. </summary>
         Object = 1 << 3,
 
+        /// <summary> Represents an exact signed 64-bit integer. </summary>
+        Int64 = 1 << 12,
+
+        /// <summary> Represents an exact unsigned 64-bit integer. </summary>
+        UInt64 = 1 << 13,
+
         /// <summary> Represents a script array object. </summary>
         Array = Object | (1 << 4),
 

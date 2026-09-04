@@ -173,6 +173,12 @@ namespace AuroraScript.Runtime.Serialization
                 case ValueKind.Number:
                     WriteNumber(value.Number);
                     return;
+                case ValueKind.Int64:
+                    WriteInt64(value.Int64);
+                    return;
+                case ValueKind.UInt64:
+                    WriteUInt64(value.UInt64);
+                    return;
                 case ValueKind.String:
                     WriteString(value.StringText);
                     return;
@@ -870,23 +876,11 @@ namespace AuroraScript.Runtime.Serialization
 
             if (type == typeof(long))
             {
-                var integer = (long)value;
-                var number = (double)integer;
-                if (number >= 9223372036854775808d || (long)number != integer)
-                {
-                    throw Error("CLR integer value cannot be represented exactly as a TDoc Number.");
-                }
-                return ScriptDatum.FromNumber(number);
+                return ScriptDatum.FromInt64((long)value);
             }
             if (type == typeof(ulong))
             {
-                var integer = (ulong)value;
-                var number = (double)integer;
-                if (number >= 18446744073709551616d || (ulong)number != integer)
-                {
-                    throw Error("CLR integer value cannot be represented exactly as a TDoc Number.");
-                }
-                return ScriptDatum.FromNumber(number);
+                return ScriptDatum.FromUInt64((ulong)value);
             }
             if (type == typeof(decimal))
             {
@@ -917,6 +911,12 @@ namespace AuroraScript.Runtime.Serialization
                         return false;
                     }
                     typeName = "Number";
+                    return true;
+                case ValueKind.Int64:
+                    typeName = "Int64";
+                    return true;
+                case ValueKind.UInt64:
+                    typeName = "UInt64";
                     return true;
                 case ValueKind.String:
                     typeName = "String";
@@ -1038,7 +1038,8 @@ namespace AuroraScript.Runtime.Serialization
 
         private bool TryTrackReference(ScriptDatum value)
         {
-            if (value.Kind is ValueKind.Null or ValueKind.Boolean or ValueKind.Number or ValueKind.String)
+            if (value.Kind is ValueKind.Null or ValueKind.Boolean or ValueKind.Number or
+                ValueKind.Int64 or ValueKind.UInt64 or ValueKind.String)
             {
                 return true;
             }

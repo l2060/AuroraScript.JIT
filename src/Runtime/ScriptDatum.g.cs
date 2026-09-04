@@ -200,6 +200,14 @@ namespace AuroraScript.Runtime
                     value = d.Number;
                     return true;
 
+                case ValueKind.Int64:
+                    value = d.Int64;
+                    return true;
+
+                case ValueKind.UInt64:
+                    value = d.UInt64;
+                    return true;
+
                 case ValueKind.Boolean:
                     value = d.Boolean ? 1.0 : 0.0;
                     return true;
@@ -227,6 +235,14 @@ namespace AuroraScript.Runtime
             {
                 case ValueKind.Number:
                     value = (long)d.Number;
+                    return true;
+
+                case ValueKind.Int64:
+                    value = d.Int64;
+                    return true;
+
+                case ValueKind.UInt64 when d.UInt64 <= long.MaxValue:
+                    value = (long)d.UInt64;
                     return true;
 
                 case ValueKind.Boolean:
@@ -258,6 +274,8 @@ namespace AuroraScript.Runtime
             {
                 case ValueKind.Null:
                 case ValueKind.Number:
+                case ValueKind.Int64:
+                case ValueKind.UInt64:
                 case ValueKind.Boolean:
                 case ValueKind.String:
                     return d;

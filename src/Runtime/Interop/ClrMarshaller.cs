@@ -71,6 +71,14 @@ namespace AuroraScript.Runtime.Interop
                         return false;
                     }
                 }
+                if (scriptValue is Int64Value int64)
+                {
+                    return TryConvertInt64(int64.Value, targetType, out result);
+                }
+                if (scriptValue is UInt64Value uint64)
+                {
+                    return TryConvertUInt64(uint64.Value, targetType, out result);
+                }
                 return false;
             }
 
@@ -165,6 +173,28 @@ namespace AuroraScript.Runtime.Interop
                         return true;
                     }
                     break;
+                case ValueKind.Int64:
+                    if (IsNumericType(targetType))
+                    {
+                        return TryConvertInt64(datum.Int64, targetType, out result);
+                    }
+                    if (targetType == typeof(bool) || targetType == typeof(bool?))
+                    {
+                        result = datum.Int64 != 0;
+                        return true;
+                    }
+                    break;
+                case ValueKind.UInt64:
+                    if (IsNumericType(targetType))
+                    {
+                        return TryConvertUInt64(datum.UInt64, targetType, out result);
+                    }
+                    if (targetType == typeof(bool) || targetType == typeof(bool?))
+                    {
+                        result = datum.UInt64 != 0;
+                        return true;
+                    }
+                    break;
                 case ValueKind.String:
                     if (targetType == typeof(string))
                     {
@@ -245,7 +275,7 @@ namespace AuroraScript.Runtime.Interop
                     ScriptDatum.WriteAsNumber(ref datum, n);
                     return;
                 case Int64 n:
-                    ScriptDatum.WriteAsNumber(ref datum, n);
+                    ScriptDatum.WriteAsInt64(ref datum, n);
                     return;
                 case UInt16 n:
                     ScriptDatum.WriteAsNumber(ref datum, n);
@@ -254,7 +284,7 @@ namespace AuroraScript.Runtime.Interop
                     ScriptDatum.WriteAsNumber(ref datum, n);
                     return;
                 case UInt64 n:
-                    ScriptDatum.WriteAsNumber(ref datum, n);
+                    ScriptDatum.WriteAsUInt64(ref datum, n);
                     return;
                 case Decimal n:
                     ScriptDatum.WriteAsNumber(ref datum, (double)n);
@@ -281,7 +311,12 @@ namespace AuroraScript.Runtime.Interop
                     return;
 
                 case Enum enumValue:
-                    ScriptDatum.WriteAsNumber(ref datum, Convert.ToInt32(enumValue, CultureInfo.InvariantCulture));
+                    WriteToDatum(
+                        ref datum,
+                        Convert.ChangeType(
+                            enumValue,
+                            Enum.GetUnderlyingType(enumValue.GetType()),
+                            CultureInfo.InvariantCulture));
                     return;
 
                 case Delegate handler:
@@ -451,6 +486,52 @@ namespace AuroraScript.Runtime.Interop
                 default:
                     result = null;
                     return false;
+            }
+        }
+
+        private static bool TryConvertInt64(long value, Type targetType, out object result)
+        {
+            var type = Nullable.GetUnderlyingType(targetType) ?? targetType;
+            try
+            {
+                result = Type.GetTypeCode(type) switch
+                {
+                    TypeCode.Int64 => value,
+                    TypeCode.UInt64 when value >= 0 => (ulong)value,
+                    TypeCode.Double => (double)value,
+                    TypeCode.Single => (float)value,
+                    TypeCode.Decimal => (decimal)value,
+                    _ => Convert.ChangeType(value, type, CultureInfo.InvariantCulture)
+                };
+                return result != null;
+            }
+            catch
+            {
+                result = null;
+                return false;
+            }
+        }
+
+        private static bool TryConvertUInt64(ulong value, Type targetType, out object result)
+        {
+            var type = Nullable.GetUnderlyingType(targetType) ?? targetType;
+            try
+            {
+                result = Type.GetTypeCode(type) switch
+                {
+                    TypeCode.UInt64 => value,
+                    TypeCode.Int64 when value <= long.MaxValue => (long)value,
+                    TypeCode.Double => (double)value,
+                    TypeCode.Single => (float)value,
+                    TypeCode.Decimal => (decimal)value,
+                    _ => Convert.ChangeType(value, type, CultureInfo.InvariantCulture)
+                };
+                return result != null;
+            }
+            catch
+            {
+                result = null;
+                return false;
             }
         }
 

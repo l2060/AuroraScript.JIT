@@ -24,7 +24,20 @@ namespace AuroraScript.Compiler.Ast.Expressions
         {
             if (Token is NumberToken numberToken)
             {
-                ScriptDatum.WriteAsNumber(ref value, numberToken.NumberValue);
+                if (numberToken.Suffix == NumericLiteralSuffix.Int64 &&
+                    numberToken.TryGetInt64(out var int64))
+                {
+                    ScriptDatum.WriteAsInt64(ref value, int64);
+                }
+                else if (numberToken.Suffix == NumericLiteralSuffix.UInt64 &&
+                    numberToken.TryGetUInt64(out var uint64))
+                {
+                    ScriptDatum.WriteAsUInt64(ref value, uint64);
+                }
+                else
+                {
+                    ScriptDatum.WriteAsNumber(ref value, numberToken.NumberValue);
+                }
                 return true;
             }
             else if (Token is NullToken)

@@ -34,16 +34,23 @@ public sealed class TempTaskProbeTests
             }
             """, mode);
         var result = TestWorkspace.Execute(domain, "run");
-        ScriptAssert.Equal(
-            new object?[]
-            {
-                new object?[] { 7, 0, 2 },
-                new object?[] { -32768, 32767, 2 },
-                new object?[] { 0, 65535, 2 },
-                new object?[] { 0, 4294967295d, 2 },
-                new object?[] { -9007199254740991d, 9007199254740991d, 2 },
-                new object?[] { 0, 9007199254740991d, 2 },
-            }, result);
+        var rows = Assert.IsType<ScriptArray>(result.Object);
+        ScriptAssert.Equal(new object?[] { 7, 0, 2 }, rows.GetElement(0));
+        ScriptAssert.Equal(new object?[] { -32768, 32767, 2 }, rows.GetElement(1));
+        ScriptAssert.Equal(new object?[] { 0, 65535, 2 }, rows.GetElement(2));
+        ScriptAssert.Equal(new object?[] { 0, 4294967295d, 2 }, rows.GetElement(3));
+
+        var signed = Assert.IsType<ScriptArray>(rows.GetElement(4).Object);
+        Assert.Equal(ValueKind.Int64, signed.GetElement(0).Kind);
+        Assert.Equal(-9007199254740991L, signed.GetElement(0).Int64);
+        Assert.Equal(9007199254740991L, signed.GetElement(1).Int64);
+        ScriptAssert.Equal(2, signed.GetElement(2));
+
+        var unsigned = Assert.IsType<ScriptArray>(rows.GetElement(5).Object);
+        Assert.Equal(ValueKind.UInt64, unsigned.GetElement(0).Kind);
+        Assert.Equal(0UL, unsigned.GetElement(0).UInt64);
+        Assert.Equal(9007199254740991UL, unsigned.GetElement(1).UInt64);
+        ScriptAssert.Equal(2, unsigned.GetElement(2));
     }
 
     [Fact]

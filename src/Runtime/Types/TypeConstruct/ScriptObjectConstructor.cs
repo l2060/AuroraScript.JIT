@@ -85,6 +85,12 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
                     case ValueKind.Number:
                         ScriptDatum.WriteAsBoolean(ref result, var1.Number == var2.Number);
                         return;
+                    case ValueKind.Int64:
+                        ScriptDatum.WriteAsBoolean(ref result, var1.Int64 == var2.Int64);
+                        return;
+                    case ValueKind.UInt64:
+                        ScriptDatum.WriteAsBoolean(ref result, var1.UInt64 == var2.UInt64);
+                        return;
                     case ValueKind.String:
                         ScriptDatum.WriteAsBoolean(ref result, var1.StringText == var2.StringText);
                         return;
@@ -127,6 +133,10 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
                     return left.Boolean == right.Boolean;
                 case ValueKind.Number:
                     return left.Number == right.Number;
+                case ValueKind.Int64:
+                    return left.Int64 == right.Int64;
+                case ValueKind.UInt64:
+                    return left.UInt64 == right.UInt64;
                 case ValueKind.String:
                     return left.StringText == right.StringText;
                 default:
@@ -222,6 +232,10 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
                     return left.Boolean == right.Boolean;
                 case ValueKind.Number:
                     return left.Number == right.Number;
+                case ValueKind.Int64:
+                    return left.Int64 == right.Int64;
+                case ValueKind.UInt64:
+                    return left.UInt64 == right.UInt64;
                 case ValueKind.String:
                     return left.StringText == right.StringText;
                 default:

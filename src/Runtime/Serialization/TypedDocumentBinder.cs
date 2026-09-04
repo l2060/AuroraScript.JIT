@@ -147,6 +147,28 @@ namespace AuroraScript.Runtime.Serialization
                 case "Number":
                     Require(value.Kind == ValueKind.Number && double.IsFinite(value.Number), typeName, "requires a finite number.", path);
                     return value;
+                case "Int64":
+                    if (value.Kind == ValueKind.Int64) return value;
+                    if (value.Kind == ValueKind.UInt64 && value.UInt64 <= long.MaxValue)
+                    {
+                        return ScriptDatum.FromInt64((long)value.UInt64);
+                    }
+                    if (value.Kind == ValueKind.Number && TypeCheckOps.IsInt64(value.Number))
+                    {
+                        return ScriptDatum.FromInt64((long)value.Number);
+                    }
+                    throw Error("Type 'Int64' requires a signed 64-bit integer value.", path);
+                case "UInt64":
+                    if (value.Kind == ValueKind.UInt64) return value;
+                    if (value.Kind == ValueKind.Int64 && value.Int64 >= 0)
+                    {
+                        return ScriptDatum.FromUInt64((ulong)value.Int64);
+                    }
+                    if (value.Kind == ValueKind.Number && TypeCheckOps.IsUInt64(value.Number))
+                    {
+                        return ScriptDatum.FromUInt64((ulong)value.Number);
+                    }
+                    throw Error("Type 'UInt64' requires an unsigned 64-bit integer value.", path);
                 case "Boolean":
                     Require(value.Kind == ValueKind.Boolean, typeName, "requires a boolean value.", path);
                     return value;
@@ -350,7 +372,8 @@ namespace AuroraScript.Runtime.Serialization
                 return ScriptDatum.FromObject((ScriptObject)arrayTarget);
             }
 
-            if (value.Kind is ValueKind.Null or ValueKind.Boolean or ValueKind.Number or ValueKind.String)
+            if (value.Kind is ValueKind.Null or ValueKind.Boolean or ValueKind.Number or
+                ValueKind.Int64 or ValueKind.UInt64 or ValueKind.String)
             {
                 var scalarTarget = CreateNativeTypedDocument(engine, typeName, path);
                 ReadNativeTypedDocument(scalarTarget, value, path);
@@ -444,7 +467,17 @@ namespace AuroraScript.Runtime.Serialization
         {
             if (value.Object is ScriptDate) return value;
 
-            if (value.Kind == ValueKind.Number)
+            long ticks;
+            if (value.Kind == ValueKind.Int64)
+            {
+                ticks = value.Int64;
+            }
+            else if (value.Kind == ValueKind.UInt64 &&
+                value.UInt64 <= (ulong)DateTimeOffset.MaxValue.Ticks)
+            {
+                ticks = (long)value.UInt64;
+            }
+            else if (value.Kind == ValueKind.Number)
             {
                 var number = value.Number;
                 if (!double.IsFinite(number) || Math.Truncate(number) != number ||
@@ -456,7 +489,17 @@ namespace AuroraScript.Runtime.Serialization
                 {
                     throw Error("Date ticks must be an exactly representable integer in the range 0.." + DateTimeOffset.MaxValue.Ticks + ".", path);
                 }
-                return ScriptDatum.FromDate(new ScriptDate((long)number));
+                ticks = (long)number;
+            }
+            else
+            {
+                ticks = -1;
+            }
+
+            if (ticks >= DateTimeOffset.MinValue.Ticks &&
+                ticks <= DateTimeOffset.MaxValue.Ticks)
+            {
+                return ScriptDatum.FromDate(new ScriptDate(ticks));
             }
 
             if (value.Kind != ValueKind.String)
@@ -634,9 +677,21 @@ namespace AuroraScript.Runtime.Serialization
 
         internal static bool TryGetFiniteInteger(ScriptDatum value, out double number)
         {
-            number = value.Number;
-            return value.Kind == ValueKind.Number &&
-                double.IsFinite(number) && Math.Truncate(number) == number;
+            switch (value.Kind)
+            {
+                case ValueKind.Number:
+                    number = value.Number;
+                    return double.IsFinite(number) && Math.Truncate(number) == number;
+                case ValueKind.Int64:
+                    number = value.Int64;
+                    return true;
+                case ValueKind.UInt64:
+                    number = value.UInt64;
+                    return true;
+                default:
+                    number = 0;
+                    return false;
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -688,6 +743,18 @@ namespace AuroraScript.Runtime.Serialization
 
         private static long ReadInt64(ScriptDatum value, long minimum, long maximum, string typeName, string path, int index)
         {
+            if (value.Kind == ValueKind.Int64)
+            {
+                var integer = value.Int64;
+                if (integer >= minimum && integer <= maximum) return integer;
+                throw Error($"{typeName} element is outside the range {minimum}..{maximum}.", ElementPath(path, index));
+            }
+            if (value.Kind == ValueKind.UInt64)
+            {
+                var integer = value.UInt64;
+                if (integer <= (ulong)maximum && minimum <= 0) return (long)integer;
+                throw Error($"{typeName} element is outside the range {minimum}..{maximum}.", ElementPath(path, index));
+            }
             var number = ReadFiniteInteger(value, typeName, path, index);
             if (number < minimum || number > maximum ||
                 (maximum == long.MaxValue && number >= 9223372036854775808d) ||
@@ -700,6 +767,18 @@ namespace AuroraScript.Runtime.Serialization
 
         private static ulong ReadUInt64(ScriptDatum value, ulong maximum, string typeName, string path, int index)
         {
+            if (value.Kind == ValueKind.UInt64)
+            {
+                var integer = value.UInt64;
+                if (integer <= maximum) return integer;
+                throw Error($"{typeName} element is outside the range 0..{maximum}.", ElementPath(path, index));
+            }
+            if (value.Kind == ValueKind.Int64)
+            {
+                var integer = value.Int64;
+                if (integer >= 0 && (ulong)integer <= maximum) return (ulong)integer;
+                throw Error($"{typeName} element is outside the range 0..{maximum}.", ElementPath(path, index));
+            }
             var number = ReadFiniteInteger(value, typeName, path, index);
             if (number < 0d || number > maximum || number >= 18446744073709551616d ||
                 (ulong)number != number)
@@ -885,8 +964,10 @@ namespace AuroraScript.Runtime.Serialization
             var effective = Nullable.GetUnderlyingType(targetType) ?? targetType;
             if (effective.IsEnum)
             {
-                if (value.Kind == ValueKind.Number &&
-                    TryConvertClrNumber(value.Number, Enum.GetUnderlyingType(effective), out var underlying))
+                if (TryConvertClrNumeric(
+                        value,
+                        Enum.GetUnderlyingType(effective),
+                        out var underlying))
                 {
                     converted = Enum.ToObject(effective, underlying);
                     return true;
@@ -896,12 +977,7 @@ namespace AuroraScript.Runtime.Serialization
             }
             if (IsClrNumericType(effective))
             {
-                if (value.Kind == ValueKind.Number)
-                {
-                    return TryConvertClrNumber(value.Number, effective, out converted);
-                }
-                converted = null;
-                return false;
+                return TryConvertClrNumeric(value, effective, out converted);
             }
             if (effective == typeof(bool))
             {
@@ -924,6 +1000,25 @@ namespace AuroraScript.Runtime.Serialization
                 return false;
             }
             return ClrMarshaller.TryConvertArgument(in value, targetType, out converted);
+        }
+
+        private static bool TryConvertClrNumeric(
+            ScriptDatum value,
+            Type type,
+            out object converted)
+        {
+            switch (value.Kind)
+            {
+                case ValueKind.Number:
+                    return TryConvertClrNumber(value.Number, type, out converted);
+                case ValueKind.Int64:
+                    return TryConvertClrInt64(value.Int64, type, out converted);
+                case ValueKind.UInt64:
+                    return TryConvertClrUInt64(value.UInt64, type, out converted);
+                default:
+                    converted = null;
+                    return false;
+            }
         }
 
         private static bool IsClrNumericType(Type type)
@@ -984,6 +1079,74 @@ namespace AuroraScript.Runtime.Serialization
                     converted = (long)value; return (long)converted == value;
                 case TypeCode.UInt64 when value >= 0d && value < 18446744073709551616d:
                     converted = (ulong)value; return (ulong)converted == value;
+                default:
+                    converted = null; return false;
+            }
+        }
+
+        private static bool TryConvertClrInt64(long value, Type type, out object converted)
+        {
+            switch (Type.GetTypeCode(type))
+            {
+                case TypeCode.Double:
+                    converted = (double)value;
+                    return true;
+                case TypeCode.Single:
+                    converted = (float)value;
+                    return true;
+                case TypeCode.Decimal:
+                    converted = (decimal)value;
+                    return true;
+                case TypeCode.SByte when value >= sbyte.MinValue && value <= sbyte.MaxValue:
+                    converted = (sbyte)value; return true;
+                case TypeCode.Byte when value >= byte.MinValue && value <= byte.MaxValue:
+                    converted = (byte)value; return true;
+                case TypeCode.Int16 when value >= short.MinValue && value <= short.MaxValue:
+                    converted = (short)value; return true;
+                case TypeCode.UInt16 when value >= ushort.MinValue && value <= ushort.MaxValue:
+                    converted = (ushort)value; return true;
+                case TypeCode.Int32 when value >= int.MinValue && value <= int.MaxValue:
+                    converted = (int)value; return true;
+                case TypeCode.UInt32 when value >= uint.MinValue && value <= uint.MaxValue:
+                    converted = (uint)value; return true;
+                case TypeCode.Int64:
+                    converted = value; return true;
+                case TypeCode.UInt64 when value >= 0:
+                    converted = (ulong)value; return true;
+                default:
+                    converted = null; return false;
+            }
+        }
+
+        private static bool TryConvertClrUInt64(ulong value, Type type, out object converted)
+        {
+            switch (Type.GetTypeCode(type))
+            {
+                case TypeCode.Double:
+                    converted = (double)value;
+                    return true;
+                case TypeCode.Single:
+                    converted = (float)value;
+                    return true;
+                case TypeCode.Decimal:
+                    converted = (decimal)value;
+                    return true;
+                case TypeCode.SByte when value <= (ulong)sbyte.MaxValue:
+                    converted = (sbyte)value; return true;
+                case TypeCode.Byte when value <= byte.MaxValue:
+                    converted = (byte)value; return true;
+                case TypeCode.Int16 when value <= (ulong)short.MaxValue:
+                    converted = (short)value; return true;
+                case TypeCode.UInt16 when value <= ushort.MaxValue:
+                    converted = (ushort)value; return true;
+                case TypeCode.Int32 when value <= int.MaxValue:
+                    converted = (int)value; return true;
+                case TypeCode.UInt32 when value <= uint.MaxValue:
+                    converted = (uint)value; return true;
+                case TypeCode.Int64 when value <= long.MaxValue:
+                    converted = (long)value; return true;
+                case TypeCode.UInt64:
+                    converted = value; return true;
                 default:
                     converted = null; return false;
             }

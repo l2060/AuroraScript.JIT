@@ -46,6 +46,8 @@ public sealed class TypeCheckTests
                     value as Number,
                     value as int32,
                     value as uint32,
+                    value as int64,
+                    value as uint64,
                     value as String,
                     value as Object,
                     value as Array,
@@ -87,11 +89,14 @@ public sealed class TypeCheckTests
             // Scalar integer assertions validate and return the CLR value in
             // one step instead of handing the datum back.
             Assert.Contains(
-                type == CheckedType.Int32
-                    ? nameof(TypeCheckOps.CheckInt32Value)
-                    : type == CheckedType.UInt32
-                        ? nameof(TypeCheckOps.CheckUInt32Value)
-                    : "Check" + type,
+                type switch
+                {
+                    CheckedType.Int32 => nameof(TypeCheckOps.CheckInt32Value),
+                    CheckedType.UInt32 => nameof(TypeCheckOps.CheckUInt32Value),
+                    CheckedType.Int64 => nameof(TypeCheckOps.CheckInt64Value),
+                    CheckedType.UInt64 => nameof(TypeCheckOps.CheckUInt64Value),
+                    _ => "Check" + type
+                },
                 calls);
         }
         Assert.DoesNotContain(nameof(TypeCheckOps.Check), calls);

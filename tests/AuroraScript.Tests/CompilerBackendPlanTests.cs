@@ -454,7 +454,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.Equal(FlowValueType.Int32, LocalType("n"));
         Assert.Equal(FlowValueType.Int32, LocalType("k"));
-        Assert.Equal(FlowValueType.Int64, LocalType("wideK"));
+        Assert.Equal(FlowValueType.Number, LocalType("wideK"));
         // Integer remainder cannot hold negative zero or NaN, so both stay ints
         // and a zero divisor reports an error at runtime instead.
         Assert.Equal(FlowValueType.Int32, LocalType("signedZero"));
@@ -502,7 +502,7 @@ public sealed class CompilerBackendPlanTests
 
         Assert.Equal(FlowValueType.Int32, LocalType("i"));
         Assert.Equal(FlowValueType.Int32, LocalType("hex"));
-        Assert.Equal(FlowValueType.Int64, LocalType("wide"));
+        Assert.Equal(FlowValueType.Number, LocalType("wide"));
         Assert.Equal(FlowValueType.Number, LocalType("d"));
         Assert.Equal(FlowValueType.Int64, LocalType("longValue"));
         Assert.Equal(FlowValueType.UInt32, LocalType("unsigned"));

@@ -28,7 +28,7 @@ namespace AuroraScript.Compiler.Backend.Code
             {
                 AuroraExportValueKind.Number =>
                     argumentType is FlowValueType.Number or FlowValueType.Int32 or
-                        FlowValueType.UInt32 or FlowValueType.Int64,
+                        FlowValueType.UInt32,
                 AuroraExportValueKind.Int32 =>
                     argumentType == FlowValueType.Int32,
                 AuroraExportValueKind.Boolean =>

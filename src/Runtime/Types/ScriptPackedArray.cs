@@ -97,13 +97,13 @@ namespace AuroraScript.Runtime.Types
                     {
                         ThrowIndexOutOfRange(index, int64._items.Length);
                     }
-                    return ScriptDatum.FromNumber(ToExactNumber(int64._items[index], "Int64Array", index));
+                    return ScriptDatum.FromInt64(int64._items[index]);
                 case ScriptUInt64Array uint64:
                     if ((uint)index >= (uint)uint64._items.Length)
                     {
                         ThrowIndexOutOfRange(index, uint64._items.Length);
                     }
-                    return ScriptDatum.FromNumber(ToExactNumber(uint64._items[index], "UInt64Array", index));
+                    return ScriptDatum.FromUInt64(uint64._items[index]);
                 default:
                     ValidateIndex(index);
                     return GetElementDatumUnchecked(index);
@@ -183,14 +183,14 @@ namespace AuroraScript.Runtime.Types
                     {
                         ThrowIndexOutOfRange(index, int64._items.Length);
                     }
-                    int64._items[index] = unchecked((long)ValueOps.ToArithmeticNumber(value));
+                    int64._items[index] = TypeCheckOps.CheckInt64Value(value);
                     return;
                 case ScriptUInt64Array uint64:
                     if ((uint)index >= (uint)uint64._items.Length)
                     {
                         ThrowIndexOutOfRange(index, uint64._items.Length);
                     }
-                    uint64._items[index] = unchecked((ulong)ValueOps.ToArithmeticNumber(value));
+                    uint64._items[index] = TypeCheckOps.CheckUInt64Value(value);
                     return;
                 default:
                     ValidateIndex(index);
@@ -730,13 +730,13 @@ namespace AuroraScript.Runtime.Types
         public void SetElement(int index, long value) => _items[index] = value;
 
         internal override ScriptDatum GetElementDatumUnchecked(int index) =>
-            ScriptDatum.FromNumber(ToExactNumber(_items[index], "Int64Array", index));
+            ScriptDatum.FromInt64(_items[index]);
 
         internal override void SetElementDatumUnchecked(int index, ScriptDatum value) =>
-            _items[index] = unchecked((long)ValueOps.ToArithmeticNumber(value));
+            _items[index] = TypeCheckOps.CheckInt64Value(value);
 
         internal override void FillDatum(ScriptDatum value) =>
-            Array.Fill(_items, unchecked((long)ValueOps.ToArithmeticNumber(value)));
+            Array.Fill(_items, TypeCheckOps.CheckInt64Value(value));
 
         internal override ScriptPackedArray ClonePackedArray() =>
             new ScriptInt64Array((long[])_items.Clone());
@@ -767,13 +767,13 @@ namespace AuroraScript.Runtime.Types
         public void SetElement(int index, ulong value) => _items[index] = value;
 
         internal override ScriptDatum GetElementDatumUnchecked(int index) =>
-            ScriptDatum.FromNumber(ToExactNumber(_items[index], "UInt64Array", index));
+            ScriptDatum.FromUInt64(_items[index]);
 
         internal override void SetElementDatumUnchecked(int index, ScriptDatum value) =>
-            _items[index] = unchecked((ulong)ValueOps.ToArithmeticNumber(value));
+            _items[index] = TypeCheckOps.CheckUInt64Value(value);
 
         internal override void FillDatum(ScriptDatum value) =>
-            Array.Fill(_items, unchecked((ulong)ValueOps.ToArithmeticNumber(value)));
+            Array.Fill(_items, TypeCheckOps.CheckUInt64Value(value));
 
         internal override ScriptPackedArray ClonePackedArray() =>
             new ScriptUInt64Array((ulong[])_items.Clone());

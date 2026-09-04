@@ -523,6 +523,14 @@ namespace AuroraScript.Compiler.Analyzer
             if (token is ValueToken vt)
             {
                 if (vt.Type == Tokens.ValueType.StringTemplate) return ParseStringTemplate((StringTemplateToken)vt);
+                if (vt is NumberToken { IsInt64MinMagnitude: true })
+                {
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Parsing,
+                        this.Lexer.FullPath,
+                        vt,
+                        "The Int64 minimum magnitude is only valid with a leading minus.");
+                }
                 return SetRange(new LiteralExpression(vt), vt.Range, vt.Range);
             }
             if (token is IdentifierToken it) return SetRange(new NameExpression(it), it.Range, it.Range);
@@ -606,6 +614,12 @@ namespace AuroraScript.Compiler.Analyzer
                 if (op == Operator.New)
                 {
                     return ParseNewExpression(op, token.Range, token);
+                }
+
+                if (op == Operator.Negate &&
+                    TryParseInt64MinLiteralNegation(token.Range, out var minimum))
+                {
+                    return minimum;
                 }
 
                 // Normal Unary
@@ -705,6 +719,12 @@ namespace AuroraScript.Compiler.Analyzer
                     return ParseNewExpression(op, range, token);
                 }
 
+                if (op == Operator.Negate &&
+                    TryParseInt64MinLiteralNegation(range, out var minimum))
+                {
+                    return minimum;
+                }
+
                 var rightUnary = ParseExpression(op.Precedence);
                 if (op == Operator.PreIncrement || op == Operator.PreDecrement)
                 {
@@ -717,6 +737,32 @@ namespace AuroraScript.Compiler.Analyzer
 
             var unexpected = new OperatorToken { Symbol = symbol, Value = symbol?.Name, Range = range };
             throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, unexpected, $"Unknown prefix token: {unexpected.Value}");
+        }
+
+        private bool TryParseInt64MinLiteralNegation(
+            SourceSpan prefixRange,
+            out Expression expression)
+        {
+            if (this.Lexer.LookAtHead() is not NumberToken
+                {
+                    IsInt64MinMagnitude: true
+                } number)
+            {
+                expression = null;
+                return false;
+            }
+
+            this.Lexer.Next();
+            var literal = SetRange(
+                new LiteralExpression(number),
+                number.Range,
+                number.Range);
+            var unary = new UnaryExpression(
+                Operator.Negate,
+                UnaryType.Prefix,
+                literal);
+            expression = SetRange(unary, prefixRange, number.Range);
+            return true;
         }
 
         private Expression ParseInfix(Expression left, Symbols opSymbol, SourceSpan opRange, Operator op)
@@ -2467,6 +2513,8 @@ namespace AuroraScript.Compiler.Analyzer
                     "Int64Array" or "UInt64Array" => ValidateTDocPackedArray(typeName, raw, token),
                 "String" => IsTDocScalar(raw, typeof(StringToken)),
                 "Number" => IsTDocNumber(raw) && IsTDocFiniteNumber(raw),
+                "Int64" => TryGetExactTDocInt64(raw, out _),
+                "UInt64" => TryGetExactTDocUInt64(raw, out _),
                 "Boolean" => IsTDocScalar(raw, typeof(BooleanToken)),
                 "StringBuffer" or "Path" => IsTDocScalar(raw, typeof(StringToken)),
                 "Date" => ValidateTDocDate(raw),
@@ -2563,6 +2611,8 @@ namespace AuroraScript.Compiler.Analyzer
         {
             result = 0;
             if (!TryGetTDocNumberToken(value, out var token, out var negative)) return false;
+            if (negative && token.TryGetNegatedInt64(out result)) return true;
+            if (!negative && token.TryGetInt64(out result)) return true;
             var number = negative ? -token.NumberValue : token.NumberValue;
             if (double.IsFinite(number) && Math.Truncate(number) == number &&
                 number >= -9007199254740991d && number <= 9007199254740991d)
@@ -2587,6 +2637,8 @@ namespace AuroraScript.Compiler.Analyzer
             {
                 return false;
             }
+
+            if (token.TryGetUInt64(out result)) return true;
 
             var number = token.NumberValue;
             if (double.IsFinite(number) && Math.Truncate(number) == number &&

@@ -341,7 +341,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     result[parameterIndex] = DirectParameterType.FromCoercion(demand);
                 }
-                else if (FlowValueTypeFacts.IsNumeric(type) &&
+                else if (FlowValueTypeFacts.IsNumberCompatible(type) &&
                     demand is NativeCoercionKind.Int32Bitwise or NativeCoercionKind.Int32Shift)
                 {
                     result[parameterIndex] = DirectParameterType.FromCoercion(demand);
@@ -380,7 +380,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     result[parameterIndex] =
                         code.LocalTypes[i] == FlowValueType.Number &&
                         (parameterType.IsInt32Coercion ||
-                            FlowValueTypeFacts.IsNumeric(parameterType.Type))
+                            FlowValueTypeFacts.IsNumberCompatible(parameterType.Type))
                             ? new DirectParameterType(FlowValueType.Number)
                             : new DirectParameterType(FlowValueType.Dynamic);
                 }
@@ -723,8 +723,8 @@ namespace AuroraScript.Compiler.Backend.Code
                                 new DirectParameterType(current)) &&
                             current != argumentType)
                         {
-                            if (FlowValueTypeFacts.IsNumeric(current) &&
-                                FlowValueTypeFacts.IsNumeric(argumentType))
+                            if (FlowValueTypeFacts.IsNumberCompatible(current) &&
+                                FlowValueTypeFacts.IsNumberCompatible(argumentType))
                             {
                                 evidence.Types[i] = FlowValueTypeFacts.Merge(
                                     current,

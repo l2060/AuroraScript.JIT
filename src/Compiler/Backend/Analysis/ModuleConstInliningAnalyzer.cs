@@ -96,6 +96,10 @@ namespace AuroraScript.Compiler.Backend.Analysis
                     return new BooleanToken(value.Boolean);
                 case ValueKind.Number:
                     return new NumberToken(value.Number, constant.NumericHint);
+                case ValueKind.Int64:
+                    return new NumberToken(value.Int64, NumericLiteralSuffix.Int64);
+                case ValueKind.UInt64:
+                    return new NumberToken(value.UInt64, NumericLiteralSuffix.UInt64);
                 case ValueKind.String:
                     return new StringToken { Value = value.StringText ?? string.Empty };
                 default:
@@ -211,7 +215,20 @@ namespace AuroraScript.Compiler.Backend.Analysis
                 switch (literal.Token)
                 {
                     case NumberToken number:
-                        value = ScriptDatum.FromNumber(number.NumberValue);
+                        if (number.Suffix == NumericLiteralSuffix.Int64 &&
+                            number.TryGetInt64(out var int64))
+                        {
+                            value = ScriptDatum.FromInt64(int64);
+                        }
+                        else if (number.Suffix == NumericLiteralSuffix.UInt64 &&
+                            number.TryGetUInt64(out var uint64))
+                        {
+                            value = ScriptDatum.FromUInt64(uint64);
+                        }
+                        else
+                        {
+                            value = ScriptDatum.FromNumber(number.NumberValue);
+                        }
                         return true;
                     case StringToken text:
                         value = ScriptDatum.FromString(text.Value);
@@ -271,6 +288,20 @@ namespace AuroraScript.Compiler.Backend.Analysis
 
             private bool TryEvaluateUnary(UnaryExpression unary, ref ScriptDatum value)
             {
+                if (unary.Operator == Operator.Negate &&
+                    unary.Expression is LiteralExpression
+                    {
+                        Token: NumberToken
+                        {
+                            Suffix: NumericLiteralSuffix.Int64
+                        } number
+                    } &&
+                    number.TryGetNegatedInt64(out var minimum))
+                {
+                    value = ScriptDatum.FromInt64(minimum);
+                    return true;
+                }
+
                 var inner = default(ScriptDatum);
                 if (!TryEvaluate(unary.Expression, ref inner))
                 {

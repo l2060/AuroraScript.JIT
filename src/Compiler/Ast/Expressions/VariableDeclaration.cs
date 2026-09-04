@@ -108,6 +108,14 @@ namespace AuroraScript.Compiler.Ast.Expressions
                     {
                         token = new NumberToken(value.Number);
                     }
+                    else if (value.Kind == ValueKind.Int64)
+                    {
+                        token = new NumberToken(value.Int64, NumericLiteralSuffix.Int64);
+                    }
+                    else if (value.Kind == ValueKind.UInt64)
+                    {
+                        token = new NumberToken(value.UInt64, NumericLiteralSuffix.UInt64);
+                    }
                     else if (value.Kind == ValueKind.String)
                     {
                         token = new StringToken();

@@ -33,9 +33,11 @@ namespace AuroraScript.Compiler.Backend.Code
         UInt64Array = 1 << 18,
         Int64 = 1 << 19,
         UInt32 = 1 << 20,
+        UInt64 = 1 << 21,
         Dynamic = Null | Boolean | Number | String | Object |
             Int32Array | Int8Array | BooleanArray | Float32Array | Float64Array |
-            UInt8Array | Int16Array | UInt16Array | UInt32Array | Int64Array | UInt64Array | Array
+            UInt8Array | Int16Array | UInt16Array | UInt32Array | Int64Array | UInt64Array |
+            Int64 | UInt64 | Array
     }
 
     internal enum NativeCoercionKind : byte
@@ -117,6 +119,8 @@ namespace AuroraScript.Compiler.Backend.Code
                     Runtime.CheckedType.Number => FlowValueType.Number,
                     Runtime.CheckedType.Int32 => FlowValueType.Int32,
                     Runtime.CheckedType.UInt32 => FlowValueType.UInt32,
+                    Runtime.CheckedType.Int64 => FlowValueType.Int64,
+                    Runtime.CheckedType.UInt64 => FlowValueType.UInt64,
                     Runtime.CheckedType.String => FlowValueType.String,
                     Runtime.CheckedType.Object => FlowValueType.Object,
                     Runtime.CheckedType.Array => FlowValueType.Array,
@@ -167,6 +171,16 @@ namespace AuroraScript.Compiler.Backend.Code
                 checkedType = Runtime.CheckedType.UInt32;
                 return true;
             }
+            if (string.Equals(typeName, "int64", StringComparison.Ordinal))
+            {
+                checkedType = Runtime.CheckedType.Int64;
+                return true;
+            }
+            if (string.Equals(typeName, "uint64", StringComparison.Ordinal))
+            {
+                checkedType = Runtime.CheckedType.UInt64;
+                return true;
+            }
             if (string.Equals(
                     typeName,
                     nameof(Runtime.CheckedType.Int32),
@@ -174,6 +188,14 @@ namespace AuroraScript.Compiler.Backend.Code
                 string.Equals(
                     typeName,
                     nameof(Runtime.CheckedType.UInt32),
+                    StringComparison.Ordinal) ||
+                string.Equals(
+                    typeName,
+                    nameof(Runtime.CheckedType.Int64),
+                    StringComparison.Ordinal) ||
+                string.Equals(
+                    typeName,
+                    nameof(Runtime.CheckedType.UInt64),
                     StringComparison.Ordinal))
             {
                 checkedType = default;
@@ -233,7 +255,27 @@ namespace AuroraScript.Compiler.Backend.Code
         public static bool IsNumeric(FlowValueType type)
         {
             return type is FlowValueType.Int32 or FlowValueType.UInt32 or
-                FlowValueType.Int64 or FlowValueType.Number;
+                FlowValueType.Int64 or FlowValueType.UInt64 or
+                FlowValueType.Number;
+        }
+
+        public static bool ContainsExact64(FlowValueType type)
+        {
+            return (type & (FlowValueType.Int64 | FlowValueType.UInt64)) != 0;
+        }
+
+        public static bool MayShareExact64(
+            FlowValueType left,
+            FlowValueType right)
+        {
+            return ((left & right) &
+                (FlowValueType.Int64 | FlowValueType.UInt64)) != 0;
+        }
+
+        public static bool IsNumberCompatible(FlowValueType type)
+        {
+            return type is FlowValueType.Int32 or FlowValueType.UInt32 or
+                FlowValueType.Number;
         }
 
         public static bool CanPassNativeArgument(
@@ -250,18 +292,21 @@ namespace AuroraScript.Compiler.Backend.Code
                 (IsPackedArray(parameterType) &&
                     argumentType == FlowValueType.Null) ||
                 (parameterType == FlowValueType.Number &&
-                    argumentType is FlowValueType.Int32 or FlowValueType.UInt32 or
-                        FlowValueType.Int64) ||
+                    IsNumberCompatible(argumentType)) ||
                 // A declared int32 accepts any number natively: the call site
                 // still runs the exact range check, it just does not need a
                 // ScriptDatum or a dynamic dispatch to do it.
                 (parameterType == FlowValueType.Int32 &&
-                    argumentType is FlowValueType.Number or FlowValueType.UInt32 or
-                        FlowValueType.Int64) ||
+                    argumentType is FlowValueType.Number or FlowValueType.UInt32) ||
                 (parameterType == FlowValueType.UInt32 &&
+                    argumentType is FlowValueType.Number or FlowValueType.Int32) ||
+                (parameterType == FlowValueType.Int64 &&
                     argumentType is FlowValueType.Number or FlowValueType.Int32 or
-                        FlowValueType.Int64) ||
-                (parameter.IsInt32Coercion && IsNumeric(argumentType));
+                        FlowValueType.UInt32 or FlowValueType.UInt64) ||
+                (parameterType == FlowValueType.UInt64 &&
+                    argumentType is FlowValueType.Number or FlowValueType.Int32 or
+                        FlowValueType.UInt32 or FlowValueType.Int64) ||
+                (parameter.IsInt32Coercion && IsNumberCompatible(argumentType));
         }
 
         public static FlowValueType Merge(FlowValueType left, FlowValueType right)
@@ -269,15 +314,10 @@ namespace AuroraScript.Compiler.Backend.Code
             if (left == FlowValueType.None) return right;
             if (right == FlowValueType.None) return left;
             var merged = left | right;
-            // Number is the semantic widening of every internal integer
-            // representation. Int64 can hold both signed and unsigned 32-bit
-            // values exactly.
+            // Int32 and UInt32 are native representations of Number. The
+            // 64-bit integer types are distinct script primitives and must not
+            // be absorbed into Number when control-flow paths merge.
             if ((merged & FlowValueType.Number) != 0)
-            {
-                merged &= ~(FlowValueType.Int32 | FlowValueType.UInt32 |
-                    FlowValueType.Int64);
-            }
-            else if ((merged & FlowValueType.Int64) != 0)
             {
                 merged &= ~(FlowValueType.Int32 | FlowValueType.UInt32);
             }
@@ -285,7 +325,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 (merged & FlowValueType.UInt32) != 0)
             {
                 merged &= ~(FlowValueType.Int32 | FlowValueType.UInt32);
-                merged |= FlowValueType.Int64;
+                merged |= FlowValueType.Number;
             }
             return merged;
         }
@@ -296,11 +336,14 @@ namespace AuroraScript.Compiler.Backend.Code
                 ? FlowValueType.Boolean
                 : type == FlowValueType.UInt32Array
                     ? FlowValueType.UInt32
+                : type == FlowValueType.Int64Array
+                    ? FlowValueType.Int64
+                : type == FlowValueType.UInt64Array
+                    ? FlowValueType.UInt64
                 : type is FlowValueType.Float32Array or FlowValueType.Float64Array
                     ? FlowValueType.Number
                 : type is FlowValueType.UInt8Array or FlowValueType.Int16Array or
-                    FlowValueType.UInt16Array or FlowValueType.Int64Array or
-                    FlowValueType.UInt64Array
+                    FlowValueType.UInt16Array
                     ? FlowValueType.Number
                 : IsPackedArray(type)
                     ? FlowValueType.Int32

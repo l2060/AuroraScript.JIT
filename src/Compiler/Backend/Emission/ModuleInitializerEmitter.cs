@@ -461,7 +461,19 @@ namespace AuroraScript.Compiler.Backend.Emission
             switch (expression.Token)
             {
                 case NumberToken number:
-                    if (number.NumberValue >= int.MinValue &&
+                    if (number.Suffix == NumericLiteralSuffix.Int64 &&
+                        number.TryGetInt64(out var int64))
+                    {
+                        _il.Emit(OpCodes.Ldc_I8, int64);
+                        _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromInt64);
+                    }
+                    else if (number.Suffix == NumericLiteralSuffix.UInt64 &&
+                        number.TryGetUInt64(out var uint64))
+                    {
+                        _il.Emit(OpCodes.Ldc_I8, unchecked((long)uint64));
+                        _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromUInt64);
+                    }
+                    else if (number.NumberValue >= int.MinValue &&
                         number.NumberValue <= int.MaxValue &&
                         Math.Truncate(number.NumberValue) == number.NumberValue &&
                         (number.NumberValue != 0d ||
@@ -475,7 +487,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                         Math.Truncate(number.NumberValue) == number.NumberValue)
                     {
                         _il.Emit(OpCodes.Ldc_I8, (long)number.NumberValue);
-                        _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromInt64);
+                        _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromNumberInt64);
                     }
                     else if (_session.Builder.LoadNumber(
                         _il,
@@ -956,6 +968,20 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             if (!IsMutation(expression.Operator))
             {
+                if (expression.Operator == Operator.Negate &&
+                    expression.Expression is LiteralExpression
+                    {
+                        Token: NumberToken
+                        {
+                            Suffix: NumericLiteralSuffix.Int64
+                        } number
+                    } &&
+                    number.TryGetNegatedInt64(out var negated))
+                {
+                    _il.Emit(OpCodes.Ldc_I8, negated);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromInt64);
+                    return;
+                }
                 EmitExpression(expression.Expression);
                 _il.Emit(OpCodes.Call, GetUnaryMethod(expression.Operator));
                 return;
@@ -1285,6 +1311,22 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return;
             }
 
+            if (!expression.IsInterpolation && typeName == "Int64" &&
+                TypedDocumentLiteralConstants.TryGetInt64(expression.Value, out var int64))
+            {
+                _il.Emit(OpCodes.Ldc_I8, int64);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromInt64);
+                return;
+            }
+
+            if (!expression.IsInterpolation && typeName == "UInt64" &&
+                TypedDocumentLiteralConstants.TryGetUInt64(expression.Value, out var uint64))
+            {
+                _il.Emit(OpCodes.Ldc_I8, unchecked((long)uint64));
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromUInt64);
+                return;
+            }
+
             if (!expression.IsInterpolation && typeName == "Regex")
             {
                     EmitTypedRegex(expression.Value);
@@ -1459,7 +1501,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         private static bool IsBuiltInTDocTypeName(string typeName)
         {
             return typeName is "Null" or "Object" or "Array" or "String" or "Number" or
-                "Boolean" or "StringBuffer" or "Date" or "Regex" or "Path" or "HashMap" or
+                "Int64" or "UInt64" or "Boolean" or "StringBuffer" or "Date" or "Regex" or "Path" or "HashMap" or
                 "Int32Array" or "Int8Array" or "Float32Array" or "Float64Array" or "BooleanArray" or
                 "UInt8Array" or "Int16Array" or "UInt16Array" or "UInt32Array" or
                 "Int64Array" or "UInt64Array";

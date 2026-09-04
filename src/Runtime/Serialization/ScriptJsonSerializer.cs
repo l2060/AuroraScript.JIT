@@ -144,7 +144,16 @@ namespace AuroraScript.Runtime.Serialization
                 case JsonValueKind.Number:
                     if (element.TryGetInt64(out var longValue))
                     {
-                        return ScriptDatum.FromNumber(longValue);
+                        return longValue >= -9007199254740991L &&
+                            longValue <= 9007199254740991L
+                            ? ScriptDatum.FromNumber(longValue)
+                            : ScriptDatum.FromInt64(longValue);
+                    }
+                    if (element.TryGetUInt64(out var ulongValue))
+                    {
+                        return ulongValue <= 9007199254740991UL
+                            ? ScriptDatum.FromNumber(ulongValue)
+                            : ScriptDatum.FromUInt64(ulongValue);
                     }
                     if (element.TryGetDouble(out var doubleValue))
                     {
@@ -216,7 +225,16 @@ namespace AuroraScript.Runtime.Serialization
         {
             if (element.TryGetInt64(out var longValue))
             {
-                return NumberValue.Of(longValue);
+                return longValue >= -9007199254740991L &&
+                    longValue <= 9007199254740991L
+                    ? NumberValue.Of(longValue)
+                    : new Int64Value(longValue);
+            }
+            if (element.TryGetUInt64(out var ulongValue))
+            {
+                return ulongValue <= 9007199254740991UL
+                    ? NumberValue.Of(ulongValue)
+                    : new UInt64Value(ulongValue);
             }
             if (element.TryGetDouble(out var doubleValue))
             {
@@ -250,6 +268,12 @@ namespace AuroraScript.Runtime.Serialization
                     return;
                 case ValueKind.Number:
                     WriteNumberValue(writer, datum.Number, context);
+                    return;
+                case ValueKind.Int64:
+                    writer.WriteNumberValue(datum.Int64);
+                    return;
+                case ValueKind.UInt64:
+                    writer.WriteNumberValue(datum.UInt64);
                     return;
                 case ValueKind.String:
                 case ValueKind.Date:

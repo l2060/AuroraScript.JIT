@@ -8,9 +8,8 @@ namespace AuroraScript.Compiler.Backend.Emission
 {
     /// <summary>
     /// Reads the original spelling of numeric TDoc literals when their target has
-    /// a wider integer domain than <see cref="double"/>.  Script values remain
-    /// doubles; this is only for compile-time literals whose lexical integer value
-    /// is known before a ScriptDatum is created.
+    /// a wider integer domain than <see cref="double"/>. This keeps lexical integer
+    /// values exact until they reach an Int64/UInt64 datum or packed storage.
     /// </summary>
     internal static class TypedDocumentLiteralConstants
     {

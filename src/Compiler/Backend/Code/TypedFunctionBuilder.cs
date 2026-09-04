@@ -418,7 +418,6 @@ namespace AuroraScript.Compiler.Backend.Code
             private readonly DirectParameterType[][] _directParameterTypes;
             private readonly FlowValueType[] _upvalueTypes;
             private readonly HashSet<int> _safeInt32Mutations;
-            private readonly HashSet<int> _safeInt64Mutations;
             private readonly Dictionary<int, int> _provenStringIndices;
             private readonly Dictionary<ForStatement, CountedLoop> _countedLoops;
             private readonly Dictionary<int, Dictionary<string, FlowValueType>> _localFields;
@@ -466,7 +465,6 @@ namespace AuroraScript.Compiler.Backend.Code
                 _directParameterTypes = directParameterTypes;
                 _optimisticDirect = parameterTypes != null;
                 _safeInt32Mutations = new HashSet<int>();
-                _safeInt64Mutations = new HashSet<int>();
                 _provenStringIndices = new Dictionary<int, int>();
                 _countedLoops = new Dictionary<ForStatement, CountedLoop>(
                     ReferenceEqualityComparer.Instance);
@@ -491,7 +489,7 @@ namespace AuroraScript.Compiler.Backend.Code
                             parameterTypes[parameterIndex].Type != FlowValueType.None
                                 ? parameterTypes[parameterIndex]
                                 : default;
-                        _locals[i] = checkedType == FlowValueType.Number &&
+                        var parameterType = checkedType == FlowValueType.Number &&
                             directParameter.IsInt32Coercion
                             ? FlowValueType.Int32
                             : checkedType != FlowValueType.None
@@ -499,6 +497,12 @@ namespace AuroraScript.Compiler.Backend.Code
                                 : directParameter.Type != FlowValueType.None
                                     ? FlowValueTypeFacts.GetDirectLocalType(directParameter)
                                     : FlowValueType.Dynamic;
+                        // Closure cells always hold ScriptDatum. Keep exact
+                        // 64-bit parameters boxed when they cross that boundary.
+                        _locals[i] = IsCaptured(function.LocalSlots[i].Id) &&
+                            parameterType is FlowValueType.Int64 or FlowValueType.UInt64
+                                ? FlowValueType.Dynamic
+                                : parameterType;
                         // Only a declared type that is also the storage pins the
                         // slot. A declared Number that every use narrows to a
                         // bitwise Int32 must stay free to widen again.
@@ -562,7 +566,7 @@ namespace AuroraScript.Compiler.Backend.Code
                             hostExports) is
                             var declaredLocalType and
                             (FlowValueType.Int32 or FlowValueType.UInt32 or
-                                FlowValueType.Int64))
+                                FlowValueType.Int64 or FlowValueType.UInt64))
                     {
                         // `var index = expr as int32` is an explicit storage
                         // contract, so the conservative overflow rules that
@@ -636,7 +640,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 if (declaredReturnType != FlowValueType.None &&
                     !(_optimisticDirect &&
                         declaredReturnType == FlowValueType.Number &&
-                        FlowValueTypeFacts.IsNumeric(returnType)))
+                        FlowValueTypeFacts.IsNumberCompatible(returnType)))
                 {
                     returnType = declaredReturnType;
                 }
@@ -808,22 +812,6 @@ namespace AuroraScript.Compiler.Backend.Code
                                 _safeInt32Mutations.Remove(inductionSlot.Value);
                             }
                         }
-                        else if (TryGetCountedInt64Loop(@for, out var countedSlot, out var countedBound))
-                        {
-                            _countedLoops[@for] = new CountedLoop(countedSlot, countedBound);
-                            _safeInt64Mutations.Add(countedSlot.Value);
-                            _integerRangeLoopDepth++;
-                            try
-                            {
-                                AnalyzeStatement(@for.Body);
-                                AnalyzeExpression(@for.Incrementor);
-                            }
-                            finally
-                            {
-                                _integerRangeLoopDepth--;
-                                _safeInt64Mutations.Remove(countedSlot.Value);
-                            }
-                        }
                         else
                         {
                             _countedLoops.Remove(@for);
@@ -991,8 +979,7 @@ namespace AuroraScript.Compiler.Backend.Code
                             }
                         }
                         if (TryGetDeclaredNumericType(compound.Left, out var declaredCompound) &&
-                            FlowValueTypeFacts.IsNumeric(type) &&
-                            FlowValueTypeFacts.IsNumeric(declaredCompound))
+                            CanStoreCompoundResult(declaredCompound, type))
                         {
                             type = declaredCompound;
                         }
@@ -1756,6 +1743,8 @@ namespace AuroraScript.Compiler.Backend.Code
                         "UInt32Array" => FlowValueType.UInt32Array,
                         "Int64Array" => FlowValueType.Int64Array,
                         "UInt64Array" => FlowValueType.UInt64Array,
+                        "Int64" => FlowValueType.Int64,
+                        "UInt64" => FlowValueType.UInt64,
                         _ => FlowValueType.Dynamic
                     };
                 }
@@ -1765,6 +1754,8 @@ namespace AuroraScript.Compiler.Backend.Code
                     "Null" => FlowValueType.Null,
                     "Boolean" => FlowValueType.Boolean,
                     "Number" => FlowValueType.Number,
+                    "Int64" => FlowValueType.Int64,
+                    "UInt64" => FlowValueType.UInt64,
                     "String" => FlowValueType.String,
                     "Object" or "StringBuffer" or "Date" or "Regex" or "Path" or "HashMap" => FlowValueType.Object,
                     "Array" => FlowValueType.Array,
@@ -1916,6 +1907,18 @@ namespace AuroraScript.Compiler.Backend.Code
                     type == FlowValueType.String ||
                     type == FlowValueType.Array ||
                     FlowValueTypeFacts.IsPackedArray(type);
+            }
+
+            private static bool CanStoreCompoundResult(
+                FlowValueType declared,
+                FlowValueType result)
+            {
+                if (declared is FlowValueType.Int64 or FlowValueType.UInt64)
+                {
+                    return FlowValueTypeFacts.IsNumeric(result);
+                }
+                return FlowValueTypeFacts.IsNumberCompatible(declared) &&
+                    FlowValueTypeFacts.IsNumberCompatible(result);
             }
 
             private FlowValueType AnalyzeName(NameExpression name)
@@ -2677,7 +2680,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     // double round trip this pass exists to remove.
                     if (type == FlowValueType.Number &&
                         _locals[i] is FlowValueType.Int32 or FlowValueType.UInt32 or
-                            FlowValueType.Int64)
+                            FlowValueType.Int64 or FlowValueType.UInt64)
                     {
                         continue;
                     }
@@ -3044,81 +3047,6 @@ namespace AuroraScript.Compiler.Backend.Code
 
                 stringSlot = stringBinding.Local;
                 return true;
-            }
-
-            /// <summary>
-            /// Recognises <c>for (i = &lt;int&gt;; i &lt; bound; i += &lt;positive&gt;)</c>
-            /// where the bound is a loop-invariant number. The counter only ever
-            /// holds exact integers, so an <c>Int64</c> counter observes the same
-            /// values as the double it would otherwise widen to while letting the
-            /// loop compare and index natively.
-            /// </summary>
-            private bool TryGetCountedInt64Loop(
-                ForStatement statement,
-                out LocalSlotId slot,
-                out Expression bound)
-            {
-                slot = LocalSlotId.Invalid;
-                bound = null;
-                if (statement?.Condition is not BinaryExpression condition ||
-                    condition.Operator != Operator.LessThan ||
-                    condition.Left is not NameExpression conditionName ||
-                    !_names.TryGetValue(conditionName, out var conditionBinding) ||
-                    !conditionBinding.IsLocal ||
-                    IsCaptured(conditionBinding.Local))
-                {
-                    return false;
-                }
-                var counterType = _locals[conditionBinding.Local.Value];
-                if (counterType != FlowValueType.Int32 &&
-                    counterType != FlowValueType.Int64)
-                {
-                    return false;
-                }
-                if (!_expressionTypes.TryGetValue(condition.Right, out var boundType) ||
-                    !FlowValueTypeFacts.IsNumeric(boundType) ||
-                    !IsLoopInvariantBound(condition.Right))
-                {
-                    return false;
-                }
-
-                var writes = new Int32InductionWriteAnalyzer(this, conditionBinding.Local);
-                writes.Analyze(statement.Body, rejectNestedLoops: true);
-                writes.Analyze(statement.Incrementor, rejectNestedLoops: false);
-                if (!writes.IsValid || writes.MaximumDelta <= 0)
-                {
-                    return false;
-                }
-
-                slot = conditionBinding.Local;
-                bound = condition.Right;
-                return true;
-            }
-
-            /// <summary>
-            /// Accepts only bounds that can be hoisted in front of the loop:
-            /// a constant, or a local that nothing in the function reassigns.
-            /// </summary>
-            private bool IsLoopInvariantBound(Expression expression)
-            {
-                while (expression is GroupExpression group &&
-                    group.Expressions.Count == 1)
-                {
-                    expression = group.Expression;
-                }
-                if (expression is LiteralExpression literal)
-                {
-                    return literal.Token is NumberToken;
-                }
-                if (expression is not NameExpression name ||
-                    !_names.TryGetValue(name, out var binding))
-                {
-                    return false;
-                }
-                if (binding.HasConstant) return true;
-                return binding.IsLocal &&
-                    !IsCaptured(binding.Local) &&
-                    !WritesLocal(_function.Declaration?.Body, binding.Local);
             }
 
             private bool IsNativeLengthBound(Expression expression)
@@ -3512,6 +3440,23 @@ namespace AuroraScript.Compiler.Backend.Code
                     {
                         return FlowValueType.Dynamic;
                     }
+                    if (left == FlowValueType.Int64 && right == FlowValueType.Int64)
+                    {
+                        return FlowValueType.Int64;
+                    }
+                    if (left == FlowValueType.UInt64 && right == FlowValueType.UInt64)
+                    {
+                        return FlowValueType.UInt64;
+                    }
+                    if (FlowValueTypeFacts.MayShareExact64(left, right))
+                    {
+                        return FlowValueType.Dynamic;
+                    }
+                    if (FlowValueTypeFacts.ContainsExact64(left) ||
+                        FlowValueTypeFacts.ContainsExact64(right))
+                    {
+                        return FlowValueType.Number;
+                    }
                     return CanKeepUInt32Arithmetic(op, left, right)
                         ? FlowValueType.UInt32
                         : CanKeepInt32Arithmetic(
@@ -3522,26 +3467,59 @@ namespace AuroraScript.Compiler.Backend.Code
                             left,
                             right)
                         ? FlowValueType.Int32
-                        : CanKeepInt64Arithmetic(op, leftExpression, rightExpression, left, right)
-                            ? FlowValueType.Int64
                         : FlowValueType.Number;
                 }
                 if (op == Operator.BitwiseOr)
                 {
-                    if ((left & FlowValueType.Null) == 0)
+                    if ((left & FlowValueType.Null) != 0)
                     {
-                        return FlowValueTypeFacts.IsNumeric(left) && FlowValueTypeFacts.IsNumeric(right)
-                            ? left == FlowValueType.UInt32 || right == FlowValueType.UInt32
-                                ? FlowValueType.UInt32
-                                : FlowValueType.Int32
-                            : FlowValueType.Number;
+                        return left == FlowValueType.Null
+                            ? right
+                            : FlowValueTypeFacts.Merge(FlowValueType.Number, right);
                     }
-                    return left == FlowValueType.Null
-                        ? right
-                        : FlowValueTypeFacts.Merge(FlowValueType.Number, right);
+                    if (left == FlowValueType.Int64 && right == FlowValueType.Int64)
+                    {
+                        return FlowValueType.Int64;
+                    }
+                    if (left == FlowValueType.UInt64 && right == FlowValueType.UInt64)
+                    {
+                        return FlowValueType.UInt64;
+                    }
+                    if (FlowValueTypeFacts.MayShareExact64(left, right))
+                    {
+                        return FlowValueType.Dynamic;
+                    }
+                    if (FlowValueTypeFacts.ContainsExact64(left) ||
+                        FlowValueTypeFacts.ContainsExact64(right))
+                    {
+                        return FlowValueType.Number;
+                    }
+                    return FlowValueTypeFacts.IsNumberCompatible(left) &&
+                        FlowValueTypeFacts.IsNumberCompatible(right)
+                        ? left == FlowValueType.UInt32 || right == FlowValueType.UInt32
+                            ? FlowValueType.UInt32
+                            : FlowValueType.Int32
+                        : FlowValueType.Number;
                 }
                 if (op == Operator.Subtract || op == Operator.Multiply)
                 {
+                    if (left == FlowValueType.Int64 && right == FlowValueType.Int64)
+                    {
+                        return FlowValueType.Int64;
+                    }
+                    if (left == FlowValueType.UInt64 && right == FlowValueType.UInt64)
+                    {
+                        return FlowValueType.UInt64;
+                    }
+                    if (FlowValueTypeFacts.MayShareExact64(left, right))
+                    {
+                        return FlowValueType.Dynamic;
+                    }
+                    if (FlowValueTypeFacts.ContainsExact64(left) ||
+                        FlowValueTypeFacts.ContainsExact64(right))
+                    {
+                        return FlowValueType.Number;
+                    }
                     return CanKeepUInt32Arithmetic(op, left, right)
                         ? FlowValueType.UInt32
                         : CanKeepInt32Arithmetic(
@@ -3552,13 +3530,30 @@ namespace AuroraScript.Compiler.Backend.Code
                             left,
                             right)
                         ? FlowValueType.Int32
-                        : CanKeepInt64Arithmetic(op, leftExpression, rightExpression, left, right)
-                            ? FlowValueType.Int64
                         : FlowValueType.Number;
                 }
                 if (op == Operator.BitwiseAnd || op == Operator.BitwiseXor ||
                     op == Operator.LeftShift || op == Operator.SignedRightShift)
                 {
+                    if (left == FlowValueType.Int64 &&
+                        right == FlowValueType.Int64)
+                    {
+                        return FlowValueType.Int64;
+                    }
+                    if (left == FlowValueType.UInt64 &&
+                        right == FlowValueType.UInt64)
+                    {
+                        return FlowValueType.UInt64;
+                    }
+                    if (FlowValueTypeFacts.MayShareExact64(left, right))
+                    {
+                        return FlowValueType.Dynamic;
+                    }
+                    if (FlowValueTypeFacts.ContainsExact64(left) ||
+                        FlowValueTypeFacts.ContainsExact64(right))
+                    {
+                        return FlowValueType.Number;
+                    }
                     return left == FlowValueType.UInt32 ||
                         ((op == Operator.BitwiseAnd || op == Operator.BitwiseXor) &&
                             right == FlowValueType.UInt32)
@@ -3567,6 +3562,23 @@ namespace AuroraScript.Compiler.Backend.Code
                 }
                 if (op == Operator.Modulo)
                 {
+                    if (left == FlowValueType.Int64 && right == FlowValueType.Int64)
+                    {
+                        return FlowValueType.Int64;
+                    }
+                    if (left == FlowValueType.UInt64 && right == FlowValueType.UInt64)
+                    {
+                        return FlowValueType.UInt64;
+                    }
+                    if (FlowValueTypeFacts.MayShareExact64(left, right))
+                    {
+                        return FlowValueType.Dynamic;
+                    }
+                    if (FlowValueTypeFacts.ContainsExact64(left) ||
+                        FlowValueTypeFacts.ContainsExact64(right))
+                    {
+                        return FlowValueType.Number;
+                    }
                     // Two integers cannot produce the negative zero or NaN that
                     // would need a Number, so the remainder stays an integer.
                     if (left == FlowValueType.UInt32 && right == FlowValueType.UInt32)
@@ -3579,12 +3591,43 @@ namespace AuroraScript.Compiler.Backend.Code
                 }
                 if (op == Operator.UnSignedRightShift)
                 {
+                    if (left == FlowValueType.Int64 &&
+                        right == FlowValueType.Int64)
+                    {
+                        return FlowValueType.UInt64;
+                    }
+                    if (left == FlowValueType.UInt64 &&
+                        right == FlowValueType.UInt64)
+                    {
+                        return FlowValueType.UInt64;
+                    }
+                    if (FlowValueTypeFacts.MayShareExact64(left, right))
+                    {
+                        return FlowValueType.Dynamic;
+                    }
+                    if (FlowValueTypeFacts.ContainsExact64(left) ||
+                        FlowValueTypeFacts.ContainsExact64(right))
+                    {
+                        return FlowValueType.Number;
+                    }
                     return left == FlowValueType.UInt32
                         ? FlowValueType.UInt32
                         : FlowValueType.Number;
                 }
                 if (op == Operator.Divide)
                 {
+                    if (left == FlowValueType.Int64 && right == FlowValueType.Int64)
+                    {
+                        return FlowValueType.Int64;
+                    }
+                    if (left == FlowValueType.UInt64 && right == FlowValueType.UInt64)
+                    {
+                        return FlowValueType.UInt64;
+                    }
+                    if (FlowValueTypeFacts.MayShareExact64(left, right))
+                    {
+                        return FlowValueType.Dynamic;
+                    }
                     return FlowValueType.Number;
                 }
                 return FlowValueType.Dynamic;
@@ -3691,6 +3734,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     return type is FlowValueType.Int32 or
                         FlowValueType.UInt32 or
                         FlowValueType.Int64 or
+                        FlowValueType.UInt64 or
                         FlowValueType.Number;
                 }
                 if (expression is NameExpression name &&
@@ -3701,6 +3745,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     return type is FlowValueType.Int32 or
                         FlowValueType.UInt32 or
                         FlowValueType.Int64 or
+                        FlowValueType.UInt64 or
                         FlowValueType.Number;
                 }
                 if (expression is GetElementExpression element &&
@@ -3730,77 +3775,12 @@ namespace AuroraScript.Compiler.Backend.Code
                             return type is FlowValueType.Int32 or
                                 FlowValueType.UInt32 or
                                 FlowValueType.Int64 or
+                                FlowValueType.UInt64 or
                                 FlowValueType.Number;
                         }
                     }
                 }
                 return false;
-            }
-
-            private static bool CanKeepInt64Arithmetic(
-                Operator op,
-                Expression leftExpression,
-                Expression rightExpression,
-                FlowValueType left,
-                FlowValueType right)
-            {
-                if (!FlowValueTypeFacts.IsNumeric(left) ||
-                    !FlowValueTypeFacts.IsNumeric(right) ||
-                    left == FlowValueType.Number ||
-                    right == FlowValueType.Number)
-                {
-                    return false;
-                }
-                if (TryEvaluateInt64Arithmetic(op, leftExpression, rightExpression, out _))
-                {
-                    return true;
-                }
-                if (op == Operator.Add)
-                {
-                    return IsInt64Constant(leftExpression, 0) ||
-                        IsInt64Constant(rightExpression, 0);
-                }
-                if (op == Operator.Subtract)
-                {
-                    return IsInt64Constant(rightExpression, 0);
-                }
-                if (op == Operator.Multiply)
-                {
-                    return IsInt64Constant(leftExpression, 1) ||
-                        IsInt64Constant(rightExpression, 1);
-                }
-                return false;
-            }
-
-            private static bool TryEvaluateInt64Arithmetic(
-                Operator op,
-                Expression leftExpression,
-                Expression rightExpression,
-                out long value)
-            {
-                if (!TryEvaluateInt64Constant(leftExpression, out var left) ||
-                    !TryEvaluateInt64Constant(rightExpression, out var right))
-                {
-                    value = 0;
-                    return false;
-                }
-                try
-                {
-                    if (op == Operator.Add) value = checked(left + right);
-                    else if (op == Operator.Subtract) value = checked(left - right);
-                    else if (op == Operator.Multiply) value = checked(left * right);
-                    else
-                    {
-                        value = 0;
-                        return false;
-                    }
-                    return IsExactScriptInteger(value);
-                }
-                catch (OverflowException)
-                {
-                    value = 0;
-                    return false;
-                }
             }
 
             private static bool TryEvaluateInt32Arithmetic(
@@ -3839,11 +3819,6 @@ namespace AuroraScript.Compiler.Backend.Code
                 return TryEvaluateInt32Constant(expression, out var value) && value == expected;
             }
 
-            private static bool IsInt64Constant(Expression expression, long expected)
-            {
-                return TryEvaluateInt64Constant(expression, out var value) && value == expected;
-            }
-
             private static bool TryEvaluateInt32Constant(Expression expression, out int value)
             {
                 switch (expression)
@@ -3851,6 +3826,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     case LiteralExpression { Token: NumberToken number }
                         when number.Suffix != NumericLiteralSuffix.Number &&
                             number.Suffix != NumericLiteralSuffix.Int64 &&
+                            number.Suffix != NumericLiteralSuffix.UInt64 &&
                             number.Suffix != NumericLiteralSuffix.UInt32 &&
                             NumericLiteralFacts.IsExactInt32(number.NumberValue):
                         value = (int)number.NumberValue;
@@ -3903,9 +3879,23 @@ namespace AuroraScript.Compiler.Backend.Code
                 switch (expression)
                 {
                     case LiteralExpression { Token: NumberToken number }
-                        when number.Suffix != NumericLiteralSuffix.Number &&
-                            NumericLiteralFacts.IsExactInt64(number.NumberValue):
-                        value = (long)number.NumberValue;
+                        when number.Suffix == NumericLiteralSuffix.Int64 &&
+                            number.TryGetInt64(out var literalValue):
+                        value = literalValue;
+                        return true;
+                    case UnaryExpression
+                    {
+                        Operator: var negate,
+                        Expression: LiteralExpression
+                        {
+                            Token: NumberToken
+                            {
+                                Suffix: NumericLiteralSuffix.Int64
+                            } number
+                        }
+                    } when negate == Operator.Negate &&
+                        number.TryGetNegatedInt64(out var minimum):
+                        value = minimum;
                         return true;
                     case UnaryExpression unary:
                         if (!TryEvaluateInt64Constant(unary.Expression, out var operand)) break;
@@ -3913,11 +3903,11 @@ namespace AuroraScript.Compiler.Backend.Code
                             operand != 0 && operand != long.MinValue)
                         {
                             value = -operand;
-                            return IsExactScriptInteger(value);
+                            return true;
                         }
                         if (unary.Operator == Operator.BitwiseNot)
                         {
-                            value = ~unchecked((int)operand);
+                            value = ~operand;
                             return true;
                         }
                         break;
@@ -3926,20 +3916,20 @@ namespace AuroraScript.Compiler.Backend.Code
                             TryEvaluateInt64Constant(binary.Right, out var right):
                         try
                         {
-                            if (binary.Operator == Operator.Add) value = checked(left + right);
-                            else if (binary.Operator == Operator.Subtract) value = checked(left - right);
-                            else if (binary.Operator == Operator.Multiply) value = checked(left * right);
-                            else if (binary.Operator == Operator.BitwiseAnd) value = (int)left & (int)right;
-                            else if (binary.Operator == Operator.BitwiseOr) value = (int)left | (int)right;
-                            else if (binary.Operator == Operator.BitwiseXor) value = (int)left ^ (int)right;
-                            else if (binary.Operator == Operator.LeftShift) value = (int)left << ((int)right & 31);
-                            else if (binary.Operator == Operator.SignedRightShift) value = (int)left >> ((int)right & 31);
+                            if (binary.Operator == Operator.Add) value = unchecked(left + right);
+                            else if (binary.Operator == Operator.Subtract) value = unchecked(left - right);
+                            else if (binary.Operator == Operator.Multiply) value = unchecked(left * right);
+                            else if (binary.Operator == Operator.BitwiseAnd) value = left & right;
+                            else if (binary.Operator == Operator.BitwiseOr) value = left | right;
+                            else if (binary.Operator == Operator.BitwiseXor) value = left ^ right;
+                            else if (binary.Operator == Operator.LeftShift) value = left << ((int)right & 63);
+                            else if (binary.Operator == Operator.SignedRightShift) value = left >> ((int)right & 63);
                             else
                             {
                                 value = 0;
                                 return false;
                             }
-                            return IsExactScriptInteger(value);
+                            return true;
                         }
                         catch (OverflowException)
                         {
@@ -3960,11 +3950,6 @@ namespace AuroraScript.Compiler.Backend.Code
                 return NumericLiteralFacts.IsExactInt64(value);
             }
 
-            private static bool IsExactScriptInteger(long value)
-            {
-                return value >= -9007199254740991L && value <= 9007199254740991L;
-            }
-
             private FlowValueType AnalyzeUnary(UnaryExpression expression, FlowValueType operand)
             {
                 var op = expression.Operator;
@@ -3972,6 +3957,14 @@ namespace AuroraScript.Compiler.Backend.Code
                 if (op == Operator.TypeOf) return FlowValueType.String;
                 if (op == Operator.BitwiseNot)
                 {
+                    if (operand is FlowValueType.Int64 or FlowValueType.UInt64)
+                    {
+                        return operand;
+                    }
+                    if (FlowValueTypeFacts.ContainsExact64(operand))
+                    {
+                        return FlowValueType.Dynamic;
+                    }
                     return operand == FlowValueType.UInt32
                         ? FlowValueType.UInt32
                         : FlowValueType.Int32;
@@ -3980,17 +3973,35 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     var writeType = GetMutationWriteType(expression);
                     return op == Operator.PostIncrement || op == Operator.PostDecrement
-                        ? writeType is FlowValueType.Int32 or FlowValueType.UInt32
+                        ? writeType is FlowValueType.Int32 or FlowValueType.UInt32 or
+                            FlowValueType.Int64 or FlowValueType.UInt64
                             ? writeType
                             : operand
                         : writeType;
                 }
                 if (op == Operator.Negate)
                 {
+                    if (operand is FlowValueType.Int64 or FlowValueType.UInt64)
+                    {
+                        return operand;
+                    }
+                    if (FlowValueTypeFacts.ContainsExact64(operand))
+                    {
+                        return FlowValueType.Dynamic;
+                    }
                     if (TryEvaluateInt32Constant(expression, out _)) return FlowValueType.Int32;
-                    return TryEvaluateInt64Constant(expression, out _)
-                        ? FlowValueType.Int64
-                        : FlowValueType.Number;
+                    if (expression.Expression is LiteralExpression
+                        {
+                            Token: NumberToken
+                            {
+                                Suffix: NumericLiteralSuffix.Int64
+                            } number
+                        } &&
+                        number.TryGetNegatedInt64(out _))
+                    {
+                        return FlowValueType.Int64;
+                    }
+                    return FlowValueType.Number;
                 }
                 return operand;
             }
@@ -4006,11 +4017,23 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     return induction;
                 }
+                if (!_expressionTypes.TryGetValue(expression.Expression, out var operand))
+                {
+                    return FlowValueType.Dynamic;
+                }
+                if (operand is FlowValueType.Int64 or FlowValueType.UInt64)
+                {
+                    return operand;
+                }
+                if (FlowValueTypeFacts.ContainsExact64(operand))
+                {
+                    return FlowValueType.Dynamic;
+                }
                 if (_integerRangeLoopDepth > 0)
                 {
                     return FlowValueType.Number;
                 }
-                if (!_expressionTypes.TryGetValue(expression.Expression, out var operand) ||
+                if (
                     !IsExactIntegerStorage(operand) ||
                     !TryGetIntegerRange(expression.Expression, out var min, out var max))
                 {
@@ -4032,9 +4055,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     return FlowValueType.UInt32;
                 }
-                return operand == FlowValueType.Int64 && FitsInt64(nextMin, nextMax)
-                    ? FlowValueType.Int64
-                    : FlowValueType.Number;
+                return FlowValueType.Number;
             }
 
             private FlowValueType TryKeepRangedIntegerArithmetic(
@@ -4048,8 +4069,8 @@ namespace AuroraScript.Compiler.Backend.Code
                     (op != Operator.Add &&
                         op != Operator.Subtract &&
                         op != Operator.Modulo) ||
-                    !FlowValueTypeFacts.IsNumeric(left) ||
-                    !FlowValueTypeFacts.IsNumeric(right) ||
+                    !FlowValueTypeFacts.IsNumberCompatible(left) ||
+                    !FlowValueTypeFacts.IsNumberCompatible(right) ||
                     left == FlowValueType.Number ||
                     right == FlowValueType.Number)
                 {
@@ -4087,10 +4108,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     return FlowValueType.Int32;
                 }
-                return (left == FlowValueType.Int64 || right == FlowValueType.Int64) &&
-                    FitsInt64(min, max)
-                    ? FlowValueType.Int64
-                    : FlowValueType.None;
+                return FlowValueType.None;
             }
 
             private void NoteIntegerWrite(
@@ -4322,8 +4340,7 @@ namespace AuroraScript.Compiler.Backend.Code
 
             private static bool IsExactIntegerStorage(FlowValueType type)
             {
-                return type is FlowValueType.Int32 or FlowValueType.UInt32 or
-                    FlowValueType.Int64;
+                return type is FlowValueType.Int32 or FlowValueType.UInt32;
             }
 
             private static bool FitsInt32(long min, long max)
@@ -4334,11 +4351,6 @@ namespace AuroraScript.Compiler.Backend.Code
             private static bool FitsUInt32(long min, long max)
             {
                 return min >= uint.MinValue && max <= uint.MaxValue;
-            }
-
-            private static bool FitsInt64(long min, long max)
-            {
-                return IsExactScriptInteger(min) && IsExactScriptInteger(max);
             }
 
             private static bool TryAddRange(
@@ -4432,9 +4444,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     return FlowValueType.Int32;
                 }
-                return _safeInt64Mutations.Contains(binding.Local.Value)
-                    ? FlowValueType.Int64
-                    : FlowValueType.None;
+                return FlowValueType.None;
             }
 
             private static bool IsMutation(Operator op)
@@ -4451,12 +4461,11 @@ namespace AuroraScript.Compiler.Backend.Code
                     NumericLiteralSuffix.Int32 => FlowValueType.Int32,
                     NumericLiteralSuffix.UInt32 => FlowValueType.UInt32,
                     NumericLiteralSuffix.Int64 => FlowValueType.Int64,
+                    NumericLiteralSuffix.UInt64 => FlowValueType.UInt64,
                     _ when number.HasFractionOrExponent => FlowValueType.Number,
                     _ => IsExactInt32(number.NumberValue)
                         ? FlowValueType.Int32
-                        : IsExactInt64(number.NumberValue)
-                            ? FlowValueType.Int64
-                            : FlowValueType.Number
+                        : FlowValueType.Number
                 };
             }
 
@@ -4675,7 +4684,8 @@ namespace AuroraScript.Compiler.Backend.Code
                                 compoundLeft,
                                 compoundRight);
                             if (knownCompound is FlowValueType.Int32 or
-                                FlowValueType.UInt32 or FlowValueType.Int64)
+                                FlowValueType.UInt32 or FlowValueType.Int64 or
+                                FlowValueType.UInt64)
                             {
                                 compoundType = knownCompound;
                             }
@@ -4690,7 +4700,8 @@ namespace AuroraScript.Compiler.Backend.Code
                             if (!IsMutation(unary.Operator))
                             {
                                 if (knownUnary is FlowValueType.Int32 or
-                                    FlowValueType.UInt32 or FlowValueType.Int64)
+                                    FlowValueType.UInt32 or FlowValueType.Int64 or
+                                    FlowValueType.UInt64)
                                 {
                                     return knownUnary;
                                 }
@@ -4707,7 +4718,8 @@ namespace AuroraScript.Compiler.Backend.Code
                             {
                                 locals[mutationSlot.Value] =
                                     knownUnary is FlowValueType.Int32 or
-                                        FlowValueType.UInt32 or FlowValueType.Int64
+                                        FlowValueType.UInt32 or FlowValueType.Int64 or
+                                        FlowValueType.UInt64
                                         ? knownUnary
                                         : FlowValueType.Number;
                             }
@@ -4715,13 +4727,15 @@ namespace AuroraScript.Compiler.Backend.Code
                                 unary.Operator == Operator.PostDecrement
                                     ? operand
                                     : knownUnary is FlowValueType.Int32 or
-                                        FlowValueType.UInt32 or FlowValueType.Int64
+                                        FlowValueType.UInt32 or FlowValueType.Int64 or
+                                        FlowValueType.UInt64
                                         ? knownUnary
                                         : FlowValueType.Number;
                         case BinaryExpression binary:
                             var knownBinary = GetKnownType(binary);
                             if (knownBinary is FlowValueType.Int32 or
-                                FlowValueType.UInt32 or FlowValueType.Int64)
+                                FlowValueType.UInt32 or FlowValueType.Int64 or
+                                FlowValueType.UInt64)
                             {
                                 return knownBinary;
                             }
@@ -4936,7 +4950,7 @@ namespace AuroraScript.Compiler.Backend.Code
                             var definition = _definitions[i][j];
                             if (definition != null &&
                                 _expressionTypes.TryGetValue(definition, out var type) &&
-                                FlowValueTypeFacts.IsNumeric(type))
+                                FlowValueTypeFacts.IsNumberCompatible(type))
                             {
                                 continue;
                             }
@@ -5243,6 +5257,12 @@ namespace AuroraScript.Compiler.Backend.Code
                         (ReferenceEquals(binary.Left, current) ||
                             ReferenceEquals(binary.Right, current)))
                     {
+                        if (FlowValueTypeFacts.MayShareExact64(
+                            GetExpressionType(binary.Left),
+                            GetExpressionType(binary.Right)))
+                        {
+                            return NativeCoercionKind.None;
+                        }
                         var demand = GetBinaryOperandDemand(binary.Operator, current);
                         if (demand != NativeCoercionKind.None)
                         {
@@ -5252,6 +5272,12 @@ namespace AuroraScript.Compiler.Backend.Code
                     if (current.Parent is CompoundExpression compound &&
                         ReferenceEquals(compound.Right, current))
                     {
+                        if (FlowValueTypeFacts.MayShareExact64(
+                            GetExpressionType(compound.Left),
+                            GetExpressionType(compound.Right)))
+                        {
+                            return NativeCoercionKind.None;
+                        }
                         var demand = GetBinaryOperandDemand(
                             compound.Operator.SimplerOperator,
                             current);
@@ -5269,7 +5295,10 @@ namespace AuroraScript.Compiler.Backend.Code
                     {
                         if (unary.Operator == Operator.Negate)
                         {
-                            return NativeCoercionKind.ArithmeticNumber;
+                            return FlowValueTypeFacts.ContainsExact64(
+                                GetExpressionType(unary.Expression))
+                                    ? NativeCoercionKind.None
+                                    : NativeCoercionKind.ArithmeticNumber;
                         }
                         if (unary.Operator == Operator.LogicalNot)
                         {
@@ -5319,7 +5348,7 @@ namespace AuroraScript.Compiler.Backend.Code
                                 {
                                     return NativeCoercionKind.Int32Bitwise;
                                 }
-                                if (FlowValueTypeFacts.IsNumeric(parameter.Type))
+                                if (FlowValueTypeFacts.IsNumberCompatible(parameter.Type))
                                 {
                                     return NativeCoercionKind.ArithmeticNumber;
                                 }
@@ -5370,7 +5399,7 @@ namespace AuroraScript.Compiler.Backend.Code
                         op == Operator.GreaterThanOrEqual)
                     {
                         var operandType = GetExpressionType(operand as Expression);
-                        if (FlowValueTypeFacts.IsNumeric(operandType) ||
+                        if (FlowValueTypeFacts.IsNumberCompatible(operandType) ||
                             operandType == FlowValueType.Boolean)
                         {
                             return NativeCoercionKind.ArithmeticNumber;
@@ -5444,13 +5473,14 @@ namespace AuroraScript.Compiler.Backend.Code
                         NumericLiteralSuffix.Number => FlowValueType.Number,
                         NumericLiteralSuffix.Int32 => FlowValueType.Int32,
                         NumericLiteralSuffix.UInt32 => FlowValueType.UInt32,
-                        NumericLiteralSuffix.Int64 => FlowValueType.Int64,
+                        NumericLiteralSuffix.Int64 => FlowValueType.Number,
+                        NumericLiteralSuffix.UInt64 => FlowValueType.Number,
                         _ => IsExactInt32(datum.Number)
                             ? FlowValueType.Int32
-                            : IsExactInt64(datum.Number)
-                                ? FlowValueType.Int64
-                                : FlowValueType.Number
+                            : FlowValueType.Number
                     },
+                    ValueKind.Int64 => FlowValueType.Int64,
+                    ValueKind.UInt64 => FlowValueType.UInt64,
                     ValueKind.String => FlowValueType.String,
                     _ => datum.Reference switch
                     {

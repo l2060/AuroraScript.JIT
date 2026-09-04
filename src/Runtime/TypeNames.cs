@@ -18,6 +18,10 @@ namespace AuroraScript.Runtime
         public static readonly ScriptDatum String = ScriptDatum.FromString(new StringValue("string"));
         /// <summary> Standard identifier for numbers. </summary>
         public static readonly ScriptDatum Number = ScriptDatum.FromString(new StringValue("number"));
+        /// <summary> Standard identifier for signed 64-bit integers. </summary>
+        public static readonly ScriptDatum Int64 = ScriptDatum.FromString(new StringValue("int64"));
+        /// <summary> Standard identifier for unsigned 64-bit integers. </summary>
+        public static readonly ScriptDatum UInt64 = ScriptDatum.FromString(new StringValue("uint64"));
         /// <summary> Standard identifier for boolean values. </summary>
         public static readonly ScriptDatum Boolean = ScriptDatum.FromString(new StringValue("boolean"));
         /// <summary> Standard identifier for null. </summary>

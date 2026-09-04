@@ -512,6 +512,8 @@ namespace AuroraScript.Compiler.Backend.Binding
                             ValueKind.Null or
                             ValueKind.Boolean or
                             ValueKind.Number or
+                            ValueKind.Int64 or
+                            ValueKind.UInt64 or
                             ValueKind.String))
                     {
                         throw new AuroraCompilationException(
@@ -565,6 +567,28 @@ namespace AuroraScript.Compiler.Backend.Binding
                     return TypeCheckOps.IsUInt32(value.Number);
                 }
 
+                if (string.Equals(declaredType, "int64", StringComparison.Ordinal))
+                {
+                    return value.Kind switch
+                    {
+                        ValueKind.Int64 => true,
+                        ValueKind.UInt64 => value.UInt64 <= long.MaxValue,
+                        ValueKind.Number => TypeCheckOps.IsInt64(value.Number),
+                        _ => false
+                    };
+                }
+
+                if (string.Equals(declaredType, "uint64", StringComparison.Ordinal))
+                {
+                    return value.Kind switch
+                    {
+                        ValueKind.UInt64 => true,
+                        ValueKind.Int64 => value.Int64 >= 0,
+                        ValueKind.Number => TypeCheckOps.IsUInt64(value.Number),
+                        _ => false
+                    };
+                }
+
                 return (declaredType, value.Kind) switch
                 {
                     ("Null", ValueKind.Null) => true,
@@ -582,6 +606,8 @@ namespace AuroraScript.Compiler.Backend.Binding
                     ValueKind.Null => "Null",
                     ValueKind.Boolean => "Boolean",
                     ValueKind.Number => "Number",
+                    ValueKind.Int64 => "int64",
+                    ValueKind.UInt64 => "uint64",
                     ValueKind.String => "String",
                     _ => valueKind.ToString()
                 };

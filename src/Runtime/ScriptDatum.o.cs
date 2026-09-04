@@ -28,14 +28,14 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static implicit operator ScriptDatum(Int64 value)
         {
-            return FromNumber(value);
+            return FromInt64(value);
         }
 
         /// <summary> Implicitly converts a .NET <see cref="UInt64"/> to a <see cref="ScriptDatum"/>. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static implicit operator ScriptDatum(UInt64 value)
         {
-            return FromNumber(value);
+            return FromUInt64(value);
         }
 
         /// <summary> Implicitly converts a .NET <see cref="Int32"/> to a <see cref="ScriptDatum"/>. </summary>

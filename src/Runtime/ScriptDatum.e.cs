@@ -40,6 +40,12 @@ namespace AuroraScript.Runtime
                 case ValueKind.Number:
                     result = NumberValue.Of(value.Number);
                     return true;
+                case ValueKind.Int64:
+                    result = new Int64Value(value.Int64);
+                    return true;
+                case ValueKind.UInt64:
+                    result = new UInt64Value(value.UInt64);
+                    return true;
                 case ValueKind.String:
                     result = StringValue.Of(value.StringText);
                     return true;
@@ -113,6 +119,34 @@ namespace AuroraScript.Runtime
         public static ScriptDatum FromNumber(long value)
         {
             return CreateNumber(value);
+        }
+
+        /// <summary>Creates a datum containing an exact signed 64-bit integer.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum FromInt64(long value)
+        {
+            return CreateInt64(value);
+        }
+
+        /// <summary>Writes an exact signed 64-bit integer into the destination datum.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void WriteAsInt64(ref ScriptDatum dst, long value)
+        {
+            dst.SetInt64(value);
+        }
+
+        /// <summary>Creates a datum containing an exact unsigned 64-bit integer.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum FromUInt64(ulong value)
+        {
+            return CreateUInt64(value);
+        }
+
+        /// <summary>Writes an exact unsigned 64-bit integer into the destination datum.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void WriteAsUInt64(ref ScriptDatum dst, ulong value)
+        {
+            dst.SetUInt64(value);
         }
 
         /// <summary> Creates a new datum from an existing <see cref="StringValue"/>. </summary>
@@ -324,6 +358,14 @@ namespace AuroraScript.Runtime
                     dst.SetNumber(numberValue.DoubleValue);
                     return;
 
+                case Int64Value int64Value:
+                    dst.SetInt64(int64Value.Value);
+                    return;
+
+                case UInt64Value uint64Value:
+                    dst.SetUInt64(uint64Value.Value);
+                    return;
+
                 case BooleanValue booleanValue:
                     dst.SetBoolean(booleanValue.Value);
                     return;
@@ -386,6 +428,12 @@ namespace AuroraScript.Runtime
                 case NumberValue numberValue:
                     return FromNumber(numberValue.DoubleValue);
 
+                case Int64Value int64Value:
+                    return FromInt64(int64Value.Value);
+
+                case UInt64Value uint64Value:
+                    return FromUInt64(uint64Value.Value);
+
                 case BooleanValue booleanValue:
                     return FromBoolean(booleanValue.Value);
 
@@ -436,6 +484,10 @@ namespace AuroraScript.Runtime
                     return BooleanValue.Of(d.Boolean);
                 case ValueKind.Number:
                     return NumberValue.Of(d.Number);
+                case ValueKind.Int64:
+                    return new Int64Value(d.Int64);
+                case ValueKind.UInt64:
+                    return new UInt64Value(d.UInt64);
                 case ValueKind.String:
                     return d.String;
                 default:
@@ -458,6 +510,10 @@ namespace AuroraScript.Runtime
                 case ValueKind.Number:
                     var num = d.Number;
                     return num != 0 && !double.IsNaN(num);
+                case ValueKind.Int64:
+                    return d.Int64 != 0;
+                case ValueKind.UInt64:
+                    return d.UInt64 != 0;
                 case ValueKind.String:
                     return !string.IsNullOrEmpty(d.StringText);
                 default:
@@ -480,6 +536,10 @@ namespace AuroraScript.Runtime
                 case ValueKind.Number:
                     var num = d.Number;
                     return num == 0 || double.IsNaN(num);
+                case ValueKind.Int64:
+                    return d.Int64 == 0;
+                case ValueKind.UInt64:
+                    return d.UInt64 == 0;
                 case ValueKind.String:
                     return string.IsNullOrEmpty(d.StringText);
                 default:
@@ -514,6 +574,10 @@ namespace AuroraScript.Runtime
                     return TypeNames.Boolean;
                 case ValueKind.Number:
                     return TypeNames.Number;
+                case ValueKind.Int64:
+                    return TypeNames.Int64;
+                case ValueKind.UInt64:
+                    return TypeNames.UInt64;
                 case ValueKind.String:
                     return TypeNames.String;
                 default:
@@ -534,6 +598,10 @@ namespace AuroraScript.Runtime
                     return d.Boolean.ToString();
                 case ValueKind.Number:
                     return d.Number.ToString();
+                case ValueKind.Int64:
+                    return d.Int64.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                case ValueKind.UInt64:
+                    return d.UInt64.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 case ValueKind.String:
                     return d.StringText;
                 default:

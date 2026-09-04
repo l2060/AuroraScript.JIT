@@ -15,7 +15,9 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo DatumFromNumber = Method(typeof(ScriptDatum), nameof(ScriptDatum.FromNumber), typeof(double));
         public static readonly MethodInfo DatumFromInt32 = Method(typeof(ScriptDatum), nameof(ScriptDatum.FromNumber), typeof(int));
         public static readonly MethodInfo DatumFromUInt32 = Method(typeof(ScriptDatum), nameof(ScriptDatum.FromNumber), typeof(uint));
-        public static readonly MethodInfo DatumFromInt64 = Method(typeof(ScriptDatum), nameof(ScriptDatum.FromNumber), typeof(long));
+        public static readonly MethodInfo DatumFromNumberInt64 = Method(typeof(ScriptDatum), nameof(ScriptDatum.FromNumber), typeof(long));
+        public static readonly MethodInfo DatumFromInt64 = Method(typeof(ScriptDatum), nameof(ScriptDatum.FromInt64), typeof(long));
+        public static readonly MethodInfo DatumFromUInt64 = Method(typeof(ScriptDatum), nameof(ScriptDatum.FromUInt64), typeof(ulong));
         public static readonly MethodInfo DatumFromBoolean = Method(typeof(ScriptDatum), nameof(ScriptDatum.FromBoolean), typeof(bool));
         public static readonly MethodInfo DatumFromString = Method(typeof(ScriptDatum), nameof(ScriptDatum.FromString), typeof(string));
         public static readonly MethodInfo DatumFromObject = Method(typeof(ScriptDatum), nameof(ScriptDatum.FromObject), typeof(ScriptObject));
@@ -31,6 +33,12 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo CheckUInt32 = TypeCheck(nameof(TypeCheckOps.CheckUInt32));
         public static readonly MethodInfo CheckUInt32Number = Method(typeof(TypeCheckOps), nameof(TypeCheckOps.CheckUInt32Number), typeof(double));
         public static readonly MethodInfo CheckUInt32Value = Method(typeof(TypeCheckOps), nameof(TypeCheckOps.CheckUInt32Value), typeof(ScriptDatum));
+        public static readonly MethodInfo CheckInt64 = TypeCheck(nameof(TypeCheckOps.CheckInt64));
+        public static readonly MethodInfo CheckInt64Number = Method(typeof(TypeCheckOps), nameof(TypeCheckOps.CheckInt64Number), typeof(double));
+        public static readonly MethodInfo CheckInt64Value = Method(typeof(TypeCheckOps), nameof(TypeCheckOps.CheckInt64Value), typeof(ScriptDatum));
+        public static readonly MethodInfo CheckUInt64 = TypeCheck(nameof(TypeCheckOps.CheckUInt64));
+        public static readonly MethodInfo CheckUInt64Number = Method(typeof(TypeCheckOps), nameof(TypeCheckOps.CheckUInt64Number), typeof(double));
+        public static readonly MethodInfo CheckUInt64Value = Method(typeof(TypeCheckOps), nameof(TypeCheckOps.CheckUInt64Value), typeof(ScriptDatum));
         public static readonly MethodInfo CheckString = TypeCheck(nameof(TypeCheckOps.CheckString));
         public static readonly MethodInfo CheckObject = TypeCheck(nameof(TypeCheckOps.CheckObject));
         public static readonly MethodInfo CheckArray = TypeCheck(nameof(TypeCheckOps.CheckArray));
@@ -46,6 +54,8 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo CheckInt64Array = TypeCheck(nameof(TypeCheckOps.CheckInt64Array));
         public static readonly MethodInfo CheckUInt64Array = TypeCheck(nameof(TypeCheckOps.CheckUInt64Array));
         public static readonly MethodInfo DatumNumber = typeof(ScriptDatum).GetProperty(nameof(ScriptDatum.Number)).GetMethod;
+        public static readonly MethodInfo DatumInt64 = typeof(ScriptDatum).GetProperty(nameof(ScriptDatum.Int64)).GetMethod;
+        public static readonly MethodInfo DatumUInt64 = typeof(ScriptDatum).GetProperty(nameof(ScriptDatum.UInt64)).GetMethod;
         public static readonly MethodInfo DatumBoolean = typeof(ScriptDatum).GetProperty(nameof(ScriptDatum.Boolean)).GetMethod;
         public static readonly FieldInfo ContextDomain = typeof(ScriptContext).GetField(nameof(ScriptContext.Domain));
         public static readonly FieldInfo ContextModule = typeof(ScriptContext).GetField(nameof(ScriptContext.Module));
@@ -82,6 +92,10 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo ModuloBoolean = Method(typeof(ValueOps), nameof(ValueOps.ModuloBoolean), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo ModuloInt32 = Method(typeof(ValueOps), nameof(ValueOps.ModuloInt32), typeof(int), typeof(int));
         public static readonly MethodInfo ModuloUInt32 = Method(typeof(ValueOps), nameof(ValueOps.ModuloUInt32), typeof(uint), typeof(uint));
+        public static readonly MethodInfo DivideInt64 = Method(typeof(ValueOps), nameof(ValueOps.DivideInt64), typeof(long), typeof(long));
+        public static readonly MethodInfo DivideUInt64 = Method(typeof(ValueOps), nameof(ValueOps.DivideUInt64), typeof(ulong), typeof(ulong));
+        public static readonly MethodInfo ModuloInt64 = Method(typeof(ValueOps), nameof(ValueOps.ModuloInt64), typeof(long), typeof(long));
+        public static readonly MethodInfo ModuloUInt64 = Method(typeof(ValueOps), nameof(ValueOps.ModuloUInt64), typeof(ulong), typeof(ulong));
         public static readonly MethodInfo Equal = Method(typeof(ValueOps), nameof(ValueOps.Equal), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo EqualBoolean = Method(typeof(ValueOps), nameof(ValueOps.EqualBoolean), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo NotEqual = Method(typeof(ValueOps), nameof(ValueOps.NotEqual), typeof(ScriptDatum), typeof(ScriptDatum));
@@ -286,6 +300,8 @@ namespace AuroraScript.Compiler.Backend.Code
                 CheckedType.Number => CheckNumber,
                 CheckedType.Int32 => CheckInt32,
                 CheckedType.UInt32 => CheckUInt32,
+                CheckedType.Int64 => CheckInt64,
+                CheckedType.UInt64 => CheckUInt64,
                 CheckedType.String => CheckString,
                 CheckedType.Object => CheckObject,
                 CheckedType.Array => CheckArray,

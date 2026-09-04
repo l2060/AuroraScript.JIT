@@ -52,6 +52,18 @@ namespace AuroraScript.Runtime.Serialization
             WriteMember(name, ScriptDatum.FromNumber(value), readOnly);
         }
 
+        /// <summary>Writes a signed 64-bit integer object member.</summary>
+        public void WriteMember(string name, long value, bool readOnly = false)
+        {
+            WriteMember(name, ScriptDatum.FromInt64(value), readOnly);
+        }
+
+        /// <summary>Writes an unsigned 64-bit integer object member.</summary>
+        public void WriteMember(string name, ulong value, bool readOnly = false)
+        {
+            WriteMember(name, ScriptDatum.FromUInt64(value), readOnly);
+        }
+
         /// <summary>Writes a boolean object member.</summary>
         public void WriteMember(string name, bool value, bool readOnly = false)
         {
@@ -100,6 +112,18 @@ namespace AuroraScript.Runtime.Serialization
             WriteElement(ScriptDatum.FromNumber(value));
         }
 
+        /// <summary>Writes a signed 64-bit integer array element.</summary>
+        public void WriteElement(long value)
+        {
+            WriteElement(ScriptDatum.FromInt64(value));
+        }
+
+        /// <summary>Writes an unsigned 64-bit integer array element.</summary>
+        public void WriteElement(ulong value)
+        {
+            WriteElement(ScriptDatum.FromUInt64(value));
+        }
+
         /// <summary>Writes a boolean array element.</summary>
         public void WriteElement(bool value)
         {
@@ -128,6 +152,18 @@ namespace AuroraScript.Runtime.Serialization
             WriteValue(ScriptDatum.FromNumber(value));
         }
 
+        /// <summary>Writes a signed 64-bit integer as the whole scalar body.</summary>
+        public void WriteValue(long value)
+        {
+            WriteValue(ScriptDatum.FromInt64(value));
+        }
+
+        /// <summary>Writes an unsigned 64-bit integer as the whole scalar body.</summary>
+        public void WriteValue(ulong value)
+        {
+            WriteValue(ScriptDatum.FromUInt64(value));
+        }
+
         /// <summary>Writes a boolean as the whole scalar body.</summary>
         public void WriteValue(bool value)
         {
@@ -149,10 +185,11 @@ namespace AuroraScript.Runtime.Serialization
         /// </summary>
         public void WriteValue(ScriptDatum value)
         {
-            if (value.Kind is not (ValueKind.Null or ValueKind.Boolean or ValueKind.Number or ValueKind.String))
+            if (value.Kind is not (ValueKind.Null or ValueKind.Boolean or ValueKind.Number or
+                ValueKind.Int64 or ValueKind.UInt64 or ValueKind.String))
             {
                 throw new TypedDocumentException(
-                    "Native TDoc scalar body requires null, boolean, number, or string.");
+                    "Native TDoc scalar body requires null, boolean, number, integer, or string.");
             }
 
             EnsureKind(BodyKind.Scalar);

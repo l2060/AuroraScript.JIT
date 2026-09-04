@@ -49,7 +49,11 @@ namespace AuroraScript.Runtime
         /// Number constrained to an exact unsigned 32-bit integer.
         /// This remains a script number at runtime.
         /// </summary>
-        UInt32
+        UInt32,
+        /// <summary>Exact signed 64-bit integer primitive.</summary>
+        Int64,
+        /// <summary>Exact unsigned 64-bit integer primitive.</summary>
+        UInt64
     }
 
     /// <summary>
@@ -73,6 +77,8 @@ namespace AuroraScript.Runtime
                 CheckedType.Number => CheckNumber(value),
                 CheckedType.Int32 => CheckInt32(value),
                 CheckedType.UInt32 => CheckUInt32(value),
+                CheckedType.Int64 => CheckInt64(value),
+                CheckedType.UInt64 => CheckUInt64(value),
                 CheckedType.String => CheckString(value),
                 CheckedType.Object => CheckObject(value),
                 CheckedType.Array => CheckArray(value),
@@ -254,6 +260,114 @@ namespace AuroraScript.Runtime
                 (number != 0d || IsPositiveZero(number));
         }
 
+        /// <summary>Validates and normalizes an exact signed 64-bit integer.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum CheckInt64(ScriptDatum value)
+        {
+            switch (value.Kind)
+            {
+                case ValueKind.Int64:
+                    return value;
+                case ValueKind.UInt64 when value.UInt64 <= long.MaxValue:
+                    return ScriptDatum.FromInt64((long)value.UInt64);
+                case ValueKind.Number when IsInt64(value.Number):
+                    return ScriptDatum.FromInt64((long)value.Number);
+                default:
+                    return Mismatch(CheckedType.Int64, value);
+            }
+        }
+
+        /// <summary>Returns an exact signed 64-bit integer from a dynamic value.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static long CheckInt64Value(ScriptDatum value)
+        {
+            switch (value.Kind)
+            {
+                case ValueKind.Int64:
+                    return value.Int64;
+                case ValueKind.UInt64 when value.UInt64 <= long.MaxValue:
+                    return (long)value.UInt64;
+                case ValueKind.Number when IsInt64(value.Number):
+                    return (long)value.Number;
+                default:
+                    Mismatch(CheckedType.Int64, value);
+                    return 0;
+            }
+        }
+
+        /// <summary>Validates a native Number and returns it as System.Int64.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static long CheckInt64Number(double value)
+        {
+            if (IsInt64(value)) return (long)value;
+            Mismatch(CheckedType.Int64, ScriptDatum.FromNumber(value));
+            return 0;
+        }
+
+        /// <summary>Returns whether a Number can be represented exactly as System.Int64.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsInt64(double number)
+        {
+            return number >= -9223372036854775808d &&
+                number < 9223372036854775808d &&
+                number == System.Math.Truncate(number) &&
+                (number != 0d || IsPositiveZero(number));
+        }
+
+        /// <summary>Validates and normalizes an exact unsigned 64-bit integer.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum CheckUInt64(ScriptDatum value)
+        {
+            switch (value.Kind)
+            {
+                case ValueKind.UInt64:
+                    return value;
+                case ValueKind.Int64 when value.Int64 >= 0:
+                    return ScriptDatum.FromUInt64((ulong)value.Int64);
+                case ValueKind.Number when IsUInt64(value.Number):
+                    return ScriptDatum.FromUInt64((ulong)value.Number);
+                default:
+                    return Mismatch(CheckedType.UInt64, value);
+            }
+        }
+
+        /// <summary>Returns an exact unsigned 64-bit integer from a dynamic value.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong CheckUInt64Value(ScriptDatum value)
+        {
+            switch (value.Kind)
+            {
+                case ValueKind.UInt64:
+                    return value.UInt64;
+                case ValueKind.Int64 when value.Int64 >= 0:
+                    return (ulong)value.Int64;
+                case ValueKind.Number when IsUInt64(value.Number):
+                    return (ulong)value.Number;
+                default:
+                    Mismatch(CheckedType.UInt64, value);
+                    return 0;
+            }
+        }
+
+        /// <summary>Validates a native Number and returns it as System.UInt64.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong CheckUInt64Number(double value)
+        {
+            if (IsUInt64(value)) return (ulong)value;
+            Mismatch(CheckedType.UInt64, ScriptDatum.FromNumber(value));
+            return 0;
+        }
+
+        /// <summary>Returns whether a Number can be represented exactly as System.UInt64.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsUInt64(double number)
+        {
+            return number >= 0d &&
+                number < 18446744073709551616d &&
+                number == System.Math.Truncate(number) &&
+                (number != 0d || IsPositiveZero(number));
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool IsPositiveZero(double number) =>
             System.BitConverter.DoubleToInt64Bits(number) >= 0;
@@ -376,7 +490,11 @@ namespace AuroraScript.Runtime
                 "Type check failed: expected " +
                 (expected == CheckedType.Int32
                     ? "int32"
-                    : expected == CheckedType.UInt32 ? "uint32" : expected) +
+                    : expected == CheckedType.UInt32
+                        ? "uint32"
+                        : expected == CheckedType.Int64
+                            ? "int64"
+                            : expected == CheckedType.UInt64 ? "uint64" : expected) +
                 ", actual " + ScriptDatum.GetTypeName(actual) + ".");
         }
     }

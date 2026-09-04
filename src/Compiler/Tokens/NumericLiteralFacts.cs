@@ -8,6 +8,7 @@ namespace AuroraScript.Tokens
         Int32,
         UInt32,
         Int64,
+        UInt64,
         Number
     }
 
@@ -17,15 +18,18 @@ namespace AuroraScript.Tokens
             ReadOnlySpan<char> span,
             int index,
             bool hexadecimal,
-            out NumericLiteralSuffix suffix)
+            out NumericLiteralSuffix suffix,
+            out int length)
         {
             suffix = NumericLiteralSuffix.None;
+            length = 0;
             if ((uint)index >= (uint)span.Length)
             {
                 return false;
             }
 
-            var found = span[index] switch
+            var first = span[index];
+            var found = first switch
             {
                 'L' or 'l' => NumericLiteralSuffix.Int64,
                 'I' or 'i' => NumericLiteralSuffix.Int32,
@@ -39,22 +43,63 @@ namespace AuroraScript.Tokens
             }
 
             var next = index + 1;
+            if ((first == 'U' || first == 'u') &&
+                next < span.Length &&
+                (span[next] == 'L' || span[next] == 'l'))
+            {
+                found = NumericLiteralSuffix.UInt64;
+                next++;
+            }
+            else if ((first == 'L' || first == 'l') &&
+                next < span.Length &&
+                (span[next] == 'U' || span[next] == 'u'))
+            {
+                found = NumericLiteralSuffix.UInt64;
+                next++;
+            }
+
             if (next < span.Length && IsIdentifierPart(span[next]))
             {
                 return false;
             }
 
             suffix = found;
+            length = next - index;
             return true;
+        }
+
+        public static bool TryConsumeSuffix(
+            ReadOnlySpan<char> span,
+            int index,
+            bool hexadecimal,
+            out NumericLiteralSuffix suffix)
+        {
+            return TryConsumeSuffix(
+                span,
+                index,
+                hexadecimal,
+                out suffix,
+                out _);
         }
 
         public static ReadOnlySpan<char> WithoutSuffix(ReadOnlySpan<char> source)
         {
             var hexadecimal = IsHexadecimal(source);
-            return source.Length > 0 &&
-                TryConsumeSuffix(source, source.Length - 1, hexadecimal, out _)
-                    ? source[..^1]
-                    : source;
+            var start = Math.Max(0, source.Length - 2);
+            for (; start < source.Length; start++)
+            {
+                if (TryConsumeSuffix(
+                        source,
+                        start,
+                        hexadecimal,
+                        out _,
+                        out var length) &&
+                    start + length == source.Length)
+                {
+                    return source[..start];
+                }
+            }
+            return source;
         }
 
         public static bool IsHexadecimal(ReadOnlySpan<char> source)

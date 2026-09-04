@@ -553,6 +553,10 @@ namespace AuroraScript.Runtime.Types
                     return datum.StringText;
                 case ValueKind.Number:
                     return datum.Number.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                case ValueKind.Int64:
+                    return datum.Int64.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                case ValueKind.UInt64:
+                    return datum.UInt64.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 case ValueKind.Boolean:
                     return datum.Boolean ? "true" : "false";
                 default:

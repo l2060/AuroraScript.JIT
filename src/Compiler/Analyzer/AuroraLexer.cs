@@ -775,9 +775,14 @@ namespace AuroraScript.Compiler.Analyzer
                 return false;
             }
 
-            if (NumericLiteralFacts.TryConsumeSuffix(span, i, hexadecimal: true, out _))
+            if (NumericLiteralFacts.TryConsumeSuffix(
+                    span,
+                    i,
+                    hexadecimal: true,
+                    out _,
+                    out var suffixLength))
             {
-                i++;
+                i += suffixLength;
             }
 
             result = new RuleTestResult
@@ -829,10 +834,15 @@ namespace AuroraScript.Compiler.Analyzer
                 hadExponent = true;
             }
 
-            if (NumericLiteralFacts.TryConsumeSuffix(span, i, hexadecimal: false, out var suffix) &&
+            if (NumericLiteralFacts.TryConsumeSuffix(
+                    span,
+                    i,
+                    hexadecimal: false,
+                    out var suffix,
+                    out var suffixLength) &&
                 (suffix == NumericLiteralSuffix.Number || !hadFraction && !hadExponent))
             {
-                i++;
+                i += suffixLength;
             }
 
             result = new RuleTestResult

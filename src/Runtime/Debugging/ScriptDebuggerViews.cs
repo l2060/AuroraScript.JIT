@@ -139,6 +139,8 @@ namespace AuroraScript.Runtime.Debugging
                 ValueKind.Null => "null",
                 ValueKind.Boolean => datum.Boolean ? "true" : "false",
                 ValueKind.Number => datum.Number.ToString(),
+                ValueKind.Int64 => datum.Int64.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ValueKind.UInt64 => datum.UInt64.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 ValueKind.String => Quote(datum.StringText ?? string.Empty),
                 ValueKind.Array => FormatArray((ScriptArray)datum.Object),
                 _ => FormatObject(datum.Object)
@@ -153,6 +155,8 @@ namespace AuroraScript.Runtime.Debugging
                 NullValue => "null",
                 BooleanValue boolean => boolean.Value ? "true" : "false",
                 NumberValue number => number.DoubleValue.ToString(),
+                Int64Value integer => integer.Value.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                UInt64Value integer => integer.Value.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 StringValue text => Quote(text.Value ?? string.Empty),
                 ScriptArray array => FormatArray(array),
                 ScriptPackedArray array => FormatPackedArray(array),

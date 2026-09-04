@@ -105,6 +105,14 @@ namespace AuroraScript
                         value = d.Number;
                         return true;
 
+                    case ValueKind.Int64:
+                        value = d.Int64;
+                        return true;
+
+                    case ValueKind.UInt64:
+                        value = d.UInt64;
+                        return true;
+
                     case ValueKind.Boolean:
                         value = d.Boolean ? 1.0 : 0.0;
                         return true;
@@ -139,6 +147,14 @@ namespace AuroraScript
                 {
                     case ValueKind.Number:
                         value = (long)d.Number;
+                        return true;
+
+                    case ValueKind.Int64:
+                        value = d.Int64;
+                        return true;
+
+                    case ValueKind.UInt64 when d.UInt64 <= long.MaxValue:
+                        value = (long)d.UInt64;
                         return true;
 
                     case ValueKind.Boolean:
@@ -176,6 +192,14 @@ namespace AuroraScript
                 {
                     case ValueKind.Number:
                         value = (int)d.Number;
+                        return true;
+
+                    case ValueKind.Int64:
+                        value = (int)d.Int64;
+                        return true;
+
+                    case ValueKind.UInt64:
+                        value = (int)d.UInt64;
                         return true;
 
                     case ValueKind.Boolean:
@@ -270,6 +294,14 @@ namespace AuroraScript
                         value = d.Number.ToString(CultureInfo.InvariantCulture);
                         return true;
 
+                    case ValueKind.Int64:
+                        value = d.Int64.ToString(CultureInfo.InvariantCulture);
+                        return true;
+
+                    case ValueKind.UInt64:
+                        value = d.UInt64.ToString(CultureInfo.InvariantCulture);
+                        return true;
+
                     case ValueKind.Boolean:
                         value = d.Boolean ? "true" : "false";
                         return true;
@@ -292,7 +324,7 @@ namespace AuroraScript
             if ((uint)index < (uint)source.Length)
             {
                 ref readonly var d = ref source[index];
-                if (d.Kind >= ValueKind.Object)
+                if (d.Kind.Include(ValueKind.Object))
                 {
                     value = d.Object;
                     return true;
@@ -423,6 +455,14 @@ namespace AuroraScript
 
                     case ValueKind.Number:
                         value = d.Number != 0;
+                        return true;
+
+                    case ValueKind.Int64:
+                        value = d.Int64 != 0;
+                        return true;
+
+                    case ValueKind.UInt64:
+                        value = d.UInt64 != 0;
                         return true;
 
                     case ValueKind.String:
