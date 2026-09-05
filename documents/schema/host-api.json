@@ -2395,7 +2395,8 @@
         "Use the parameterless constructor on at most one public constructor to enable script new.",
         "Core methods may be static Type members or instance members. They may prefix ScriptContext ctx and ScriptObject thisObject. Script parameters support double, int, bool, string, ScriptDatum, ScriptObject subclasses, trailing defaults, and params double[] or params ScriptDatum[].",
         "A CLR void return is a procedure. Direct native calls used as statements do not materialize a result; dynamic or exported calls observe script null, matching native func ... void.",
-        "params exports generate Datum adapters only; they are not compiler direct-call candidates."
+        "params exports generate Datum adapters only; they are not compiler direct-call candidates.",
+        "DynamicAdapter names an existing compatibility callback when omitted adapters would change missing-argument or conversion behavior. IsGetter exports a zero-argument value-receiver Core as a read-only property. RequiresIndexProof binds only when argument zero is a proven in-bounds index."
       ]
     },
     "AuroraParamAttribute": {

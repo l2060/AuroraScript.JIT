@@ -76,6 +76,13 @@ Unshadowed `Conv8.getInt32(bytes, offset)` with a proven `UInt8Array` and intege
 offset calls the Core method. Shadowing the global (`var Math = other`) disables
 both paths.
 
+Proven string receivers use the same catalog: unshadowed `text.trim()`,
+`substring`, `slice`, and the other own String prototype members call CLR Cores
+directly. `substring`/`slice` take native `int` indices where the second argument
+is **end**, not length. Unknown receivers stay on dynamic dispatch. There is no
+runtime string-pooling option; `StringValue.Of` wraps CLR strings without an intern
+table.
+
 Proven native-instance locals use the same idea. Keep a `Vec2` (or similar) in
 a local that is never reassigned to an unproven value and never captured by a
 closure. This applies to both `new Vec2(...)` and static factories such as
@@ -221,7 +228,9 @@ For exact 64-bit values, suffix literals with `L`/`UL` and declare `int64` /
 Same-kind arithmetic stays on the CLR `long`/`ulong` ABI and wraps, including
 integer division. Mixing with `Number` or the other signedness is a double
 round-trip and loses values past the safe-integer range. `Env.ticks()` is the
-zero-allocation monotonic clock for `int64` durations.
+zero-allocation monotonic clock for `int64` durations. `int64.toString(16)` /
+`uint64.toString(16)` format all 64 bits as uppercase hex without a Number
+conversion.
 
 ## Console
 

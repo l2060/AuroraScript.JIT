@@ -270,7 +270,8 @@ Common APIs:
 - `Env.ticks()` returns monotonic 100-nanosecond ticks as `int64`; `Env.elapsedMs()` returns elapsed milliseconds as `Number`.
 - `Conv8` on `UInt8Array` only: `BYTES1`/`BYTES2`/`BYTES4`/`BYTES8`; `get`/`set` for bool, int8–64, uint8–64, float32/64 (`littleEndian` default `true`); `getString(buffer, offset, byteLength)` / `setString(buffer, offset, value)` as UTF-8. `Conv8.getInt64`/`getUInt64` still round-trip through `Number`; prefer `Int64Array`/`UInt64Array` or `int64`/`uint64` locals for exact 64-bit values.
 - Array: `length`, `push`, `pop`, `sort`, `join`, `slice`, `reverse`, `unshift`, `shift`, `concat`, `find`, `findIndex`, `findLast`, `findLastIndex`, `map`, `filter`, `some`, `every`, `flat`, `reduce`, `indexOf`, `lastIndexOf`, `has`
-- String: `length`, `contains`, `indexOf`, `lastIndexOf`, `startsWith`, `endsWith`, `substring`, `split`, `match`, `matchAll`, `replace`, `padLeft`, `padRight`, `trim`, `trimLeft`, `trimRight`, `slice`, `toString`, `charCodeAt`, `toLowerCase`, `toUpperCase`
+- String: `length`, `contains`, `indexOf`, `lastIndexOf`, `startsWith`, `endsWith`, `substring`, `split`, `match`, `matchAll`, `replace`, `padLeft`, `padRight`, `trim`, `trimLeft`, `trimRight`, `slice`, `toString`, `charCodeAt`, `toLowerCase`, `toUpperCase`. `String(value)` and `new String(value)` share one factory and return a primitive string. Proven string receivers call native Cores; `substring`/`slice` take `int` indices where the second argument is **end**, not length.
+- Number / int64 / uint64: `toString([radix])`. Number uses current-culture decimal and historical Int32 hex for radix 16. Exact 64-bit values never go through double: no-arg `toString` is invariant decimal; `toString(16)` is full-width uppercase hex.
 - StringBuffer: `append`, `insert`, `appendLine`, `clear`, `release`, `stringAndRelease`, `toString`
 - Path constructor/static: `new Path(root, ...segments)`, `Path.of(root, ...segments)`, `Path.isPath(value)`, `Path.join(root, ...segments)`, `Path.baseModule(...segments)`, `Path.normalize(path)`, `Path.directoryName(path)`, `Path.fileName(path)`, `Path.extName(path)`, `Path.protocol(path)`, `Path.changeExt(path, extension)`, `Path.isRooted(path)`, `Path.isUnderRoot(root, path)`, `Path.currentFile()`, `Path.currentDirectory()`
 - Path instance: `append(...segments)`, `reset(root, ...segments)`, `changeExt(extension)`, `directoryName()`, `fileName()`, `extName()`, `protocol()`, `clone()`, `toString()`
@@ -278,7 +279,7 @@ Common APIs:
 Constructor signatures are also available in `schema/runtime-api.json` under each constructor global's `constructors` array:
 
 - `new Array(capacity?: number): array`
-- `new String(value?: any): string`
+- `new String(value?: any): string` — same factory as `String(value)`; always a primitive string
 - `new Boolean(value?: any): boolean`
 - `new Object(prototype?: object): object`
 - `new Number(value?: any): number`
@@ -354,7 +355,8 @@ import http from "http";
   aliases. Keep both operands the same kind so arithmetic wraps; mixing with
   `Number` or the other signedness produces a double. Use `Env.ticks()` for
   monotonic 100-nanosecond clocks (`int64`) and `Env.elapsedMs()` for
-  fractional milliseconds.
+  fractional milliseconds. `toString(16)` on those values is full 64-bit
+  uppercase hex, not object `toString`.
 - Use `native func work(...) void { ... }` for a procedure. Falling through
   and `return;` are valid; returning an expression is invalid. Direct native
   statement calls use a CLR `void` ABI, while dynamic calls evaluate to `null`.

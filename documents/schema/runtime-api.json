@@ -790,10 +790,10 @@
           "returns": "string",
           "notes": {
             "en": [
-              "Converts a value to a string. Missing or non-string-convertible input produces an empty string."
+              "Converts a value to a string. Missing or non-string-convertible input produces an empty string. String(value) and new String(value) share this factory and always return a primitive string."
             ],
             "zh-CN": [
-              "将值转换为字符串。缺少参数或无法转换为字符串时返回空字符串。"
+              "将值转换为字符串。缺少参数或无法转换为字符串时返回空字符串。String(value) 与 new String(value) 共用同一工厂，始终返回原始字符串。"
             ]
           }
         }
@@ -810,10 +810,10 @@
           "returns": "string",
           "notes": {
             "en": [
-              "Creates a one-character string from a character code."
+              "Creates a one-character string from a character code. Proven calls use a native int; the character is the first UTF-16 code unit."
             ],
             "zh-CN": [
-              "根据字符编码创建单字符字符串。"
+              "根据字符编码创建单字符字符串。已证明的调用使用原生 int，取第一个 UTF-16 代码单元。"
             ]
           }
         },
@@ -850,10 +850,10 @@
           "returns": "number",
           "notes": {
             "en": [
-              "Compares two strings and returns their ordering."
+              "Compares the first UTF-16 code unit of each string. Returns 1 when either input is empty."
             ],
             "zh-CN": [
-              "比较两个字符串并返回排序结果。"
+              "比较两个字符串的第一个 UTF-16 代码单元。任一侧为空时返回 1。"
             ]
           }
         }
@@ -3670,10 +3670,10 @@
         "returns": "string",
         "notes": {
           "en": [
-            "Returns a substring by start and length/end arguments."
+            "Returns a substring from start to end (exclusive), not start plus length. Proven calls use native int indices."
           ],
           "zh-CN": [
-            "按起始位置和长度/结束参数返回子串。"
+            "按起始与结束（不含）返回子串，第二个参数不是长度。已证明的调用使用原生 int 索引。"
           ]
         }
       },
@@ -3853,10 +3853,10 @@
         "returns": "string",
         "notes": {
           "en": [
-            "Returns a slice of the string."
+            "Returns a slice of the string from start to end (exclusive). Proven calls use native int indices."
           ],
           "zh-CN": [
-            "返回字符串切片。"
+            "返回从 start 到 end（不含）的字符串切片。已证明的调用使用原生 int 索引。"
           ]
         }
       },
@@ -4495,10 +4495,52 @@
         "returns": "string",
         "notes": {
           "en": [
-            "Formats the number as a string."
+            "Formats the number as a string. Radix 16 uses historical Int32 hexadecimal; other radices use current-culture decimal."
           ],
           "zh-CN": [
-            "将数字格式化为字符串。"
+            "将数字格式化为字符串。radix 为 16 时使用历史 Int32 十六进制；其它进制使用当前区域性十进制。"
+          ]
+        }
+      }
+    },
+    "Int64": {
+      "toString": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "radix",
+            "type": "number",
+            "optional": true
+          }
+        ],
+        "returns": "string",
+        "notes": {
+          "en": [
+            "Formats the exact int64 without a Number conversion. No argument is invariant decimal; radix 16 is full-width uppercase hex; other radices stay decimal."
+          ],
+          "zh-CN": [
+            "格式化精确 int64，不经 Number。无参为不变区域性十进制；radix 为 16 时为全部 64 位大写十六进制；其它进制仍为十进制。"
+          ]
+        }
+      }
+    },
+    "UInt64": {
+      "toString": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "radix",
+            "type": "number",
+            "optional": true
+          }
+        ],
+        "returns": "string",
+        "notes": {
+          "en": [
+            "Formats the exact uint64 without a Number conversion. No argument is invariant decimal; radix 16 is full-width uppercase hex; other radices stay decimal."
+          ],
+          "zh-CN": [
+            "格式化精确 uint64，不经 Number。无参为不变区域性十进制；radix 为 16 时为全部 64 位大写十六进制；其它进制仍为十进制。"
           ]
         }
       }

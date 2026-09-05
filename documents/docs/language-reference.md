@@ -265,7 +265,9 @@ keys keep exact 64-bit identity, including values past
 `Number.MAX_SAFE_INTEGER`. Persist them with `tdoc Int64` / `tdoc UInt64`
 or packed `Int64Array` / `UInt64Array`. JSON parse keeps integers inside
 the safe-integer range as `Number` and wider exact integers as `int64` or
-`uint64`. Out-of-range suffixes such as `9223372036854775808L` are compile
+`uint64`. Frozen Int64/UInt64 prototypes format with `toString()` as invariant
+decimal and `toString(16)` as full-width uppercase hex; other radices stay
+decimal. These paths never convert through `Number`. Out-of-range suffixes such as `9223372036854775808L` are compile
 errors. Packed-array checks are nullable:
 `null as Float64Array` returns `null`, and a `null` argument is inferred from
 a declared `Float64Array` parameter without requiring `as`. Non-null values
@@ -633,7 +635,7 @@ Object values:
 Use `schema/runtime-api.json` for the complete machine-readable runtime API. Constructor globals expose structured signatures in their `constructors` arrays:
 
 - `new Array(capacity?: number): array`
-- `new String(value?: any): string`
+- `new String(value?: any): string` — same factory as `String(value)`; always a primitive string
 - `new Boolean(value?: any): boolean`
 - `new Object(prototype?: object): object`
 - `new Number(value?: any): number`

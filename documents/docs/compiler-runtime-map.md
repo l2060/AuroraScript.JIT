@@ -47,7 +47,7 @@ Use this map when changing language behavior.
 - Prototypes: `src/Runtime/Types/Prototypes.cs`
 - Console/JSON/TDoc/Math/Conv8/Env/HotPatch (NativeType): `src/Runtime/Builtin`
 - NativeType source generator: `language-tools/AuroraScript.Hosting.Generators/AuroraNativeObjectGenerator.cs`
-- Host export attributes: `src/Hosting` (`AuroraNativeTypeAttribute`, `AuroraExportAttribute`)
+- Host export attributes: `src/Hosting` (`AuroraNativeTypeAttribute`, `AuroraExportAttribute`, `AuroraNativeReceiverAttribute`)
 - Compiler native-type catalog: `src/Compiler/Backend/HostExportCatalog.cs`; application types come from `CompilerOptions.NativeTypes`
 - Hot-patch graph and path matching: `src/Compiler/IncrementalCompiler.cs`, `src/Compiler/Backend/Emission/HotPatchEmitter.cs`
 
@@ -65,5 +65,7 @@ Use this map when changing language behavior.
 - Regression coverage: `tests/AuroraScript.Tests/ReleaseRegressionTests.cs`, `tests/AuroraScript.Tests/CompilationModeTests.cs`
 - Host export generator and diagnostics: `tests/AuroraScript.Tests/HostExportGeneratorTests.cs`, `tests/AuroraScript.Tests/AuroraExportGeneratorDiagnosticTests.cs`
 - Native-object direct calls and CLR locals: `tests/AuroraScript.Tests/NativeObjectDirectCallTests.cs`
+- Primitive string catalog and native returns: `tests/AuroraScript.Tests/StringOptimizationTests.cs`
+- Number / int64 / uint64 `toString` formatting: `tests/AuroraScript.Tests/NumberFormattingTests.cs`
 - Env clock exports: `tests/AuroraScript.Tests/EnvSupportTests.cs`
 
