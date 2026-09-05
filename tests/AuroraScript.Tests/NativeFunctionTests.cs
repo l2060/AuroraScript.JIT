@@ -419,7 +419,10 @@ public sealed class NativeFunctionTests
                 relayMethod.RelativeVirtualAddress).GetILBytes()!;
             Assert.True(
                 ContainsCall(il, MetadataTokens.GetToken(setState)));
-            Assert.DoesNotContain((byte)0x7e, il); // ldsfld (no materialized null)
+            // Metadata token bytes can also contain 0x7e; inspect instruction
+            // boundaries rather than treating operands as opcodes.
+            Assert.DoesNotContain(System.Reflection.Emit.OpCodes.Ldsfld,
+                IntegerSpecializationTests.ReadOpCodes(il.AsSpan()));
         }
 #endif
     }

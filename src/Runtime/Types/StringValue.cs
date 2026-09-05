@@ -1,17 +1,14 @@
-﻿using AuroraScript.Runtime.Pool;
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 
 namespace AuroraScript.Runtime.Types
 {
     /// <summary>
     /// Represents a string value in AuroraScript.
     /// This is an immutable object wrapping a CLI <see cref="string"/>.
-    /// Supports char caching and string interning for performance.
+    /// Uses a bounded cache for common UTF-16 characters.
     /// </summary>
     public sealed partial class StringValue : ScriptImmutable
     {
-        private static StringPoolingStrategy _poolingStrategy = StringPoolingStrategy.None;
-
         /// <summary> Gets the underlying CLI string value. </summary>
         public readonly string Value;
 
@@ -53,28 +50,7 @@ namespace AuroraScript.Runtime.Types
         public static StringValue Of(string value)
         {
             if (string.IsNullOrEmpty(value)) return Empty;
-            return _poolingStrategy == StringPoolingStrategy.Intern
-                ? Intern(value)
-                : new StringValue(value);
-        }
-
-        /// <summary>
-        /// Returns an interned <see cref="StringValue"/> instance for the given string using the <see cref="StringPool"/>.
-        /// </summary>
-        /// <param name="value">The string to intern.</param>
-        /// <returns>An interned <see cref="StringValue"/>.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static StringValue Intern(string value)
-        {
-            return StringPool.Instance.Allocation(value);
-        }
-
-        /// <summary>
-        /// Configures the process-wide string pooling strategy used by <see cref="Of(string)"/>.
-        /// </summary>
-        internal static void ConfigurePooling(StringPoolingStrategy poolingStrategy)
-        {
-            _poolingStrategy = poolingStrategy;
+            return new StringValue(value);
         }
 
         internal static StringValue FromChar(char ch)

@@ -1,5 +1,6 @@
 ﻿using AuroraScript.Core;
 using AuroraScript.Runtime.Pool;
+using AuroraScript.Hosting;
 using AuroraScript.Runtime.Types;
 using Microsoft.VisualBasic;
 using System;
@@ -13,82 +14,68 @@ namespace AuroraScript.Runtime.Types
     /// Partial implementation of <see cref="StringValue"/> providing constants and native method implementations.
     /// This fragment exposes common string operations to the AuroraScript runtime.
     /// </summary>
+    [AuroraNativeType("String", NativeReceiverType = typeof(string), NativeConstructor = nameof(CreateCore))]
     public partial class StringValue
     {
         /// <summary> An empty string value. </summary>
         public readonly static StringValue Empty = new StringValue("");
-        /// <summary> A string value representing "null". </summary>
-        public readonly static StringValue NULL = new StringValue("null");
-        /// <summary> A string value representing "true". </summary>
-        public readonly static StringValue TRUE = new StringValue("true");
-        /// <summary> A string value representing "false". </summary>
-        public readonly static StringValue FALSE = new StringValue("false");
-        /// <summary> A string value used as a generic object label. </summary>
-        public readonly static StringValue OBJECT = new StringValue("[object]");
 
-        /// <summary>
-        /// Native implementation for String.toLowerCase().
-        /// Returns a new string with all characters converted to lowercase.
-        /// </summary>
-        internal static void TOLOWERCASE(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            if (thisObject is StringValue strValue)
-            {
-                ScriptDatum.WriteAsString(ref result, strValue.Value.ToLower(CultureInfo.CurrentCulture));
-            }
-            else
-            {
-                ScriptDatum.MarkAsNull(ref result);
-            }
-        }
 
-        /// <summary>
-        /// Native implementation for String.toUpperCase().
-        /// Returns a new string with all characters converted to uppercase.
-        /// </summary>
-        internal static void TOUPPERCASE(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            if (thisObject is StringValue strValue)
-            {
-                ScriptDatum.WriteAsString(ref result, strValue.Value.ToUpper(CultureInfo.CurrentCulture));
-            }
-            else
-            {
-                ScriptDatum.MarkAsNull(ref result);
-            }
-        }
+        /// <summary>Native read-only string length without a wrapper object.</summary>
+        [AuroraExport("length", IsGetter = true, Target = AuroraExportTarget.Instance)]
+        public static int LengthCore(string value) => ValueOps.GetStringLength(value);
 
-        /// <summary>
-        /// Native implementation for String.toString().
-        /// Returns the string itself.
-        /// </summary>
-        internal new static void TOSTRING(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            if (thisObject is StringValue strValue)
-            {
-                ScriptDatum.WriteAsString(ref result, strValue);
-            }
-            else
-            {
-                ScriptDatum.WriteAsString(ref result, thisObject.ToString());
-            }
-        }
+        /// <summary>Lowercases using the current culture, matching the script API.</summary>
+        [AuroraExport("toLowerCase", Target = AuroraExportTarget.Instance)]
+        public static string ToLowerCaseCore(string value) => value.ToLower(CultureInfo.CurrentCulture);
 
-        /// <summary>
-        /// Native implementation for reading String.length.
-        /// Returns the number of characters in the string.
-        /// </summary>
-        internal new static void LENGTH(ScriptObject thisObject, ref ScriptDatum result)
-        {
-            if (thisObject is StringValue strValue)
-            {
-                ScriptDatum.WriteAsNumber(ref result, strValue.Value.Length);
-            }
-            else
-            {
-                ScriptDatum.MarkAsNull(ref result);
-            }
-        }
+        /// <summary>Uppercases using the current culture, matching the script API.</summary>
+        [AuroraExport("toUpperCase", Target = AuroraExportTarget.Instance)]
+        public static string ToUpperCaseCore(string value) => value.ToUpper(CultureInfo.CurrentCulture);
+
+        /// <summary>Trims whitespace from both ends.</summary>
+        [AuroraExport("trim", Target = AuroraExportTarget.Instance)]
+        public static string TrimCore(string value) => value.Trim();
+
+        /// <summary>Trims leading whitespace.</summary>
+        [AuroraExport("trimLeft", Target = AuroraExportTarget.Instance)]
+        public static string TrimLeftCore(string value) => value.TrimStart();
+
+        /// <summary>Trims trailing whitespace.</summary>
+        [AuroraExport("trimRight", Target = AuroraExportTarget.Instance)]
+        public static string TrimRightCore(string value) => value.TrimEnd();
+
+        /// <summary>Returns the raw string without materializing a wrapper.</summary>
+        [AuroraExport("toString", Target = AuroraExportTarget.Instance)]
+        public static string ToStringCore(string value) => value;
+
+        /// <summary>Tests ordinal substring containment.</summary>
+        [AuroraExport("contains", DynamicAdapter = nameof(CONTANINS), Target = AuroraExportTarget.Instance)]
+        public static bool ContainsCore(string value, string search) => value.Contains(search);
+
+        /// <summary>Returns the first ordinal match index or -1.</summary>
+        [AuroraExport("indexOf", DynamicAdapter = nameof(INDEXOF), Target = AuroraExportTarget.Instance)]
+        public static int IndexOfCore(string value, string search) => value.IndexOf(search, StringComparison.Ordinal);
+
+        /// <summary>Returns the last ordinal match index or -1.</summary>
+        [AuroraExport("lastIndexOf", DynamicAdapter = nameof(LASTINDEXOF), Target = AuroraExportTarget.Instance)]
+        public static int LastIndexOfCore(string value, string search) => value.LastIndexOf(search, StringComparison.Ordinal);
+
+        /// <summary>Tests an ordinal prefix.</summary>
+        [AuroraExport("startsWith", DynamicAdapter = nameof(STARTSWITH), Target = AuroraExportTarget.Instance)]
+        public static bool StartsWithCore(string value, string search) => value.StartsWith(search, StringComparison.Ordinal);
+
+        /// <summary>Tests an ordinal suffix.</summary>
+        [AuroraExport("endsWith", DynamicAdapter = nameof(ENDSWITH), Target = AuroraExportTarget.Instance)]
+        public static bool EndsWithCore(string value, string search) => value.EndsWith(search, StringComparison.Ordinal);
+
+        /// <summary>Native character access retaining NaN for invalid indices.</summary>
+        [AuroraExport("charCodeAt", DynamicAdapter = nameof(CHARCODEAT), Target = AuroraExportTarget.Instance)]
+        public static double CharCodeAtCore(string value, int index) => ValueOps.GetStringCharCodeAt(value, index);
+
+        /// <summary>Native character access when the compiler has proven the index in bounds.</summary>
+        [AuroraExport("charCodeAt", DynamicAdapter = nameof(CHARCODEAT), RequiresIndexProof = true, Target = AuroraExportTarget.Instance)]
+        public static int CharCodeAtInt32Core(string value, int index) => ValueOps.GetStringCharCodeAtInt32(value, index);
 
         /// <summary>
         /// Native implementation for String.contains().
@@ -99,7 +86,7 @@ namespace AuroraScript.Runtime.Types
             var str = thisObject as StringValue;
             if (str != null && args.TryGetString(0, out var search))
             {
-                ScriptDatum.WriteAsBoolean(ref result, str.Value.Contains(search));
+                ScriptDatum.WriteAsBoolean(ref result, ContainsCore(str.Value, search));
             }
             else
             {
@@ -117,7 +104,7 @@ namespace AuroraScript.Runtime.Types
 
             if (str != null && args.TryGetString(0, out var search))
             {
-                ScriptDatum.WriteAsNumber(ref result, str.Value.IndexOf(search, StringComparison.Ordinal));
+                ScriptDatum.WriteAsNumber(ref result, IndexOfCore(str.Value, search));
             }
             else
             {
@@ -134,7 +121,7 @@ namespace AuroraScript.Runtime.Types
             var str = thisObject as StringValue;
             if (str != null && args.TryGetString(0, out var search))
             {
-                ScriptDatum.WriteAsNumber(ref result, str.Value.LastIndexOf(search, StringComparison.Ordinal));
+                ScriptDatum.WriteAsNumber(ref result, LastIndexOfCore(str.Value, search));
             }
             else
             {
@@ -151,7 +138,7 @@ namespace AuroraScript.Runtime.Types
             var str = thisObject as StringValue;
             if (str != null && args.TryGetString(0, out var search))
             {
-                ScriptDatum.WriteAsBoolean(ref result, str.Value.StartsWith(search, StringComparison.Ordinal));
+                ScriptDatum.WriteAsBoolean(ref result, StartsWithCore(str.Value, search));
             }
             else
             {
@@ -168,7 +155,7 @@ namespace AuroraScript.Runtime.Types
             var str = thisObject as StringValue;
             if (str != null && args.TryGetString(0, out var search))
             {
-                ScriptDatum.WriteAsBoolean(ref result, str.Value.EndsWith(search, StringComparison.Ordinal));
+                ScriptDatum.WriteAsBoolean(ref result, EndsWithCore(str.Value, search));
             }
             else
             {
@@ -199,17 +186,55 @@ namespace AuroraScript.Runtime.Types
 
             if (args.TryGetInteger(1, out var end))
             {
-                if (start > end)
-                {
-                    (start, end) = (end, start);
-                }
-                var length = (int)Math.Clamp(end - start, 0, Math.Max(0, str.Value.Length - start));
-                ScriptDatum.WriteAsString(ref result, str.Value.Substring(Math.Clamp((int)start, 0, str.Value.Length), length));
+                ScriptDatum.WriteAsString(ref result, Substring(str.Value, start, end));
                 return;
             }
-            var safeStart = (int)Math.Clamp(start, 0, Math.Max(0, str.Value.Length));
-            ScriptDatum.WriteAsString(ref result, str.Value.Substring(safeStart));
+            ScriptDatum.WriteAsString(ref result, Substring(str.Value, start));
         }
+
+        /// <summary>Shared substring implementation; the second index is an end, not a length.</summary>
+        public static string Substring(string value, long start, long end)
+        {
+            if (start > end) (start, end) = (end, start);
+            var length = (int)Math.Clamp(end - start, 0, Math.Max(0, value.Length - start));
+            return value.Substring(Math.Clamp((int)start, 0, value.Length), length);
+        }
+
+        /// <summary>Shared one-index substring implementation.</summary>
+        public static string Substring(string value, long start)
+            => value.Substring((int)Math.Clamp(start, 0, Math.Max(0, value.Length)));
+
+        /// <summary>Native Int32 indices, preserving the dynamic range rules.</summary>
+        [AuroraExport("substring", DynamicAdapter = nameof(SUBSTRING), Target = AuroraExportTarget.Instance)]
+        public static string Substring(string value, int start, int end)
+        {
+            if (start > end) (start, end) = (end, start);
+            // The common in-range path needs only Int32 arithmetic. Keep wide
+            // arithmetic for negative/extreme indices to preserve legacy behavior.
+            if ((uint)start <= (uint)value.Length && (uint)end <= (uint)value.Length) return value.Substring(start, end - start);
+            return Substring(value, (long)start, (long)end);
+        }
+
+        /// <summary>Native Int32 start index without a Number/Int64 round trip.</summary>
+        [AuroraExport("substring", DynamicAdapter = nameof(SUBSTRING), Target = AuroraExportTarget.Instance)]
+        public static string Substring(string value, int start)
+            => value.Substring(Math.Clamp(start, 0, value.Length));
+
+        /// <summary>Preserves the Number-to-integer conversion used by TryGetInteger.</summary>
+        public static string Substring(string value, double start, double end)
+            => Substring(value, (long)start, (long)end);
+
+        /// <summary>Preserves the Number-to-integer conversion used by TryGetInteger.</summary>
+        public static string Substring(string value, double start)
+            => Substring(value, (long)start);
+
+        /// <summary>Preserves slice's historical alias to substring.</summary>
+        [AuroraExport("slice", DynamicAdapter = nameof(SUBSTRING), Target = AuroraExportTarget.Instance)]
+        public static string SliceCore(string value, int start, int end) => Substring(value, start, end);
+
+        /// <summary>Preserves the one-index slice alias.</summary>
+        [AuroraExport("slice", DynamicAdapter = nameof(SUBSTRING), Target = AuroraExportTarget.Instance)]
+        public static string SliceCore(string value, int start) => Substring(value, start);
 
         /// <summary>
         /// Native implementation for String.split().
@@ -224,20 +249,31 @@ namespace AuroraScript.Runtime.Types
             }
             if (args.TryGetString(0, out var separator))
             {
-                var segments = str.Value.Split(separator, StringSplitOptions.None);
-                var array = ScriptArray.CreateWithCapacity(segments.Length);
-                for (var i = 0; i < segments.Length; i++)
-                {
-                    array.SetElement(i, ScriptDatum.FromString(segments[i]));
-                }
-                ScriptDatum.WriteAsArray(ref result, array);
+                ScriptDatum.WriteAsArray(ref result, SplitCore(str.Value, separator));
             }
             else
             {
-                var array = ScriptArray.CreateWithCapacity(1);
-                array.SetElement(0, ScriptDatum.FromString(str));
-                ScriptDatum.WriteAsArray(ref result, array);
+                ScriptDatum.WriteAsArray(ref result, SplitCore(str.Value));
             }
+        }
+
+        /// <summary>Splits a raw string without materializing a StringValue receiver.</summary>
+        [AuroraExport("split", DynamicAdapter = nameof(SPLIT), Target = AuroraExportTarget.Instance)]
+        public static ScriptArray SplitCore(string value, string separator)
+        {
+            var segments = value.Split(separator, StringSplitOptions.None);
+            var array = ScriptArray.CreateWithCapacity(segments.Length);
+            for (var i = 0; i < segments.Length; i++) array.SetElement(i, ScriptDatum.FromString(segments[i]));
+            return array;
+        }
+
+        /// <summary>Returns a one-element array when no separator is supplied.</summary>
+        [AuroraExport("split", DynamicAdapter = nameof(SPLIT), Target = AuroraExportTarget.Instance)]
+        public static ScriptArray SplitCore(string value)
+        {
+            var array = ScriptArray.CreateWithCapacity(1);
+            array.SetElement(0, ScriptDatum.FromString(value));
+            return array;
         }
 
         /// <summary>
@@ -252,18 +288,38 @@ namespace AuroraScript.Runtime.Types
                 return;
             }
 
-            var regex = ResolveRegexArgument(args, requireGlobal: false);
-            if (regex == null)
-            {
-                ScriptDatum.MarkAsNull(ref result);
-                return;
-            }
-            ScriptDatum.WriteAsObject(ref result, regex.HasFlag("g") ? regex.MatchOfGlobal(str) : regex.Match(str));
+            result = MatchRegex(str.Value, ResolveRegexArgument(args, requireGlobal: false));
+        }
+
+        /// <summary>Matches a string pattern, retaining the historical result datum kind.</summary>
+        [AuroraExport("match", DynamicAdapter = nameof(MATCH), Target = AuroraExportTarget.Instance)]
+        public static ScriptDatum MatchCore(string value, string pattern) => MatchRegex(value, RegexManager.Resolve(pattern, ""));
+
+        /// <summary>Matches a regex or weakly converted pattern without asserting an argument or result type.</summary>
+        [AuroraExport("match", DynamicAdapter = nameof(MATCH), Target = AuroraExportTarget.Instance)]
+        public static ScriptDatum MatchCore(string value, ScriptDatum pattern)
+        {
+            DatumBuffer1 args = default;
+            args[0] = pattern;
+            return MatchRegex(value, ResolveRegexArgument(args, requireGlobal: false));
+        }
+
+        /// <summary>Preserves the missing-pattern behavior.</summary>
+        [AuroraExport("match", DynamicAdapter = nameof(MATCH), Target = AuroraExportTarget.Instance)]
+        public static ScriptDatum MatchCore(string value) => MatchRegex(value, RegexManager.Resolve("undefined", ""));
+
+        private static ScriptDatum MatchRegex(string value, ScriptRegex regex)
+        {
+            ScriptDatum result = default;
+            // MATCH historically exposes Object even when the payload is an array
+            // or NullValue. Do not strengthen this to an unconditional Array result.
+            ScriptDatum.WriteAsObject(ref result, regex.HasFlag("g") ? regex.MatchOfGlobalText(value) : regex.MatchText(value));
+            return result;
         }
 
         /// <summary>
         /// Native implementation for String.matchAll().
-        /// Returns an iterator of all results matching a string against a regular expression, 
+        /// Returns an array of all results matching a string against a regular expression,
         /// including capturing groups. Requires a global regex.
         /// </summary>
         internal static void MATCHALL(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
@@ -273,17 +329,30 @@ namespace AuroraScript.Runtime.Types
                 ScriptDatum.MarkAsNull(ref result);
                 return;
             }
-            var regex = ResolveRegexArgument(args, requireGlobal: true);
+            result = MatchAllRegex(str.Value, ResolveRegexArgument(args, requireGlobal: true));
+        }
 
-            var array = regex.MatchAll(str);
-            if (array != null)
-            {
-                ScriptDatum.WriteAsArray(ref result, array);
-            }
-            else
-            {
-                ScriptDatum.MarkAsNull(ref result);
-            }
+        /// <summary>Matches all occurrences of a string pattern; no match remains Null.</summary>
+        [AuroraExport("matchAll", DynamicAdapter = nameof(MATCHALL), Target = AuroraExportTarget.Instance)]
+        public static ScriptDatum MatchAllCore(string value, string pattern) => MatchAllRegex(value, RegexManager.Resolve(pattern, "g"));
+
+        /// <summary>Accepts a global regex or a weakly converted pattern, retaining Datum results.</summary>
+        [AuroraExport("matchAll", DynamicAdapter = nameof(MATCHALL), Target = AuroraExportTarget.Instance)]
+        public static ScriptDatum MatchAllCore(string value, ScriptDatum pattern)
+        {
+            DatumBuffer1 args = default;
+            args[0] = pattern;
+            return MatchAllRegex(value, ResolveRegexArgument(args, requireGlobal: true));
+        }
+
+        /// <summary>Preserves the missing-pattern behavior of matchAll.</summary>
+        [AuroraExport("matchAll", DynamicAdapter = nameof(MATCHALL), Target = AuroraExportTarget.Instance)]
+        public static ScriptDatum MatchAllCore(string value) => MatchAllRegex(value, RegexManager.Resolve("undefined", "g"));
+
+        private static ScriptDatum MatchAllRegex(string value, ScriptRegex regex)
+        {
+            var array = regex.MatchAllText(value);
+            return array == null ? ScriptDatum.Null : ScriptDatum.FromArray(array);
         }
 
         /// <summary>
@@ -298,89 +367,93 @@ namespace AuroraScript.Runtime.Types
                 ScriptDatum.MarkAsNull(ref result);
                 return;
             }
-            var target = str.Value;
+            ScriptDatum.WriteAsString(ref result, ReplaceCore(ctx, str.Value, args));
+        }
+
+        /// <summary>Replaces literal strings without a dynamic receiver, argument buffer or callback closure.</summary>
+        [AuroraExport("replace", DynamicAdapter = nameof(REPLACE), Target = AuroraExportTarget.Instance)]
+        public static string ReplaceCore(string value, string search, string replacement) => value.Replace(search, replacement);
+
+        /// <summary>Preserves regex, callback and weak-conversion semantics for uncertain argument types.</summary>
+        [AuroraExport("replace", DynamicAdapter = nameof(REPLACE), Target = AuroraExportTarget.Instance)]
+        public static string ReplaceCore(ScriptContext ctx, string value, ScriptDatum search, ScriptDatum replacement)
+        {
+            DatumBuffer2 args = default;
+            args[0] = search;
+            args[1] = replacement;
+            return ReplaceCore(ctx, value, args);
+        }
+
+        private static string ReplaceCore(ScriptContext ctx, string value, Span<ScriptDatum> args)
+        {
             if (args.TryGetString(0, out var search))
             {
-                if (!args.TryGetString(1, out var replace))
-                {
-                    ScriptDatum.WriteAsString(ref result, str);
-                    return;
-                }
-                target = target.Replace(search, replace);
+                return args.TryGetString(1, out var replacement) ? ReplaceCore(value, search, replacement) : value;
             }
-            else if (args.TryGetRegex(0, out var regex))
+            if (args.TryGetRegex(0, out var regex))
             {
-                var input = target ?? string.Empty;
+                var input = value ?? string.Empty;
                 var replaceAll = regex.HasFlag("g");
                 if (args.TryGetString(1, out var replacement))
-                {
-                    target = regex.Replace(input, replacement, replaceAll);
-                }
-                else if (args.TryGetFunction(1, out var callback))
-                {
-                    var originalValue = StringValue.Of(input);
-
-                    target = regex.Replace(input, match =>
-                    {
-                        var argumentCount = match.Groups.Count + 2;
-                        switch (argumentCount)
-                        {
-                            case 3:
-                                {
-                                    DatumBuffer3 callbackArgs = default;
-                                    return InvokeReplaceCallback(ctx, callback, originalValue, match, callbackArgs);
-                                }
-                            case 4:
-                                {
-                                    DatumBuffer4 callbackArgs = default;
-                                    return InvokeReplaceCallback(ctx, callback, originalValue, match, callbackArgs);
-                                }
-                            case 5:
-                                {
-                                    DatumBuffer5 callbackArgs = default;
-                                    return InvokeReplaceCallback(ctx, callback, originalValue, match, callbackArgs);
-                                }
-                            case 6:
-                                {
-                                    DatumBuffer6 callbackArgs = default;
-                                    return InvokeReplaceCallback(ctx, callback, originalValue, match, callbackArgs);
-                                }
-                            case 7:
-                                {
-                                    DatumBuffer7 callbackArgs = default;
-                                    return InvokeReplaceCallback(ctx, callback, originalValue, match, callbackArgs);
-                                }
-                            case 8:
-                                {
-                                    DatumBuffer8 callbackArgs = default;
-                                    return InvokeReplaceCallback(ctx, callback, originalValue, match, callbackArgs);
-                                }
-                            default:
-                                var rentedArgs = CallOps.RentArguments(argumentCount);
-                                try
-                                {
-                                    return InvokeReplaceCallback(ctx, callback, originalValue, match, rentedArgs.AsSpan(0, argumentCount));
-                                }
-                                finally
-                                {
-                                    CallOps.ReturnArguments(rentedArgs, argumentCount);
-                                }
-                        }
-                    }, replaceAll);
-                }
-                else
-                {
-                    ScriptDatum.WriteAsString(ref result, str);
-                    return;
-                }
+                    return regex.Replace(input, replacement, replaceAll);
+                if (args.TryGetFunction(1, out var callback)) return ReplaceCallback(ctx, input, regex, callback, replaceAll);
             }
-            else
-            {
-                ScriptDatum.WriteAsString(ref result, str);
-                return;
-            }
-            ScriptDatum.WriteAsString(ref result, target);
+            return value;
         }
+
+        // Keep closure creation exclusively on the callback path.
+        private static string ReplaceCallback(ScriptContext ctx, string input, ScriptRegex regex, ClosureFunction callback, bool replaceAll)
+        {
+            return regex.Replace(input, match =>
+            {
+                var argumentCount = match.Groups.Count + 2;
+                switch (argumentCount)
+                {
+                    case 3:
+                        {
+                            DatumBuffer3 callbackArgs = default;
+                            return InvokeReplaceCallback(ctx, callback, input, match, callbackArgs);
+                        }
+                    case 4:
+                        {
+                            DatumBuffer4 callbackArgs = default;
+                            return InvokeReplaceCallback(ctx, callback, input, match, callbackArgs);
+                        }
+                    case 5:
+                        {
+                            DatumBuffer5 callbackArgs = default;
+                            return InvokeReplaceCallback(ctx, callback, input, match, callbackArgs);
+                        }
+                    case 6:
+                        {
+                            DatumBuffer6 callbackArgs = default;
+                            return InvokeReplaceCallback(ctx, callback, input, match, callbackArgs);
+                        }
+                    case 7:
+                        {
+                            DatumBuffer7 callbackArgs = default;
+                            return InvokeReplaceCallback(ctx, callback, input, match, callbackArgs);
+                        }
+                    case 8:
+                        {
+                            DatumBuffer8 callbackArgs = default;
+                            return InvokeReplaceCallback(ctx, callback, input, match, callbackArgs);
+                        }
+                    default:
+                        var rentedArgs = CallOps.RentArguments(argumentCount);
+                        try { return InvokeReplaceCallback(ctx, callback, input, match, rentedArgs.AsSpan(0, argumentCount)); }
+                        finally { CallOps.ReturnArguments(rentedArgs, argumentCount); }
+                }
+            }, replaceAll);
+        }
+
+        /// <summary>Pads with the first UTF-16 code unit, preserving the existing width and empty-pad behavior.</summary>
+        [AuroraExport("padLeft", DynamicAdapter = nameof(PADLEFT), Target = AuroraExportTarget.Instance)]
+        public static string PadLeftCore(string value, int width, string padding) => value.PadLeft(width, padding[0]);
+
+        /// <summary>Pads on the right using the existing first-code-unit rule.</summary>
+        [AuroraExport("padRight", DynamicAdapter = nameof(PADRIGHT), Target = AuroraExportTarget.Instance)]
+        public static string PadRightCore(string value, int width, string padding) => value.PadRight(width, padding[0]);
 
         /// <summary>
         /// Native implementation for String.padLeft().
@@ -396,7 +469,7 @@ namespace AuroraScript.Runtime.Types
             }
             if (args.TryGetInteger(0, out var len) && args.TryGetString(1, out var pad))
             {
-                ScriptDatum.WriteAsString(ref result, str.Value.PadLeft((int)len, pad[0]));
+                ScriptDatum.WriteAsString(ref result, PadLeftCore(str.Value, (int)len, pad));
             }
             else
             {
@@ -418,59 +491,11 @@ namespace AuroraScript.Runtime.Types
             }
             if (args.TryGetInteger(0, out var len) && args.TryGetString(1, out var pad))
             {
-                ScriptDatum.WriteAsString(ref result, str.Value.PadRight((int)len, pad[0]));
+                ScriptDatum.WriteAsString(ref result, PadRightCore(str.Value, (int)len, pad));
             }
             else
             {
                 ScriptDatum.WriteAsString(ref result, str);
-            }
-        }
-
-        /// <summary>
-        /// Native implementation for String.trim().
-        /// Removes whitespace from both ends of the string.
-        /// </summary>
-        internal static void TRIM(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            if (thisObject is StringValue str)
-            {
-                ScriptDatum.WriteAsString(ref result, str.Value.Trim());
-            }
-            else
-            {
-                ScriptDatum.MarkAsNull(ref result);
-            }
-        }
-
-        /// <summary>
-        /// Native implementation for String.trimStart() / trimLeft().
-        /// Removes whitespace from the beginning of the string.
-        /// </summary>
-        internal static void TRIMLEFT(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            if (thisObject is StringValue str)
-            {
-                ScriptDatum.WriteAsString(ref result, str.Value.TrimStart());
-            }
-            else
-            {
-                ScriptDatum.MarkAsNull(ref result);
-            }
-        }
-
-        /// <summary>
-        /// Native implementation for String.trimEnd() / trimRight().
-        /// Removes whitespace from the end of the string.
-        /// </summary>
-        internal static void TRIMRIGHT(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            if (thisObject is StringValue str)
-            {
-                ScriptDatum.WriteAsString(ref result, str.Value.TrimEnd());
-            }
-            else
-            {
-                ScriptDatum.MarkAsNull(ref result);
             }
         }
 
@@ -499,7 +524,7 @@ namespace AuroraScript.Runtime.Types
             ScriptDatum.WriteAsNumber(ref result, str.Value[(int)index]);
         }
 
-        private static string InvokeReplaceCallback(ScriptContext ctx, ClosureFunction callback, StringValue originalValue, Match match, Span<ScriptDatum> parameters)
+        private static string InvokeReplaceCallback(ScriptContext ctx, ClosureFunction callback, string originalValue, Match match, Span<ScriptDatum> parameters)
         {
             var groupCount = match.Groups.Count;
             ScriptDatum.WriteAsString(ref parameters[0], match.Value);
@@ -509,6 +534,7 @@ namespace AuroraScript.Runtime.Types
                 {
                     ScriptDatum.WriteAsString(ref parameters[i], match.Groups[i].Value);
                 }
+                else ScriptDatum.MarkAsNull(ref parameters[i]);
             }
             ScriptDatum.WriteAsNumber(ref parameters[groupCount], match.Index);
             ScriptDatum.WriteAsString(ref parameters[groupCount + 1], originalValue);

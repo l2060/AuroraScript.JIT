@@ -1,6 +1,8 @@
 using AuroraScript.Tests.Host;
 using AuroraScript.Tests.Infrastructure;
 using AuroraScript.Compiler.Backend;
+using AuroraScript.Compiler.Backend.Code;
+using AuroraScript.Hosting;
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Types;
 using System;
@@ -17,6 +19,56 @@ namespace AuroraScript.Tests;
 
 public sealed class HostExportGeneratorTests
 {
+    [Fact]
+    public void StringMembersShareNativeTypeCatalogWithoutBecomingNativeObjects()
+    {
+        var attribute = typeof(StringValue).GetCustomAttribute<AuroraNativeTypeAttribute>();
+        Assert.NotNull(attribute);
+        Assert.Equal("String", attribute.TypeName);
+        Assert.Equal(typeof(string), attribute.NativeReceiverType);
+
+        var catalog = new HostExportCatalog([]);
+        Assert.True(catalog.TryGetNativeValue(FlowValueType.String, out var owner));
+        Assert.Equal(typeof(string), owner.ClrType);
+        Assert.Equal(typeof(StringValue), owner.DeclaringType);
+        Assert.Null(owner.Constructor);
+        Assert.True(catalog.TryGetValueFactory("String", out var factory));
+        Assert.Equal(nameof(StringValue.CreateCore), factory.Method.Name);
+        Assert.Equal(typeof(string), factory.Method.ReturnType);
+        Assert.Equal(0, factory.RequiredScriptParameterCount);
+        Assert.False(catalog.TryGetValueFactory("Number", out _));
+        Assert.False(catalog.TryGetNativeObject("String", out _));
+        Assert.False(catalog.TryGetNativeObject(typeof(string), out _));
+        Assert.True(catalog.TryGetNativeValue(FlowValueType.Number, out var number));
+        Assert.Equal(typeof(NumberValue), number.DeclaringType);
+        Assert.True(catalog.TryGetNativeValue(FlowValueType.Int64, out var signed));
+        Assert.Equal(typeof(long), signed.ClrType);
+        Assert.True(catalog.TryGetNativeValue(FlowValueType.UInt64, out var unsigned));
+        Assert.Equal(typeof(ulong), unsigned.ClrType);
+        Assert.False(catalog.TryGetNativeObject("Int64", out _));
+        Assert.False(catalog.TryGetNativeObject("UInt64", out _));
+
+        var length = owner.GetValueGetter("length");
+        Assert.NotNull(length);
+        Assert.Equal(nameof(StringValue.LengthCore), length.Method.Name);
+        Assert.Equal(AuroraExportValueKind.Int32, length.ReturnKind);
+        Assert.Empty(length.ParameterKinds);
+        Assert.True(owner.TryGetMethod("substring", out var substring));
+        var signatures = new System.Collections.Generic.HashSet<string>();
+        for (var method = substring; method != null; method = method.NextOverload)
+        {
+            Assert.True(method.IsValueReceiver);
+            Assert.True(method.Method.IsStatic);
+            Assert.Equal(typeof(string), method.Method.GetParameters()[0].ParameterType);
+            Assert.Equal(AuroraExportValueKind.String, method.ReturnKind);
+            Assert.Equal(nameof(StringValue.Substring), method.Method.Name);
+            signatures.Add(string.Join(",", method.ParameterKinds));
+        }
+        Assert.Equal(2, signatures.Count);
+        Assert.Contains("Int32", signatures);
+        Assert.Contains("Int32,Int32", signatures);
+    }
+
     [Fact]
     public void CompilerCatalogIncludesBuiltinsAndOnlySelectedApplicationTypes()
     {
@@ -145,6 +197,44 @@ public sealed class HostExportGeneratorTests
     }
 
 #if NET9_0_OR_GREATER
+    [Fact]
+    public async Task Int64ClockExportCallsNativeLongMethodDirectly()
+    {
+        using var workspace = new TestWorkspace();
+        var assemblyPath = Path.Combine(workspace.Root, "clock-export.dll");
+        workspace.WriteSource("main.as", "@module(TEST); export func run() { return Env.ticks(); }");
+        var engine = workspace.CreateEngine(CompilationMode.Persistence, assemblyOut: assemblyPath);
+        await engine.BuildAsync(["main.as"]);
+        using var domain = engine.CreateDomain();
+        Assert.Equal(ValueKind.Int64, TestWorkspace.Execute(domain, "run").Kind);
+
+        using var stream = File.OpenRead(assemblyPath);
+        using var peReader = new PEReader(stream);
+        var reader = peReader.GetMetadataReader();
+        var coreToken = 0;
+        foreach (var handle in reader.MemberReferences)
+        {
+            if (reader.GetString(reader.GetMemberReference(handle).Name) ==
+                nameof(AuroraScript.Runtime.Builtin.EnvSupport.Ticks))
+            {
+                coreToken = MetadataTokens.GetToken(handle);
+                break;
+            }
+        }
+        Assert.NotEqual(0, coreToken);
+        var callsCore = false;
+        foreach (var handle in reader.MethodDefinitions)
+        {
+            var method = reader.GetMethodDefinition(handle);
+            if (reader.GetString(method.Name) == "run$typed")
+            {
+                callsCore = ContainsCall(peReader.GetMethodBody(method.RelativeVirtualAddress).GetILBytes(), coreToken);
+                break;
+            }
+        }
+        Assert.True(callsCore);
+    }
+
     [Fact]
     public async Task ProvenArgumentsCallGeneratedCoreDirectly()
     {

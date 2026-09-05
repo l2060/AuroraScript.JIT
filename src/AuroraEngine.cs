@@ -94,7 +94,6 @@ namespace AuroraScript
                 : options.WithCompiler(compiler => compiler.SourceResolver =
                     new BuiltinScriptSourceResolver(sourceResolver, BuiltInRegistry));
             TypedDocuments = new TypedDocumentNativeCatalog(Options.Compiler.NativeTypes);
-            StringValue.ConfigurePooling(Options.Runtime.StringPooling);
             Global = new ScriptGlobal(this);
 
             // register standard types
@@ -110,7 +109,7 @@ namespace AuroraScript
             Global.Define("UInt32Array", PackedArrayConstructor.UInt32, writeable: false, enumerable: false);
             Global.Define("Int64Array", PackedArrayConstructor.Int64, writeable: false, enumerable: false);
             Global.Define("UInt64Array", PackedArrayConstructor.UInt64, writeable: false, enumerable: false);
-            Global.Define("String", StringConstructor.INSTANCE, writeable: false, enumerable: false);
+            StringValue.Register(Global);
             Global.Define("Boolean", BooleanConstructor.INSTANCE, writeable: false, enumerable: false);
             Global.Define("Object", ScriptObjectConstructor.INSTANCE, writeable: false, enumerable: false);
             Global.Define("Number", NumberConstructor.INSTANCE, writeable: false, enumerable: false);
@@ -130,6 +129,7 @@ namespace AuroraScript
             TDocSupport.Register(Global);
             MathSupport.Register(Global);
             Conv8Support.Register(Global);
+            EnvSupport.Register(Global);
             HotPatchSupport.Register(Global);
             RegisterNativeTypes(Options.Compiler.NativeTypes);
         }
@@ -149,6 +149,13 @@ namespace AuroraScript
                 {
                     throw new ArgumentException(
                         $"Type '{nativeType.FullName}' is not marked with AuroraNativeTypeAttribute.",
+                        nameof(nativeTypes));
+                }
+
+                if (attribute.NativeReceiverType != null)
+                {
+                    throw new ArgumentException(
+                        $"Native value receiver '{nativeType.FullName}' cannot replace an engine-owned immutable prototype.",
                         nameof(nativeTypes));
                 }
 

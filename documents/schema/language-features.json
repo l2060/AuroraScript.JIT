@@ -142,6 +142,31 @@
       ]
     },
     {
+      "id": "primitive.int64",
+      "syntax": "1L | 9223372036854775807L | func id(int64 value) int64 | value as int64 | tdoc Int64 9007199254740993",
+      "scope": "type-contract",
+      "notes": [
+        "int64 is a first-class runtime integer: typeof is \"int64\", ScriptDatum.Kind is Int64, and new int64 is invalid.",
+        "Suffix L/l forces signed 64-bit literal storage. Out-of-range literals such as 9223372036854775808L are compile errors.",
+        "Same-kind + - * / % << >> ~ ++ -- wrap like CLR long, including integer division and MinValue / -1. Mixing with Number or uint64 produces Number.",
+        ">>> on int64 yields uint64. Object keys keep exact 64-bit identity, including values past Number.MAX_SAFE_INTEGER.",
+        "Checked boundaries accept an exact int64, a non-negative uint64 that fits, or an exact Number in signed 64-bit range; they do not truncate. Native ABI is System.Int64.",
+        "TDoc type name Int64 and JSON integers outside the safe-integer range preserve the exact payload. Use Int64Array for packed storage."
+      ]
+    },
+    {
+      "id": "primitive.uint64",
+      "syntax": "1UL | 18446744073709551615UL | func id(uint64 value) uint64 | value as uint64 | tdoc UInt64 18446744073709551615",
+      "scope": "type-contract",
+      "notes": [
+        "uint64 is a first-class runtime integer: typeof is \"uint64\", ScriptDatum.Kind is UInt64, and new uint64 is invalid.",
+        "Suffixes UL/ul/LU/lu force unsigned 64-bit literal storage. Out-of-range literals such as 18446744073709551616UL are compile errors.",
+        "Same-kind arithmetic and bitwise ops wrap like CLR ulong. >> is logical. Mixing with Number or int64 produces Number.",
+        "Checked boundaries accept an exact uint64, a non-negative int64, or an exact Number in unsigned 64-bit range. Native ABI is System.UInt64.",
+        "TDoc type name UInt64 and JSON integers above signed 64-bit range preserve the exact payload. Use UInt64Array for packed storage."
+      ]
+    },
+    {
       "id": "function.native-void",
       "syntax": "native func name(parameters) void { statements; return; }",
       "scope": "module",

@@ -447,6 +447,7 @@ namespace AuroraScript.Compiler.Backend.Code
         private readonly Dictionary<Expression, TypeDeclaration> _structuralTypes;
         private readonly Dictionary<Expression, HostNativeObjectDescriptor> _nativeObjectTypes;
         private readonly Dictionary<ForStatement, CountedLoop> _countedLoops;
+        private readonly Dictionary<FunctionCallExpression, HostNativeMethodDescriptor> _nativeValueCalls;
 
         public TypedFunctionCode(
             FunctionPlan function,
@@ -460,7 +461,8 @@ namespace AuroraScript.Compiler.Backend.Code
             HostNativeObjectDescriptor[] localNativeObjectTypes,
             bool[] writtenLocals,
             FlowValueType returnType,
-            Dictionary<ForStatement, CountedLoop> countedLoops = null)
+            Dictionary<ForStatement, CountedLoop> countedLoops = null,
+            Dictionary<FunctionCallExpression, HostNativeMethodDescriptor> nativeValueCalls = null)
         {
             Function = function ?? throw new ArgumentNullException(nameof(function));
             _names = names ?? throw new ArgumentNullException(nameof(names));
@@ -475,7 +477,11 @@ namespace AuroraScript.Compiler.Backend.Code
             WrittenLocals = writtenLocals ?? throw new ArgumentNullException(nameof(writtenLocals));
             ReturnType = returnType;
             _countedLoops = countedLoops;
+            _nativeValueCalls = nativeValueCalls;
         }
+
+        public HostNativeMethodDescriptor GetNativeValueCall(FunctionCallExpression call)
+            => _nativeValueCalls != null && _nativeValueCalls.TryGetValue(call, out var method) ? method : null;
 
         public bool TryGetCountedLoop(ForStatement statement, out CountedLoop loop)
         {

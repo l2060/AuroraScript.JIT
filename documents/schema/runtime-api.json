@@ -790,10 +790,10 @@
           "returns": "string",
           "notes": {
             "en": [
-              "Converts a value to a string. Missing or non-string-convertible input produces an empty string."
+              "Converts a value to a string. Missing or non-string-convertible input produces an empty string. String(value) and new String(value) share this factory and always return a primitive string."
             ],
             "zh-CN": [
-              "将值转换为字符串。缺少参数或无法转换为字符串时返回空字符串。"
+              "将值转换为字符串。缺少参数或无法转换为字符串时返回空字符串。String(value) 与 new String(value) 共用同一工厂，始终返回原始字符串。"
             ]
           }
         }
@@ -810,10 +810,10 @@
           "returns": "string",
           "notes": {
             "en": [
-              "Creates a one-character string from a character code."
+              "Creates a one-character string from a character code. Proven calls use a native int; the character is the first UTF-16 code unit."
             ],
             "zh-CN": [
-              "根据字符编码创建单字符字符串。"
+              "根据字符编码创建单字符字符串。已证明的调用使用原生 int，取第一个 UTF-16 代码单元。"
             ]
           }
         },
@@ -850,10 +850,10 @@
           "returns": "number",
           "notes": {
             "en": [
-              "Compares two strings and returns their ordering."
+              "Compares the first UTF-16 code unit of each string. Returns 1 when either input is empty."
             ],
             "zh-CN": [
-              "比较两个字符串并返回排序结果。"
+              "比较两个字符串的第一个 UTF-16 代码单元。任一侧为空时返回 1。"
             ]
           }
         }
@@ -1746,10 +1746,12 @@
       },
       "notes": {
         "en": [
-          "JSON parsing and serialization API."
+          "JSON parsing and serialization API.",
+          "Integers inside Number.MAX_SAFE_INTEGER parse as Number. Wider exact JSON integers become int64 or uint64 so the payload stays exact."
         ],
         "zh-CN": [
-          "JSON 解析和序列化 API。"
+          "JSON 解析和序列化 API。",
+          "落在 Number.MAX_SAFE_INTEGER 内的整数解析为 Number；更宽的精确 JSON 整数成为 int64 或 uint64，以保留完整载荷。"
         ]
       }
     },
@@ -1809,12 +1811,57 @@
         "en": [
           "TDoc parsing and serialization API.",
           "The native script literal uses the separate `tdoc [TypeName] value` expression syntax; standalone .tdoc documents omit that prefix.",
+          "`tdoc Int64` and `tdoc UInt64` store exact 64-bit integers. A bare numeric token is Number, so these type names are required to preserve values past the safe-integer range.",
           "parse/stringify are generated native host exports; optional stringify arguments default to indented=false and emitTypes=false."
         ],
         "zh-CN": [
           "TDoc 类型文档解析与序列化 API。",
           "脚本原生字面量使用独立的 `tdoc [TypeName] value` 表达式语法；独立 .tdoc 文档省略此前缀。",
+          "`tdoc Int64` 与 `tdoc UInt64` 保存精确 64 位整数。无类型数值 token 是 Number，因此要保留超过安全整数范围的值必须写这些类型名。",
           "parse/stringify 由生成的宿主原生导出实现；stringify 可选参数默认 indented=false、emitTypes=false。"
+        ]
+      }
+    },
+    "Env": {
+      "kind": "type",
+      "members": {
+        "ticks": {
+          "kind": "method",
+          "parameters": [],
+          "returns": "int64",
+          "notes": {
+            "en": [
+              "Returns monotonic 100-nanosecond ticks since the engine clock started.",
+              "The Core method returns System.Int64 with no per-call allocation."
+            ],
+            "zh-CN": [
+              "返回自引擎时钟启动以来的单调 100 纳秒 tick。",
+              "Core 方法返回 System.Int64，无每次调用分配。"
+            ]
+          }
+        },
+        "elapsedMs": {
+          "kind": "method",
+          "parameters": [],
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Returns elapsed milliseconds, including the fractional part."
+            ],
+            "zh-CN": [
+              "返回已过毫秒数，含小数部分。"
+            ]
+          }
+        }
+      },
+      "notes": {
+        "en": [
+          "Process-local monotonic clock. typeof Env is \"type\"; new Env() fails.",
+          "Implemented as a generated native host export. Unshadowed ticks() calls can use the Int64 Core path."
+        ],
+        "zh-CN": [
+          "进程内单调时钟。typeof Env 为 \"type\"；new Env() 失败。",
+          "由生成的宿主原生导出实现。未遮蔽的 ticks() 可走 Int64 Core 直调。"
         ]
       }
     },
@@ -3623,10 +3670,10 @@
         "returns": "string",
         "notes": {
           "en": [
-            "Returns a substring by start and length/end arguments."
+            "Returns a substring from start to end (exclusive), not start plus length. Proven calls use native int indices."
           ],
           "zh-CN": [
-            "按起始位置和长度/结束参数返回子串。"
+            "按起始与结束（不含）返回子串，第二个参数不是长度。已证明的调用使用原生 int 索引。"
           ]
         }
       },
@@ -3806,10 +3853,10 @@
         "returns": "string",
         "notes": {
           "en": [
-            "Returns a slice of the string."
+            "Returns a slice of the string from start to end (exclusive). Proven calls use native int indices."
           ],
           "zh-CN": [
-            "返回字符串切片。"
+            "返回从 start 到 end（不含）的字符串切片。已证明的调用使用原生 int 索引。"
           ]
         }
       },
@@ -4448,10 +4495,52 @@
         "returns": "string",
         "notes": {
           "en": [
-            "Formats the number as a string."
+            "Formats the number as a string. Radix 16 uses historical Int32 hexadecimal; other radices use current-culture decimal."
           ],
           "zh-CN": [
-            "将数字格式化为字符串。"
+            "将数字格式化为字符串。radix 为 16 时使用历史 Int32 十六进制；其它进制使用当前区域性十进制。"
+          ]
+        }
+      }
+    },
+    "Int64": {
+      "toString": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "radix",
+            "type": "number",
+            "optional": true
+          }
+        ],
+        "returns": "string",
+        "notes": {
+          "en": [
+            "Formats the exact int64 without a Number conversion. No argument is invariant decimal; radix 16 is full-width uppercase hex; other radices stay decimal."
+          ],
+          "zh-CN": [
+            "格式化精确 int64，不经 Number。无参为不变区域性十进制；radix 为 16 时为全部 64 位大写十六进制；其它进制仍为十进制。"
+          ]
+        }
+      }
+    },
+    "UInt64": {
+      "toString": {
+        "kind": "method",
+        "parameters": [
+          {
+            "name": "radix",
+            "type": "number",
+            "optional": true
+          }
+        ],
+        "returns": "string",
+        "notes": {
+          "en": [
+            "Formats the exact uint64 without a Number conversion. No argument is invariant decimal; radix 16 is full-width uppercase hex; other radices stay decimal."
+          ],
+          "zh-CN": [
+            "格式化精确 uint64，不经 Number。无参为不变区域性十进制；radix 为 16 时为全部 64 位大写十六进制；其它进制仍为十进制。"
           ]
         }
       }

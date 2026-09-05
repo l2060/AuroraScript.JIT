@@ -78,6 +78,38 @@ public sealed class TextMateGrammarTests
         }
     }
 
+    [Theory]
+    [InlineData("Vec2 vec { x 1000 }", "Vec2", "vec")]
+    [InlineData("Int64 i64 9007199254740993", "Int64", "i64")]
+    [InlineData("UInt64 ui64 9807199254740993", "UInt64", "ui64")]
+    public void TDocTypedMembersColorTypeAndKeySeparately(string source, string typeName, string memberName)
+    {
+        using var document = JsonDocument.Parse(File.ReadAllText(GetGrammarPath()));
+        var repository = document.RootElement.GetProperty("repository");
+        var rule = FindPattern(repository.GetProperty("tdoc"), "meta.tdoc.typed-member.aurora")!.Value;
+        var match = Regex.Match(source, rule.GetProperty("match").GetString()!);
+        Assert.True(match.Success);
+        Assert.Equal(typeName, match.Groups[1].Value);
+        Assert.Equal(memberName, match.Groups[2].Value);
+        Assert.Equal("support.type.aurora", rule.GetProperty("captures").GetProperty("1").GetProperty("name").GetString());
+        Assert.Equal("variable.other.member.tdoc.aurora", rule.GetProperty("captures").GetProperty("2").GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public void TDocIntegerTypesAndNestedMembersHaveFallbackColors()
+    {
+        using var document = JsonDocument.Parse(File.ReadAllText(GetGrammarPath()));
+        var repository = document.RootElement.GetProperty("repository");
+        foreach (var type in new[] { "Int64", "UInt64", "int64", "uint64" })
+        {
+            AssertPattern(repository, "builtins", "support.type.aurora", type);
+            AssertPatternDoesNotMatch(repository, "tdoc", "meta.tdoc.member.aurora", type + " 42");
+        }
+        AssertPattern(repository, "tdoc", "meta.tdoc.member.aurora", "numbers { Int64 i64 1 }");
+        AssertPatternDoesNotMatch(repository, "tdoc", "meta.tdoc.typed-member.aurora", "return values [0]");
+        AssertPatternDoesNotMatch(repository, "tdoc", "meta.tdoc.typed-member.aurora", "var values = [0]");
+    }
+
     [Fact]
     public void VisualStudioRegistersStandaloneTDocExtension()
     {

@@ -36,7 +36,6 @@ public sealed class EngineOptionsAndSourceTests
             .WithOutput(output => output.Confused = true)
             .WithRuntime(runtime => runtime.DateTimeFormat = "O")
             .WithCompiler(compiler => compiler.ExtName = "aurora")
-            .WithRuntime(runtime => runtime.StringPooling = StringPoolingStrategy.None)
             .WithCompiler(compiler => compiler.MaxDegreeOfParallelism = 3);
 
         Assert.NotSame(original, configured);
@@ -49,7 +48,6 @@ public sealed class EngineOptionsAndSourceTests
         Assert.True(configured.Output.EnableConfused);
         Assert.Equal("O", configured.Runtime.DateTimeFormat);
         Assert.Equal(".aurora", configured.Compiler.ExtName);
-        Assert.Equal(StringPoolingStrategy.None, configured.Runtime.StringPooling);
         Assert.Equal(3, configured.Compiler.MaxDegreeOfParallelism);
     }
 

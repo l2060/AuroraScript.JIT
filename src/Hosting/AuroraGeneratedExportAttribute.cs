@@ -116,6 +116,12 @@ namespace AuroraScript.Hosting
         Object,
 
         /// <summary>An AuroraScript <c>ScriptDatum</c> value.</summary>
-        Datum
+        Datum,
+
+        /// <summary>A CLR <see cref="long"/> represented as a script int64.</summary>
+        Int64,
+
+        /// <summary>A CLR <see cref="ulong"/> represented as a script uint64.</summary>
+        UInt64
     }
 }

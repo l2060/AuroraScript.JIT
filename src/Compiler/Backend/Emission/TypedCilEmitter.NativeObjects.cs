@@ -455,8 +455,11 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 AuroraExportValueKind.Number => StackValueKind.Number,
                 AuroraExportValueKind.Int32 => StackValueKind.Int32,
+                AuroraExportValueKind.Int64 => StackValueKind.Int64,
+                AuroraExportValueKind.UInt64 => StackValueKind.UInt64,
                 AuroraExportValueKind.Boolean => StackValueKind.Boolean,
                 AuroraExportValueKind.String => StackValueKind.String,
+                AuroraExportValueKind.Object => StackValueKind.Object,
                 _ => StackValueKind.Datum
             };
         }

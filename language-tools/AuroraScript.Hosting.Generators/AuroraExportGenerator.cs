@@ -24,6 +24,13 @@ namespace AuroraScript.Hosting.Generators
         ReturnNull,
         Throw
     }
+
+    internal enum HostExportTarget
+    {
+        Auto,
+        Type,
+        Instance
+    }
     [Generator]
     public sealed partial class AuroraExportGenerator : IIncrementalGenerator
     {
@@ -74,7 +81,8 @@ namespace AuroraScript.Hosting.Generators
             INamedTypeSymbol containingType,
             IMethodSymbol methodSymbol,
             AttributeData exportAttribute,
-            string adapterPrefix = "")
+            string adapterPrefix = "",
+            ITypeSymbol? receiverType = null)
         {
             if (methodSymbol.TypeParameters.Length != 0 ||
                 methodSymbol.ReturnsByRef ||
@@ -105,7 +113,20 @@ namespace AuroraScript.Hosting.Generators
                 takesContext = true;
                 start = 1;
             }
-            if (start < methodSymbol.Parameters.Length &&
+            if (receiverType != null)
+            {
+                if (receiverType.SpecialType == SpecialType.System_Double && start < methodSymbol.Parameters.Length &&
+                    methodSymbol.Parameters[start].Type.SpecialType is SpecialType.System_Int32 or SpecialType.System_UInt32)
+                    receiverType = methodSymbol.Parameters[start].Type;
+                if (!methodSymbol.IsStatic || start >= methodSymbol.Parameters.Length ||
+                    methodSymbol.Parameters[start].RefKind != RefKind.None ||
+                    methodSymbol.Parameters[start].IsOptional || methodSymbol.Parameters[start].IsParams ||
+                    takesContext && (methodSymbol.Parameters[0].RefKind != RefKind.None || methodSymbol.Parameters[0].IsOptional) ||
+                    !SymbolEqualityComparer.Default.Equals(methodSymbol.Parameters[start].Type, receiverType))
+                    return null;
+                start++;
+            }
+            else if (start < methodSymbol.Parameters.Length &&
                 IsThisObjectParameter(methodSymbol.Parameters[start]))
             {
                 takesThisObject = true;
@@ -186,7 +207,10 @@ namespace AuroraScript.Hosting.Generators
                 parameters,
                 takesContext,
                 takesThisObject,
-                isInstance: !methodSymbol.IsStatic);
+                isInstance: !methodSymbol.IsStatic)
+            {
+                ReceiverType = receiverType?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+            };
         }
 
         private static ConstantModel? ParseConstant(
@@ -235,6 +259,8 @@ namespace AuroraScript.Hosting.Generators
                 ReturnKind.Void => "Void",
                 ReturnKind.Number => "Number",
                 ReturnKind.Int32 => "Int32",
+                ReturnKind.Int64 => "Int64",
+                ReturnKind.UInt64 => "UInt64",
                 ReturnKind.Boolean => "Boolean",
                 ReturnKind.String => "String",
                 ReturnKind.Object => "Object",
@@ -532,12 +558,16 @@ namespace AuroraScript.Hosting.Generators
             }
         }
 
-        private static void AppendCoreInvocation(StringBuilder builder, ExportModel export)
+        private static void AppendCoreInvocation(StringBuilder builder, ExportModel export, string? valueReceiver = null)
         {
             var argumentNames = new List<string>();
             if (export.TakesContext)
             {
                 argumentNames.Add("ctx");
+            }
+            if (valueReceiver != null)
+            {
+                argumentNames.Add(valueReceiver);
             }
             if (export.TakesThisObject)
             {
@@ -567,6 +597,12 @@ namespace AuroraScript.Hosting.Generators
                     break;
                 case ReturnKind.Boolean:
                     builder.AppendLine("            ScriptDatum.WriteAsBoolean(ref result, coreResult);");
+                    break;
+                case ReturnKind.Int64:
+                    builder.AppendLine("            ScriptDatum.WriteAsInt64(ref result, coreResult);");
+                    break;
+                case ReturnKind.UInt64:
+                    builder.AppendLine("            ScriptDatum.WriteAsUInt64(ref result, coreResult);");
                     break;
                 case ReturnKind.String:
                     builder.AppendLine("            ScriptDatum.WriteAsString(ref result, coreResult);");
@@ -683,6 +719,10 @@ namespace AuroraScript.Hosting.Generators
                     return ReturnKind.Number;
                 case SpecialType.System_Int32:
                     return ReturnKind.Int32;
+                case SpecialType.System_Int64:
+                    return ReturnKind.Int64;
+                case SpecialType.System_UInt64:
+                    return ReturnKind.UInt64;
                 case SpecialType.System_Boolean:
                     return ReturnKind.Boolean;
                 case SpecialType.System_String:
@@ -788,8 +828,8 @@ namespace AuroraScript.Hosting.Generators
                     return typed;
                 }
 
-                if (argument.Value.Value is int value &&
-                    Enum.IsDefined(typeof(TEnum), value))
+                var value = Convert.ToInt32(argument.Value.Value);
+                if (Enum.IsDefined(typeof(TEnum), value))
                 {
                     return (TEnum)Enum.ToObject(typeof(TEnum), value);
                 }
@@ -998,6 +1038,10 @@ namespace AuroraScript.Hosting.Generators
             public bool TakesContext { get; }
             public bool TakesThisObject { get; }
             public bool IsInstance { get; }
+            public string? DynamicAdapter { get; set; }
+            public string? ReceiverType { get; set; }
+            public bool IsGetter { get; set; }
+            public bool RequiresIndexProof { get; set; }
 
             private static HostExportFailure ResolveDefaultFailure(ReturnKind returnKind)
             {
@@ -1056,6 +1100,8 @@ namespace AuroraScript.Hosting.Generators
             Void,
             Number,
             Int32,
+            Int64,
+            UInt64,
             Boolean,
             String,
             Object,

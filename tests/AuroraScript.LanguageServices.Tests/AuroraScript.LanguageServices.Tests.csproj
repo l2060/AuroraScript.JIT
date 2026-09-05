@@ -30,6 +30,7 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <Compile Include="..\..\language-tools\AuroraScript.VisualStudio\Language\TDocSyntaxState.cs" Link="VisualStudio\TDocSyntaxState.cs" />
   </ItemGroup>
 
 </Project>

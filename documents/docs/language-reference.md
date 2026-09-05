@@ -191,7 +191,9 @@ The source-level primitive and collection forms are:
 | `number` | `42`, `3.14`, `6e2`, `10000D`, `100_00` | Double-precision. Unsuffixed integers that fit `Int32` stay `Int32`; wider exact integers stay `Int64`. Suffix `D`/`d` forces `Number`. |
 | `int32` constraint | `func index(int32 value) int32` | Compile-time/ABI constraint for an exact signed 32-bit integer. The runtime value remains a number and `typeof` remains `"number"`; `new int32` is invalid. |
 | `uint32` constraint | `func word(uint32 value) uint32`, `0xD76AA478u` | Compile-time/ABI constraint for an exact unsigned 32-bit integer. The runtime value remains a number and `typeof` remains `"number"`; suffix `U`/`u` selects unsigned 32-bit storage. |
-| integer hex | `0xFFFF`, `0xD76AA478u`, `0x100000000L` | Hexadecimal literals default to integer (`Int32` if they fit, otherwise `Int64`). Suffix `L`/`l` forces `Int64`; `I`/`i` forces `Int32`; `U`/`u` forces `UInt32`. `D` is a hex digit, so it is not a hex suffix. |
+| `int64` | `1L`, `9223372036854775807L`, `func id(int64 v) int64` | First-class signed 64-bit integer. `typeof` is `"int64"`; `new int64` is invalid. Same-kind arithmetic wraps like CLR `long`. |
+| `uint64` | `1UL`, `18446744073709551615UL`, `func id(uint64 v) uint64` | First-class unsigned 64-bit integer. `typeof` is `"uint64"`; `new uint64` is invalid. Same-kind arithmetic wraps like CLR `ulong`. |
+| integer hex | `0xFFFF`, `0xD76AA478u`, `0x100000000L`, `0x8000000000000000UL` | Hexadecimal literals default to integer (`Int32` if they fit, otherwise `Int64`). Suffix `L`/`l` forces `Int64`; `I`/`i` forces `Int32`; `U`/`u` forces `UInt32`; `UL`/`LU` forces `UInt64`. `D` is a hex digit, so it is not a hex suffix. |
 | `string` | `'text'`, `"text"`, `` `value=${expr}` ``, `|> line` | Immutable UTF-16 text; templates interpolate expressions and block strings preserve physical newlines. |
 | `boolean` | `true`, `false` | Boolean value. |
 | `null` | `null` | Missing value. |
@@ -248,7 +250,25 @@ For unsigned word algorithms, use `uint32`, `UInt32Array`, and `U`/`u`
 literal suffixes. Unsuffixed literal inference is unchanged. Native `uint32`
 arithmetic wraps modulo 2^32, bitwise results remain unsigned, and `>>` is a
 logical right shift. `int32` and `uint32` do not add a runtime type identity, introduce a
-global constructor, or act as a TDoc type name. Packed-array checks are nullable:
+global constructor, or act as a TDoc type name.
+
+`int64` and `uint64` are runtime integers, not Number aliases. `typeof 1L`
+is `"int64"` and `typeof 1UL` is `"uint64"`. Same-kind `+`, `-`, `*`, `/`,
+`%`, shifts, bitwise ops, and increments wrap like CLR `long`/`ulong`.
+Unlike `int32`, same-kind `/` is integer division (`MinValue / -1L` wraps
+to `MinValue`). Mixing with `Number` or the other 64-bit signedness produces
+`Number`, so `1L + 1UL` and `max + 0` are doubles. `>>>` on `int64` yields
+`uint64`. Checked `int64`/`uint64` boundaries accept the matching kind, a
+Number that is an exact in-range integer, or the other 64-bit kind when the
+magnitude fits; a `Number` parameter rejects an `int64` argument. Object
+keys keep exact 64-bit identity, including values past
+`Number.MAX_SAFE_INTEGER`. Persist them with `tdoc Int64` / `tdoc UInt64`
+or packed `Int64Array` / `UInt64Array`. JSON parse keeps integers inside
+the safe-integer range as `Number` and wider exact integers as `int64` or
+`uint64`. Frozen Int64/UInt64 prototypes format with `toString()` as invariant
+decimal and `toString(16)` as full-width uppercase hex; other radices stay
+decimal. These paths never convert through `Number`. Out-of-range suffixes such as `9223372036854775808L` are compile
+errors. Packed-array checks are nullable:
 `null as Float64Array` returns `null`, and a `null` argument is inferred from
 a declared `Float64Array` parameter without requiring `as`. Non-null values
 must still match the exact packed-array type.
@@ -615,7 +635,7 @@ Object values:
 Use `schema/runtime-api.json` for the complete machine-readable runtime API. Constructor globals expose structured signatures in their `constructors` arrays:
 
 - `new Array(capacity?: number): array`
-- `new String(value?: any): string`
+- `new String(value?: any): string` — same factory as `String(value)`; always a primitive string
 - `new Boolean(value?: any): boolean`
 - `new Object(prototype?: object): object`
 - `new Number(value?: any): number`

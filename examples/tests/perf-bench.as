@@ -1,27 +1,29 @@
 @module(PERF_BENCH);
 
-const TICKS_PER_MS = 10000;
-
-native func nowTicks() Number {
-	return Date.utcNow().ticks;
+// 宿主提供 Stopwatch 单调时钟：相对起点的毫秒数，保留小数精度。
+native func nowMs() Number {
+	return Env.elapsedMs();
 }
 
-native func ticksToMs(Number ticks) Number {
-	return ticks / TICKS_PER_MS;
-}
-
-func copyArray(Int64Array a) {
+// 样本通常只有几十个；复制时插入排序，只分配一个数组，不改变原始采样顺序。
+func sortedCopy(Float64Array a) {
 	var n = a.length;
-	var b = new Int64Array(n);
+	var b = new Float64Array(n);
 
 	for (var i = 0; i < n; i++) {
-		b[i] = a[i];
+		var value = a[i];
+		var j = i;
+		while (j > 0 && b[j - 1] > value) {
+			b[j] = b[j - 1];
+			j--;
+		}
+		b[j] = value;
 	}
 
 	return b;
 }
 
-func percentile(Int64Array sorted, Number p) Number {
+func percentile(Float64Array sorted, Number p) Number {
 	var n = sorted.length;
 	if (n == 0) {
 		return 0;
@@ -41,7 +43,7 @@ func percentile(Int64Array sorted, Number p) Number {
 	}
 	return sorted[idx];
 }
-export func calcStats(Int64Array samples) Object {
+export func calcStats(Float64Array samples) Object {
 	var n = samples.length;
 
 	if (n == 0) {
@@ -59,17 +61,16 @@ export func calcStats(Int64Array samples) Object {
 		};
 	}
 
-	var sorted = copyArray(samples);
-	// sorted.sort();
+	var sorted = sortedCopy(samples);
 
-	var sum = 0;
+	var sum = 0.0;
 
 	for (var i = 0; i < n; i++) {
 		sum = sum + sorted[i];
 	}
 
 	var mean = sum / n;
-	var varianceSum = 0;
+	var varianceSum = 0.0;
 
 	for (var j = 0; j < n; j++) {
 		var d = sorted[j] - mean;
@@ -79,7 +80,7 @@ export func calcStats(Int64Array samples) Object {
 	var variance = varianceSum / n;
 	var stddev = Math.pow(variance, 0.5);
 
-	var cv = 0;
+	var cv = 0.0;
 
 	if (mean != 0) {
 		cv = stddev / mean;
@@ -100,7 +101,7 @@ export func calcStats(Int64Array samples) Object {
 }
 
 func runLoops(Number loopCount, work) Number {
-	var guard = 0;
+	var guard = 0.0;
 
 	for (var i = 0; i < loopCount; i++) {
 		var r = work();
@@ -118,17 +119,17 @@ export func benchmark(String name, Number warmups, Number samples, Number innerL
 		runLoops(innerLoops, work);
 	}
 
-	var times = new Int64Array(samples);
-	var guard = 0;
+	var times = new Float64Array(samples);
+	var guard = 0.0;
 
 	for (var s = 0; s < samples; s++) {
-		var t0 = nowTicks();
+		var t0 = nowMs();
 
 		guard = guard + runLoops(innerLoops, work);
 
-		var t1 = nowTicks();
+		var t1 = nowMs();
 
-		var elapsedMs = ticksToMs(t1 - t0);
+		var elapsedMs = t1 - t0;
 		times[s] = (elapsedMs / innerLoops);
 	}
 
@@ -153,16 +154,16 @@ export func autoBenchmark(String name, work, Number warmups, Number samples, Num
 	}
 
 	var loops = 1;
-	var lastMs = 0;
+	var lastMs = 0.0;
 
 	while (loops < maxInnerLoops) {
-		var t0 = nowTicks();
+		var t0 = nowMs();
 
 		runLoops(loops, work);
 
-		var t1 = nowTicks();
+		var t1 = nowMs();
 
-		lastMs = ticksToMs(t1 - t0);
+		lastMs = t1 - t0;
 
 		if (lastMs >= minSampleMs) {
 			break;
@@ -183,7 +184,7 @@ export func run() {
 	}
 
 	var work = () => {
-		var s = 0;
+		var s = 0L;
 		var n = data.length;
 
 		for (var i = 0; i < n; i++) {

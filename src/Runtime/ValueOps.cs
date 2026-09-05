@@ -175,15 +175,23 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum AddStringRight(ScriptDatum left, string right)
         {
-            return ScriptDatum.FromString(string.Concat(ToStringForConcat(left), right));
+            return ScriptDatum.FromString(ConcatStringRight(left, right));
         }
 
         /// <summary>Concatenates a literal prefix with a dynamic value.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum AddStringLeft(string left, ScriptDatum right)
         {
-            return ScriptDatum.FromString(string.Concat(left, ToStringForConcat(right)));
+            return ScriptDatum.FromString(ConcatStringLeft(left, right));
         }
+
+        /// <summary>Concatenates without packing the resulting string into a datum.</summary>
+        public static string ConcatStringRight(ScriptDatum left, string right)
+            => string.Concat(ToStringForConcat(left), right);
+
+        /// <summary>Concatenates without packing the resulting string into a datum.</summary>
+        public static string ConcatStringLeft(string left, ScriptDatum right)
+            => string.Concat(left, ToStringForConcat(right));
 
         /// <summary>Concatenates two dynamic values separated by a literal.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

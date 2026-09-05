@@ -160,12 +160,17 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
         "Int16Array",
         "Int32Array",
         "Int64Array",
+        "Int64",
+        "UInt64",
         "Int8Array",
         "int32",
         "uint32",
+        "int64",
+        "uint64",
         "JSON",
         "Conv8",
         "Math",
+        "Env",
         "Number",
         "Object",
         "console",
@@ -609,6 +614,7 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
         var analysis = GetAnalysis(snapshot);
         var text = analysis.Text;
         var isTypedDocument = analysis.IsTypedDocument;
+        var tdocState = isTypedDocument ? new TDocSyntaxState() : null;
         var enumNames = analysis.EnumNames;
         var symbols = analysis.Symbols;
         var lastIdentifier = string.Empty;
@@ -658,7 +664,7 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
                     yield return tag;
                 }
 
-                if (IsMapKey(text, i, end) || (isTypedDocument && IsTDocMapKey(text, i, end)))
+                if (tdocState != null ? tdocState.TakeKey() : IsMapKey(text, i, end))
                 {
                     if (TryCreateSpan(snapshot, spans, i, end - i, AuroraSyntaxClassificationTypes.MapKey, out var mapKeyTag))
                     {
@@ -682,7 +688,9 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
                 }
 
                 var value = text.Substring(start, i - start);
-                var type = GetIdentifierClassification(text, start, i, value, enumNames, symbols, lastIdentifier, lastSignificant, isTypedDocument);
+                var type = tdocState != null
+                    ? GetTDocIdentifierClassification(text, i, value, tdocState)
+                    : GetIdentifierClassification(text, start, i, value, enumNames, symbols, lastIdentifier, lastSignificant);
                 if (!string.IsNullOrEmpty(type))
                 {
                     if (TryCreateSpan(snapshot, spans, start, i - start, type, out var tag))
@@ -700,7 +708,7 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
             {
                 var start = i;
                 i = ScanNumber(text, i);
-                var type = IsMapKey(text, start, i) || (isTypedDocument && IsTDocMapKey(text, start, i))
+                var type = tdocState == null && IsMapKey(text, start, i)
                     ? AuroraSyntaxClassificationTypes.MapKey
                     : AuroraSyntaxClassificationTypes.Number;
                 if (TryCreateSpan(snapshot, spans, start, i - start, type, out var tag))
@@ -714,6 +722,7 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
 
             if (!char.IsWhiteSpace(current))
             {
+                tdocState?.Punctuation(current);
                 lastSignificant = current;
                 if (current != '.')
                 {
@@ -1421,18 +1430,11 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
         IReadOnlyDictionary<string, bool> enumNames,
         LightweightSymbolIndex symbols,
         string lastIdentifier,
-        char lastSignificant,
-        bool isTypedDocument)
+        char lastSignificant)
     {
-        if (IsMapKey(text, start, end) || (isTypedDocument && IsTDocMapKey(text, start, end)))
+        if (IsMapKey(text, start, end))
         {
             return AuroraSyntaxClassificationTypes.MapKey;
-        }
-
-        if (isTypedDocument && (string.Equals(value, "readonly", StringComparison.Ordinal) ||
-            string.Equals(value, "tdoc", StringComparison.Ordinal)))
-        {
-            return AuroraSyntaxClassificationTypes.Keyword;
         }
 
         if (lastSignificant == '.' && enumNames.ContainsKey(lastIdentifier))
@@ -2017,41 +2019,27 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
         return false;
     }
 
-    private static bool IsTDocMapKey(string text, int start, int end)
+    private static string GetTDocIdentifierClassification(string text, int end, string value, TDocSyntaxState state)
     {
-        var valueStart = SkipWhitespace(text, end);
-        if (valueStart >= text.Length || !IsTDocValueStart(text, valueStart))
+        var next = SkipTrivia(text, end);
+        var followedByPropertyName = false;
+        if (next < text.Length)
         {
-            return false;
-        }
-
-        var value = text.Substring(start, end - start);
-        var previous = PreviousSignificant(text, start - 1);
-        if (previous < 0)
-        {
-            return false;
-        }
-
-        if (text[previous] == '{' || text[previous] == ',')
-        {
-            return !BuiltinTypes.Contains(value);
-        }
-
-        if (IsIdentifierPart(text[previous]))
-        {
-            var previousStart = previous;
-            while (previousStart > 0 && IsIdentifierPart(text[previousStart - 1]))
+            followedByPropertyName = IsIdentifierStart(text[next]) && !IsTDocValueStart(text, next);
+            if (text[next] == '"' || text[next] == '\'')
             {
-                previousStart--;
+                var afterString = SkipTrivia(text, FindStringEnd(text, next, text[next]));
+                followedByPropertyName = IsTDocValueStart(text, afterString);
             }
-
-            var previousValue = text.Substring(previousStart, previous - previousStart + 1);
-            return (BuiltinTypes.Contains(previousValue) ||
-                string.Equals(previousValue, "readonly", StringComparison.Ordinal)) &&
-                !BuiltinTypes.Contains(value);
         }
 
-        return false;
+        return state.Identifier(value, followedByPropertyName) switch
+        {
+            TDocTokenRole.Type => AuroraSyntaxClassificationTypes.Type,
+            TDocTokenRole.MapKey => AuroraSyntaxClassificationTypes.MapKey,
+            TDocTokenRole.Keyword => AuroraSyntaxClassificationTypes.Keyword,
+            _ => string.Empty
+        };
     }
 
     private static bool IsTDocValueStart(string text, int start)
@@ -2078,19 +2066,6 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
         }
 
         return start + value.Length >= text.Length || !IsIdentifierPart(text[start + value.Length]);
-    }
-
-    private static int PreviousSignificant(string text, int start)
-    {
-        for (var i = start; i >= 0; i--)
-        {
-            if (!char.IsWhiteSpace(text[i]))
-            {
-                return i;
-            }
-        }
-
-        return -1;
     }
 
     private static bool NextNonWhitespaceIs(string text, int start, char expected)

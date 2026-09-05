@@ -49,8 +49,8 @@ native function II(uint32 a, uint32 b, uint32 c, uint32 d, uint32 x, int32 s, ui
 native function WordToHex(uint32 lValue) String {
 	var WordToHexValue = '';
 	var WordToHexValue_temp = '';
-	var lByte;
-	var lCount;
+	var lByte = 0;
+	var lCount = 0;
 	for (lCount = 0; lCount <= 3; lCount++) {
 		lByte = (lValue >> (lCount * 8)) & 255;
 		WordToHexValue_temp = "0" + lByte.toString(16);

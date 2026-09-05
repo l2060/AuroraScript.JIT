@@ -6,10 +6,8 @@ using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Core;
 using AuroraScript.LanguageServices.Builtins;
 using AuroraScript.LanguageServices.Features.SemanticTokens;
-using AuroraScript.LanguageServices.Internal.SymbolIndex;
 using AuroraScript.LanguageServices.Parsing;
 using AuroraScript.Source;
-using AuroraScript.Tokens;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -1136,7 +1134,7 @@ internal static class SemanticTokenScanner
         {
             foreach (var scope in _constructedClasses)
             {
-                if (scope.TryGetValue(variableName, out className))
+                if (scope.TryGetValue(variableName, out className!))
                 {
                     return true;
                 }

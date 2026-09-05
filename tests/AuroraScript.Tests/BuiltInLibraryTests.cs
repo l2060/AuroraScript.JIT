@@ -215,7 +215,7 @@ public sealed class BuiltInLibraryTests
     }
 
     [Fact]
-    public async Task HashMapStringKeysWorkWithoutStringPooling()
+    public async Task HashMapStringKeysUseTextEquality()
     {
         using var workspace = new TestWorkspace();
         var engine = new AuroraEngine(EngineOptions.Default
@@ -224,8 +224,7 @@ public sealed class BuiltInLibraryTests
             .WithOptimization(optimization => optimization.Level = OptimizeOptions.Release)
             .WithRuntime(runtime => runtime.HotReload = false)
             .WithRuntime(runtime => runtime.ConsoleStdOut = TextWriter.Null)
-            .WithRuntime(runtime => runtime.ConsoleErrorOut = TextWriter.Null)
-            .WithRuntime(runtime => runtime.StringPooling = StringPoolingStrategy.None));
+            .WithRuntime(runtime => runtime.ConsoleErrorOut = TextWriter.Null));
         var sourcePath = workspace.WriteSource(
             "main.as",
             """

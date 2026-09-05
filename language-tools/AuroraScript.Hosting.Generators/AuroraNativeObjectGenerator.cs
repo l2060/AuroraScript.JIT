@@ -57,6 +57,17 @@ namespace AuroraScript.Hosting.Generators
                     $"Type '{typeSymbol.ToDisplayString()}' must be declared in a namespace."));
             }
             var scriptObjectBase = FindScriptObjectBase(typeSymbol);
+            var receiverArgument = typeAttribute.NamedArguments
+                .FirstOrDefault(pair => pair.Key == "NativeReceiverType");
+            var hasReceiverArgument = receiverArgument.Key != null;
+            var receiverType = receiverArgument.Value.Value as ITypeSymbol;
+            if (hasReceiverArgument && receiverType == null)
+                diagnostics.Add(Diagnostic.Create(InvalidGlobal, GetLocation(typeSymbol),
+                    "AuroraNativeType.NativeReceiverType must specify a CLR receiver type."));
+            if (receiverType != null && receiverType.SpecialType is not (SpecialType.System_String or
+                SpecialType.System_Double or SpecialType.System_Int64 or SpecialType.System_UInt64))
+                diagnostics.Add(Diagnostic.Create(InvalidGlobal, GetLocation(typeSymbol),
+                    "AuroraNativeType.NativeReceiverType supports string, double, long and ulong."));
 
             var typeName = typeAttribute.ConstructorArguments.Length > 0
                 ? typeAttribute.ConstructorArguments[0].Value as string
@@ -83,6 +94,96 @@ namespace AuroraScript.Hosting.Generators
                     .FirstOrDefault(attribute => attribute.AttributeClass?.ToDisplayString() == ExportAttribute);
                 if (exportAttribute == null || member is IMethodSymbol { MethodKind: MethodKind.Constructor })
                 {
+                    continue;
+                }
+
+                if (!HasValidEnumArgument<HostExportTarget>(exportAttribute, -1, "Target"))
+                {
+                    diagnostics.Add(Diagnostic.Create(InvalidExport, GetLocation(member),
+                        "AuroraExport.Target must be Auto, Type, or Instance."));
+                    continue;
+                }
+                var target = GetNamedEnum<HostExportTarget>(exportAttribute, "Target");
+                if (target == HostExportTarget.Auto)
+                {
+                    target = member.IsStatic ? HostExportTarget.Type : HostExportTarget.Instance;
+                }
+                if (target == HostExportTarget.Type && !member.IsStatic)
+                {
+                    diagnostics.Add(Diagnostic.Create(InvalidExport, GetLocation(member),
+                        "AuroraExport.Target.Type requires a static CLR member."));
+                    continue;
+                }
+
+                if (receiverType != null)
+                {
+                    if (target == HostExportTarget.Type)
+                    {
+                        var staticExport = member is IMethodSymbol { IsStatic: true } staticCore
+                            ? ParseExport(typeSymbol, staticCore, exportAttribute, adapterPrefix: "__Static_") : null;
+                        if (staticExport == null || !staticExport.CanDirectCall || staticExport.TakesThisObject ||
+                            !ConfigureValueReceiverExport(typeSymbol, staticExport, exportAttribute) ||
+                            staticExport.IsGetter || staticExport.RequiresIndexProof)
+                        {
+                            diagnostics.Add(Diagnostic.Create(InvalidExport, GetLocation(member),
+                                "Static value-type exports require a public static Core and a compatible dynamic adapter."));
+                            continue;
+                        }
+                        if (!staticExportedNames.Add(staticExport.ScriptName) ||
+                            staticExport.DynamicAdapter == null && (!adapterNames.Add(staticExport.AdapterMethodName) ||
+                                typeSymbol.GetMembers(staticExport.AdapterMethodName).Length != 0))
+                            diagnostics.Add(Diagnostic.Create(DuplicateExport, GetLocation(member), typeName, staticExport.ScriptName));
+                        else staticExports.Add(staticExport);
+                        continue;
+                    }
+                    if (!member.IsStatic)
+                    {
+                        diagnostics.Add(Diagnostic.Create(InvalidExport, GetLocation(member),
+                            "AuroraExport.Target.Instance on a native receiver type requires a static CLR Core method."));
+                        continue;
+                    }
+                    var export = member is IMethodSymbol valueMethod
+                        ? ParseExport(typeSymbol, valueMethod, exportAttribute, adapterPrefix: "__Value_", receiverType: receiverType)
+                        : null;
+                    if (export == null || !export.CanDirectCall ||
+                        export.Parameters.Any(parameter => parameter.IsOptional) ||
+                        !ConfigureValueReceiverExport(typeSymbol, export, exportAttribute) ||
+                        export.DynamicAdapter == null && export.ReceiverType != receiverType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))
+                    {
+                        diagnostics.Add(Diagnostic.Create(InvalidExport, GetLocation(member),
+                            $"Value-receiver export '{member.ToDisplayString()}' requires a public static Core method, exact arity, and a compatible DynamicAdapter when specified."));
+                        continue;
+                    }
+                    if (exports.Any(existing => existing.ScriptName == export.ScriptName &&
+                        (existing.DynamicAdapter == null || export.DynamicAdapter == null ||
+                            existing.DynamicAdapter != export.DynamicAdapter || existing.IsGetter || existing.IsGetter != export.IsGetter ||
+                            existing.ReceiverType == export.ReceiverType && existing.RequiresIndexProof == export.RequiresIndexProof &&
+                            existing.Parameters.Select(parameter => parameter.Kind).SequenceEqual(export.Parameters.Select(parameter => parameter.Kind)))))
+                    {
+                        diagnostics.Add(Diagnostic.Create(DuplicateExport, GetLocation(member), typeName, export.ScriptName));
+                        continue;
+                    }
+                    if (export.DynamicAdapter == null &&
+                        (!adapterNames.Add(export.AdapterMethodName) || typeSymbol.GetMembers(export.AdapterMethodName).Length != 0))
+                    {
+                        diagnostics.Add(Diagnostic.Create(DuplicateExport, GetLocation(member), typeName, export.ScriptName));
+                        continue;
+                    }
+                    exports.Add(export);
+                    continue;
+                }
+
+                if (target == HostExportTarget.Instance && member.IsStatic)
+                {
+                    diagnostics.Add(Diagnostic.Create(InvalidExport, GetLocation(member),
+                        "AuroraExport.Target.Instance on a static CLR method requires AuroraNativeType.NativeReceiverType."));
+                    continue;
+                }
+
+                if (exportAttribute.NamedArguments.Any(pair => pair.Key is "DynamicAdapter" or "IsGetter" or "RequiresIndexProof"))
+                {
+                    diagnostics.Add(Diagnostic.Create(InvalidExport, GetLocation(member),
+                        "Value-receiver export options require AuroraNativeType.NativeReceiverType and AuroraExport.Target.Instance."));
                     continue;
                 }
 
@@ -226,8 +327,23 @@ namespace AuroraScript.Hosting.Generators
             }
 
             var constructor = SelectConstructor(typeSymbol, diagnostics, typeName!);
+            var factoryName = typeAttribute.NamedArguments.FirstOrDefault(pair => pair.Key == "NativeConstructor").Value.Value as string;
+            ExportModel? factory = null;
+            if (factoryName != null)
+            {
+                factory = staticExports.FirstOrDefault(export => export.CoreMethodName == factoryName);
+                var factoryMethod = typeSymbol.GetMembers(factoryName).OfType<IMethodSymbol>()
+                    .FirstOrDefault(method => method.IsStatic && method.GetAttributes().Any(attribute => attribute.AttributeClass?.ToDisplayString() == ExportAttribute));
+                if (receiverType == null || factory == null || factoryMethod == null ||
+                    !SymbolEqualityComparer.Default.Equals(factoryMethod.ReturnType, receiverType))
+                    diagnostics.Add(Diagnostic.Create(InvalidExport, GetLocation(typeSymbol),
+                        "NativeConstructor must name an exported static Core returning AuroraNativeType.NativeReceiverType."));
+            }
+            if (receiverType != null && constructor != null)
+                diagnostics.Add(Diagnostic.Create(InvalidExport, GetLocation(typeSymbol),
+                    "Value-receiver types cannot export a constructor."));
             var hasInstanceSurface = fields.Count != 0 || exports.Count != 0 || constructor != null;
-            if (hasInstanceSurface && scriptObjectBase == null)
+            if (receiverType == null && hasInstanceSurface && scriptObjectBase == null)
             {
                 diagnostics.Add(Diagnostic.Create(
                     InvalidGlobal,
@@ -266,8 +382,9 @@ namespace AuroraScript.Hosting.Generators
                 staticExports,
                 staticConstants,
                 constructor,
-                scriptObjectBase != null,
-                diagnostics);
+                receiverType == null && scriptObjectBase != null,
+                diagnostics,
+                receiverType?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), factory);
         }
 
         private static bool ImplementsTypedDocument(INamedTypeSymbol typeSymbol)
@@ -350,6 +467,17 @@ namespace AuroraScript.Hosting.Generators
                 return null;
             }
             var selected = marked[0];
+            var exportAttribute = selected.GetAttributes().First(
+                attribute => attribute.AttributeClass?.ToDisplayString() == ExportAttribute);
+            if (!HasValidEnumArgument<HostExportTarget>(exportAttribute, -1, "Target") ||
+                GetNamedEnum<HostExportTarget>(exportAttribute, "Target") != HostExportTarget.Auto)
+            {
+                diagnostics.Add(Diagnostic.Create(
+                    InvalidExport,
+                    GetLocation(selected),
+                    "AuroraExport.Target is not valid on a constructor."));
+                return null;
+            }
             if (selected.DeclaredAccessibility != Accessibility.Public)
             {
                 diagnostics.Add(Diagnostic.Create(
@@ -448,6 +576,36 @@ namespace AuroraScript.Hosting.Generators
             return "protected";
         }
 
+        private static bool ConfigureValueReceiverExport(INamedTypeSymbol type, ExportModel export, AttributeData attribute)
+        {
+            export.DynamicAdapter = attribute.NamedArguments.FirstOrDefault(pair => pair.Key == "DynamicAdapter").Value.Value as string;
+            export.IsGetter = attribute.NamedArguments.Any(pair => pair.Key == "IsGetter" && pair.Value.Value is true);
+            export.RequiresIndexProof = attribute.NamedArguments.Any(pair => pair.Key == "RequiresIndexProof" && pair.Value.Value is true);
+            if (export.IsGetter && (export.Parameters.Count != 0 || export.TakesContext || export.RequiresIndexProof || export.ReturnKind == ReturnKind.Void) ||
+                export.RequiresIndexProof && (export.ReceiverType != "string" || export.Parameters.Count != 1 ||
+                    export.Parameters[0].Kind != ParameterKind.Int32 || export.ReturnKind != ReturnKind.Int32))
+                return false;
+            // An unchecked, proof-dependent Core must never become a dynamic entry point.
+            if (export.DynamicAdapter == null) return !export.RequiresIndexProof;
+            if (string.IsNullOrWhiteSpace(export.DynamicAdapter)) return false;
+            foreach (var adapter in type.GetMembers(export.DynamicAdapter!).OfType<IMethodSymbol>())
+            {
+                var parameters = adapter.Parameters;
+                if (!adapter.IsStatic || !adapter.ReturnsVoid || adapter.TypeParameters.Length != 0 ||
+                    parameters.Length != (export.IsGetter ? 2 : 4)) continue;
+                var receiver = export.IsGetter ? 0 : 1;
+                if (!IsType(parameters[receiver].Type, "AuroraScript.Runtime.Types.ScriptObject") ||
+                    parameters[receiver].RefKind != RefKind.None ||
+                    parameters[parameters.Length - 1].RefKind != RefKind.Ref ||
+                    !IsType(parameters[parameters.Length - 1].Type, "AuroraScript.Runtime.ScriptDatum")) continue;
+                if (!export.IsGetter && (!IsScriptContext(parameters[0].Type) ||
+                    parameters[0].RefKind != RefKind.None || parameters[2].RefKind != RefKind.None ||
+                    !IsType(parameters[2].Type, "System.Span<AuroraScript.Runtime.ScriptDatum>"))) continue;
+                return true;
+            }
+            return false;
+        }
+
         private static void ExecuteNativeObjects(
             SourceProductionContext context,
             ImmutableArray<NativeObjectModel?> models)
@@ -509,7 +667,7 @@ namespace AuroraScript.Hosting.Generators
                     continue;
                 }
 
-                if (model.HasNativeInstances)
+                if (model.HasNativeInstances || model.ReceiverType != null)
                 {
                     builder.Append("[assembly: global::AuroraScript.Hosting.AuroraGeneratedNativeObjectAttribute(");
                     builder.Append('"').Append(EscapeString(model.TypeName)).Append("\", ");
@@ -520,6 +678,10 @@ namespace AuroraScript.Hosting.Generators
                         static parameter => GetCatalogKind(parameter.Kind));
                     builder.Append(", ");
                     builder.Append(model.Constructor != null ? "true" : "false");
+                    if (model.ReceiverType != null)
+                        builder.Append(", ReceiverType = typeof(").Append(model.ReceiverType).Append(')');
+                    if (model.Factory != null)
+                        builder.Append(", FactoryMemberName = \"").Append(EscapeString(model.Factory.ScriptName)).Append('"');
                     builder.AppendLine(")]");
                     count++;
 
@@ -539,7 +701,7 @@ namespace AuroraScript.Hosting.Generators
 
                     foreach (var export in model.Exports)
                     {
-                        if (!export.CanDirectCall || !export.IsInstance)
+                        if (!export.CanDirectCall || !export.IsInstance && model.ReceiverType == null)
                         {
                             continue;
                         }
@@ -557,6 +719,12 @@ namespace AuroraScript.Hosting.Generators
                             static parameter => GetCatalogKind(parameter.Kind));
                         builder.Append(", ");
                         builder.Append(export.TakesContext ? "true" : "false");
+                        if (model.ReceiverType != null)
+                        {
+                            builder.Append(", ReceiverType = typeof(").Append(export.ReceiverType).Append(')');
+                            builder.Append(", IsGetter = ").Append(export.IsGetter ? "true" : "false");
+                            builder.Append(", RequiresIndexProof = ").Append(export.RequiresIndexProof ? "true" : "false");
+                        }
                         builder.AppendLine(")]");
                         count++;
                     }
@@ -645,6 +813,53 @@ namespace AuroraScript.Hosting.Generators
             }
             builder.AppendLine();
             builder.AppendLine("    {");
+            if (model.ReceiverType != null)
+            {
+                builder.AppendLine("        internal static void RegisterNativeMembers(ScriptObject prototype)");
+                builder.AppendLine("        {");
+                foreach (var export in model.Exports.GroupBy(export => export.ScriptName).Select(group => group.First()))
+                {
+                    builder.Append("            prototype.Define(\"").Append(EscapeString(export.ScriptName))
+                        .Append("\", ScriptDatum.").Append(export.IsGetter ? "FromBondingGetter" : "FromBonding")
+                        .Append('(').Append(export.DynamicAdapter ?? export.AdapterMethodName).AppendLine("), writeable: false, enumerable: false);");
+                }
+                builder.AppendLine("        }");
+                foreach (var export in model.Exports.Where(export => export.DynamicAdapter == null))
+                {
+                    builder.Append("        public static void ").Append(export.AdapterMethodName).Append('(');
+                    builder.AppendLine(export.IsGetter
+                        ? "ScriptObject thisObject, ref ScriptDatum result)"
+                        : "ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)");
+                    builder.AppendLine("        {");
+                    var wrapper = model.ReceiverType switch
+                    {
+                        "double" => "NumberValue",
+                        "long" => "Int64Value",
+                        "ulong" => "UInt64Value",
+                        _ => "StringValue"
+                    };
+                    builder.Append("            if (thisObject is not ").Append(wrapper).AppendLine(" self)");
+                    builder.AppendLine("            {");
+                    AppendFailureReturn(builder, export, indent: "                ");
+                    builder.AppendLine("            }");
+                    AppendParameterCoercion(builder, export);
+                    AppendCoreInvocation(builder, export, model.ReceiverType == "double" ? "self.DoubleValue" : "self.Value");
+                    builder.AppendLine("        }");
+                }
+                if (model.Factory != null || model.StaticExports.Count != 0)
+                {
+                    builder.AppendLine("        public static readonly ScriptType Type = new NativeConstructor();");
+                    builder.AppendLine("        public static void Register(ScriptObject target, bool writeable = false, bool enumerable = false)");
+                    builder.AppendLine("        {");
+                    builder.Append("            target.Define(\"").Append(EscapeString(model.TypeName)).AppendLine("\", Type, writeable, enumerable);");
+                    builder.AppendLine("        }");
+                    AppendStaticExportAdapters(builder, model);
+                    AppendNativeConstructor(builder, model);
+                }
+                builder.AppendLine("    }");
+                builder.AppendLine("}");
+                return builder.ToString();
+            }
             if (model.HasNativeInstances)
             {
                 builder.AppendLine("        private static readonly ScriptDatum NativeTypeName = ScriptDatum.FromString(\"" +
@@ -730,7 +945,17 @@ namespace AuroraScript.Hosting.Generators
                 builder.AppendLine("        }");
                 builder.AppendLine();
             }
-            foreach (var export in model.StaticExports)
+            AppendStaticExportAdapters(builder, model);
+
+            AppendNativeConstructor(builder, model);
+            builder.AppendLine("    }");
+            builder.AppendLine("}");
+            return builder.ToString();
+        }
+
+        private static void AppendStaticExportAdapters(StringBuilder builder, NativeObjectModel model)
+        {
+            foreach (var export in model.StaticExports.Where(export => export.DynamicAdapter == null))
             {
                 builder.AppendLine("        public static void " + export.AdapterMethodName + "(");
                 builder.AppendLine("            ScriptContext ctx,");
@@ -744,10 +969,6 @@ namespace AuroraScript.Hosting.Generators
                 builder.AppendLine();
             }
 
-            AppendNativeConstructor(builder, model);
-            builder.AppendLine("    }");
-            builder.AppendLine("}");
-            return builder.ToString();
         }
 
         private static void AppendNativePropertyAccess(StringBuilder builder, NativeObjectModel model)
@@ -858,7 +1079,7 @@ namespace AuroraScript.Hosting.Generators
             builder.AppendLine("        {");
             builder.AppendLine("            public NativeConstructor() : base(\"" +
                 EscapeString(model.TypeName) + "\", " +
-                (model.Constructor != null ? "true" : "false") + ")");
+                (model.Constructor != null || model.Factory != null ? "true" : "false") + ")");
             builder.AppendLine("            {");
             foreach (var constant in model.StaticConstants)
             {
@@ -873,7 +1094,7 @@ namespace AuroraScript.Hosting.Generators
                 builder.Append("                Define(\"")
                     .Append(EscapeString(export.ScriptName))
                     .Append("\", ScriptDatum.FromBonding(")
-                    .Append(export.AdapterMethodName)
+                    .Append(export.DynamicAdapter ?? export.AdapterMethodName)
                     .AppendLine("), writeable: false, enumerable: false);");
             }
             builder.AppendLine("                Frozen();");
@@ -881,7 +1102,12 @@ namespace AuroraScript.Hosting.Generators
             builder.AppendLine();
             builder.AppendLine("            public override void Construct(ScriptContext ctx, Span<ScriptDatum> args, ref ScriptDatum result)");
             builder.AppendLine("            {");
-            if (model.Constructor == null)
+            if (model.Factory != null)
+            {
+                builder.Append("                ").Append(model.Factory.DynamicAdapter ?? model.Factory.AdapterMethodName)
+                    .AppendLine("(ctx, this, args, ref result);");
+            }
+            else if (model.Constructor == null)
             {
                 builder.AppendLine("                throw new AuroraRuntimeException(\"Type '" +
                     EscapeString(model.TypeName) + "' is not constructible.\");");
@@ -974,7 +1200,9 @@ namespace AuroraScript.Hosting.Generators
                 IReadOnlyList<ConstantModel> staticConstants,
                 ConstructorModel? constructor,
                 bool hasNativeInstances,
-                IReadOnlyList<Diagnostic> diagnostics)
+                IReadOnlyList<Diagnostic> diagnostics,
+                string? receiverType = null,
+                ExportModel? factory = null)
             {
                 Namespace = namespaceName;
                 ClassName = className;
@@ -992,6 +1220,8 @@ namespace AuroraScript.Hosting.Generators
                 Constructor = constructor;
                 HasNativeInstances = hasNativeInstances;
                 Diagnostics = diagnostics;
+                ReceiverType = receiverType;
+                Factory = factory;
             }
 
             public string Namespace { get; }
@@ -1010,6 +1240,8 @@ namespace AuroraScript.Hosting.Generators
             public ConstructorModel? Constructor { get; }
             public bool HasNativeInstances { get; }
             public IReadOnlyList<Diagnostic> Diagnostics { get; }
+            public string? ReceiverType { get; }
+            public ExportModel? Factory { get; }
         }
 
         private sealed class InstanceFieldModel

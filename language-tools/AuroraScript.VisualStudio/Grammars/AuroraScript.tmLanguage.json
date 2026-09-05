@@ -82,8 +82,16 @@
           ]
         },
         {
+          "name": "meta.tdoc.typed-member.aurora",
+          "match": "\\b(?!(?:readonly|tdoc|return|throw|new|typeof|delete|var|const|declare|export|import)\\b)([\\p{L}_$][\\p{L}\\p{N}_$]*)\\s+([\\p{L}_$][\\p{L}\\p{N}_$]*)(?=\\s+(?:[\\\"']|0[xX]|-?\\d|true\\b|false\\b|null\\b|[\\[{]|\\$\\())",
+          "captures": {
+            "1": { "name": "support.type.aurora" },
+            "2": { "name": "variable.other.member.tdoc.aurora" }
+          }
+        },
+        {
           "name": "meta.tdoc.member.aurora",
-          "match": "\\b(?!(?:Array|Boolean|BooleanArray|Date|Float32Array|Float64Array|HashMap|Int16Array|Int32Array|Int64Array|Int8Array|Number|Object|Path|Regex|String|StringBuffer|UInt16Array|UInt32Array|UInt64Array|UInt8Array|int32|uint32)\\b)([\\p{L}_$][\\p{L}\\p{N}_$]*)(\\s+)(?=(?:[\\\"']|0[xX]|-?\\d|true\\b|false\\b|null\\b|[\\[{]|\\$\\())",
+          "match": "\\b(?!(?:Array|Boolean|BooleanArray|Date|Float32Array|Float64Array|HashMap|Int16Array|Int32Array|Int64|Int64Array|Int8Array|Number|Object|Path|Regex|String|StringBuffer|UInt16Array|UInt32Array|UInt64|UInt64Array|UInt8Array|int32|uint32|int64|uint64)\\b)([\\p{L}_$][\\p{L}\\p{N}_$]*)(\\s+)(?=(?:[\\\"']|0[xX]|-?\\d|true\\b|false\\b|null\\b|[\\[{]|\\$\\())",
           "captures": {
             "1": { "name": "variable.other.member.tdoc.aurora" }
           }
@@ -128,11 +136,11 @@
       "patterns": [
         {
           "name": "support.type.aurora",
-          "match": "\\b(?:Array|Boolean|BooleanArray|Date|Error|TDoc|Float32Array|Float64Array|Function|HashMap|Int16Array|Int32Array|Int64Array|Int8Array|Number|Object|Path|Proxy|Regex|String|StringBuffer|UInt16Array|UInt32Array|UInt64Array|UInt8Array|int32|uint32)\\b"
+          "match": "\\b(?:Array|Boolean|BooleanArray|Date|Error|TDoc|Float32Array|Float64Array|Function|HashMap|Int16Array|Int32Array|Int64|Int64Array|Int8Array|Number|Object|Path|Proxy|Regex|String|StringBuffer|UInt16Array|UInt32Array|UInt64|UInt64Array|UInt8Array|int32|uint32|int64|uint64)\\b"
         },
         {
-          "name": "support.type.builtin.object.aurora",
-          "match": "\\b(?:console|Conv8|HotPatch|JSON|Math)\\b"
+            "name": "support.type.builtin.object.aurora",
+            "match": "\\b(?:console|Conv8|HotPatch|JSON|Math|Env)\\b"
         },
         {
           "name": "variable.language.aurora",
@@ -398,7 +406,7 @@
         },
         {
           "name": "keyword.operator.type-check.aurora",
-          "match": "\\bas\\b(?=\\s+(?:Array|Boolean|BooleanArray|Date|Float32Array|Float64Array|HashMap|Int16Array|Int32Array|Int64Array|Int8Array|Number|Object|Regex|String|StringBuffer|UInt16Array|UInt32Array|UInt64Array|UInt8Array|int32|uint32)\\b)"
+          "match": "\\bas\\b(?=\\s+(?:Array|Boolean|BooleanArray|Date|Float32Array|Float64Array|HashMap|Int16Array|Int32Array|Int64Array|Int8Array|Number|Object|Regex|String|StringBuffer|UInt16Array|UInt32Array|UInt64Array|UInt8Array|int32|uint32|int64|uint64)\\b)"
         },
         {
           "name": "keyword.operator.word.aurora",
@@ -575,7 +583,7 @@
       "patterns": [
         {
           "name": "support.type.aurora",
-          "match": "\\b(?:Any|Array|Boolean|BooleanArray|Date|Error|Float32Array|Float64Array|Function|HashMap|Int16Array|Int32Array|Int64Array|Int8Array|Null|Number|Object|Proxy|Regex|String|StringBuffer|UInt16Array|UInt32Array|UInt64Array|UInt8Array|int32|uint32|void|Void)\\b"
+          "match": "\\b(?:Any|Array|Boolean|BooleanArray|Date|Error|Float32Array|Float64Array|Function|HashMap|Int16Array|Int32Array|Int64|Int64Array|Int8Array|Null|Number|Object|Proxy|Regex|String|StringBuffer|UInt16Array|UInt32Array|UInt64|UInt64Array|UInt8Array|int32|uint32|int64|uint64|void|Void)\\b"
         }
       ]
     }

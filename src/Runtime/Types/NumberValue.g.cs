@@ -1,5 +1,7 @@
 ﻿using AuroraScript.Core;
 using System;
+using AuroraScript.Hosting;
+using System.Globalization;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
@@ -10,6 +12,7 @@ namespace AuroraScript.Runtime.Types
     /// Partial implementation of <see cref="NumberValue"/> providing constants and native method implementations.
     /// This fragment handles specialized numeric operations and string conversions.
     /// </summary>
+    [AuroraNativeType("Number", NativeReceiverType = typeof(double))]
     public partial class NumberValue
     {
 
@@ -77,19 +80,51 @@ namespace AuroraScript.Runtime.Types
                 return;
             }
 
-            if (args != null && args.Length == 1)
+            if (args.Length == 1 && args[0].Kind == ValueKind.Number)
             {
-                var arg = args[0];
-                if (arg.Kind == ValueKind.Number)
-                {
-                    if ((int)arg.Number == 16)
-                    {
-                        ScriptDatum.WriteAsString(ref result, thisNumber.Int32Value.ToString("X"));
-                        return;
-                    }
-                }
+                ScriptDatum.WriteAsString(ref result, FormatString(thisNumber._value, (int)args[0].Number));
+                return;
             }
-            ScriptDatum.WriteAsString(ref result, thisNumber._value.ToString());
+            ScriptDatum.WriteAsString(ref result, FormatString(thisNumber._value));
         }
+
+        /// <summary>Formats a Number using the same rules as its script toString method.</summary>
+        [AuroraExport("toString", DynamicAdapter = nameof(TOSTRING), Target = AuroraExportTarget.Instance)]
+        public static string FormatString(double value) => (value == 0 ? 0d : value).ToString();
+
+        /// <summary>Only radix 16 selects hexadecimal, as in the dynamic method.</summary>
+        [AuroraExport("toString", DynamicAdapter = nameof(TOSTRING), Target = AuroraExportTarget.Instance)]
+        public static string FormatString(double value, int radix)
+            => radix == 16 ? ((int)value).ToString("X") : FormatString(value);
+
+        /// <summary>Formats an Int32 Number without a floating-point round trip.</summary>
+        [AuroraExport("toString", DynamicAdapter = nameof(TOSTRING), Target = AuroraExportTarget.Instance)]
+        public static string FormatString(int value) => value.ToString();
+
+        /// <summary>Formats an Int32 Number with an integer radix.</summary>
+        [AuroraExport("toString", DynamicAdapter = nameof(TOSTRING), Target = AuroraExportTarget.Instance)]
+        public static string FormatString(int value, int radix) => radix == 16 ? value.ToString("X") : value.ToString();
+
+        /// <summary>Formats a UInt32 Number without losing its unsigned value.</summary>
+        [AuroraExport("toString", DynamicAdapter = nameof(TOSTRING), Target = AuroraExportTarget.Instance)]
+        public static string FormatString(uint value) => value.ToString();
+
+        /// <summary>Preserves Number's historical Int32 hexadecimal conversion for large UInt32 values.</summary>
+        [AuroraExport("toString", DynamicAdapter = nameof(TOSTRING), Target = AuroraExportTarget.Instance)]
+        public static string FormatString(uint value, int radix) => radix == 16
+            ? value <= int.MaxValue ? ((int)value).ToString("X") : FormatString((double)value, radix)
+            : value.ToString();
+
+        /// <summary>Formats all 64 signed bits without conversion to Number.</summary>
+        public static string FormatString(long value) => value.ToString(CultureInfo.InvariantCulture);
+
+        /// <summary>Formats Int64 as full-width hexadecimal for radix 16, otherwise decimal.</summary>
+        public static string FormatString(long value, int radix) => value.ToString(radix == 16 ? "X" : "D", CultureInfo.InvariantCulture);
+
+        /// <summary>Formats all 64 unsigned bits without conversion to Number.</summary>
+        public static string FormatString(ulong value) => value.ToString(CultureInfo.InvariantCulture);
+
+        /// <summary>Formats UInt64 as full-width hexadecimal for radix 16, otherwise decimal.</summary>
+        public static string FormatString(ulong value, int radix) => value.ToString(radix == 16 ? "X" : "D", CultureInfo.InvariantCulture);
     }
 }

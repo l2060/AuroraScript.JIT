@@ -293,11 +293,15 @@ namespace AuroraScript.Runtime
             return Kind switch
             {
                 ValueKind.Null => ScriptObject.Null.GetHashCode(),
-                ValueKind.Boolean => Boolean.GetHashCode(),
+                ValueKind.Boolean => (Boolean ? 1d : 0d).GetHashCode(),
                 ValueKind.Number => Number.GetHashCode(),
-                ValueKind.Int64 => Int64.GetHashCode(),
-                ValueKind.UInt64 => UInt64.GetHashCode(),
-                ValueKind.String => StringText.GetHashCode(StringComparison.Ordinal),
+                // Cross-kind equality compares through Number. Hash through the
+                // same representation; collisions between exact integers are OK.
+                ValueKind.Int64 => ((double)Int64).GetHashCode(),
+                ValueKind.UInt64 => ((double)UInt64).GetHashCode(),
+                ValueKind.String => TryToNumber(this, out var number)
+                    ? number.GetHashCode()
+                    : StringText.GetHashCode(StringComparison.Ordinal),
                 _ => reference.GetHashCode(),
             };
         }

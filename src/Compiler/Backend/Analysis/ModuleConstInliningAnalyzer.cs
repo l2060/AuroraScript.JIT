@@ -1,6 +1,7 @@
 using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Backend.Binding;
+using AuroraScript.Compiler.Backend.Emission;
 using AuroraScript.Compiler.Backend.Plans;
 using AuroraScript.Runtime;
 using AuroraScript.Tokens;
@@ -180,6 +181,16 @@ namespace AuroraScript.Compiler.Backend.Analysis
                 {
                     case null:
                         value = ScriptDatum.Null;
+                        return true;
+                    case TypedDocumentExpression { TypeName: "Int64" } tdoc:
+                        // Share the emitter's exact literal parsing, including
+                        // native parameter defaults that require a constant.
+                        if (!TypedDocumentLiteralConstants.TryGetInt64(tdoc.Value, out var signed)) return false;
+                        value = ScriptDatum.FromInt64(signed);
+                        return true;
+                    case TypedDocumentExpression { TypeName: "UInt64" } tdoc:
+                        if (!TypedDocumentLiteralConstants.TryGetUInt64(tdoc.Value, out var unsigned)) return false;
+                        value = ScriptDatum.FromUInt64(unsigned);
                         return true;
                     case TypedDocumentExpression tdoc:
                         return TryEvaluate(tdoc.Value, ref value);

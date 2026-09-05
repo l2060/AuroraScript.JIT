@@ -165,7 +165,7 @@ a = { b: 1234 };
 
 Literals:
 
-- number: `1`, `1.5`, `10000D` (force `Number`), `1L` (force `Int64`), `0xD76AA478u` (force `UInt32`), `100000` (inferred `Int32` when it fits), hexadecimal `0xFFFF` (integer by default)
+- number: `1`, `1.5`, `10000D` (force `Number`), `1L` (force `int64`), `1UL` (force `uint64`), `0xD76AA478u` (force `UInt32`), `100000` (inferred `Int32` when it fits), hexadecimal `0xFFFF` (integer by default)
 - integer constraint: lowercase `int32` is allowed on parameters, returns,
   shape fields, and `value as int32`. It requires an exact signed 32-bit
   integer at checked boundaries but keeps script `Number` identity
@@ -180,6 +180,12 @@ Literals:
   selects `UInt32` literal storage without changing unsuffixed inference.
   Arithmetic wraps modulo 2^32, bitwise results stay unsigned, `>>` is logical,
   and runtime identity remains Number (`typeof` is `"number"`).
+- exact 64-bit integers: lowercase `int64` / `uint64` are runtime types
+  (`typeof 1L` is `"int64"`, `typeof 1UL` is `"uint64"`). Same-kind arithmetic
+  wraps like CLR `long`/`ulong`, including integer `/`. Mixing with `Number`
+  or the other signedness produces `Number`. Persist with `tdoc Int64` /
+  `tdoc UInt64` or `Int64Array` / `UInt64Array`. Out-of-range suffixes fail
+  at compile time.
 - string: `'text'`, `"text"`
 - template string: `` `value=${expr}` ``
 - regex literal
@@ -251,7 +257,7 @@ Constructors and globals:
 - `Array`, `String`, `Boolean`, `Object`, `Number`, `Date`
 - `Error`, `HashMap`, `Regex`, `Proxy`, `StringBuffer`, `Path`
 - Packed arrays: `Int8Array`, `UInt8Array`, `Int16Array`, `UInt16Array`, `Int32Array`, `UInt32Array`, `Int64Array`, `UInt64Array`, `Float32Array`, `Float64Array`, `BooleanArray`
-- Infrastructure Types (`typeof` is `"type"`; `new` fails): `console`, `JSON`, `TDoc`, `Math`, `Conv8`, `HotPatch`
+- Infrastructure Types (`typeof` is `"type"`; `new` fails): `console`, `JSON`, `TDoc`, `Math`, `Conv8`, `Env`, `HotPatch`
 
 Common APIs:
 
@@ -261,9 +267,11 @@ Common APIs:
 - `TDoc.parse(text)`, `TDoc.stringify(value, indented = false, emitTypes = false)`；`emitTypes = true` 强制输出所有可用类型名
 - Native TDoc literals use `tdoc [TypeName] value`, for example `const value = tdoc Object { readonly String id $(user.id), enabled true, };`. Host NativeTypes that implement `INativeTypedDocument` can be named directly (`tdoc Vec2 { x 3, y 4 }`, `tdoc Vec2 [3, 4]`, `tdoc Flag false`, `tdoc User "a,b"`). `WriteTypedDocument` chooses the canonical object, array, or scalar body. Only value positions may use `$(expression)`; property names and type names are static. Standalone `.tdoc` documents omit the `tdoc` prefix and do not allow interpolation.
 - `Math.PI`, `Math.E`, `Math.Tau`, `Math.abs`, `Math.max`, `Math.min`, `Math.random`, `Math.log`, `Math.pow`, `Math.exp`, `Math.cos`, `Math.sin`, `Math.tan`, `Math.acos`, `Math.asin`, `Math.atan`, `Math.floor`, `Math.round`
-- `Conv8` on `UInt8Array` only: `BYTES1`/`BYTES2`/`BYTES4`/`BYTES8`; `get`/`set` for bool, int8–64, uint8–64, float32/64 (`littleEndian` default `true`); `getString(buffer, offset, byteLength)` / `setString(buffer, offset, value)` as UTF-8. `int64`/`uint64` round-trip through `Number`.
+- `Env.ticks()` returns monotonic 100-nanosecond ticks as `int64`; `Env.elapsedMs()` returns elapsed milliseconds as `Number`.
+- `Conv8` on `UInt8Array` only: `BYTES1`/`BYTES2`/`BYTES4`/`BYTES8`; `get`/`set` for bool, int8–64, uint8–64, float32/64 (`littleEndian` default `true`); `getString(buffer, offset, byteLength)` / `setString(buffer, offset, value)` as UTF-8. `Conv8.getInt64`/`getUInt64` still round-trip through `Number`; prefer `Int64Array`/`UInt64Array` or `int64`/`uint64` locals for exact 64-bit values.
 - Array: `length`, `push`, `pop`, `sort`, `join`, `slice`, `reverse`, `unshift`, `shift`, `concat`, `find`, `findIndex`, `findLast`, `findLastIndex`, `map`, `filter`, `some`, `every`, `flat`, `reduce`, `indexOf`, `lastIndexOf`, `has`
-- String: `length`, `contains`, `indexOf`, `lastIndexOf`, `startsWith`, `endsWith`, `substring`, `split`, `match`, `matchAll`, `replace`, `padLeft`, `padRight`, `trim`, `trimLeft`, `trimRight`, `slice`, `toString`, `charCodeAt`, `toLowerCase`, `toUpperCase`
+- String: `length`, `contains`, `indexOf`, `lastIndexOf`, `startsWith`, `endsWith`, `substring`, `split`, `match`, `matchAll`, `replace`, `padLeft`, `padRight`, `trim`, `trimLeft`, `trimRight`, `slice`, `toString`, `charCodeAt`, `toLowerCase`, `toUpperCase`. `String(value)` and `new String(value)` share one factory and return a primitive string. Proven string receivers call native Cores; `substring`/`slice` take `int` indices where the second argument is **end**, not length.
+- Number / int64 / uint64: `toString([radix])`. Number uses current-culture decimal and historical Int32 hex for radix 16. Exact 64-bit values never go through double: no-arg `toString` is invariant decimal; `toString(16)` is full-width uppercase hex.
 - StringBuffer: `append`, `insert`, `appendLine`, `clear`, `release`, `stringAndRelease`, `toString`
 - Path constructor/static: `new Path(root, ...segments)`, `Path.of(root, ...segments)`, `Path.isPath(value)`, `Path.join(root, ...segments)`, `Path.baseModule(...segments)`, `Path.normalize(path)`, `Path.directoryName(path)`, `Path.fileName(path)`, `Path.extName(path)`, `Path.protocol(path)`, `Path.changeExt(path, extension)`, `Path.isRooted(path)`, `Path.isUnderRoot(root, path)`, `Path.currentFile()`, `Path.currentDirectory()`
 - Path instance: `append(...segments)`, `reset(root, ...segments)`, `changeExt(extension)`, `directoryName()`, `fileName()`, `extName()`, `protocol()`, `clone()`, `toString()`
@@ -271,7 +279,7 @@ Common APIs:
 Constructor signatures are also available in `schema/runtime-api.json` under each constructor global's `constructors` array:
 
 - `new Array(capacity?: number): array`
-- `new String(value?: any): string`
+- `new String(value?: any): string` — same factory as `String(value)`; always a primitive string
 - `new Boolean(value?: any): boolean`
 - `new Object(prototype?: object): object`
 - `new Number(value?: any): number`
@@ -342,6 +350,13 @@ import http from "http";
 - Use lowercase `uint32`, `UInt32Array`, and `U`/`u` constants for unsigned
   32-bit hash/checksum words. It is a checked CLR `uint` ABI constraint, not a
   constructor; do not spell the scalar type `UInt32`.
+- Use lowercase `int64` / `uint64` (`1L`, `1UL`) when the value must stay
+  exact past `Number.MAX_SAFE_INTEGER`. They are runtime types, not Number
+  aliases. Keep both operands the same kind so arithmetic wraps; mixing with
+  `Number` or the other signedness produces a double. Use `Env.ticks()` for
+  monotonic 100-nanosecond clocks (`int64`) and `Env.elapsedMs()` for
+  fractional milliseconds. `toString(16)` on those values is full 64-bit
+  uppercase hex, not object `toString`.
 - Use `native func work(...) void { ... }` for a procedure. Falling through
   and `return;` are valid; returning an expression is invalid. Direct native
   statement calls use a CLR `void` ABI, while dynamic calls evaluate to `null`.
