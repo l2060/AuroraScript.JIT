@@ -310,6 +310,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     FlowValueType.UInt64 => typeof(ulong),
                     FlowValueType.Boolean => typeof(bool),
                     FlowValueType.Number => typeof(double),
+                    FlowValueType.String => typeof(string),
                     _ => typeof(ScriptDatum)
                 };
                 var native = _session.Builder.DefineMethod(
@@ -342,6 +343,8 @@ namespace AuroraScript.Compiler.Backend.Emission
                             ? StackValueKind.Boolean
                         : code.ReturnType == FlowValueType.Number
                             ? StackValueKind.Number
+                        : code.ReturnType == FlowValueType.String
+                            ? StackValueKind.String
                             : StackValueKind.Datum);
                 if (function.IsNativeDeclared)
                 {
@@ -438,6 +441,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                     break;
                 case StackValueKind.Boolean:
                     il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromBoolean);
+                    break;
+                case StackValueKind.String:
+                    il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromString);
                     break;
                 case StackValueKind.Object:
                     il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
@@ -681,6 +687,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                             StackValueKind.UInt64 => typeof(ulong),
                             StackValueKind.Number => typeof(double),
                             StackValueKind.Boolean => typeof(bool),
+                            StackValueKind.String => typeof(string),
                             StackValueKind.Object when nativeReturn != null =>
                                 nativeReturn.ClrType,
                             _ => typeof(ScriptDatum)
@@ -713,6 +720,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 else if (returnKind is StackValueKind.Int64 or StackValueKind.UInt64)
                     _il.Emit(OpCodes.Ldc_I8, 0L);
                 else if (returnKind == StackValueKind.Number) _il.Emit(OpCodes.Ldc_R8, double.NaN);
+                else if (returnKind == StackValueKind.String) _il.Emit(OpCodes.Ldnull);
                 else if (returnKind == StackValueKind.Object && nativeReturn != null) _il.Emit(OpCodes.Ldnull);
                 else if (returnKind != StackValueKind.Void) EmitNull();
                 if (_usesReturnEpilogue &&
@@ -744,6 +752,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     }
                     else
                     {
+                        ConvertReturnStack(StackValueKind.Datum);
                         _il.Emit(OpCodes.Stloc, _returnValue);
                     }
                     _il.EndExceptionBlock();
@@ -1297,15 +1306,18 @@ namespace AuroraScript.Compiler.Backend.Emission
                     if (_finallyDepth != 0)
                     {
                         if (!_handlesFinallyReturn ||
-                            _methodReturnKind is not (
-                                StackValueKind.Datum or
-                                StackValueKind.Void))
+                            _methodReturnKind is not (StackValueKind.Datum or
+                                StackValueKind.Void or StackValueKind.String))
                         {
                             throw new NotSupportedException("Return from finally requires the generic typed ABI.");
                         }
                         if (_methodReturnKind == StackValueKind.Void)
                         {
                             EmitNull();
+                        }
+                        else
+                        {
+                            ConvertToDatum(_methodReturnKind);
                         }
                         _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ReturnFromFinally);
                         return;
@@ -1434,6 +1446,11 @@ namespace AuroraScript.Compiler.Backend.Emission
                 if (expression == null) _il.Emit(OpCodes.Ldc_I4_0);
                 else EmitCondition(expression);
             }
+            else if (_methodReturnKind == StackValueKind.String)
+            {
+                if (expression == null) _il.Emit(OpCodes.Ldnull);
+                else EmitString(expression);
+            }
             else
             {
                 if (expression == null) EmitNull();
@@ -1524,6 +1541,8 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return;
             }
             ConvertToDatum(kind);
+            if (_methodReturnKind == StackValueKind.String)
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumToString);
         }
 
         private void EmitDebugger()
@@ -3785,6 +3804,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 FlowValueType.UInt64 => StackValueKind.UInt64,
                 FlowValueType.Number => StackValueKind.Number,
                 FlowValueType.Boolean => StackValueKind.Boolean,
+                FlowValueType.String => StackValueKind.String,
                 _ => StackValueKind.Datum
             };
         }
@@ -4031,6 +4051,37 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return int32Result ? StackValueKind.Int32 : StackValueKind.Number;
             }
 
+            // Primitive prototypes are immutable. Unsupported argument shapes keep
+            // using dynamic dispatch; Int64/UInt64 have different formatting rules.
+            var receiverType = _code.GetExpressionType(receiver);
+            if (receiverType is FlowValueType.Number or FlowValueType.Int32 or FlowValueType.UInt32 &&
+                StringComparer.Ordinal.Equals(name, "toString") &&
+                !HasSpread(call.Arguments) &&
+                (call.Arguments.Count == 0 ||
+                    call.Arguments.Count == 1 && IsNumberArgument(call.Arguments[0])))
+            {
+                EmitNumber(receiver);
+                if (call.Arguments.Count == 1) EmitNumber(call.Arguments[0]);
+                _il.Emit(OpCodes.Call, call.Arguments.Count == 0
+                    ? TypedRuntimeMetadata.NumberToString
+                    : TypedRuntimeMetadata.NumberToStringRadix);
+                return StackValueKind.String;
+            }
+            if (receiverType == FlowValueType.String &&
+                StringComparer.Ordinal.Equals(name, "substring") &&
+                !HasSpread(call.Arguments) &&
+                call.Arguments.Count is 1 or 2 &&
+                IsNumberArgument(call.Arguments[0]) &&
+                (call.Arguments.Count == 1 || IsNumberArgument(call.Arguments[1])))
+            {
+                EmitString(receiver);
+                for (var i = 0; i < call.Arguments.Count; i++) EmitNumber(call.Arguments[i]);
+                _il.Emit(OpCodes.Call, call.Arguments.Count == 1
+                    ? TypedRuntimeMetadata.StringSubstringStart
+                    : TypedRuntimeMetadata.StringSubstringRange);
+                return StackValueKind.String;
+            }
+
             var hasSpread = HasSpread(call.Arguments);
             if (!hasSpread && call.Arguments.Count <= 7)
             {
@@ -4061,6 +4112,10 @@ namespace AuroraScript.Compiler.Backend.Emission
             _il.Emit(OpCodes.Ldloc, result);
             return StackValueKind.Datum;
         }
+
+        private bool IsNumberArgument(Expression expression)
+            => _code.GetExpressionType(expression) is
+                FlowValueType.Number or FlowValueType.Int32 or FlowValueType.UInt32;
 
         private bool TryEmitHostExportConstant(Expression receiver, string memberName)
         {
@@ -4773,7 +4828,7 @@ namespace AuroraScript.Compiler.Backend.Emission
 
             if (op == Operator.Add && TryEmitStringAddition(binary))
             {
-                return StackValueKind.Datum;
+                return StackValueKind.String;
             }
 
             if ((op == Operator.Add || op == Operator.Subtract ||
@@ -4849,40 +4904,38 @@ namespace AuroraScript.Compiler.Backend.Emission
         private bool TryEmitStringAddition(BinaryExpression expression)
         {
             if (expression.Left is BinaryExpression left && left.Operator == Operator.Add &&
-                TryGetStringLiteral(left.Right, out var middle))
+                _code.GetExpressionType(left.Left) == FlowValueType.String &&
+                _code.GetExpressionType(left.Right) == FlowValueType.String &&
+                _code.GetExpressionType(expression.Right) == FlowValueType.String)
             {
-                EmitDatum(left.Left);
-                _session.Builder.LoadStringConstant(_il, middle);
-                EmitDatum(expression.Right);
-                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.AddStringMiddle);
+                // Pure strings need no observable coercion between evaluations.
+                EmitString(left.Left);
+                EmitString(left.Right);
+                EmitString(expression.Right);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.StringConcatThree);
                 return true;
             }
-            if (TryGetStringLiteral(expression.Right, out var right))
-            {
-                EmitDatum(expression.Left);
-                _session.Builder.LoadStringConstant(_il, right);
-                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.AddStringRight);
-                return true;
-            }
-            if (TryGetStringLiteral(expression.Left, out var leftText))
-            {
-                _session.Builder.LoadStringConstant(_il, leftText);
-                EmitDatum(expression.Right);
-                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.AddStringLeft);
-                return true;
-            }
-            return false;
+            if (_code.GetExpressionType(expression.Left) != FlowValueType.String &&
+                _code.GetExpressionType(expression.Right) != FlowValueType.String)
+                return false;
+            EmitStringAddition(expression.Left, expression.Right);
+            return true;
         }
 
-        private static bool TryGetStringLiteral(Expression expression, out string value)
+        private void EmitStringAddition(Expression left, Expression right)
         {
-            if (expression is LiteralExpression { Token: StringToken text })
-            {
-                value = text.Value ?? string.Empty;
-                return true;
-            }
-            value = null;
-            return false;
+            // Keep each binary operation in evaluation order: object string
+            // conversion may have side effects, so do not flatten mixed chains.
+            var leftString = _code.GetExpressionType(left) == FlowValueType.String;
+            var rightString = _code.GetExpressionType(right) == FlowValueType.String;
+            if (leftString) EmitString(left);
+            else EmitDatum(left);
+            if (rightString) EmitString(right);
+            else EmitDatum(right);
+            _il.Emit(OpCodes.Call, leftString && rightString
+                ? TypedRuntimeMetadata.StringConcat
+                : leftString ? TypedRuntimeMetadata.ConcatStringLeft
+                : TypedRuntimeMetadata.ConcatStringRight);
         }
 
         private StackValueKind EmitLogical(BinaryExpression binary, bool branchWhenTrue)
@@ -5610,6 +5663,14 @@ namespace AuroraScript.Compiler.Backend.Emission
             if (expression.Left is NameExpression name)
             {
                 var binding = _code.GetName(name);
+                if (op == Operator.Add && binding.IsLocal &&
+                    _code.GetLocalType(binding.Local) == FlowValueType.String)
+                {
+                    EmitStringAddition(name, expression.Right);
+                    _il.Emit(OpCodes.Dup);
+                    _il.Emit(OpCodes.Stloc, _locals[binding.Local.Value]);
+                    return StackValueKind.String;
+                }
                 if (binding.IsLocal &&
                     _code.GetLocalType(binding.Local) == FlowValueType.Int32 &&
                     _code.GetExpressionType(expression) == FlowValueType.Int32)

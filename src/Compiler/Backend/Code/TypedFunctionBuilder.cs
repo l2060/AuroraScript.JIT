@@ -408,6 +408,7 @@ namespace AuroraScript.Compiler.Backend.Code
             private readonly HostNativeObjectDescriptor[] _localNativeObjectTypes;
             private readonly FlowValueType[] _forcedLocalTypes;
             private readonly bool[] _writtenLocals;
+            private bool[] _unobservedInitialNulls;
             private readonly bool[] _localIntegerRangeValid;
             private readonly long[] _localIntegerRangeMin;
             private readonly long[] _localIntegerRangeMax;
@@ -579,6 +580,8 @@ namespace AuroraScript.Compiler.Backend.Code
             public TypedFunctionCode Analyze()
             {
                 var body = _function.Declaration?.Body;
+                _unobservedInitialNulls = new InitialNullReadAnalyzer(
+                    _function, _names, _declarations, IsCaptured).Analyze(body);
                 var passLimit = Math.Max(4, _locals.Length + 2);
                 for (var pass = 0; pass < passLimit; pass++)
                 {
@@ -684,6 +687,8 @@ namespace AuroraScript.Compiler.Backend.Code
                         }
                         if (_declarations.TryGetValue(variable, out var slot))
                         {
+                            if (variable.Initializer == null && _unobservedInitialNulls[slot.Value])
+                                return;
                             var initializerType = variable.Initializer == null
                                 ? FlowValueType.Null
                                 : AnalyzeExpression(variable.Initializer);
@@ -1033,6 +1038,10 @@ namespace AuroraScript.Compiler.Backend.Code
                             type = IsProvenStringCharCodeAtCall(call)
                                 ? FlowValueType.Int32
                                 : FlowValueType.Number;
+                        }
+                        else if (IsPrimitiveStringResultCall(call))
+                        {
+                            type = FlowValueType.String;
                         }
                         else if (call.Target is NameExpression targetName &&
                             _names.TryGetValue(targetName, out var targetBinding) &&
@@ -2031,6 +2040,19 @@ namespace AuroraScript.Compiler.Backend.Code
                     StringComparer.Ordinal.Equals(name.Identifier?.Value, expected);
             }
 
+            private bool IsPrimitiveStringResultCall(FunctionCallExpression call)
+            {
+                if (call.Target is not GetPropertyExpression property ||
+                    !_expressionTypes.TryGetValue(property.Object, out var receiver))
+                    return false;
+                // These immutable primitive methods return strings even when an
+                // argument shape requires the dynamic runtime implementation.
+                return receiver == FlowValueType.String &&
+                    IsStaticProperty(property.Property, "substring") ||
+                    receiver is FlowValueType.Number or FlowValueType.Int32 or FlowValueType.UInt32 &&
+                    IsStaticProperty(property.Property, "toString");
+            }
+
             private bool IsNativeStringCharCodeAtCall(FunctionCallExpression call)
             {
                 return call.Target is GetPropertyExpression property &&
@@ -2972,7 +2994,8 @@ namespace AuroraScript.Compiler.Backend.Code
             {
                 slot = LocalSlotId.Invalid;
                 if (statement?.Condition is not BinaryExpression condition ||
-                    condition.Operator != Operator.LessThan ||
+                    (condition.Operator != Operator.LessThan &&
+                        condition.Operator != Operator.LessThanOrEqual) ||
                     condition.Left is not NameExpression conditionName)
                 {
                     return false;
@@ -2995,6 +3018,13 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     return false;
                 }
+
+                // Inclusive bounds need room for the final increment. Do not
+                // infer wrapping storage for an unannotated counter at MaxValue.
+                if (condition.Operator == Operator.LessThanOrEqual &&
+                    (!TryEvaluateInt32Constant(condition.Right, out var inclusiveBound) ||
+                        (long)inclusiveBound + writes.MaximumDelta > int.MaxValue))
+                    return false;
 
                 // A single increment cannot overflow before an Int32 upper
                 // bound rejects the next iteration. Larger steps can overshoot
@@ -4805,9 +4835,120 @@ namespace AuroraScript.Compiler.Backend.Code
             }
 
             /// <summary>
-            /// Collects every expression that can become the value of a local,
-            /// so a storage decision can be proven over all of them at once.
+            /// Proves that an implicit initial null cannot be read. This does not
+            /// make an uninitialized declaration an integer storage annotation.
             /// </summary>
+            private sealed class InitialNullReadAnalyzer
+            {
+                private readonly IReadOnlyDictionary<NameExpression, BoundName> _names;
+                private readonly IReadOnlyDictionary<VariableDeclaration, LocalSlotId> _declarations;
+                private readonly bool[] _safe;
+                private bool[] _assigned;
+
+                public InitialNullReadAnalyzer(
+                    FunctionPlan function,
+                    IReadOnlyDictionary<NameExpression, BoundName> names,
+                    IReadOnlyDictionary<VariableDeclaration, LocalSlotId> declarations,
+                    Func<LocalSlotId, bool> isCaptured)
+                {
+                    _names = names;
+                    _declarations = declarations;
+                    _safe = new bool[function.LocalSlots.Length];
+                    _assigned = new bool[_safe.Length];
+                    for (var i = 0; i < _safe.Length; i++)
+                    {
+                        var slot = function.LocalSlots[i];
+                        _safe[i] = !slot.IsParameter && !isCaptured(slot.Id) &&
+                            slot.Declaration is VariableDeclaration { Pattern: null, Initializer: null };
+                    }
+                }
+
+                public bool[] Analyze(AstNode body)
+                {
+                    if (Array.IndexOf(_safe, true) >= 0) Visit(body);
+                    return _safe;
+                }
+
+                private void Visit(AstNode node)
+                {
+                    switch (node)
+                    {
+                        case null:
+                        case FunctionDeclaration:
+                        case LambdaExpression:
+                            return;
+                        case TryStatement:
+                        case ForInStatement:
+                            // Exceptional edges and iterator binding are deliberately
+                            // outside this small definite-write analysis.
+                            Array.Clear(_safe, 0, _safe.Length);
+                            return;
+                        case NameExpression name:
+                            if (_names.TryGetValue(name, out var read) && read.IsLocal &&
+                                !_assigned[read.Local.Value]) _safe[read.Local.Value] = false;
+                            return;
+                        case VariableDeclaration declaration:
+                            Visit(declaration.Initializer);
+                            if (_declarations.TryGetValue(declaration, out var slot))
+                                _assigned[slot.Value] = declaration.Initializer != null;
+                            return;
+                        case AssignmentExpression assignment:
+                            if (assignment.Left is NameExpression target &&
+                                _names.TryGetValue(target, out var write) && write.IsLocal)
+                            {
+                                Visit(assignment.Right);
+                                _assigned[write.Local.Value] = true;
+                                return;
+                            }
+                            break;
+                        case IfStatement branch:
+                            Visit(branch.Condition);
+                            var before = (bool[])_assigned.Clone();
+                            Visit(branch.Body);
+                            var thenState = _assigned;
+                            _assigned = before;
+                            Visit(branch.Else);
+                            for (var i = 0; i < _assigned.Length; i++)
+                                _assigned[i] &= thenState[i];
+                            return;
+                        case BinaryExpression binary when
+                            binary.Operator == Operator.LogicalAnd || binary.Operator == Operator.LogicalOr:
+                            Visit(binary.Left);
+                            VisitOptional(binary.Right);
+                            return;
+                        case ForStatement loop:
+                            Visit(loop.Initializer);
+                            Visit(loop.Condition);
+                            VisitOptional(loop.Body);
+                            // Continue can bypass any body write; the increment
+                            // may only rely on writes made before entering the body.
+                            VisitOptional(loop.Incrementor);
+                            return;
+                        case WhileStatement loop:
+                            Visit(loop.Condition);
+                            VisitOptional(loop.Body);
+                            return;
+                    }
+                    var visitor = new ChildVisitor(this);
+                    AstTraversal.VisitChildren(node, ref visitor);
+                }
+
+                private void VisitOptional(AstNode node)
+                {
+                    var entry = (bool[])_assigned.Clone();
+                    Visit(node);
+                    _assigned = entry;
+                }
+
+                private readonly struct ChildVisitor : IAstChildVisitor
+                {
+                    private readonly InitialNullReadAnalyzer _owner;
+                    public ChildVisitor(InitialNullReadAnalyzer owner) => _owner = owner;
+                    public void Visit(AstNode node) => _owner.Visit(node);
+                }
+            }
+
+            /// <summary>Collects all definitions for whole-local storage decisions.</summary>
             private sealed class LocalDefinitionCollector
             {
                 private readonly FunctionPlan _function;

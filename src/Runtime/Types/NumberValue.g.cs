@@ -77,19 +77,19 @@ namespace AuroraScript.Runtime.Types
                 return;
             }
 
-            if (args != null && args.Length == 1)
+            if (args.Length == 1 && args[0].Kind == ValueKind.Number)
             {
-                var arg = args[0];
-                if (arg.Kind == ValueKind.Number)
-                {
-                    if ((int)arg.Number == 16)
-                    {
-                        ScriptDatum.WriteAsString(ref result, thisNumber.Int32Value.ToString("X"));
-                        return;
-                    }
-                }
+                ScriptDatum.WriteAsString(ref result, FormatString(thisNumber._value, args[0].Number));
+                return;
             }
-            ScriptDatum.WriteAsString(ref result, thisNumber._value.ToString());
+            ScriptDatum.WriteAsString(ref result, FormatString(thisNumber._value));
         }
+
+        /// <summary>Formats a Number using the same rules as its script toString method.</summary>
+        public static string FormatString(double value) => value.ToString();
+
+        /// <summary>Only radix 16 selects hexadecimal, as in the dynamic method.</summary>
+        public static string FormatString(double value, double radix)
+            => (int)radix == 16 ? ((int)value).ToString("X") : value.ToString();
     }
 }

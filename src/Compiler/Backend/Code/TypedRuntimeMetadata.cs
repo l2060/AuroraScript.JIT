@@ -79,9 +79,17 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo AddBoolean = Method(typeof(ValueOps), nameof(ValueOps.AddBoolean), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo AddToNumberLeft = Method(typeof(ValueOps), nameof(ValueOps.AddToNumberLeft), typeof(double), typeof(ScriptDatum));
         public static readonly MethodInfo AddToNumberRight = Method(typeof(ValueOps), nameof(ValueOps.AddToNumberRight), typeof(ScriptDatum), typeof(double));
+        public static readonly MethodInfo StringConcat = Method(typeof(string), nameof(string.Concat), typeof(string), typeof(string));
         public static readonly MethodInfo AddStringRight = Method(typeof(ValueOps), nameof(ValueOps.AddStringRight), typeof(ScriptDatum), typeof(string));
         public static readonly MethodInfo AddStringLeft = Method(typeof(ValueOps), nameof(ValueOps.AddStringLeft), typeof(string), typeof(ScriptDatum));
         public static readonly MethodInfo AddStringMiddle = Method(typeof(ValueOps), nameof(ValueOps.AddStringMiddle), typeof(ScriptDatum), typeof(string), typeof(ScriptDatum));
+        public static readonly MethodInfo StringConcatThree = Method(typeof(string), nameof(string.Concat), typeof(string), typeof(string), typeof(string));
+        public static readonly MethodInfo ConcatStringLeft = Method(typeof(ValueOps), nameof(ValueOps.ConcatStringLeft), typeof(string), typeof(ScriptDatum));
+        public static readonly MethodInfo ConcatStringRight = Method(typeof(ValueOps), nameof(ValueOps.ConcatStringRight), typeof(ScriptDatum), typeof(string));
+        public static readonly MethodInfo NumberToString = Method(typeof(NumberValue), nameof(NumberValue.FormatString), typeof(double));
+        public static readonly MethodInfo NumberToStringRadix = Method(typeof(NumberValue), nameof(NumberValue.FormatString), typeof(double), typeof(double));
+        public static readonly MethodInfo StringSubstringStart = Method(typeof(StringValue), nameof(StringValue.Substring), typeof(string), typeof(double));
+        public static readonly MethodInfo StringSubstringRange = Method(typeof(StringValue), nameof(StringValue.Substring), typeof(string), typeof(double), typeof(double));
         public static readonly MethodInfo Subtract = Method(typeof(ValueOps), nameof(ValueOps.Subtract), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo SubtractBoolean = Method(typeof(ValueOps), nameof(ValueOps.SubtractBoolean), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo Multiply = Method(typeof(ValueOps), nameof(ValueOps.Multiply), typeof(ScriptDatum), typeof(ScriptDatum));

@@ -199,17 +199,31 @@ namespace AuroraScript.Runtime.Types
 
             if (args.TryGetInteger(1, out var end))
             {
-                if (start > end)
-                {
-                    (start, end) = (end, start);
-                }
-                var length = (int)Math.Clamp(end - start, 0, Math.Max(0, str.Value.Length - start));
-                ScriptDatum.WriteAsString(ref result, str.Value.Substring(Math.Clamp((int)start, 0, str.Value.Length), length));
+                ScriptDatum.WriteAsString(ref result, Substring(str.Value, start, end));
                 return;
             }
-            var safeStart = (int)Math.Clamp(start, 0, Math.Max(0, str.Value.Length));
-            ScriptDatum.WriteAsString(ref result, str.Value.Substring(safeStart));
+            ScriptDatum.WriteAsString(ref result, Substring(str.Value, start));
         }
+
+        /// <summary>Shared substring implementation; the second index is an end, not a length.</summary>
+        public static string Substring(string value, long start, long end)
+        {
+            if (start > end) (start, end) = (end, start);
+            var length = (int)Math.Clamp(end - start, 0, Math.Max(0, value.Length - start));
+            return value.Substring(Math.Clamp((int)start, 0, value.Length), length);
+        }
+
+        /// <summary>Shared one-index substring implementation.</summary>
+        public static string Substring(string value, long start)
+            => value.Substring((int)Math.Clamp(start, 0, Math.Max(0, value.Length)));
+
+        /// <summary>Preserves the Number-to-integer conversion used by TryGetInteger.</summary>
+        public static string Substring(string value, double start, double end)
+            => Substring(value, (long)start, (long)end);
+
+        /// <summary>Preserves the Number-to-integer conversion used by TryGetInteger.</summary>
+        public static string Substring(string value, double start)
+            => Substring(value, (long)start);
 
         /// <summary>
         /// Native implementation for String.split().
