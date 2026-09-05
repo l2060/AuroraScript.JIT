@@ -612,6 +612,101 @@ fail because those Types have no exported constructor.
 `Conv8` reads and writes scalars and UTF-8 text on a `UInt8Array` only. Multi-byte
 values take `littleEndian` (default `true`). There is no script `Encoding` global.
 
+### Built-in primitive receivers
+
+The engine also uses the same `AuroraNativeType` generator and compiler catalog for
+immutable String members:
+
+```csharp
+[AuroraNativeType("String")]
+[AuroraNativeReceiver(typeof(string))]
+public sealed partial class StringValue
+{
+    [AuroraExport("trim")]
+    [AuroraNativeReceiver]
+    public static string TrimCore(string value) => value.Trim();
+}
+```
+
+Type-level `AuroraNativeReceiver(typeof(...))` supports engine-owned `string`,
+`double`, `long`, and `ulong` representations; it is not a host extension point for
+replacing shared frozen prototypes. Method-level `[AuroraNativeReceiver]` explicitly
+marks a primitive instance Core. Unmarked static exports remain type members, just
+as on ordinary native types. The first receiver Core
+argument (after an optional `ScriptContext`) is the raw CLR receiver, not a script
+argument. The generator registers members on the existing prototype; it does not
+create an `IAuroraNativeInstance` wrapper. Primitive types with static exports or
+an explicit constructor factory also receive a generated frozen `Type` and `Register`.
+
+When `DynamicAdapter` is omitted, the existing coercion, failure handling and result
+writer generate the dynamic entry point automatically. Set `IsGetter = true` for a
+zero-argument, context-free read-only getter. An explicit `DynamicAdapter` names a
+legacy callback when its missing-argument or conversion behavior differs from the
+standard rules. Exact-arity overloads must share one explicit adapter; an unchecked
+`RequiresIndexProof` signature also requires a safe explicit adapter.
+
+The compiler selects and saves a proven signature during type analysis, then emits
+a direct CLR call. String `substring` and `slice` export only `int` indices, with
+the second index still meaning **end**, not length. Number, Int64/UInt64, spread,
+and unsupported argument shapes retain their dynamic semantics when the compiler
+cannot prove the native signature applicable. No unchecked Number-to-Int32 narrowing
+is added. String length bounds allow expressions such as `text.length - 2` to stay
+Int32, including in loops, without assuming a loop-local assignment range is stable.
+
+All 21 own String prototype members now use this catalog (20 methods plus `length`):
+`substring`, `slice`, `charCodeAt`, `contains`, `indexOf`, `lastIndexOf`, `startsWith`,
+`endsWith`, `trim`, `trimLeft`, `trimRight`, `toString`, `toLowerCase`, `toUpperCase`,
+`split`, `match`, `matchAll`, `replace`, `padLeft`, and `padRight`.
+`split` returns a `ScriptArray`; `match` and `matchAll` deliberately return
+`ScriptDatum` because their result shape is not unconditional. A known string receiver
+can call `match`, `matchAll`, or `replace` with Datum arguments, preserving regex,
+callback and weak-conversion behavior. Unknown receivers and unsupported call shapes
+keep ordinary dynamic dispatch; there is no requirement to force a native signature.
+Literal string replacement avoids callback closures, while callback argument buffers
+use stack storage for small arities and exception-safe pooling for larger ones.
+Padding retains its historical first-UTF-16-code-unit rule and takes native `int` widths.
+
+String's construction and static surface use the same NativeType model as well:
+
+```csharp
+[AuroraNativeType("String", ConstructorFactory = nameof(CreateCore))]
+[AuroraNativeReceiver(typeof(string))]
+public sealed partial class StringValue
+{
+    [AuroraExport("valueOf", DynamicAdapter = nameof(CREATE))]
+    public static string CreateCore(string value = "") => value;
+    // CREATE preserves the existing weak conversion and missing-argument rules.
+}
+```
+
+`AuroraExport` has no static/instance override. A static method without the independent
+receiver marker is exported on the type object. `ConstructorFactory` names one such
+exported CLR Core, which must return the representation declared by type-level
+`AuroraNativeReceiver`; both `String(...)` and `new String(...)` use it.
+Factory metadata points to the existing static export catalog; no separate factory
+registry is introduced. The generated type adapter handles dynamic construction,
+aliases and spreads, while proven calls use the raw CLR factory directly.
+`StringValue.Register(Global)` replaces the handwritten StringConstructor registration.
+`String.fromCharCode` takes a native `int` and `String.compare` takes two strings;
+weak/wide conversions still use their compatibility adapters. Character construction
+keeps the first UTF-16 code-unit rule, and compare still compares only the first
+code units, returning 1 when either input is empty. String's instance `toString`
+uses an automatically generated dynamic adapter; wrong receiver types fail the
+String receiver check rather than being formatted as unrelated objects.
+
+Number's `double` receiver also permits `int` and `uint` Core specializations,
+selected by the proven receiver representation. These specializations require an
+explicit compatibility adapter; an arbitrary dynamic Number cannot be silently
+cast to Int32. `NumberValue.FormatString` takes an `int` radix and overloads its
+value parameter for `double`, `int`, `uint`, `long`, and `ulong`. Exact 64-bit
+values never pass through double. Int64/UInt64 now have frozen own prototypes:
+`toString(16)` formats all 64 bits as uppercase hexadecimal (previously the inherited
+object method ignored the radix); no argument formats invariant decimal. Other
+radices still select decimal, consistent with the existing limited Number API.
+Number keeps its current-culture formatting and historical Int32 hexadecimal
+conversion, including the compatibility case for UInt32 values above Int32.MaxValue.
+Native `int64`/`uint64` type annotations remain lowercase.
+
 ### Native instances
 
 The same `[AuroraNativeType]` supports fixed-shape native instances. A type with

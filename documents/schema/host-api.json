@@ -241,10 +241,6 @@
         "ConsoleErrorOut": {
           "kind": "property",
           "signature": "TextWriter ConsoleErrorOut"
-        },
-        "StringPooling": {
-          "kind": "property",
-          "signature": "StringPoolingStrategy StringPooling"
         }
       }
     },
@@ -277,10 +273,6 @@
           "kind": "property",
           "signature": "TextWriter ConsoleErrorOut"
         },
-        "StringPooling": {
-          "kind": "property",
-          "signature": "StringPoolingStrategy StringPooling"
-        },
         "WithMethods": {
           "kind": "method",
           "overloads": [
@@ -288,8 +280,7 @@
             "RuntimeOptionsBuilder WithJsonSerializer(ScriptJsonSerializer value)",
             "RuntimeOptionsBuilder WithDateTimeFormat(string value)",
             "RuntimeOptionsBuilder WithConsoleStdOut(TextWriter value)",
-            "RuntimeOptionsBuilder WithConsoleErrorOut(TextWriter value)",
-            "RuntimeOptionsBuilder WithStringPooling(StringPoolingStrategy value)"
+            "RuntimeOptionsBuilder WithConsoleErrorOut(TextWriter value)"
           ]
         }
       }
@@ -482,12 +473,6 @@
       "namespace": "AuroraScript",
       "values": ["Debug", "Release"],
       "summary": "Controls debug-friendly or optimized code generation."
-    },
-    "StringPoolingStrategy": {
-      "kind": "enum",
-      "namespace": "AuroraScript",
-      "values": ["None", "Intern"],
-      "summary": "Controls how CLR strings are wrapped as runtime StringValue objects."
     },
     "CompileBlockOptions": {
       "kind": "class",
@@ -1652,10 +1637,6 @@
           "kind": "method",
           "signature": "static StringValue Of(string value)"
         },
-        "Intern": {
-          "kind": "method",
-          "signature": "static StringValue Intern(string value)"
-        },
         "IsTrue": {
           "kind": "method",
           "signature": "bool IsTrue()"
@@ -2336,11 +2317,16 @@
         "TypeName": {
           "kind": "property",
           "signature": "string TypeName"
+        },
+        "ConstructorFactory": {
+          "kind": "property",
+          "signature": "string ConstructorFactory",
+          "summary": "Optional exported static Core implementing primitive call/new construction; its return type must match the type-level AuroraNativeReceiver."
         }
       },
       "notes": [
         "A type with instance exports or an exported constructor must derive ScriptObject. Generated code adds the native-instance marker.",
-        "Exactly one public constructor may be marked [AuroraExport] to enable script new. With no exported constructor the script Type is not constructible.",
+        "Exactly one public constructor may be marked [AuroraExport] to enable native instance construction. Engine-owned primitive types may instead name a ConstructorFactory.",
         "Register the generated Type with Type.Register(ScriptObject target) on the engine global, or Define(typeName, Type).",
         "Static factory returns of a native instance preserve concrete type inference and direct instance member calls."
       ]
@@ -2349,6 +2335,27 @@
       "kind": "interface",
       "namespace": "AuroraScript.Runtime.Types",
       "summary": "Marker implemented by generated native-type instances so unannotated CLR members are not exposed through reflection fallback."
+    },
+    "AuroraNativeReceiverAttribute": {
+      "kind": "class",
+      "namespace": "AuroraScript.Hosting",
+      "summary": "Independent native receiver contract for engine-owned primitive types and their instance Core methods.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "overloads": ["AuroraNativeReceiverAttribute()", "AuroraNativeReceiverAttribute(Type receiverType)"]
+        },
+        "ReceiverType": {
+          "kind": "property",
+          "signature": "Type ReceiverType"
+        }
+      },
+      "notes": [
+        "On an AuroraNativeType class, specify string, double, long, or ulong. Number's double representation permits int/uint Core specializations.",
+        "On an exported static Core, use the parameterless marker: its first parameter after optional ScriptContext is the raw receiver.",
+        "Unmarked static exports remain members of the type object. Ordinary native CLR instance exports are unchanged.",
+        "The shared frozen primitive prototypes are engine-owned and cannot be replaced by external native registrations."
+      ]
     },
     "AuroraExportAttribute": {
       "kind": "class",
@@ -2370,6 +2377,18 @@
         "Failure": {
           "kind": "property",
           "signature": "MatchFailure Failure"
+        },
+        "DynamicAdapter": {
+          "kind": "property",
+          "signature": "string DynamicAdapter"
+        },
+        "IsGetter": {
+          "kind": "property",
+          "signature": "bool IsGetter"
+        },
+        "RequiresIndexProof": {
+          "kind": "property",
+          "signature": "bool RequiresIndexProof"
         }
       },
       "notes": [

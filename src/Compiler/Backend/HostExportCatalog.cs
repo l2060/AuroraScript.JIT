@@ -122,6 +122,15 @@ namespace AuroraScript.Compiler.Backend
                         $"'{attribute.GlobalName}.{attribute.MemberName}'.");
                 }
             }
+
+            foreach (var owner in _nativeObjects.Values)
+            {
+                if (owner.FactoryMemberName != null && (!owner.IsValueReceiver ||
+                    !TryGetGlobal(owner.TypeName, owner.FactoryMemberName, out var factory) ||
+                    factory.Method.DeclaringType != owner.DeclaringType ||
+                    factory.Method.ReturnType != owner.ClrType || factory.TakesThisObject))
+                    throw new InvalidOperationException($"Invalid generated primitive factory for '{owner.TypeName}'.");
+            }
         }
 
         private static MethodInfo ResolveCoreMethod(
@@ -138,7 +147,7 @@ namespace AuroraScript.Compiler.Backend
                 }
 
                 var export = method.GetCustomAttribute<AuroraExportAttribute>();
-                if (export == null ||
+                if (export == null || method.IsDefined(typeof(AuroraNativeReceiverAttribute), inherit: false) ||
                     !StringComparer.Ordinal.Equals(
                         GetScriptName(export.ScriptName, method.Name),
                         attribute.MemberName))

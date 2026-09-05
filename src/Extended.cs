@@ -393,14 +393,14 @@ namespace AuroraScript
         /// <param name="source">The span of script data.</param>
         /// <param name="index">The index of the datum to retrieve.</param>
         /// <param name="value">The retrieved script regex, or null if retrieval fails.</param>
-        /// <returns>True if the datum is a Function kind and the underlying object is a regex; otherwise, false.</returns>
+        /// <returns>True if the datum is a Regex kind and the underlying object is a regex; otherwise, false.</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool TryGetRegex(this Span<ScriptDatum> source, int index, out ScriptRegex value)
         {
             if ((uint)index < (uint)source.Length)
             {
                 ref readonly var d = ref source[index];
-                if (d.Kind == ValueKind.Function)
+                if (d.Kind == ValueKind.Regex)
                 {
                     value = d.Object as ScriptRegex;
                     return value != null;

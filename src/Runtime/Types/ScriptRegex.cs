@@ -52,13 +52,12 @@ namespace AuroraScript.Runtime.Types
         /// <param name="str">The string to match.</param>
         /// <returns>A match result array or <see cref="ScriptObject.Null"/> if no match.</returns>
         public ScriptObject Match(StringValue str)
-        {
-            if (str == null)
-            {
-                return ScriptObject.Null;
-            }
+            => str == null ? ScriptObject.Null : MatchText(str.Value);
 
-            var input = str.Value ?? string.Empty;
+        /// <summary>Raw string path shared by native and dynamic String members.</summary>
+        internal ScriptObject MatchText(string value)
+        {
+            var input = value ?? string.Empty;
             var match = _regex.Match(input);
             if (!match.Success)
             {
@@ -74,13 +73,12 @@ namespace AuroraScript.Runtime.Types
         /// <param name="str">The string to match.</param>
         /// <returns>A <see cref="ScriptArray"/> of matching strings or <see cref="ScriptObject.Null"/>.</returns>
         public ScriptObject MatchOfGlobal(StringValue str)
+            => str == null ? ScriptObject.Null : MatchOfGlobalText(str.Value);
+
+        internal ScriptObject MatchOfGlobalText(string value)
         {
-            if (str == null)
-            {
-                return ScriptObject.Null;
-            }
-            var input = str.Value ?? string.Empty;
-            var matches = _regex.Matches(input ?? string.Empty);
+            var input = value ?? string.Empty;
+            var matches = _regex.Matches(input);
             if (matches.Count == 0)
             {
                 return ScriptObject.Null;
@@ -88,7 +86,7 @@ namespace AuroraScript.Runtime.Types
             var result = ScriptArray.CreateWithCapacity(matches.Count);
             for (int i = 0; i < matches.Count; i++)
             {
-                result.SetElement(i, ScriptDatum.FromString(StringValue.Of(matches[i].Value)));
+                result.SetElement(i, ScriptDatum.FromString(matches[i].Value));
             }
             return result;
         }
@@ -99,13 +97,11 @@ namespace AuroraScript.Runtime.Types
         /// <param name="str">The string to match.</param>
         /// <returns>A <see cref="ScriptArray"/> of detailed match results or null.</returns>
         public ScriptArray MatchAll(StringValue str)
-        {
-            if (str == null)
-            {
-                return null;
-            }
+            => str == null ? null : MatchAllText(str.Value);
 
-            var input = str.Value ?? string.Empty;
+        internal ScriptArray MatchAllText(string value)
+        {
+            var input = value ?? string.Empty;
             var matches = _regex.Matches(input);
             if (matches.Count == 0)
             {
@@ -176,7 +172,7 @@ namespace AuroraScript.Runtime.Types
             var result = ScriptArray.CreateWithCapacity(groupCount);
             for (int i = 0; i < groupCount; i++)
             {
-                result.SetElement(i, ScriptDatum.FromString(StringValue.Of(match.Groups[i].Value)));
+                result.SetElement(i, ScriptDatum.FromString(match.Groups[i].Value));
             }
 
             result.SetPropertyValue("index", NumberValue.Of(match.Index));

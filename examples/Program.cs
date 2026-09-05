@@ -49,7 +49,6 @@ namespace Examples
             runtime.JsonSerializer = ScriptJsonSerializer.Default;
             runtime.DateTimeFormat = "yyyy-MM-dd HH:mm:ss";
             runtime.HotReload = true;
-            runtime.StringPooling = StringPoolingStrategy.None;
         })
         .WithOptimization(optimization =>
         {

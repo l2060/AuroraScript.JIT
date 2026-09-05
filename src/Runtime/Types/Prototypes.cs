@@ -18,6 +18,10 @@ namespace AuroraScript.Runtime.Types
         public static readonly ScriptObject NullValuePrototype = new ScriptObject(null);
         /// <summary> The prototype for number primitive values. </summary>
         public static readonly ScriptObject NumberValuePrototype = new ScriptObject(Prototypes.ObjectPrototype);
+        /// <summary> The immutable prototype for exact signed 64-bit values. </summary>
+        public static readonly ScriptObject Int64ValuePrototype = new ScriptObject(Prototypes.ObjectPrototype);
+        /// <summary> The immutable prototype for exact unsigned 64-bit values. </summary>
+        public static readonly ScriptObject UInt64ValuePrototype = new ScriptObject(Prototypes.ObjectPrototype);
         /// <summary> The prototype for script arrays. </summary>
         public static readonly ScriptObject ScriptArrayPrototype = new ScriptObject(Prototypes.ObjectPrototype);
         /// <summary> The shared prototype for fixed-length primitive arrays. </summary>
@@ -90,8 +94,12 @@ namespace AuroraScript.Runtime.Types
             NullValuePrototype.Frozen();
 
             // --- Number ---
-            NumberValuePrototype.Define("toString", ScriptDatum.FromBonding(NumberValue.TOSTRING), writeable: false, enumerable: false);
+            NumberValue.RegisterNativeMembers(NumberValuePrototype);
             NumberValuePrototype.Frozen();
+            Int64Value.RegisterNativeMembers(Int64ValuePrototype);
+            Int64ValuePrototype.Frozen();
+            UInt64Value.RegisterNativeMembers(UInt64ValuePrototype);
+            UInt64ValuePrototype.Frozen();
 
             // --- Array ---
             ScriptArrayPrototype.Define("has", ScriptDatum.FromBonding(ScriptArray.HAS), writeable: false, enumerable: false);
@@ -127,27 +135,7 @@ namespace AuroraScript.Runtime.Types
 
 
             // --- String ---
-            StringValuePrototype.Define("length", ScriptDatum.FromBondingGetter(StringValue.LENGTH), writeable: false, enumerable: false);
-            StringValuePrototype.Define("contains", ScriptDatum.FromBonding(StringValue.CONTANINS), writeable: false, enumerable: false);
-            StringValuePrototype.Define("indexOf", ScriptDatum.FromBonding(StringValue.INDEXOF), writeable: false, enumerable: false);
-            StringValuePrototype.Define("lastIndexOf", ScriptDatum.FromBonding(StringValue.LASTINDEXOF), writeable: false, enumerable: false);
-            StringValuePrototype.Define("startsWith", ScriptDatum.FromBonding(StringValue.STARTSWITH), writeable: false, enumerable: false);
-            StringValuePrototype.Define("endsWith", ScriptDatum.FromBonding(StringValue.ENDSWITH), writeable: false, enumerable: false);
-            StringValuePrototype.Define("substring", ScriptDatum.FromBonding(StringValue.SUBSTRING), writeable: false, enumerable: false);
-            StringValuePrototype.Define("split", ScriptDatum.FromBonding(StringValue.SPLIT), writeable: false, enumerable: false);
-            StringValuePrototype.Define("match", ScriptDatum.FromBonding(StringValue.MATCH), writeable: false, enumerable: false);
-            StringValuePrototype.Define("matchAll", ScriptDatum.FromBonding(StringValue.MATCHALL), writeable: false, enumerable: false);
-            StringValuePrototype.Define("replace", ScriptDatum.FromBonding(StringValue.REPLACE), writeable: false, enumerable: false);
-            StringValuePrototype.Define("padLeft", ScriptDatum.FromBonding(StringValue.PADLEFT), writeable: false, enumerable: false);
-            StringValuePrototype.Define("padRight", ScriptDatum.FromBonding(StringValue.PADRIGHT), writeable: false, enumerable: false);
-            StringValuePrototype.Define("trim", ScriptDatum.FromBonding(StringValue.TRIM), writeable: false, enumerable: false);
-            StringValuePrototype.Define("trimLeft", ScriptDatum.FromBonding(StringValue.TRIMLEFT), writeable: false, enumerable: false);
-            StringValuePrototype.Define("trimRight", ScriptDatum.FromBonding(StringValue.TRIMRIGHT), writeable: false, enumerable: false);
-            StringValuePrototype.Define("slice", ScriptDatum.FromBonding(StringValue.SUBSTRING), writeable: false, enumerable: false);
-            StringValuePrototype.Define("toString", ScriptDatum.FromBonding(StringValue.TOSTRING), writeable: false, enumerable: false);
-            StringValuePrototype.Define("charCodeAt", ScriptDatum.FromBonding(StringValue.CHARCODEAT), writeable: false, enumerable: false);
-            StringValuePrototype.Define("toLowerCase", ScriptDatum.FromBonding(StringValue.TOLOWERCASE), writeable: false, enumerable: false);
-            StringValuePrototype.Define("toUpperCase", ScriptDatum.FromBonding(StringValue.TOUPPERCASE), writeable: false, enumerable: false);
+            StringValue.RegisterNativeMembers(StringValuePrototype);
             StringValuePrototype.Frozen();
 
 

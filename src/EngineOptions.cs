@@ -53,23 +53,6 @@ namespace AuroraScript
     }
 
     /// <summary>
-    /// Specifies how runtime string values are materialized when converting CLR strings
-    /// into <see cref="Runtime.Types.StringValue"/>.
-    /// </summary>
-    public enum StringPoolingStrategy
-    {
-        /// <summary>
-        /// Always allocate a new <see cref="Runtime.Types.StringValue"/> wrapper.
-        /// </summary>
-        None,
-
-        /// <summary>
-        /// Use runtime string pool with weak references for reusable wrappers.
-        /// </summary>
-        Intern,
-    }
-
-    /// <summary>
     /// Represents all configuration for an <see cref="AuroraEngine"/>.
     /// Options are grouped by responsibility so runtime behavior, compiler behavior,
     /// optimization switches, and output settings do not share one flat namespace.
@@ -252,10 +235,6 @@ namespace AuroraScript
         /// </summary>
         public TextWriter ConsoleErrorOut { get; init; } = Console.Error;
 
-        /// <summary>
-        /// Gets the strategy for allocating script string wrapper objects.
-        /// </summary>
-        public StringPoolingStrategy StringPooling { get; init; } = StringPoolingStrategy.Intern;
     }
 
     /// <summary>
@@ -280,7 +259,6 @@ namespace AuroraScript
             _dateTimeFormat = options.DateTimeFormat;
             _consoleStdOut = options.ConsoleStdOut;
             _consoleErrorOut = options.ConsoleErrorOut;
-            StringPooling = options.StringPooling;
         }
 
         /// <summary>
@@ -323,11 +301,6 @@ namespace AuroraScript
             get => _consoleErrorOut;
             set => _consoleErrorOut = value ?? throw new ArgumentNullException(nameof(value));
         }
-
-        /// <summary>
-        /// Gets or sets the strategy for allocating script string wrapper objects.
-        /// </summary>
-        public StringPoolingStrategy StringPooling { get; set; }
 
         /// <summary>
         /// Sets whether runtime hot reload and dynamic patching are enabled.
@@ -374,15 +347,6 @@ namespace AuroraScript
             return this;
         }
 
-        /// <summary>
-        /// Sets the strategy for allocating script string wrapper objects.
-        /// </summary>
-        public RuntimeOptionsBuilder WithStringPooling(StringPoolingStrategy value)
-        {
-            StringPooling = value;
-            return this;
-        }
-
         internal RuntimeOptions ToOptions()
         {
             return new RuntimeOptions
@@ -391,8 +355,7 @@ namespace AuroraScript
                 JsonSerializer = JsonSerializer,
                 DateTimeFormat = DateTimeFormat,
                 ConsoleStdOut = ConsoleStdOut,
-                ConsoleErrorOut = ConsoleErrorOut,
-                StringPooling = StringPooling
+                ConsoleErrorOut = ConsoleErrorOut
             };
         }
     }

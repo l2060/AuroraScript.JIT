@@ -860,7 +860,7 @@ public sealed class IntegerSpecializationTests
         throw new Xunit.Sdk.XunitException("Persisted method not found: " + name);
     }
 
-    private static List<OpCode> ReadOpCodes(ReadOnlySpan<byte> il)
+    internal static List<OpCode> ReadOpCodes(ReadOnlySpan<byte> il)
     {
         var result = new List<OpCode>();
         var offset = 0;

@@ -18,5 +18,10 @@ namespace AuroraScript.Hosting
 
         /// <summary>Script global and <c>typeof</c> name, for example <c>Vec2</c>.</summary>
         public string TypeName { get; }
+
+        /// <summary>CLR name of an exported static Core used by both call and new for a primitive type.
+        /// The Core must return the type declared by AuroraNativeReceiver;
+        /// its dynamic adapter handles unproven argument shapes.</summary>
+        public string ConstructorFactory { get; set; }
     }
 }

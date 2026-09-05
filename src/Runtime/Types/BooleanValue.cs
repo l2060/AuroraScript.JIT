@@ -45,7 +45,7 @@ namespace AuroraScript.Runtime.Types
             }
             else
             {
-                ScriptDatum.WriteAsString(ref result, StringValue.FALSE);
+                ScriptDatum.WriteAsString(ref result, False.StrValue);
             }
         }
 

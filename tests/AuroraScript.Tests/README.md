@@ -60,4 +60,4 @@ When the first full run is performed, classify failures before changing tests:
 4. Timeout/deadlock: compiler channel accounting, build serialization, context pooling, or callback lifetime defect.
 5. Allocation/performance regression: measure and fix in the benchmark projects; functional tests remain deterministic and do not use timing as an assertion.
 
-The assembly disables xUnit test parallelization because runtime string-pooling configuration is process-global. Explicit concurrency tests create and synchronize their own workloads.
+The assembly runs tests serially. Explicit concurrency tests create and synchronize their own workloads.

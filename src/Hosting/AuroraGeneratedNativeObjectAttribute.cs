@@ -37,6 +37,12 @@ namespace AuroraScript.Hosting
         /// False when the type has no public constructor the compiler can call directly.
         /// </summary>
         public bool Constructible { get; }
+
+        /// <summary>Optional primitive receiver representation, distinct from the Core declaring type.</summary>
+        public Type ReceiverType { get; set; }
+
+        /// <summary>Static exported member implementing primitive construction, or null.</summary>
+        public string FactoryMemberName { get; set; }
     }
 
     /// <summary>
@@ -132,5 +138,14 @@ namespace AuroraScript.Hosting
         /// that is not a script argument.
         /// </summary>
         public bool TakesContext { get; }
+
+        /// <summary>Actual CLR receiver of a value Core overload; null for native instance methods.</summary>
+        public Type ReceiverType { get; set; }
+
+        /// <summary>True when this Core method implements a read-only property.</summary>
+        public bool IsGetter { get; set; }
+
+        /// <summary>True when binding requires an in-bounds receiver index proof.</summary>
+        public bool RequiresIndexProof { get; set; }
     }
 }

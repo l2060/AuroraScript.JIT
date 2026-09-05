@@ -188,7 +188,7 @@ public sealed class BuiltinApiCatalogTests
             ["Path"] = Path.Combine(runtimeRoot, "Types", "TypeConstruct", "PathConstructor.cs"),
             ["HotPatch"] = Path.Combine(runtimeRoot, "Builtin", "HotPatchSupport.cs"),
             ["Array"] = Path.Combine(runtimeRoot, "Types", "TypeConstruct", "ArrayConstructor.cs"),
-            ["String"] = Path.Combine(runtimeRoot, "Types", "TypeConstruct", "StringConstructor.cs"),
+            ["String"] = Path.Combine(runtimeRoot, "Types", "StringValue.Static.cs"),
             ["Boolean"] = Path.Combine(runtimeRoot, "Types", "TypeConstruct", "BooleanConstructor.cs"),
             ["Object"] = Path.Combine(runtimeRoot, "Types", "TypeConstruct", "ScriptObjectConstructor.cs"),
             ["Number"] = Path.Combine(runtimeRoot, "Types", "TypeConstruct", "NumberConstructor.cs"),
@@ -199,7 +199,7 @@ public sealed class BuiltinApiCatalogTests
         {
             Assert.True(catalog.TryGetGlobal(registration.Key, out var global), $"runtime-api.json is missing global '{registration.Key}'.");
             var source = File.ReadAllText(registration.Value);
-            var memberNames = registration.Key is "console" or "JSON" or "TDoc" or "Math" or "Env" or "Conv8" or "HotPatch"
+            var memberNames = registration.Key is "console" or "JSON" or "TDoc" or "Math" or "Env" or "Conv8" or "HotPatch" or "String"
                 ? ExtractAuroraExportNames(source)
                 : ExtractDefineNames(source, null);
             foreach (var memberName in memberNames)
@@ -244,6 +244,22 @@ public sealed class BuiltinApiCatalogTests
                 catalog.TryGetPrototypeMember(ownerName, memberName, out _),
                 $"runtime-api.json is missing prototype member '{ownerName}.prototype.{memberName}'.");
         }
+    }
+
+    [Fact]
+    public void RuntimeApiCatalogCoversGeneratedStringPrototypeMembers()
+    {
+        // String no longer appears in the handwritten prototype.Define scan above.
+        var catalog = LoadCatalog();
+        var source = File.ReadAllText(Path.Combine(GetRuntimeRoot(), "Types", "StringValue.g.cs"));
+        var count = 0;
+        foreach (var name in ExtractAuroraExportNames(source))
+        {
+            Assert.True(catalog.TryGetPrototypeMember("String", name, out _),
+                $"runtime-api.json is missing generated String prototype member '{name}'.");
+            count++;
+        }
+        Assert.Equal(21, count);
     }
 
     private static BuiltinApiCatalog LoadCatalog()

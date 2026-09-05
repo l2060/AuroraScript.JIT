@@ -86,10 +86,6 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo StringConcatThree = Method(typeof(string), nameof(string.Concat), typeof(string), typeof(string), typeof(string));
         public static readonly MethodInfo ConcatStringLeft = Method(typeof(ValueOps), nameof(ValueOps.ConcatStringLeft), typeof(string), typeof(ScriptDatum));
         public static readonly MethodInfo ConcatStringRight = Method(typeof(ValueOps), nameof(ValueOps.ConcatStringRight), typeof(ScriptDatum), typeof(string));
-        public static readonly MethodInfo NumberToString = Method(typeof(NumberValue), nameof(NumberValue.FormatString), typeof(double));
-        public static readonly MethodInfo NumberToStringRadix = Method(typeof(NumberValue), nameof(NumberValue.FormatString), typeof(double), typeof(double));
-        public static readonly MethodInfo StringSubstringStart = Method(typeof(StringValue), nameof(StringValue.Substring), typeof(string), typeof(double));
-        public static readonly MethodInfo StringSubstringRange = Method(typeof(StringValue), nameof(StringValue.Substring), typeof(string), typeof(double), typeof(double));
         public static readonly MethodInfo Subtract = Method(typeof(ValueOps), nameof(ValueOps.Subtract), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo SubtractBoolean = Method(typeof(ValueOps), nameof(ValueOps.SubtractBoolean), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo Multiply = Method(typeof(ValueOps), nameof(ValueOps.Multiply), typeof(ScriptDatum), typeof(ScriptDatum));
@@ -292,8 +288,6 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo StringConcat3 = Method(typeof(string), nameof(string.Concat), typeof(string), typeof(string), typeof(string));
         public static readonly MethodInfo StringConcat4 = Method(typeof(string), nameof(string.Concat), typeof(string), typeof(string), typeof(string), typeof(string));
         public static readonly MethodInfo StringLength = Method(typeof(ValueOps), nameof(ValueOps.GetStringLength), typeof(string));
-        public static readonly MethodInfo StringCharCodeAt = Method(typeof(ValueOps), nameof(ValueOps.GetStringCharCodeAt), typeof(string), typeof(int));
-        public static readonly MethodInfo StringCharCodeAtInt32 = Method(typeof(ValueOps), nameof(ValueOps.GetStringCharCodeAtInt32), typeof(string), typeof(int));
         public static readonly MethodInfo AscendingLoopBound = Method(typeof(ValueOps), nameof(ValueOps.ToAscendingLoopBound), typeof(double));
         public static readonly ConstructorInfo StringBuilderCapacity = Constructor(typeof(StringBuilder), typeof(int));
         public static readonly MethodInfo StringBuilderAppend = InstanceMethod(typeof(StringBuilder), nameof(StringBuilder.Append), typeof(string));

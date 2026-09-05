@@ -13,6 +13,271 @@ namespace AuroraScript.Tests;
 
 public sealed class AuroraExportGeneratorDiagnosticTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void UnmarkedStaticExportsAlwaysBelongToType(bool primitive)
+    {
+        var source = ValueReceiverSource("""
+            [AuroraExport("echo")]
+            public static string EchoCore(string value) => value;
+            """, annotateReceivers: false);
+        if (!primitive) source = source.Replace("[AuroraNativeReceiver(typeof(string))]", "", StringComparison.Ordinal);
+        var updated = RunCore(source, out var diagnostics);
+        Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        Assert.DoesNotContain(updated.GetDiagnostics(), d => d.Severity == DiagnosticSeverity.Error);
+        var generated = string.Join(Environment.NewLine, updated.SyntaxTrees.Skip(1));
+        Assert.Contains("Define(\"echo\", ScriptDatum.FromBonding(__Static_ECHO)", generated);
+        Assert.DoesNotContain("prototype.Define(\"echo\"", generated);
+        Assert.Contains("EchoCore(arg0)", generated);
+    }
+
+    [Theory]
+    [InlineData("[AuroraNativeReceiver]")]
+    [InlineData("[AuroraNativeReceiver(null)]")]
+    [InlineData("")]
+    public void ReceiverCoreRequiresAValidTypeLevelRepresentation(string typeMarker)
+    {
+        var source = ValueReceiverSource("""
+            [AuroraExport("echo")]
+            public static string EchoCore(string value) => value;
+            """).Replace("[AuroraNativeReceiver(typeof(string))]", typeMarker, StringComparison.Ordinal);
+        Assert.Contains(Run(source), d => d.Id is "AURORAEXP001" or "AURORAEXP002");
+    }
+
+    [Theory]
+    [InlineData("[AuroraNativeReceiver] public static string EchoCore(string value) => value;")]
+    [InlineData("[AuroraExport(\"echo\")] [AuroraNativeReceiver(typeof(string))] public static string EchoCore(string value) => value;")]
+    public void ReceiverMethodMarkerRequiresExportAndNoTypeArgument(string member)
+    {
+        Assert.Contains(Run(ValueReceiverSource(member, annotateReceivers: false)), d => d.Id == "AURORAEXP002");
+    }
+
+    [Fact]
+    public void PrimitiveFactoryReusesStaticExportCatalogAndGeneratedType()
+    {
+        var source = ValueReceiverSource("""
+            [AuroraExport("valueOf")]
+            public static string CreateCore(string value = "") => value;
+            [AuroraExport("compare", DynamicAdapter = nameof(Call))]
+            public static int CompareCore(string left, string right) => 1;
+            [AuroraExport("toString")]
+            [AuroraNativeReceiver]
+            public static string TextCore(string value) => value;
+            """, annotateReceivers: false).Replace("AuroraNativeType(\"String\")", "AuroraNativeType(\"String\", ConstructorFactory = nameof(CreateCore))", StringComparison.Ordinal);
+        var updated = RunCore(source, out var diagnostics);
+        Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        Assert.DoesNotContain(updated.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        var generated = string.Join(Environment.NewLine, updated.SyntaxTrees.Skip(1));
+        Assert.Contains("FactoryMemberName = \"valueOf\"", generated);
+        Assert.Contains("AuroraGeneratedExportAttribute", generated);
+        Assert.Contains("public static readonly ScriptType Type", generated);
+        Assert.Contains("void Register(ScriptObject target", generated);
+        Assert.Contains("Define(\"compare\", ScriptDatum.FromBonding(Call)", generated);
+        Assert.Contains("public static void __Static_VALUEOF", generated);
+        Assert.Contains("__Static_VALUEOF(ctx, this, args, ref result);", generated);
+        Assert.DoesNotContain("IAuroraNativeInstance", generated);
+        Assert.DoesNotContain("prototype.Define(\"valueOf\"", generated);
+    }
+
+    [Theory]
+    [InlineData("Missing", "[AuroraExport(\"valueOf\")] public static string CreateCore(string value) => value;")]
+    [InlineData("CreateCore", "[AuroraExport(\"valueOf\")] [AuroraNativeReceiver] public static string CreateCore(string value) => value;")]
+    [InlineData("CreateCore", "[AuroraExport(\"valueOf\")] public static int CreateCore(string value) => 1;")]
+    [InlineData("CreateCore", "[AuroraExport(\"valueOf\", IsGetter = true)] public static string CreateCore() => \"\";")]
+    [InlineData("CreateCore", "[AuroraExport(\"valueOf\", DynamicAdapter = \"Missing\")] public static string CreateCore(string value) => value;")]
+    [InlineData("CreateCore", "[AuroraExport(\"valueOf\")] private static string CreateCore(string value) => value;")]
+    [InlineData("CreateCore", "[AuroraExport(\"valueOf\")] public string CreateCore(string value) => value;")]
+    [InlineData("CreateCore", "[AuroraExport(\"valueOf\")] public static string CreateCore(params ScriptDatum[] args) => \"\";")]
+    public void PrimitiveFactoryRejectsInvalidContracts(string factory, string members)
+    {
+        var source = ValueReceiverSource(members, annotateReceivers: false).Replace("AuroraNativeType(\"String\")",
+            "AuroraNativeType(\"String\", ConstructorFactory = \"" + factory + "\")", StringComparison.Ordinal);
+        Assert.Contains(Run(source), diagnostic => diagnostic.Id == "AURORAEXP002");
+    }
+
+    [Fact]
+    public void ValueReceiverUsesExistingNativeCatalogAndRegistersEachAdapterOnce()
+    {
+        var updated = RunCore(ValueReceiverSource(
+            """
+            [AuroraExport("slice", DynamicAdapter = nameof(Call))]
+            public static string SliceCore(string value, int index) => value.Substring(index);
+            [AuroraExport("slice", DynamicAdapter = nameof(Call))]
+            public static string SliceCore(string value, double index) => value.Substring((int)index);
+            [AuroraExport("length", IsGetter = true, DynamicAdapter = nameof(Get))]
+            public static int LengthCore(string value) => value.Length;
+            [AuroraExport("code", RequiresIndexProof = true, DynamicAdapter = nameof(Call))]
+            public static int CodeCore(string value, int index) => value[index];
+            """), out var diagnostics);
+
+        Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        Assert.DoesNotContain(updated.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        var generated = string.Join(Environment.NewLine, updated.SyntaxTrees.Skip(1).Select(tree => tree.ToString()));
+        Assert.Contains("AuroraGeneratedNativeObjectAttribute", generated);
+        Assert.Contains("ReceiverType = typeof(string)", generated);
+        Assert.Contains("AuroraGeneratedNativeMethodAttribute", generated);
+        Assert.Contains("IsGetter = true", generated);
+        Assert.Contains("RequiresIndexProof = true", generated);
+        Assert.Contains("RegisterNativeMembers(ScriptObject prototype)", generated);
+        Assert.Equal(1, generated.Split("prototype.Define(\"slice\"").Length - 1);
+        Assert.Contains("ScriptDatum.FromBondingGetter(Get)", generated);
+        Assert.DoesNotContain("IAuroraNativeInstance", generated);
+        Assert.DoesNotContain("void Register(", generated);
+        Assert.DoesNotContain("ScriptType Type", generated);
+    }
+
+    [Theory]
+    [InlineData("public string Core(string value, int index) => value;")]
+    [InlineData("private static string Core(string value, int index) => value;")]
+    [InlineData("public static string Core(int value, int index) => value.ToString();")]
+    [InlineData("public static string Core(ref string value, int index) => value;")]
+    [InlineData("public static string Core(string value = null) => value;")]
+    [InlineData("public static string Core(string value, int index = 0) => value;")]
+    [InlineData("public static string Core(string value, params ScriptDatum[] args) => value;")]
+    [InlineData("public static string Core(ref ScriptContext context, string value) => value;")]
+    public void ValueReceiverRejectsUnsupportedCoreSignatures(string method)
+    {
+        var diagnostics = Run(ValueReceiverSource(
+            "[AuroraExport(\"value\", DynamicAdapter = nameof(Call))] " + method));
+        Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "AURORAEXP002");
+    }
+
+    [Theory]
+    [InlineData("[AuroraExport(\"value\", RequiresIndexProof = true)] public static int Core(string value, int index) => 0;")]
+    [InlineData("[AuroraExport(\"value\", DynamicAdapter = \"Missing\")] public static int Core(string value) => 0;")]
+    [InlineData("[AuroraExport(\"value\", DynamicAdapter = nameof(Get))] public static int Core(string value) => 0;")]
+    [InlineData("[AuroraExport(\"value\", DynamicAdapter = nameof(Call), IsGetter = true)] public static int Core(string value) => 0;")]
+    [InlineData("[AuroraExport(\"value\", DynamicAdapter = nameof(Get), IsGetter = true)] public static void Core(string value) { }")]
+    [InlineData("[AuroraExport(\"value\", DynamicAdapter = nameof(Get), IsGetter = true)] public static int Core(string value, int index) => 0;")]
+    [InlineData("[AuroraExport(\"value\", DynamicAdapter = nameof(Call), RequiresIndexProof = true)] public static int Core(string value, double index) => 0;")]
+    [InlineData("[AuroraExport(\"value\", DynamicAdapter = nameof(Call), RequiresIndexProof = true)] public static double Core(string value, int index) => 0;")]
+    [InlineData("[AuroraExport] public ValueMembers() { }")]
+    public void ValueReceiverRejectsInvalidAdapterAndProofContracts(string members)
+    {
+        Assert.Contains(Run(ValueReceiverSource(members)), diagnostic => diagnostic.Id == "AURORAEXP002");
+    }
+
+    [Theory]
+    [InlineData("int", "Call", false)]
+    [InlineData("double", "OtherCall", false)]
+    [InlineData("", "Get", true)]
+    public void ValueReceiverRejectsConflictingOverloads(string parameter, string adapter, bool getter)
+    {
+        var secondParameter = parameter.Length == 0 ? "" : ", " + parameter + " index";
+        var diagnostics = Run(ValueReceiverSource($$"""
+            [AuroraExport("value", DynamicAdapter = nameof(Call))]
+            public static int First(string value, int index) => 0;
+            [AuroraExport("value", DynamicAdapter = nameof({{adapter}}), IsGetter = {{getter.ToString().ToLowerInvariant()}})]
+            public static int Second(string value{{secondParameter}}) => 0;
+            private static void OtherCall(ScriptContext context, ScriptObject receiver, Span<ScriptDatum> args, ref ScriptDatum result) { }
+            """));
+        Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "AURORAEXP003");
+    }
+
+    [Fact]
+    public void ValueReceiverRejectsUnsupportedClrReceiver()
+    {
+        var diagnostics = Run(ValueReceiverSource("").Replace("typeof(string)", "typeof(int)", StringComparison.Ordinal));
+        Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "AURORAEXP001");
+    }
+
+    [Fact]
+    public void ValueReceiverGeneratesDefaultAdaptersUsingSharedCoercionAndInvocation()
+    {
+        var compilation = RunCore(ValueReceiverSource("""
+            [AuroraExport("trim")]
+            public static string TrimCore(string value) => value.Trim();
+            [AuroraExport("length", IsGetter = true)]
+            public static int LengthCore(string value) => value.Length;
+            [AuroraExport("has")]
+            public static bool HasCore(string value, string search) => value.Contains(search);
+            """), out var diagnostics);
+        Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        Assert.DoesNotContain(compilation.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        var generated = string.Join(Environment.NewLine, compilation.SyntaxTrees.Skip(1).Select(tree => tree.ToString()));
+        Assert.Contains("ScriptDatum.FromBonding(__Value_TRIM)", generated);
+        Assert.Contains("ScriptDatum.FromBondingGetter(__Value_LENGTH)", generated);
+        Assert.Contains("TrimCore(self.Value)", generated);
+        Assert.Contains("args.TryGetString(0, out var arg0)", generated);
+        Assert.Contains("HasCore(self.Value, arg0)", generated);
+    }
+
+    [Fact]
+    public void ValueReceiverRequiresExplicitAdapterForOverloads()
+    {
+        Assert.Contains(Run(ValueReceiverSource("""
+            [AuroraExport("value")]
+            public static int First(string value, int index) => 0;
+            [AuroraExport("value")]
+            public static int Second(string value, double index) => 0;
+            """)), diagnostic => diagnostic.Id == "AURORAEXP003");
+    }
+
+    private static string ValueReceiverSource(string members, bool annotateReceivers = true) => $$"""
+        using System;
+        using AuroraScript.Hosting;
+        using AuroraScript.Runtime;
+        using AuroraScript.Runtime.Types;
+        namespace Test;
+        [AuroraNativeType("String")]
+        [AuroraNativeReceiver(typeof(string))]
+        public sealed partial class ValueMembers
+        {
+            {{(annotateReceivers ? members.Replace("[AuroraExport(", "[AuroraNativeReceiver]\n[AuroraExport(", StringComparison.Ordinal) : members)}}
+            private static void Call(ScriptContext context, ScriptObject receiver, Span<ScriptDatum> args, ref ScriptDatum result) { }
+            private static void Get(ScriptObject receiver, ref ScriptDatum result) { }
+        }
+        """;
+
+    [Theory]
+    [InlineData("double", "NumberValue", "DoubleValue")]
+    [InlineData("long", "Int64Value", "Value")]
+    [InlineData("ulong", "UInt64Value", "Value")]
+    public void NumericReceiverGeneratesDefaultAdapter(string receiver, string wrapper, string property)
+    {
+        var source = ValueReceiverSource($$"""
+            [AuroraExport("format")]
+            public static string FormatCore({{receiver}} value) => value.ToString();
+            """).Replace("typeof(string)", $"typeof({receiver})", StringComparison.Ordinal);
+        var compilation = RunCore(source, out var diagnostics);
+        Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        Assert.DoesNotContain(compilation.GetDiagnostics(), d => d.Severity == DiagnosticSeverity.Error);
+        var generated = string.Join(Environment.NewLine, compilation.SyntaxTrees.Skip(1).Select(t => t.ToString()));
+        Assert.Contains($"thisObject is not {wrapper} self", generated);
+        Assert.Contains($"FormatCore(self.{property})", generated);
+    }
+
+    [Fact]
+    public void NumberReceiverOverloadsRetainTheirClrReceiverInMetadata()
+    {
+        var source = ValueReceiverSource("""
+            [AuroraExport("format", DynamicAdapter = nameof(Call))]
+            public static string FormatCore(double value, int radix) => value.ToString();
+            [AuroraExport("format", DynamicAdapter = nameof(Call))]
+            public static string FormatCore(int value, int radix) => value.ToString();
+            [AuroraExport("format", DynamicAdapter = nameof(Call))]
+            public static string FormatCore(uint value, int radix) => value.ToString();
+            """).Replace("typeof(string)", "typeof(double)", StringComparison.Ordinal);
+        var compilation = RunCore(source, out var diagnostics);
+        Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        Assert.DoesNotContain(compilation.GetDiagnostics(), d => d.Severity == DiagnosticSeverity.Error);
+        var generated = string.Join(Environment.NewLine, compilation.SyntaxTrees.Skip(1).Select(t => t.ToString()));
+        Assert.Contains("ReceiverType = typeof(int)", generated);
+        Assert.Contains("ReceiverType = typeof(uint)", generated);
+        Assert.Equal(1, generated.Split("prototype.Define(\"format\"").Length - 1);
+    }
+
+    [Fact]
+    public void NumberReceiverSpecializationNeedsAnExplicitDynamicAdapter()
+    {
+        var source = ValueReceiverSource("""
+            [AuroraExport("format")]
+            public static string FormatCore(int value) => value.ToString();
+            """).Replace("typeof(string)", "typeof(double)", StringComparison.Ordinal);
+        Assert.Contains(Run(source), d => d.Id == "AURORAEXP002");
+    }
+
     [Fact]
     public void ReportsNonPartialBuiltinGlobal()
     {

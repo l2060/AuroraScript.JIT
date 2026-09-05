@@ -17,6 +17,29 @@ public sealed class PerfBenchExampleTests
 #if NET9_0_OR_GREATER
     [InlineData(CompilationMode.Persistence)]
 #endif
+    public async Task ExampleClockUsesBuiltInElapsedMilliseconds(CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(ReadExample() + """
+
+            export func testClock() { return [nowMs(), nowMs()]; }
+            """, mode);
+        using var scope = domain;
+        var values = Assert.IsType<ScriptArray>(TestWorkspace.Execute(domain, "testClock", "PERF_BENCH").Object);
+        var first = values.GetElement(0);
+        var second = values.GetElement(1);
+        Assert.Equal(ValueKind.Number, first.Kind);
+        Assert.Equal(ValueKind.Number, second.Kind);
+        Assert.True(double.IsFinite(first.Number) && first.Number >= 0);
+        Assert.True(double.IsFinite(second.Number) && second.Number >= first.Number);
+    }
+
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+    [InlineData(CompilationMode.OnlyRun)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
     public async Task StatisticsSortFloatingSamplesWithoutChangingInput(CompilationMode mode)
     {
         using var workspace = new TestWorkspace();
@@ -62,7 +85,7 @@ public sealed class PerfBenchExampleTests
         var clockIndex = 0;
         var workCalls = 0;
         var (_, domain) = await workspace.CompileModuleAsync(
-            ReadExample() + """
+            ReadExample(controlledClock: true) + """
 
             export func testBenchmark() {
                 return benchmark('fractional', 2, 3, 4, () => HOST_WORK());
@@ -71,9 +94,9 @@ public sealed class PerfBenchExampleTests
             mode,
             configureGlobal: global =>
             {
-                global.Define("PERF_NOW_MS", ScriptDatum.FromBonding(
+                DefineTestClock(global, ScriptDatum.FromBonding(
                     (ScriptContext ctx, ScriptObject self, Span<ScriptDatum> args, ref ScriptDatum result) =>
-                        ScriptDatum.WriteAsNumber(ref result, clock[clockIndex++])), false, false);
+                        ScriptDatum.WriteAsNumber(ref result, clock[clockIndex++])));
                 global.Define("HOST_WORK", ScriptDatum.FromBonding(
                     (ScriptContext ctx, ScriptObject self, Span<ScriptDatum> args, ref ScriptDatum result) =>
                     {
@@ -110,10 +133,10 @@ public sealed class PerfBenchExampleTests
         using var workspace = new TestWorkspace();
         var clockCalls = 0;
         var (_, domain) = await workspace.CompileModuleAsync(
-            ReadExample(), mode,
-            configureGlobal: global => global.Define("PERF_NOW_MS", ScriptDatum.FromBonding(
+            ReadExample(controlledClock: true), mode,
+            configureGlobal: global => DefineTestClock(global, ScriptDatum.FromBonding(
                 (ScriptContext ctx, ScriptObject self, Span<ScriptDatum> args, ref ScriptDatum result) =>
-                    ScriptDatum.WriteAsNumber(ref result, clockCalls++ * 100.0)), false, false),
+                    ScriptDatum.WriteAsNumber(ref result, clockCalls++ * 100.0))),
             enableModuleConstInlining: true);
         using var domainScope = domain;
 
@@ -151,14 +174,27 @@ public sealed class PerfBenchExampleTests
         Assert.Equal(expected, datum.Number, precision: 10);
     }
 
-    private static string ReadExample()
+    private static void DefineTestClock(ScriptGlobal global, ScriptDatum elapsedMs)
+    {
+        var env = new ScriptObject();
+        env.Define("elapsedMs", elapsedMs, false, false);
+        env.Frozen();
+        global.Define("PERF_TEST_ENV", ScriptDatum.FromObject(env), false, false);
+    }
+
+    private static string ReadExample(bool controlledClock = false)
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory != null; directory = directory.Parent)
         {
             var path = Path.Combine(directory.FullName, "examples", "tests", "perf-bench.as");
             if (File.Exists(path))
             {
-                return File.ReadAllText(path);
+                var source = File.ReadAllText(path);
+                Assert.Contains("return Env.elapsedMs();", source);
+                // Lexical shadowing prevents the compiler binding the engine-owned Env Core.
+                // Never mutate the shared frozen production Env or add a runtime clock hook.
+                return controlledClock ? source.Replace("@module(PERF_BENCH);",
+                    "@module(PERF_BENCH);\nvar Env = PERF_TEST_ENV;", StringComparison.Ordinal) : source;
             }
         }
         throw new FileNotFoundException("Could not locate examples/tests/perf-bench.as.");

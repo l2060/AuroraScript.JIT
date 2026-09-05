@@ -2334,12 +2334,13 @@ namespace AuroraScript.Compiler.Backend.Emission
                 _il.Emit(OpCodes.Ldlen);
                 return StackValueKind.Int32;
             }
-            if (receiverType == FlowValueType.String &&
-                StringComparer.Ordinal.Equals(name, "length"))
+            var stringMember = _session.CompileSession.HostExports.TryGetNativeValue(receiverType, out var valueOwner)
+                ? valueOwner.GetValueGetter(name) : null;
+            if (stringMember != null)
             {
-                EmitString(expression.Object);
-                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.StringLength);
-                return StackValueKind.Int32;
+                EmitNativeValueReceiver(expression.Object, stringMember.ReceiverType);
+                _il.Emit(OpCodes.Call, stringMember.Method);
+                return GetNativeStackKind(stringMember.ReturnKind);
             }
             if (TryEmitHostExportConstant(expression.Object, name))
             {
@@ -3964,6 +3965,7 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private StackValueKind EmitCall(FunctionCallExpression call)
         {
+            if (TryGetValueFactoryCall(call, out var factory)) return EmitHostExportCall(call, null, factory);
             if (TryEmitArrayFactoryCall(call, out var arrayFactoryResult))
             {
                 return arrayFactoryResult;
@@ -4034,52 +4036,18 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 return EmitArrayPushCall(call, receiver);
             }
-            if (_code.GetExpressionType(receiver) == FlowValueType.String &&
-                StringComparer.Ordinal.Equals(name, "charCodeAt") &&
-                call.Arguments.Count == 1 &&
-                _code.GetExpressionType(call.Arguments[0]) ==
-                    FlowValueType.Int32)
+            var valueBinding = _code.GetNativeValueCall(call);
+            if (valueBinding != null && (!valueBinding.TakesContext || HasContextArgument))
             {
-                EmitString(receiver);
-                EmitInt32Value(call.Arguments[0]);
-                var int32Result = _code.GetExpressionType(call) == FlowValueType.Int32;
-                _il.Emit(
-                    OpCodes.Call,
-                    int32Result
-                        ? TypedRuntimeMetadata.StringCharCodeAtInt32
-                        : TypedRuntimeMetadata.StringCharCodeAt);
-                return int32Result ? StackValueKind.Int32 : StackValueKind.Number;
-            }
-
-            // Primitive prototypes are immutable. Unsupported argument shapes keep
-            // using dynamic dispatch; Int64/UInt64 have different formatting rules.
-            var receiverType = _code.GetExpressionType(receiver);
-            if (receiverType is FlowValueType.Number or FlowValueType.Int32 or FlowValueType.UInt32 &&
-                StringComparer.Ordinal.Equals(name, "toString") &&
-                !HasSpread(call.Arguments) &&
-                (call.Arguments.Count == 0 ||
-                    call.Arguments.Count == 1 && IsNumberArgument(call.Arguments[0])))
-            {
-                EmitNumber(receiver);
-                if (call.Arguments.Count == 1) EmitNumber(call.Arguments[0]);
-                _il.Emit(OpCodes.Call, call.Arguments.Count == 0
-                    ? TypedRuntimeMetadata.NumberToString
-                    : TypedRuntimeMetadata.NumberToStringRadix);
-                return StackValueKind.String;
-            }
-            if (receiverType == FlowValueType.String &&
-                StringComparer.Ordinal.Equals(name, "substring") &&
-                !HasSpread(call.Arguments) &&
-                call.Arguments.Count is 1 or 2 &&
-                IsNumberArgument(call.Arguments[0]) &&
-                (call.Arguments.Count == 1 || IsNumberArgument(call.Arguments[1])))
-            {
-                EmitString(receiver);
-                for (var i = 0; i < call.Arguments.Count; i++) EmitNumber(call.Arguments[i]);
-                _il.Emit(OpCodes.Call, call.Arguments.Count == 1
-                    ? TypedRuntimeMetadata.StringSubstringStart
-                    : TypedRuntimeMetadata.StringSubstringRange);
-                return StackValueKind.String;
+                if (valueBinding.TakesContext) _il.Emit(OpCodes.Ldarg_0);
+                EmitNativeValueReceiver(receiver, valueBinding.ReceiverType);
+                for (var i = 0; i < call.Arguments.Count; i++)
+                {
+                    EmitHostExportArgument(call.Arguments[i], valueBinding.ParameterKinds[i], valueBinding.GetScriptParameterType(i));
+                }
+                _il.Emit(OpCodes.Call, valueBinding.Method);
+                if (valueBinding.ReturnKind == AuroraExportValueKind.Void) EmitNull();
+                return GetNativeStackKind(valueBinding.ReturnKind);
             }
 
             var hasSpread = HasSpread(call.Arguments);
@@ -4113,9 +4081,16 @@ namespace AuroraScript.Compiler.Backend.Emission
             return StackValueKind.Datum;
         }
 
-        private bool IsNumberArgument(Expression expression)
-            => _code.GetExpressionType(expression) is
-                FlowValueType.Number or FlowValueType.Int32 or FlowValueType.UInt32;
+        private void EmitNativeValueReceiver(Expression expression, Type receiverType)
+        {
+            if (receiverType == typeof(string)) EmitString(expression);
+            else if (receiverType == typeof(double)) EmitNumber(expression);
+            else if (receiverType == typeof(int)) EmitInt32Value(expression);
+            else if (receiverType == typeof(uint)) EmitUInt32Value(expression);
+            else if (receiverType == typeof(long)) EmitInt64Value(expression);
+            else if (receiverType == typeof(ulong)) EmitUInt64Value(expression);
+            else throw new InvalidOperationException($"Unsupported native value receiver '{receiverType}'.");
+        }
 
         private bool TryEmitHostExportConstant(Expression receiver, string memberName)
         {
@@ -4136,6 +4111,16 @@ namespace AuroraScript.Compiler.Backend.Emission
 
             _il.Emit(OpCodes.Ldsfld, field);
             return true;
+        }
+
+        private bool TryGetValueFactoryCall(FunctionCallExpression call, out HostExportDescriptor factory)
+        {
+            factory = null;
+            return call?.Target is NameExpression name && _code.GetName(name).IsUnshadowedGlobal &&
+                _session.CompileSession.HostExports.TryGetValueFactory(_code.GetName(name).Name, out factory) &&
+                (!factory.TakesContext || HasContextArgument) &&
+                CanBindNativeArguments(call, factory.ParameterKinds, factory.RequiredScriptParameterCount,
+                    factory.Method.GetParameters(), factory.TakesContext ? 1 : 0);
         }
 
         private bool TryGetHostExportCall(
@@ -4476,6 +4461,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         private StackValueKind EmitNew(NewExpression expression)
         {
             var call = expression.Expression;
+            if (TryGetValueFactoryCall(call, out var factory)) return EmitHostExportCall(call, null, factory);
             var resultType = _code.GetExpressionType(expression);
             if (TryGetNativeConstruction(expression, out var nativeObject))
             {

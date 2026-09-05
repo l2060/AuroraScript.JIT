@@ -28,6 +28,7 @@ namespace AuroraScript.Hosting.Generators
     public sealed partial class AuroraExportGenerator : IIncrementalGenerator
     {
         private const string NativeTypeAttribute = "AuroraScript.Hosting.AuroraNativeTypeAttribute";
+        private const string NativeReceiverAttribute = "AuroraScript.Hosting.AuroraNativeReceiverAttribute";
         private const string TypedDocumentInterface = "AuroraScript.Runtime.Serialization.INativeTypedDocument";
         private const string ExportAttribute = "AuroraScript.Hosting.AuroraExportAttribute";
         private const string ParamAttribute = "AuroraScript.Hosting.AuroraParamAttribute";
@@ -74,7 +75,8 @@ namespace AuroraScript.Hosting.Generators
             INamedTypeSymbol containingType,
             IMethodSymbol methodSymbol,
             AttributeData exportAttribute,
-            string adapterPrefix = "")
+            string adapterPrefix = "",
+            ITypeSymbol? receiverType = null)
         {
             if (methodSymbol.TypeParameters.Length != 0 ||
                 methodSymbol.ReturnsByRef ||
@@ -105,7 +107,20 @@ namespace AuroraScript.Hosting.Generators
                 takesContext = true;
                 start = 1;
             }
-            if (start < methodSymbol.Parameters.Length &&
+            if (receiverType != null)
+            {
+                if (receiverType.SpecialType == SpecialType.System_Double && start < methodSymbol.Parameters.Length &&
+                    methodSymbol.Parameters[start].Type.SpecialType is SpecialType.System_Int32 or SpecialType.System_UInt32)
+                    receiverType = methodSymbol.Parameters[start].Type;
+                if (!methodSymbol.IsStatic || start >= methodSymbol.Parameters.Length ||
+                    methodSymbol.Parameters[start].RefKind != RefKind.None ||
+                    methodSymbol.Parameters[start].IsOptional || methodSymbol.Parameters[start].IsParams ||
+                    takesContext && (methodSymbol.Parameters[0].RefKind != RefKind.None || methodSymbol.Parameters[0].IsOptional) ||
+                    !SymbolEqualityComparer.Default.Equals(methodSymbol.Parameters[start].Type, receiverType))
+                    return null;
+                start++;
+            }
+            else if (start < methodSymbol.Parameters.Length &&
                 IsThisObjectParameter(methodSymbol.Parameters[start]))
             {
                 takesThisObject = true;
@@ -186,7 +201,10 @@ namespace AuroraScript.Hosting.Generators
                 parameters,
                 takesContext,
                 takesThisObject,
-                isInstance: !methodSymbol.IsStatic);
+                isInstance: !methodSymbol.IsStatic)
+            {
+                ReceiverType = receiverType?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+            };
         }
 
         private static ConstantModel? ParseConstant(
@@ -534,12 +552,16 @@ namespace AuroraScript.Hosting.Generators
             }
         }
 
-        private static void AppendCoreInvocation(StringBuilder builder, ExportModel export)
+        private static void AppendCoreInvocation(StringBuilder builder, ExportModel export, string? valueReceiver = null)
         {
             var argumentNames = new List<string>();
             if (export.TakesContext)
             {
                 argumentNames.Add("ctx");
+            }
+            if (valueReceiver != null)
+            {
+                argumentNames.Add(valueReceiver);
             }
             if (export.TakesThisObject)
             {
@@ -1010,6 +1032,10 @@ namespace AuroraScript.Hosting.Generators
             public bool TakesContext { get; }
             public bool TakesThisObject { get; }
             public bool IsInstance { get; }
+            public string? DynamicAdapter { get; set; }
+            public string? ReceiverType { get; set; }
+            public bool IsGetter { get; set; }
+            public bool RequiresIndexProof { get; set; }
 
             private static HostExportFailure ResolveDefaultFailure(ReturnKind returnKind)
             {
