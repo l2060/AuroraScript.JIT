@@ -618,21 +618,20 @@ The engine also uses the same `AuroraNativeType` generator and compiler catalog 
 immutable String members:
 
 ```csharp
-[AuroraNativeType("String")]
-[AuroraNativeReceiver(typeof(string))]
+[AuroraNativeType("String", NativeReceiverType = typeof(string))]
 public sealed partial class StringValue
 {
-    [AuroraExport("trim")]
-    [AuroraNativeReceiver]
+    [AuroraExport("trim", Target = AuroraExportTarget.Instance)]
     public static string TrimCore(string value) => value.Trim();
 }
 ```
 
-Type-level `AuroraNativeReceiver(typeof(...))` supports engine-owned `string`,
-`double`, `long`, and `ulong` representations; it is not a host extension point for
-replacing shared frozen prototypes. Method-level `[AuroraNativeReceiver]` explicitly
-marks a primitive instance Core. Unmarked static exports remain type members, just
-as on ordinary native types. The first receiver Core
+`AuroraNativeType.NativeReceiverType` supports engine-owned `string`, `double`,
+`long`, and `ulong` representations; it is not a host extension point for replacing
+shared frozen prototypes. `AuroraExport.Target = AuroraExportTarget.Instance`
+marks a static Core as a primitive instance member. `Auto` is the default and maps
+CLR static members to the script type object and CLR instance members to script
+instances. `Type` explicitly selects the script type object. The first receiver Core
 argument (after an optional `ScriptContext`) is the raw CLR receiver, not a script
 argument. The generator registers members on the existing prototype; it does not
 create an `IAuroraNativeInstance` wrapper. Primitive types with static exports or
@@ -669,8 +668,10 @@ Padding retains its historical first-UTF-16-code-unit rule and takes native `int
 String's construction and static surface use the same NativeType model as well:
 
 ```csharp
-[AuroraNativeType("String", ConstructorFactory = nameof(CreateCore))]
-[AuroraNativeReceiver(typeof(string))]
+[AuroraNativeType(
+    "String",
+    NativeReceiverType = typeof(string),
+    NativeConstructor = nameof(CreateCore))]
 public sealed partial class StringValue
 {
     [AuroraExport("valueOf", DynamicAdapter = nameof(CREATE))]
@@ -679,10 +680,11 @@ public sealed partial class StringValue
 }
 ```
 
-`AuroraExport` has no static/instance override. A static method without the independent
-receiver marker is exported on the type object. `ConstructorFactory` names one such
-exported CLR Core, which must return the representation declared by type-level
-`AuroraNativeReceiver`; both `String(...)` and `new String(...)` use it.
+`AuroraExport.Target` controls script ownership independently from the CLR invocation
+shape. A static method with `Auto` or `Type` is exported on the type object, while
+`Instance` uses the declared native receiver. `NativeConstructor` names a static Type
+export whose CLR Core must return `NativeReceiverType`; both `String(...)` and
+`new String(...)` use it.
 Factory metadata points to the existing static export catalog; no separate factory
 registry is introduced. The generated type adapter handles dynamic construction,
 aliases and spreads, while proven calls use the raw CLR factory directly.

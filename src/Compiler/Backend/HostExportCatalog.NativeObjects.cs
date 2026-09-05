@@ -229,8 +229,10 @@ namespace AuroraScript.Compiler.Backend
             {
                 if (!StringComparer.Ordinal.Equals(method.Name, attribute.MethodName) ||
                     !MatchesClrType(attribute.ReturnKind, method.ReturnType) ||
-                    method.GetCustomAttribute<AuroraExportAttribute>() == null ||
-                    owner.IsValueReceiver && !method.IsDefined(typeof(AuroraNativeReceiverAttribute), inherit: false))
+                    method.GetCustomAttribute<AuroraExportAttribute>() is not { } export ||
+                    (owner.IsValueReceiver
+                        ? export.Target != AuroraExportTarget.Instance
+                        : export.Target == AuroraExportTarget.Type))
                 {
                     continue;
                 }

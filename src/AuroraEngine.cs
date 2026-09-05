@@ -152,7 +152,7 @@ namespace AuroraScript
                         nameof(nativeTypes));
                 }
 
-                if (nativeType.GetCustomAttribute<AuroraNativeReceiverAttribute>() != null)
+                if (attribute.NativeReceiverType != null)
                 {
                     throw new ArgumentException(
                         $"Native value receiver '{nativeType.FullName}' cannot replace an engine-owned immutable prototype.",

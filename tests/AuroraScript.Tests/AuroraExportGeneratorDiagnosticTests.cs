@@ -22,7 +22,7 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             [AuroraExport("echo")]
             public static string EchoCore(string value) => value;
             """, annotateReceivers: false);
-        if (!primitive) source = source.Replace("[AuroraNativeReceiver(typeof(string))]", "", StringComparison.Ordinal);
+        if (!primitive) source = source.Replace(", NativeReceiverType = typeof(string)", "", StringComparison.Ordinal);
         var updated = RunCore(source, out var diagnostics);
         Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
         Assert.DoesNotContain(updated.GetDiagnostics(), d => d.Severity == DiagnosticSeverity.Error);
@@ -33,22 +33,25 @@ public sealed class AuroraExportGeneratorDiagnosticTests
     }
 
     [Theory]
-    [InlineData("[AuroraNativeReceiver]")]
-    [InlineData("[AuroraNativeReceiver(null)]")]
-    [InlineData("")]
-    public void ReceiverCoreRequiresAValidTypeLevelRepresentation(string typeMarker)
+    [InlineData("[AuroraNativeType(\"String\", NativeReceiverType = null)]")]
+    [InlineData("[AuroraNativeType(\"String\", NativeReceiverType = typeof(int))]")]
+    [InlineData("[AuroraNativeType(\"String\")]")]
+    public void InstanceTargetRequiresAValidNativeReceiverType(string typeAttribute)
     {
         var source = ValueReceiverSource("""
             [AuroraExport("echo")]
             public static string EchoCore(string value) => value;
-            """).Replace("[AuroraNativeReceiver(typeof(string))]", typeMarker, StringComparison.Ordinal);
+            """).Replace(
+                "[AuroraNativeType(\"String\", NativeReceiverType = typeof(string))]",
+                typeAttribute,
+                StringComparison.Ordinal);
         Assert.Contains(Run(source), d => d.Id is "AURORAEXP001" or "AURORAEXP002");
     }
 
     [Theory]
-    [InlineData("[AuroraNativeReceiver] public static string EchoCore(string value) => value;")]
-    [InlineData("[AuroraExport(\"echo\")] [AuroraNativeReceiver(typeof(string))] public static string EchoCore(string value) => value;")]
-    public void ReceiverMethodMarkerRequiresExportAndNoTypeArgument(string member)
+    [InlineData("[AuroraExport(\"echo\", Target = AuroraExportTarget.Instance)] public string EchoCore(string value) => value;")]
+    [InlineData("[AuroraExport(\"echo\", Target = (AuroraExportTarget)99)] public static string EchoCore(string value) => value;")]
+    public void InstanceTargetRejectsInvalidContracts(string member)
     {
         Assert.Contains(Run(ValueReceiverSource(member, annotateReceivers: false)), d => d.Id == "AURORAEXP002");
     }
@@ -61,10 +64,9 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             public static string CreateCore(string value = "") => value;
             [AuroraExport("compare", DynamicAdapter = nameof(Call))]
             public static int CompareCore(string left, string right) => 1;
-            [AuroraExport("toString")]
-            [AuroraNativeReceiver]
+            [AuroraExport("toString", Target = AuroraExportTarget.Instance)]
             public static string TextCore(string value) => value;
-            """, annotateReceivers: false).Replace("AuroraNativeType(\"String\")", "AuroraNativeType(\"String\", ConstructorFactory = nameof(CreateCore))", StringComparison.Ordinal);
+            """, annotateReceivers: false).Replace("NativeReceiverType = typeof(string)", "NativeReceiverType = typeof(string), NativeConstructor = nameof(CreateCore)", StringComparison.Ordinal);
         var updated = RunCore(source, out var diagnostics);
         Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
         Assert.DoesNotContain(updated.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
@@ -82,7 +84,7 @@ public sealed class AuroraExportGeneratorDiagnosticTests
 
     [Theory]
     [InlineData("Missing", "[AuroraExport(\"valueOf\")] public static string CreateCore(string value) => value;")]
-    [InlineData("CreateCore", "[AuroraExport(\"valueOf\")] [AuroraNativeReceiver] public static string CreateCore(string value) => value;")]
+    [InlineData("CreateCore", "[AuroraExport(\"valueOf\", Target = AuroraExportTarget.Instance)] public static string CreateCore(string value) => value;")]
     [InlineData("CreateCore", "[AuroraExport(\"valueOf\")] public static int CreateCore(string value) => 1;")]
     [InlineData("CreateCore", "[AuroraExport(\"valueOf\", IsGetter = true)] public static string CreateCore() => \"\";")]
     [InlineData("CreateCore", "[AuroraExport(\"valueOf\", DynamicAdapter = \"Missing\")] public static string CreateCore(string value) => value;")]
@@ -91,8 +93,8 @@ public sealed class AuroraExportGeneratorDiagnosticTests
     [InlineData("CreateCore", "[AuroraExport(\"valueOf\")] public static string CreateCore(params ScriptDatum[] args) => \"\";")]
     public void PrimitiveFactoryRejectsInvalidContracts(string factory, string members)
     {
-        var source = ValueReceiverSource(members, annotateReceivers: false).Replace("AuroraNativeType(\"String\")",
-            "AuroraNativeType(\"String\", ConstructorFactory = \"" + factory + "\")", StringComparison.Ordinal);
+        var source = ValueReceiverSource(members, annotateReceivers: false).Replace("AuroraNativeType(\"String\", NativeReceiverType = typeof(string))",
+            "AuroraNativeType(\"String\", NativeReceiverType = typeof(string), NativeConstructor = \"" + factory + "\")", StringComparison.Ordinal);
         Assert.Contains(Run(source), diagnostic => diagnostic.Id == "AURORAEXP002");
     }
 
@@ -220,11 +222,10 @@ public sealed class AuroraExportGeneratorDiagnosticTests
         using AuroraScript.Runtime;
         using AuroraScript.Runtime.Types;
         namespace Test;
-        [AuroraNativeType("String")]
-        [AuroraNativeReceiver(typeof(string))]
+        [AuroraNativeType("String", NativeReceiverType = typeof(string))]
         public sealed partial class ValueMembers
         {
-            {{(annotateReceivers ? members.Replace("[AuroraExport(", "[AuroraNativeReceiver]\n[AuroraExport(", StringComparison.Ordinal) : members)}}
+            {{(annotateReceivers ? members.Replace(")]", ", Target = AuroraExportTarget.Instance)]", StringComparison.Ordinal) : members)}}
             private static void Call(ScriptContext context, ScriptObject receiver, Span<ScriptDatum> args, ref ScriptDatum result) { }
             private static void Get(ScriptObject receiver, ref ScriptDatum result) { }
         }

@@ -57,16 +57,17 @@ namespace AuroraScript.Hosting.Generators
                     $"Type '{typeSymbol.ToDisplayString()}' must be declared in a namespace."));
             }
             var scriptObjectBase = FindScriptObjectBase(typeSymbol);
-            var receiverAttribute = typeSymbol.GetAttributes()
-                .FirstOrDefault(attribute => attribute.AttributeClass?.ToDisplayString() == NativeReceiverAttribute);
-            var receiverType = receiverAttribute?.ConstructorArguments.FirstOrDefault().Value as ITypeSymbol;
-            if (receiverAttribute != null && receiverType == null)
+            var receiverArgument = typeAttribute.NamedArguments
+                .FirstOrDefault(pair => pair.Key == "NativeReceiverType");
+            var hasReceiverArgument = receiverArgument.Key != null;
+            var receiverType = receiverArgument.Value.Value as ITypeSymbol;
+            if (hasReceiverArgument && receiverType == null)
                 diagnostics.Add(Diagnostic.Create(InvalidGlobal, GetLocation(typeSymbol),
-                    "A type-level AuroraNativeReceiver must specify its CLR receiver type."));
+                    "AuroraNativeType.NativeReceiverType must specify a CLR receiver type."));
             if (receiverType != null && receiverType.SpecialType is not (SpecialType.System_String or
                 SpecialType.System_Double or SpecialType.System_Int64 or SpecialType.System_UInt64))
                 diagnostics.Add(Diagnostic.Create(InvalidGlobal, GetLocation(typeSymbol),
-                    "AuroraNativeReceiver supports string, double, long and ulong."));
+                    "AuroraNativeType.NativeReceiverType supports string, double, long and ulong."));
 
             var typeName = typeAttribute.ConstructorArguments.Length > 0
                 ? typeAttribute.ConstructorArguments[0].Value as string
@@ -91,22 +92,32 @@ namespace AuroraScript.Hosting.Generators
             {
                 var exportAttribute = member.GetAttributes()
                     .FirstOrDefault(attribute => attribute.AttributeClass?.ToDisplayString() == ExportAttribute);
-                var memberReceiver = member.GetAttributes().FirstOrDefault(attribute => attribute.AttributeClass?.ToDisplayString() == NativeReceiverAttribute);
-                var isNativeReceiver = memberReceiver != null;
-                if (isNativeReceiver && (receiverType == null || exportAttribute == null || memberReceiver!.ConstructorArguments.Length != 0))
-                {
-                    diagnostics.Add(Diagnostic.Create(InvalidExport, GetLocation(member),
-                        "A receiver Core needs parameterless AuroraNativeReceiver, AuroraExport, and a type-level AuroraNativeReceiver(Type)."));
-                    continue;
-                }
                 if (exportAttribute == null || member is IMethodSymbol { MethodKind: MethodKind.Constructor })
                 {
                     continue;
                 }
 
+                if (!HasValidEnumArgument<HostExportTarget>(exportAttribute, -1, "Target"))
+                {
+                    diagnostics.Add(Diagnostic.Create(InvalidExport, GetLocation(member),
+                        "AuroraExport.Target must be Auto, Type, or Instance."));
+                    continue;
+                }
+                var target = GetNamedEnum<HostExportTarget>(exportAttribute, "Target");
+                if (target == HostExportTarget.Auto)
+                {
+                    target = member.IsStatic ? HostExportTarget.Type : HostExportTarget.Instance;
+                }
+                if (target == HostExportTarget.Type && !member.IsStatic)
+                {
+                    diagnostics.Add(Diagnostic.Create(InvalidExport, GetLocation(member),
+                        "AuroraExport.Target.Type requires a static CLR member."));
+                    continue;
+                }
+
                 if (receiverType != null)
                 {
-                    if (!isNativeReceiver)
+                    if (target == HostExportTarget.Type)
                     {
                         var staticExport = member is IMethodSymbol { IsStatic: true } staticCore
                             ? ParseExport(typeSymbol, staticCore, exportAttribute, adapterPrefix: "__Static_") : null;
@@ -123,6 +134,12 @@ namespace AuroraScript.Hosting.Generators
                                 typeSymbol.GetMembers(staticExport.AdapterMethodName).Length != 0))
                             diagnostics.Add(Diagnostic.Create(DuplicateExport, GetLocation(member), typeName, staticExport.ScriptName));
                         else staticExports.Add(staticExport);
+                        continue;
+                    }
+                    if (!member.IsStatic)
+                    {
+                        diagnostics.Add(Diagnostic.Create(InvalidExport, GetLocation(member),
+                            "AuroraExport.Target.Instance on a native receiver type requires a static CLR Core method."));
                         continue;
                     }
                     var export = member is IMethodSymbol valueMethod
@@ -156,10 +173,17 @@ namespace AuroraScript.Hosting.Generators
                     continue;
                 }
 
+                if (target == HostExportTarget.Instance && member.IsStatic)
+                {
+                    diagnostics.Add(Diagnostic.Create(InvalidExport, GetLocation(member),
+                        "AuroraExport.Target.Instance on a static CLR method requires AuroraNativeType.NativeReceiverType."));
+                    continue;
+                }
+
                 if (exportAttribute.NamedArguments.Any(pair => pair.Key is "DynamicAdapter" or "IsGetter" or "RequiresIndexProof"))
                 {
                     diagnostics.Add(Diagnostic.Create(InvalidExport, GetLocation(member),
-                        "Value-receiver export options require AuroraNativeReceiver."));
+                        "Value-receiver export options require AuroraNativeType.NativeReceiverType and AuroraExport.Target.Instance."));
                     continue;
                 }
 
@@ -303,7 +327,7 @@ namespace AuroraScript.Hosting.Generators
             }
 
             var constructor = SelectConstructor(typeSymbol, diagnostics, typeName!);
-            var factoryName = typeAttribute.NamedArguments.FirstOrDefault(pair => pair.Key == "ConstructorFactory").Value.Value as string;
+            var factoryName = typeAttribute.NamedArguments.FirstOrDefault(pair => pair.Key == "NativeConstructor").Value.Value as string;
             ExportModel? factory = null;
             if (factoryName != null)
             {
@@ -313,7 +337,7 @@ namespace AuroraScript.Hosting.Generators
                 if (receiverType == null || factory == null || factoryMethod == null ||
                     !SymbolEqualityComparer.Default.Equals(factoryMethod.ReturnType, receiverType))
                     diagnostics.Add(Diagnostic.Create(InvalidExport, GetLocation(typeSymbol),
-                        "ConstructorFactory must name an exported static Core returning the AuroraNativeReceiver type."));
+                        "NativeConstructor must name an exported static Core returning AuroraNativeType.NativeReceiverType."));
             }
             if (receiverType != null && constructor != null)
                 diagnostics.Add(Diagnostic.Create(InvalidExport, GetLocation(typeSymbol),
@@ -443,6 +467,17 @@ namespace AuroraScript.Hosting.Generators
                 return null;
             }
             var selected = marked[0];
+            var exportAttribute = selected.GetAttributes().First(
+                attribute => attribute.AttributeClass?.ToDisplayString() == ExportAttribute);
+            if (!HasValidEnumArgument<HostExportTarget>(exportAttribute, -1, "Target") ||
+                GetNamedEnum<HostExportTarget>(exportAttribute, "Target") != HostExportTarget.Auto)
+            {
+                diagnostics.Add(Diagnostic.Create(
+                    InvalidExport,
+                    GetLocation(selected),
+                    "AuroraExport.Target is not valid on a constructor."));
+                return null;
+            }
             if (selected.DeclaredAccessibility != Accessibility.Public)
             {
                 diagnostics.Add(Diagnostic.Create(

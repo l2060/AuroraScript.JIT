@@ -2318,15 +2318,20 @@
           "kind": "property",
           "signature": "string TypeName"
         },
-        "ConstructorFactory": {
+        "NativeReceiverType": {
           "kind": "property",
-          "signature": "string ConstructorFactory",
-          "summary": "Optional exported static Core implementing primitive call/new construction; its return type must match the type-level AuroraNativeReceiver."
+          "signature": "Type NativeReceiverType",
+          "summary": "Optional engine-owned CLR representation for native value instances: string, double, long, or ulong."
+        },
+        "NativeConstructor": {
+          "kind": "property",
+          "signature": "string NativeConstructor",
+          "summary": "Optional exported static Type Core implementing native-receiver call/new construction; its return type must match NativeReceiverType."
         }
       },
       "notes": [
         "A type with instance exports or an exported constructor must derive ScriptObject. Generated code adds the native-instance marker.",
-        "Exactly one public constructor may be marked [AuroraExport] to enable native instance construction. Engine-owned primitive types may instead name a ConstructorFactory.",
+        "Exactly one public constructor may be marked [AuroraExport] to enable native instance construction. Engine-owned native receiver types may instead name a NativeConstructor.",
         "Register the generated Type with Type.Register(ScriptObject target) on the engine global, or Define(typeName, Type).",
         "Static factory returns of a native instance preserve concrete type inference and direct instance member calls."
       ]
@@ -2336,26 +2341,11 @@
       "namespace": "AuroraScript.Runtime.Types",
       "summary": "Marker implemented by generated native-type instances so unannotated CLR members are not exposed through reflection fallback."
     },
-    "AuroraNativeReceiverAttribute": {
-      "kind": "class",
+    "AuroraExportTarget": {
+      "kind": "enum",
       "namespace": "AuroraScript.Hosting",
-      "summary": "Independent native receiver contract for engine-owned primitive types and their instance Core methods.",
-      "members": {
-        "Constructor": {
-          "kind": "constructor",
-          "overloads": ["AuroraNativeReceiverAttribute()", "AuroraNativeReceiverAttribute(Type receiverType)"]
-        },
-        "ReceiverType": {
-          "kind": "property",
-          "signature": "Type ReceiverType"
-        }
-      },
-      "notes": [
-        "On an AuroraNativeType class, specify string, double, long, or ulong. Number's double representation permits int/uint Core specializations.",
-        "On an exported static Core, use the parameterless marker: its first parameter after optional ScriptContext is the raw receiver.",
-        "Unmarked static exports remain members of the type object. Ordinary native CLR instance exports are unchanged.",
-        "The shared frozen primitive prototypes are engine-owned and cannot be replaced by external native registrations."
-      ]
+      "values": ["Auto", "Type", "Instance"],
+      "summary": "Selects whether an AuroraExport belongs to the script type object or its instances. Auto follows the CLR member's static or instance shape."
     },
     "AuroraExportAttribute": {
       "kind": "class",
@@ -2378,6 +2368,10 @@
           "kind": "property",
           "signature": "MatchFailure Failure"
         },
+        "Target": {
+          "kind": "property",
+          "signature": "AuroraExportTarget Target"
+        },
         "DynamicAdapter": {
           "kind": "property",
           "signature": "string DynamicAdapter"
@@ -2393,7 +2387,8 @@
       },
       "notes": [
         "Use the parameterless constructor on at most one public constructor to enable script new.",
-        "Core methods may be static Type members or instance members. They may prefix ScriptContext ctx and ScriptObject thisObject. Script parameters support double, int, bool, string, ScriptDatum, ScriptObject subclasses, trailing defaults, and params double[] or params ScriptDatum[].",
+        "Target defaults to Auto: CLR static members become script Type members and CLR instance members become script instance members. On a NativeReceiverType, Target.Instance marks a static Core whose first business parameter is the raw receiver.",
+        "Core methods may prefix ScriptContext ctx and ScriptObject thisObject. Script parameters support double, int, bool, string, ScriptDatum, ScriptObject subclasses, trailing defaults, and params double[] or params ScriptDatum[].",
         "A CLR void return is a procedure. Direct native calls used as statements do not materialize a result; dynamic or exported calls observe script null, matching native func ... void.",
         "params exports generate Datum adapters only; they are not compiler direct-call candidates.",
         "DynamicAdapter names an existing compatibility callback when omitted adapters would change missing-argument or conversion behavior. IsGetter exports a zero-argument value-receiver Core as a read-only property. RequiresIndexProof binds only when argument zero is a proven in-bounds index."
@@ -2531,7 +2526,7 @@
     {
       "id": "interop.native-host-exports",
       "summary": "Implement static-only and constructible host Types with [AuroraNativeType] and [AuroraExport]. Select exact application types with CompilerOptionsBuilder.WithNativeTypes, or scan assemblies with AddNativeTypes; they are registered once on the engine global and available to every domain. Hand-write matching declare type contracts in an @global() file for editor assistance. Implement INativeTypedDocument on a native instance type so script tdoc literals and host TDoc serialize/deserialize construct that NativeType directly.",
-      "apis": ["AuroraNativeTypeAttribute", "AuroraExportAttribute", "AuroraParamAttribute", "CompilerOptions.NativeTypes", "CompilerOptionsBuilder.WithNativeTypes", "CompilerOptionsBuilder.AddNativeTypes", "INativeTypedDocument", "TypedDocumentOutput", "TypedDocumentInput"]
+      "apis": ["AuroraNativeTypeAttribute", "AuroraExportAttribute", "AuroraExportTarget", "AuroraParamAttribute", "CompilerOptions.NativeTypes", "CompilerOptionsBuilder.WithNativeTypes", "CompilerOptionsBuilder.AddNativeTypes", "INativeTypedDocument", "TypedDocumentOutput", "TypedDocumentInput"]
     },
     {
       "id": "interop.register-clr-type",

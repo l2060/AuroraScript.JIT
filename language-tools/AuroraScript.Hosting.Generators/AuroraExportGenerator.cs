@@ -24,11 +24,17 @@ namespace AuroraScript.Hosting.Generators
         ReturnNull,
         Throw
     }
+
+    internal enum HostExportTarget
+    {
+        Auto,
+        Type,
+        Instance
+    }
     [Generator]
     public sealed partial class AuroraExportGenerator : IIncrementalGenerator
     {
         private const string NativeTypeAttribute = "AuroraScript.Hosting.AuroraNativeTypeAttribute";
-        private const string NativeReceiverAttribute = "AuroraScript.Hosting.AuroraNativeReceiverAttribute";
         private const string TypedDocumentInterface = "AuroraScript.Runtime.Serialization.INativeTypedDocument";
         private const string ExportAttribute = "AuroraScript.Hosting.AuroraExportAttribute";
         private const string ParamAttribute = "AuroraScript.Hosting.AuroraParamAttribute";
@@ -822,8 +828,8 @@ namespace AuroraScript.Hosting.Generators
                     return typed;
                 }
 
-                if (argument.Value.Value is int value &&
-                    Enum.IsDefined(typeof(TEnum), value))
+                var value = Convert.ToInt32(argument.Value.Value);
+                if (Enum.IsDefined(typeof(TEnum), value))
                 {
                     return (TEnum)Enum.ToObject(typeof(TEnum), value);
                 }

@@ -25,7 +25,7 @@ public sealed class HostExportGeneratorTests
         var attribute = typeof(StringValue).GetCustomAttribute<AuroraNativeTypeAttribute>();
         Assert.NotNull(attribute);
         Assert.Equal("String", attribute.TypeName);
-        Assert.Equal(typeof(string), typeof(StringValue).GetCustomAttribute<AuroraNativeReceiverAttribute>()!.ReceiverType);
+        Assert.Equal(typeof(string), attribute.NativeReceiverType);
 
         var catalog = new HostExportCatalog([]);
         Assert.True(catalog.TryGetNativeValue(FlowValueType.String, out var owner));

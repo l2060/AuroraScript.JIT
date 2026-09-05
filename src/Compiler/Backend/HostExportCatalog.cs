@@ -147,7 +147,7 @@ namespace AuroraScript.Compiler.Backend
                 }
 
                 var export = method.GetCustomAttribute<AuroraExportAttribute>();
-                if (export == null || method.IsDefined(typeof(AuroraNativeReceiverAttribute), inherit: false) ||
+                if (export == null || export.Target == AuroraExportTarget.Instance ||
                     !StringComparer.Ordinal.Equals(
                         GetScriptName(export.ScriptName, method.Name),
                         attribute.MemberName))
