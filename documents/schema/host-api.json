@@ -1358,6 +1358,14 @@
           "kind": "field",
           "signature": "double Number"
         },
+        "Int64": {
+          "kind": "field",
+          "signature": "long Int64"
+        },
+        "UInt64": {
+          "kind": "field",
+          "signature": "ulong UInt64"
+        },
         "Boolean": {
           "kind": "field",
           "signature": "bool Boolean"
@@ -1375,6 +1383,8 @@
           "overloads": [
             "static ScriptDatum FromBoolean(bool value)",
             "static ScriptDatum FromNumber(double value)",
+            "static ScriptDatum FromInt64(long value)",
+            "static ScriptDatum FromUInt64(ulong value)",
             "static ScriptDatum FromString(string value)",
             "static ScriptDatum FromString(StringValue value)",
             "static ScriptDatum FromArray(ScriptArray value)",
@@ -1433,11 +1443,12 @@
     "ValueKind": {
       "kind": "enum",
       "namespace": "AuroraScript.Runtime",
-      "values": ["Null", "Boolean", "Number", "String", "Object", "Array", "Date", "Regex", "Function", "Type", "ClrFunction", "ClrBonding", "Error"],
+      "values": ["Null", "Boolean", "Number", "String", "Object", "Int64", "UInt64", "Array", "Date", "Regex", "Function", "Type", "ClrFunction", "ClrBonding", "Error"],
       "summary": "Storage and hot-path dispatch tags for ScriptDatum. Not the script type-name registry.",
       "notes": [
         "Native objects such as Int8Array, StringBuffer, Path, and HashMap stay Object and report identity through ScriptObject.TypeOfValue / ScriptDatum.TypeOf.",
-        "Do not add enum members for new native types; remaining flag bits are reserved for privileged storage shapes."
+        "Int64 and UInt64 are privileged exact-integer storage tags. typeof reports \"int64\" / \"uint64\".",
+        "Do not add enum members for new native object types; remaining flag bits are reserved for privileged storage shapes."
       ]
     },
     "ObjectFlags": {
@@ -1675,6 +1686,36 @@
         "Of": {
           "kind": "method",
           "signature": "static NumberValue Of(double value)"
+        }
+      }
+    },
+    "Int64Value": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Types",
+      "summary": "Immutable object view of an exact signed 64-bit integer datum.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "signature": "Int64Value(long value)"
+        },
+        "Value": {
+          "kind": "property",
+          "signature": "long Value"
+        }
+      }
+    },
+    "UInt64Value": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Types",
+      "summary": "Immutable object view of an exact unsigned 64-bit integer datum.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "signature": "UInt64Value(ulong value)"
+        },
+        "Value": {
+          "kind": "property",
+          "signature": "ulong Value"
         }
       }
     },
@@ -2371,10 +2412,11 @@
     "AuroraExportValueKind": {
       "kind": "enum",
       "namespace": "AuroraScript.Hosting",
-      "values": ["Void", "Number", "Int32", "Boolean", "String", "Object", "Datum"],
+      "values": ["Void", "Number", "Int32", "Boolean", "String", "Object", "Datum", "Int64", "UInt64"],
       "summary": "Native representations recorded on generated assembly catalog attributes.",
       "notes": [
-        "Void is a CLR void procedure. Direct native calls used as statements do not materialize a result; dynamic or exported calls observe script null."
+        "Void is a CLR void procedure. Direct native calls used as statements do not materialize a result; dynamic or exported calls observe script null.",
+        "Int64 and UInt64 map to CLR long/ulong and script int64/uint64."
       ]
     },
     "AuroraGeneratedExportAttribute": {

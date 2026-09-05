@@ -380,6 +380,31 @@ public sealed class TypedDocumentLanguageFeatureTests
     }
 
     [Fact]
+    public void ConfigNativeMembersAndInt64ValuesHaveSemanticColors()
+    {
+        const string source = """
+            Object {
+                Vec2 vec { x 1000, y 2000 }, // native type
+                numbers { Int64 i64 9007199254740993, UInt64 ui64 9807199254740993 }
+            }
+            """;
+        var service = new AuroraLanguageService(
+            BuiltinApiLoader.LoadFromFile(BuiltinApiCatalogTests.GetRuntimeApiPath()));
+        Assert.Empty(service.GetDiagnostics("config.tdoc", source));
+        var result = service.GetSemanticTokens("config.tdoc", source);
+        foreach (var name in new[] { "Object", "Vec2", "Int64", "UInt64" })
+        {
+            AssertToken(source, result, name, AuroraSemanticTokenTypes.Type);
+        }
+        foreach (var name in new[] { "vec", "numbers", "i64", "ui64", "x", "y" })
+        {
+            AssertToken(source, result, name, AuroraSemanticTokenTypes.MapKey);
+        }
+        AssertToken(source, result, "9007199254740993", AuroraSemanticTokenTypes.Number);
+        AssertToken(source, result, "9807199254740993", AuroraSemanticTokenTypes.Number);
+    }
+
+    [Fact]
     public void StandaloneTDocDiagnosticsCoverBuiltinShapesRangesDatesAndScientificNotation()
     {
         var service = new AuroraLanguageService(

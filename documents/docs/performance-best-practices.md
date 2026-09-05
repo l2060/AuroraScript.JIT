@@ -216,6 +216,13 @@ such as `0xD76AA478u`. These values use the CLR `uint` ABI, `+`, `-`, and `*`
 wrap modulo 2^32, and `>>` is logical. Unsuffixed literals retain the normal
 `Int32`/`Int64` inference rules.
 
+For exact 64-bit values, suffix literals with `L`/`UL` and declare `int64` /
+`uint64` parameters, returns, and packed `Int64Array`/`UInt64Array` storage.
+Same-kind arithmetic stays on the CLR `long`/`ulong` ABI and wraps, including
+integer division. Mixing with `Number` or the other signedness is a double
+round-trip and loses values past the safe-integer range. `Env.ticks()` is the
+zero-allocation monotonic clock for `int64` durations.
+
 ## Console
 
 `console.log` and `console.error` format objects and may allocate strings.

@@ -146,6 +146,44 @@ public sealed class HostExportGeneratorTests
 
 #if NET9_0_OR_GREATER
     [Fact]
+    public async Task Int64ClockExportCallsNativeLongMethodDirectly()
+    {
+        using var workspace = new TestWorkspace();
+        var assemblyPath = Path.Combine(workspace.Root, "clock-export.dll");
+        workspace.WriteSource("main.as", "@module(TEST); export func run() { return Env.ticks(); }");
+        var engine = workspace.CreateEngine(CompilationMode.Persistence, assemblyOut: assemblyPath);
+        await engine.BuildAsync(["main.as"]);
+        using var domain = engine.CreateDomain();
+        Assert.Equal(ValueKind.Int64, TestWorkspace.Execute(domain, "run").Kind);
+
+        using var stream = File.OpenRead(assemblyPath);
+        using var peReader = new PEReader(stream);
+        var reader = peReader.GetMetadataReader();
+        var coreToken = 0;
+        foreach (var handle in reader.MemberReferences)
+        {
+            if (reader.GetString(reader.GetMemberReference(handle).Name) ==
+                nameof(AuroraScript.Runtime.Builtin.EnvSupport.Ticks))
+            {
+                coreToken = MetadataTokens.GetToken(handle);
+                break;
+            }
+        }
+        Assert.NotEqual(0, coreToken);
+        var callsCore = false;
+        foreach (var handle in reader.MethodDefinitions)
+        {
+            var method = reader.GetMethodDefinition(handle);
+            if (reader.GetString(method.Name) == "run$typed")
+            {
+                callsCore = ContainsCall(peReader.GetMethodBody(method.RelativeVirtualAddress).GetILBytes(), coreToken);
+                break;
+            }
+        }
+        Assert.True(callsCore);
+    }
+
+    [Fact]
     public async Task ProvenArgumentsCallGeneratedCoreDirectly()
     {
         using var workspace = new TestWorkspace();

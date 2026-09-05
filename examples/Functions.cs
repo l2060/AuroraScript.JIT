@@ -11,6 +11,7 @@ namespace Examples
 {
     internal class Functions
     {
+
         public static void CREATE_TIMER(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             //Console.WriteLine(context.UserState);

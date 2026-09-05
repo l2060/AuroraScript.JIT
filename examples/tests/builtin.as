@@ -8,6 +8,12 @@ import constant from 'constant';
 func testFileSystem() {
 	var text = (fs.readText('config.tdoc'));
 	console.log(text);
+
+	var i64 = tdoc Int64 9007199254740993L;
+	console.log(i64, typeof i64, Env.ticks());
+
+	var t = TDoc.parse(text);
+	console.log(TDoc.stringify(t));
 }
 
 func testHttpGet() {

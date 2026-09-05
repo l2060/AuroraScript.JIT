@@ -1084,6 +1084,8 @@ namespace AuroraScript.Compiler.Backend.Code
                                 AuroraExportValueKind.Void => FlowValueType.Null,
                                 AuroraExportValueKind.Number => FlowValueType.Number,
                                 AuroraExportValueKind.Int32 => FlowValueType.Int32,
+                                AuroraExportValueKind.Int64 => FlowValueType.Int64,
+                                AuroraExportValueKind.UInt64 => FlowValueType.UInt64,
                                 AuroraExportValueKind.Boolean => FlowValueType.Boolean,
                                 AuroraExportValueKind.String => FlowValueType.String,
                                 AuroraExportValueKind.Object => FlowValueType.Object,
@@ -1453,6 +1455,8 @@ namespace AuroraScript.Compiler.Backend.Code
                     AuroraExportValueKind.Void => FlowValueType.Null,
                     AuroraExportValueKind.Number => FlowValueType.Number,
                     AuroraExportValueKind.Int32 => FlowValueType.Int32,
+                    AuroraExportValueKind.Int64 => FlowValueType.Int64,
+                    AuroraExportValueKind.UInt64 => FlowValueType.UInt64,
                     AuroraExportValueKind.Boolean => FlowValueType.Boolean,
                     AuroraExportValueKind.String => FlowValueType.String,
                     AuroraExportValueKind.Object => FlowValueType.Object,
@@ -2792,7 +2796,8 @@ namespace AuroraScript.Compiler.Backend.Code
                     case UnaryExpression unary:
                         if (unary.Operator == Operator.BitwiseNot)
                         {
-                            return true;
+                            return _expressionTypes.TryGetValue(unary, out var bitwiseType) &&
+                                bitwiseType == FlowValueType.Int32;
                         }
                         if (IsMutation(unary.Operator))
                         {
@@ -2805,12 +2810,14 @@ namespace AuroraScript.Compiler.Backend.Code
                             negated == FlowValueType.Int32;
                     case BinaryExpression binary:
                         return IsIntegerArithmetic(
+                            binary,
                             binary.Operator,
                             binary.Left,
                             binary.Right,
                             integral);
                     case CompoundExpression compound:
                         return IsIntegerArithmetic(
+                            compound,
                             compound.Operator.SimplerOperator,
                             compound.Left,
                             compound.Right,
@@ -2842,6 +2849,7 @@ namespace AuroraScript.Compiler.Backend.Code
             }
 
             private bool IsIntegerArithmetic(
+                Expression expression,
                 Operator op,
                 Expression leftExpression,
                 Expression rightExpression,
@@ -2853,6 +2861,13 @@ namespace AuroraScript.Compiler.Backend.Code
                     op == Operator.LeftShift ||
                     op == Operator.SignedRightShift)
                 {
+                    // Dynamic operands can also produce exact 64-bit results.
+                    // Those results must not be pinned to wrapping Int32 storage.
+                    if (!_expressionTypes.TryGetValue(expression, out var resultType) ||
+                        FlowValueTypeFacts.ContainsExact64(resultType))
+                    {
+                        return false;
+                    }
                     if ((op == Operator.BitwiseAnd ||
                             op == Operator.BitwiseOr ||
                             op == Operator.BitwiseXor) &&
@@ -2864,8 +2879,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     {
                         return false;
                     }
-                    // Script bitwise operators are defined on signed 32-bit
-                    // values, so their result is always in range.
+                    // The remaining bitwise results fit signed 32-bit storage.
                     return true;
                 }
                 // Division is excluded because script division is not integer

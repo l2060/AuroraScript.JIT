@@ -183,6 +183,7 @@ public sealed class BuiltinApiCatalogTests
             ["JSON"] = Path.Combine(runtimeRoot, "Builtin", "JsonSupport.cs"),
             ["TDoc"] = Path.Combine(runtimeRoot, "Builtin", "TDocSupport.cs"),
             ["Math"] = Path.Combine(runtimeRoot, "Builtin", "MathSupport.cs"),
+            ["Env"] = Path.Combine(runtimeRoot, "Builtin", "EnvSupport.cs"),
             ["Conv8"] = Path.Combine(runtimeRoot, "Builtin", "Conv8Support.cs"),
             ["Path"] = Path.Combine(runtimeRoot, "Types", "TypeConstruct", "PathConstructor.cs"),
             ["HotPatch"] = Path.Combine(runtimeRoot, "Builtin", "HotPatchSupport.cs"),
@@ -198,7 +199,7 @@ public sealed class BuiltinApiCatalogTests
         {
             Assert.True(catalog.TryGetGlobal(registration.Key, out var global), $"runtime-api.json is missing global '{registration.Key}'.");
             var source = File.ReadAllText(registration.Value);
-            var memberNames = registration.Key is "console" or "JSON" or "TDoc" or "Math" or "Conv8" or "HotPatch"
+            var memberNames = registration.Key is "console" or "JSON" or "TDoc" or "Math" or "Env" or "Conv8" or "HotPatch"
                 ? ExtractAuroraExportNames(source)
                 : ExtractDefineNames(source, null);
             foreach (var memberName in memberNames)

@@ -788,6 +788,11 @@ Supported Core parameter and return types:
   `System.Int32` ABI. Integer locals and expressions that stay on that ABI
   wrap like CLR `int` for `+`, `-`, `*`, `%`, and increments; they are not
   widened to `double` at overflow.
+- CLR `long` / `ulong` align with script `int64` / `uint64`. Proven direct
+  calls use `System.Int64` / `System.UInt64`. Same-kind script arithmetic
+  wraps like the CLR integer; mixed `int64`/`uint64`/`Number` operands become
+  `double`. Weak adapters still coerce in-range exact integers across those
+  kinds; a declared `Number` parameter rejects an `int64` argument.
 - `void` returns: a CLR `void` method is a procedure. Direct native calls used as statements do not materialize a result. Dynamic, exported, or otherwise value-producing calls observe script `null`, matching script `native func work(...) void`.
 - `ScriptDatum`
 - any `ScriptObject` subclass (`ScriptArray`, packed arrays, `Path`, `Proxy`, `Regex`, `Date`, `HashMap`, `Error`, `ClosureFunction`, wrappers)

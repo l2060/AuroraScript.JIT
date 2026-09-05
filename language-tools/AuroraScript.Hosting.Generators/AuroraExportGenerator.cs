@@ -235,6 +235,8 @@ namespace AuroraScript.Hosting.Generators
                 ReturnKind.Void => "Void",
                 ReturnKind.Number => "Number",
                 ReturnKind.Int32 => "Int32",
+                ReturnKind.Int64 => "Int64",
+                ReturnKind.UInt64 => "UInt64",
                 ReturnKind.Boolean => "Boolean",
                 ReturnKind.String => "String",
                 ReturnKind.Object => "Object",
@@ -568,6 +570,12 @@ namespace AuroraScript.Hosting.Generators
                 case ReturnKind.Boolean:
                     builder.AppendLine("            ScriptDatum.WriteAsBoolean(ref result, coreResult);");
                     break;
+                case ReturnKind.Int64:
+                    builder.AppendLine("            ScriptDatum.WriteAsInt64(ref result, coreResult);");
+                    break;
+                case ReturnKind.UInt64:
+                    builder.AppendLine("            ScriptDatum.WriteAsUInt64(ref result, coreResult);");
+                    break;
                 case ReturnKind.String:
                     builder.AppendLine("            ScriptDatum.WriteAsString(ref result, coreResult);");
                     break;
@@ -683,6 +691,10 @@ namespace AuroraScript.Hosting.Generators
                     return ReturnKind.Number;
                 case SpecialType.System_Int32:
                     return ReturnKind.Int32;
+                case SpecialType.System_Int64:
+                    return ReturnKind.Int64;
+                case SpecialType.System_UInt64:
+                    return ReturnKind.UInt64;
                 case SpecialType.System_Boolean:
                     return ReturnKind.Boolean;
                 case SpecialType.System_String:
@@ -1056,6 +1068,8 @@ namespace AuroraScript.Hosting.Generators
             Void,
             Number,
             Int32,
+            Int64,
+            UInt64,
             Boolean,
             String,
             Object,

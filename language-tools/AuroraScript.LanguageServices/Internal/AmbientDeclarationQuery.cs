@@ -12,7 +12,6 @@ using AuroraScript.LanguageServices.Internal.SymbolIndex;
 using AuroraScript.LanguageServices.Parsing;
 using AuroraScript.LanguageServices.Text;
 using AuroraScript.LanguageServices.Workspace;
-using AuroraScript.Source;
 using AuroraScript.Tokens;
 using System;
 using System.Collections.Generic;
@@ -81,7 +80,7 @@ internal sealed class AmbientContractCatalog
 
     public bool TryGetContainer(string name, out AmbientDeclaration declaration)
     {
-        return _containers.TryGetValue(name, out declaration);
+        return _containers.TryGetValue(name, out declaration!);
     }
 
     public bool TryGetMember(
@@ -413,10 +412,10 @@ internal static class AmbientDeclarationQuery
             callableName = constructorName.Identifier.Value;
         }
         else if (call.Target is GetPropertyExpression
-            {
-                Object: var receiver,
-                Property: NameExpression member
-            })
+        {
+            Object: var receiver,
+            Property: NameExpression member
+        })
         {
             var owner = receiver as NameExpression;
             var typeResolver = module == null

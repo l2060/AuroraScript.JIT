@@ -37,7 +37,8 @@ export func testTypedDocument() {
 		readonly name 'Hanks',
 		Date Birthday '2026-08-22 12:34:56',
 		StringBuffer buff 'Hello ',
-		Vec2 vec {x 1000, y 2000, ext ['this', 'extend', 'members', 3000], o { k 1.1, p 2.2, i 3.3 } }
+		Vec2 vec {x 1000, y 2000, ext ['this', 'extend', 'members', 3000], o { k 1.1, p 2.2, i 3.3 } },
+		numbers { Int64 i64 9007199254740993, UInt64 ui64 9807199254740993 }
 	};
 	doc.buff.append('Hanks');
 	console.log(JSON.stringify(doc));

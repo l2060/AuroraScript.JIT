@@ -219,6 +219,8 @@ namespace AuroraScript.Compiler.Backend
                 AuroraExportValueKind.Void => typeof(void),
                 AuroraExportValueKind.Number => typeof(double),
                 AuroraExportValueKind.Int32 => typeof(int),
+                AuroraExportValueKind.Int64 => typeof(long),
+                AuroraExportValueKind.UInt64 => typeof(ulong),
                 AuroraExportValueKind.Boolean => typeof(bool),
                 AuroraExportValueKind.String => typeof(string),
                 AuroraExportValueKind.Object => typeof(ScriptObject),

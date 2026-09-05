@@ -2516,7 +2516,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 EmitInt32Value(expression.Index);
                 _il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetElementIndex);
             }
-            else if (FlowValueTypeFacts.IsNumeric(_code.GetExpressionType(expression.Index)))
+            else if (FlowValueTypeFacts.IsNumberCompatible(_code.GetExpressionType(expression.Index)))
             {
                 EmitNumber(expression.Index);
                 _il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetElementNumber);
@@ -2570,7 +2570,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             EmitDatum(expression.Object);
             var nativeIndex = IsNativeIndex(expression.Index);
             var numberIndex = !nativeIndex &&
-                FlowValueTypeFacts.IsNumeric(_code.GetExpressionType(expression.Index));
+                FlowValueTypeFacts.IsNumberCompatible(_code.GetExpressionType(expression.Index));
             if (nativeIndex) EmitInt32Value(expression.Index);
             else if (numberIndex) EmitNumber(expression.Index);
             else EmitDatum(expression.Index);
@@ -4182,6 +4182,8 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 AuroraExportValueKind.Number => StackValueKind.Number,
                 AuroraExportValueKind.Int32 => StackValueKind.Int32,
+                AuroraExportValueKind.Int64 => StackValueKind.Int64,
+                AuroraExportValueKind.UInt64 => StackValueKind.UInt64,
                 AuroraExportValueKind.Boolean => StackValueKind.Boolean,
                 AuroraExportValueKind.String => StackValueKind.String,
                 AuroraExportValueKind.Object =>
@@ -4604,7 +4606,14 @@ namespace AuroraScript.Compiler.Backend.Emission
             switch (literal.Token)
             {
                 case NumberToken number:
-                    var type = _code.GetExpressionType(literal);
+                    // A callee's folded defaults have no flow entry in the caller.
+                    // Exact integer suffixes still determine their primitive kind.
+                    var type = number.Suffix switch
+                    {
+                        NumericLiteralSuffix.Int64 => FlowValueType.Int64,
+                        NumericLiteralSuffix.UInt64 => FlowValueType.UInt64,
+                        _ => _code.GetExpressionType(literal)
+                    };
                     if (type == FlowValueType.Int32)
                     {
                         EmitInt32((int)number.NumberValue);
@@ -5752,7 +5761,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 var receiver = DeclareLocal(typeof(ScriptDatum));
                 var nativeIndex = IsNativeIndex(element.Index);
                 var numberIndex = !nativeIndex &&
-                    FlowValueTypeFacts.IsNumeric(_code.GetExpressionType(element.Index));
+                    FlowValueTypeFacts.IsNumberCompatible(_code.GetExpressionType(element.Index));
                 var index = DeclareLocal(nativeIndex
                     ? typeof(int)
                     : numberIndex ? typeof(double) : typeof(ScriptDatum));
@@ -6870,7 +6879,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 var receiver = DeclareLocal(typeof(ScriptDatum));
                 var nativeIndex = IsNativeIndex(element.Index);
                 var numberIndex = !nativeIndex &&
-                    FlowValueTypeFacts.IsNumeric(_code.GetExpressionType(element.Index));
+                    FlowValueTypeFacts.IsNumberCompatible(_code.GetExpressionType(element.Index));
                 var index = DeclareLocal(nativeIndex
                     ? typeof(int)
                     : numberIndex ? typeof(double) : typeof(ScriptDatum));
@@ -7165,7 +7174,8 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
             switch (expression)
             {
-                case LiteralExpression literal when literal.Token is NumberToken number:
+                case LiteralExpression literal when literal.Token is NumberToken number &&
+                    number.Suffix is not (NumericLiteralSuffix.Int64 or NumericLiteralSuffix.UInt64):
                     value = number.NumberValue;
                     return true;
                 case NameExpression name:

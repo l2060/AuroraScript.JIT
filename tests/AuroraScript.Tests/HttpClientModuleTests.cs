@@ -72,6 +72,7 @@ public sealed class HttpClientModuleTests
                 headers['X-Test'] = 'sync';
                 var posted = http.post(baseUrl + 'post', 'payload', {
                     headers: headers,
+                    responseHeaders: true,
                     contentType: 'text/custom; charset=utf-8',
                     timeout: 5000
                 });
@@ -96,7 +97,8 @@ public sealed class HttpClientModuleTests
                     posted.url,
                     stored.status,
                     stored.ok,
-                    stored.body
+                    stored.body,
+                    stored.headers
                 ];
             }
             """);
@@ -122,7 +124,8 @@ public sealed class HttpClientModuleTests
                 new Uri(server.BaseAddress, "post").ToString(),
                 404,
                 false,
-                "missing"
+                "missing",
+                null
             },
             result);
 
@@ -140,7 +143,9 @@ public sealed class HttpClientModuleTests
     [Theory]
     [InlineData(CompilationMode.Dynamic)]
     [InlineData(CompilationMode.OnlyRun)]
+#if NET9_0_OR_GREATER
     [InlineData(CompilationMode.Persistence)]
+#endif
     public async Task CallbackApiRunsDetachedAndUsesErrorFirstResultConvention(CompilationMode mode)
     {
         await using var server = new LoopbackHttpServer(
@@ -160,7 +165,7 @@ public sealed class HttpClientModuleTests
             export func begin(url) {
                 var headers = {};
                 headers['X-Test'] = 'callback';
-                return http.getAsync(url, { headers: headers, timeout: 5000 }, (error, response) => {
+                return http.getAsync(url, { headers: headers, responseHeaders: true, timeout: 5000 }, (error, response) => {
                     if (error != null) {
                         HOST_COMPLETE('error:' + error.message);
                         return;

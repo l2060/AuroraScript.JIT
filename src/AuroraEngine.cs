@@ -130,6 +130,7 @@ namespace AuroraScript
             TDocSupport.Register(Global);
             MathSupport.Register(Global);
             Conv8Support.Register(Global);
+            EnvSupport.Register(Global);
             HotPatchSupport.Register(Global);
             RegisterNativeTypes(Options.Compiler.NativeTypes);
         }

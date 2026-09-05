@@ -5,7 +5,6 @@ declare func CREATE_TIMER(timer);
 declare func START_TIMER(timer);
 declare func STOP_TIMER(timer);
 declare func DELETE_TIMER(timer);
-
 declare func GIVE(item, count);
 declare func INPUT_NUMBER(title, label, type, callback);
 
