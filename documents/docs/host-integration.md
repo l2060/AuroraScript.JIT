@@ -717,6 +717,14 @@ the exported CLR members. Dynamic inputs retain the previous weak-conversion rul
 through compatibility adapters.
 Native `int64`/`uint64` type annotations remain lowercase.
 
+`Path.of` and `path.reset` expose fixed string Core shapes for up to three arguments;
+`path.append` exposes one-, two-, and three-segment `AppendCore` overloads. Common
+calls therefore retain the concrete `ScriptPathValue` and chain through native calls.
+Their explicit adapters preserve the public variadic behavior
+for additional segments, Path-valued segments, spread arguments, and other dynamic
+shapes. A misspelled or unknown member such as `path.appent(...)` still uses ordinary
+dynamic property dispatch.
+
 ### Native instances
 
 The same `[AuroraNativeType]` supports fixed-shape native instances. A type with
@@ -943,7 +951,10 @@ Optional implicit prefixes, in this order only:
 1. `ScriptContext ctx` — not a script argument.
 2. `ScriptObject thisObject` — the receiver; the parameter name must be `thisObject`.
 
-Trailing C# default values are allowed. `params double[]` and `params ScriptDatum[]` are allowed on Datum adapters only.
+Trailing C# default values are allowed. `params double[]` and `params ScriptDatum[]`
+are allowed on Datum adapters only. An object-backed NativeType may put the broad
+behavior in an explicit `DynamicAdapter` while exporting a fixed, directly callable
+Core signature, as the variadic Path helpers do.
 
 Public static `readonly double` fields marked `[AuroraExport("PI")]` become script constants. Unshadowed reads emit `ldsfld`, not a boxed `ldc.r8`.
 

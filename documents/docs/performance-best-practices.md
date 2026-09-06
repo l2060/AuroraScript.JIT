@@ -92,6 +92,12 @@ through `ScriptDatum`. At dynamic boundaries, ordinary exported instance methods
 resolve from the NativeType's generated frozen prototype, while native fields
 and getter/setter exports use generated property-access overrides.
 
+The common string-only forms of `Path.of`, `path.append`, and `path.reset` with up
+to three arguments bind directly and preserve `ScriptPathValue` across the chain;
+`append` selects fixed one-, two-, or three-segment Core overloads.
+Additional segments, Path-valued segments, spreads, and unknown member names use
+the dynamic adapter.
+
 A module-level `context player as Vec2;` is the same proof for
 `ScriptContext.UserState`. Each used context name is loaded once per function
 into its own typed local. Several names in one function are independent caches

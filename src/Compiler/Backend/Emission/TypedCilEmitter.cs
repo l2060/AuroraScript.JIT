@@ -4144,7 +4144,8 @@ namespace AuroraScript.Compiler.Backend.Emission
                 _session.CompileSession.HostExports.TryGetValueFactory(_code.GetName(name).Name, out factory) &&
                 (!factory.TakesContext || HasContextArgument) &&
                 CanBindNativeArguments(call, factory.ParameterKinds, factory.RequiredScriptParameterCount,
-                    factory.Method.GetParameters(), factory.TakesContext ? 1 : 0);
+                    factory.Method.GetParameters(), factory.TakesContext ? 1 : 0,
+                    factory.UseDynamicForExtraArguments);
         }
 
         private bool TryGetHostExportCall(
@@ -4164,7 +4165,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                     binding.Name,
                     memberName,
                     out descriptor) ||
-                call.Arguments.Count < descriptor.RequiredScriptParameterCount)
+                call.Arguments.Count < descriptor.RequiredScriptParameterCount ||
+                descriptor.UseDynamicForExtraArguments &&
+                    call.Arguments.Count > descriptor.ParameterKinds.Length)
             {
                 descriptor = null;
                 return false;

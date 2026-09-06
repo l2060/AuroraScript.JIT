@@ -196,10 +196,10 @@ namespace AuroraScript.Hosting.Generators
                     continue;
                 }
 
-                if (exportAttribute.NamedArguments.Any(pair => pair.Key is "DynamicAdapter" or "RequiresIndexProof"))
+                if (exportAttribute.NamedArguments.Any(pair => pair.Key == "RequiresIndexProof"))
                 {
                     diagnostics.Add(Diagnostic.Create(InvalidExport, GetLocation(member),
-                        "Value-receiver export options require AuroraNativeType.NativeReceiverType and AuroraExport.Target.Instance."));
+                        "RequiresIndexProof requires AuroraNativeType.NativeReceiverType and AuroraExport.Target.Instance."));
                     continue;
                 }
 
@@ -226,15 +226,23 @@ namespace AuroraScript.Hosting.Generators
                         methodSymbol,
                         exportAttribute,
                         adapterPrefix: isGetter ? "__Get_" : isSetter ? "__Set_" : "");
-                    if (export != null && ConfigureNativeAccessorExport(export, isGetter, isSetter))
+                    if (export != null && ConfigureNativeAccessorExport(export, isGetter, isSetter) &&
+                        ConfigureObjectDynamicAdapter(typeSymbol, export, exportAttribute))
                     {
                         var sameName = exports.Where(candidate =>
                             candidate.ScriptName == export.ScriptName).ToList();
                         var canPair = sameName.Count == 1 &&
                             (sameName[0].IsGetter && export.IsSetter ||
                                 sameName[0].IsSetter && export.IsGetter);
-                        if ((exportedNames.Add(export.ScriptName) || canPair) &&
-                            adapterNames.Add(export.AdapterMethodName) &&
+                        var canOverload = !export.IsGetter && !export.IsSetter &&
+                            export.DynamicAdapter != null && sameName.Count != 0 &&
+                            sameName.All(candidate =>
+                                !candidate.IsGetter && !candidate.IsSetter &&
+                                candidate.DynamicAdapter == export.DynamicAdapter &&
+                                !candidate.Parameters.Select(parameter => parameter.Kind)
+                                    .SequenceEqual(export.Parameters.Select(parameter => parameter.Kind)));
+                        if ((exportedNames.Add(export.ScriptName) || canPair || canOverload) &&
+                            (export.DynamicAdapter != null || adapterNames.Add(export.AdapterMethodName)) &&
                             !fields.Any(field => field.ScriptName == export.ScriptName))
                         {
                             exports.Add(export);
@@ -297,7 +305,8 @@ namespace AuroraScript.Hosting.Generators
                         exportAttribute,
                         adapterPrefix: "__Static_");
                     if (export != null && !exportAttribute.NamedArguments.Any(
-                        pair => pair.Key is "IsGetter" or "IsSetter" or "RequiresIndexProof" or "DynamicAdapter"))
+                        pair => pair.Key is "IsGetter" or "IsSetter" or "RequiresIndexProof") &&
+                        ConfigureObjectDynamicAdapter(typeSymbol, export, exportAttribute))
                     {
                         if (staticExportedNames.Add(export.ScriptName) &&
                             adapterNames.Add(export.AdapterMethodName))
@@ -703,6 +712,40 @@ namespace AuroraScript.Hosting.Generators
                     export.ReturnKind == ReturnKind.Void;
         }
 
+        private static bool ConfigureObjectDynamicAdapter(
+            INamedTypeSymbol type,
+            ExportModel export,
+            AttributeData attribute)
+        {
+            export.DynamicAdapter = attribute.NamedArguments
+                .FirstOrDefault(pair => pair.Key == "DynamicAdapter").Value.Value as string;
+            if (export.DynamicAdapter == null)
+            {
+                return true;
+            }
+            if (export.IsGetter || export.IsSetter || string.IsNullOrWhiteSpace(export.DynamicAdapter))
+            {
+                return false;
+            }
+            foreach (var adapter in type.GetMembers(export.DynamicAdapter).OfType<IMethodSymbol>())
+            {
+                var parameters = adapter.Parameters;
+                if (adapter.IsStatic && adapter.ReturnsVoid && adapter.TypeParameters.Length == 0 &&
+                    parameters.Length == 4 && IsScriptContext(parameters[0].Type) &&
+                    parameters[0].RefKind == RefKind.None &&
+                    IsType(parameters[1].Type, "AuroraScript.Runtime.Types.ScriptObject") &&
+                    parameters[1].RefKind == RefKind.None &&
+                    IsType(parameters[2].Type, "System.Span<AuroraScript.Runtime.ScriptDatum>") &&
+                    parameters[2].RefKind == RefKind.None &&
+                    IsType(parameters[3].Type, "AuroraScript.Runtime.ScriptDatum") &&
+                    parameters[3].RefKind == RefKind.Ref)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         private static void ExecuteNativeObjects(
             SourceProductionContext context,
             ImmutableArray<NativeObjectModel?> models)
@@ -826,6 +869,10 @@ namespace AuroraScript.Hosting.Generators
                             builder.Append(", ReceiverType = typeof(").Append(export.ReceiverType).Append(')');
                             builder.Append(", RequiresIndexProof = ").Append(export.RequiresIndexProof ? "true" : "false");
                         }
+                        if (export.DynamicAdapter != null)
+                        {
+                            builder.Append(", UseDynamicForExtraArguments = true");
+                        }
                         builder.AppendLine(")]");
                         count++;
                     }
@@ -852,6 +899,10 @@ namespace AuroraScript.Hosting.Generators
                     builder.Append(", ");
                     builder.Append(export.TakesContext ? "true" : "false").Append(", ");
                     builder.Append(export.TakesThisObject ? "true" : "false");
+                    if (export.DynamicAdapter != null)
+                    {
+                        builder.Append(", UseDynamicForExtraArguments = true");
+                    }
                     builder.AppendLine(")]");
                     count++;
                 }
@@ -1012,7 +1063,7 @@ namespace AuroraScript.Hosting.Generators
                 foreach (var export in prototypeExports)
                 {
                     builder.Append("            prototype.Define(\"").Append(EscapeString(export.ScriptName))
-                        .Append("\", ScriptDatum.FromBonding(").Append(export.AdapterMethodName)
+                        .Append("\", ScriptDatum.FromBonding(").Append(export.DynamicAdapter ?? export.AdapterMethodName)
                         .AppendLine("), writeable: false, enumerable: false);");
                 }
                 builder.AppendLine("        }");
@@ -1073,6 +1124,10 @@ namespace AuroraScript.Hosting.Generators
 
             foreach (var export in model.Exports)
             {
+                if (export.DynamicAdapter != null)
+                {
+                    continue;
+                }
                 builder.AppendLine("        public static void " + export.AdapterMethodName + "(");
                 builder.AppendLine("            ScriptContext ctx,");
                 builder.AppendLine("            ScriptObject thisObject,");
@@ -1268,7 +1323,9 @@ namespace AuroraScript.Hosting.Generators
                     .Append(constant.FieldName)
                     .AppendLine("), writeable: false, enumerable: false);");
             }
-            foreach (var export in model.StaticExports)
+            foreach (var export in model.StaticExports
+                .GroupBy(static export => export.ScriptName)
+                .Select(static group => group.First()))
             {
                 builder.Append("                Define(\"")
                     .Append(EscapeString(export.ScriptName))

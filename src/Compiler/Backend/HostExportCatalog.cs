@@ -110,7 +110,8 @@ namespace AuroraScript.Compiler.Backend
                     attribute.ReturnKind,
                     (AuroraExportValueKind[])attribute.ParameterKinds.Clone(),
                     attribute.TakesContext,
-                    attribute.TakesThisObject);
+                    attribute.TakesThisObject,
+                    attribute.UseDynamicForExtraArguments);
                 var key = new ExportKey(
                     attribute.GlobalName,
                     attribute.MemberName);
@@ -248,13 +249,15 @@ namespace AuroraScript.Compiler.Backend
             AuroraExportValueKind returnKind,
             AuroraExportValueKind[] parameterKinds,
             bool takesContext = false,
-            bool takesThisObject = false)
+            bool takesThisObject = false,
+            bool useDynamicForExtraArguments = false)
         {
             Method = method ?? throw new ArgumentNullException(nameof(method));
             ReturnKind = returnKind;
             ParameterKinds = parameterKinds ?? throw new ArgumentNullException(nameof(parameterKinds));
             TakesContext = takesContext;
             TakesThisObject = takesThisObject;
+            UseDynamicForExtraArguments = useDynamicForExtraArguments;
             RequiredScriptParameterCount = CountRequiredScriptParameters(
                 method,
                 takesContext,
@@ -266,6 +269,7 @@ namespace AuroraScript.Compiler.Backend
         public AuroraExportValueKind[] ParameterKinds { get; }
         public bool TakesContext { get; }
         public bool TakesThisObject { get; }
+        public bool UseDynamicForExtraArguments { get; }
         public int RequiredScriptParameterCount { get; }
 
         public Type GetScriptParameterType(int index)

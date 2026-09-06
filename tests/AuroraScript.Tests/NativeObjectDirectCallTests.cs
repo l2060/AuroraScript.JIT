@@ -1,4 +1,5 @@
 using AuroraScript.Runtime;
+using AuroraScript.Runtime.Types;
 using AuroraScript.Tests.Host;
 using AuroraScript.Tests.Infrastructure;
 using System;
@@ -352,6 +353,89 @@ public sealed class NativeObjectDirectCallTests
         Assert.DoesNotContain(
             FindVec2MemberTokens(reader, "LengthCore"),
             token => ContainsInstruction(dynamicIl, 0x6F, token));
+    }
+
+    [Fact]
+    public async Task PathFactoriesAndCommonVariadicShapesBindDirectly()
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource(
+            "main.as",
+            """
+            @module(TEST);
+            export native func direct() String {
+                var first = Path.of('media', 'input.mp4');
+                var path = Path.of('a', 'b', 'c');
+                path.append('data');
+                path.append('two', 'segments');
+                path.append('three', 'more', 'segments');
+                return path.toString();
+            }
+            export native func misspelled() void {
+                var path = Path.of('a');
+                path.appent('b');
+            }
+            export native func variadicFactory() String {
+                return Path.of('a', 'b', 'c', 'd').toString();
+            }
+            export native func variadicAppend() String {
+                var path = Path.of('a');
+                path.append('b', 'c', 'd', 'e');
+                return path.toString();
+            }
+            """);
+        var assemblyPath = Path.Combine(workspace.Root, "path-output.dll");
+        var engine = workspace.CreateEngine(
+            CompilationMode.Persistence,
+            assemblyOut: assemblyPath);
+        await engine.BuildAsync(["main.as"]);
+        using var domain = engine.CreateDomain();
+        ScriptAssert.Equal(
+            "a/b/c/data/two/segments/three/more/segments",
+            TestWorkspace.Execute(domain, "direct"));
+        ScriptAssert.Equal("a/b/c/d", TestWorkspace.Execute(domain, "variadicFactory"));
+        ScriptAssert.Equal("a/b/c/d/e", TestWorkspace.Execute(domain, "variadicAppend"));
+
+        using var stream = File.OpenRead(assemblyPath);
+        using var peReader = new PEReader(stream);
+        var reader = peReader.GetMetadataReader();
+        var direct = FindMethod(reader, "direct$native");
+        var misspelled = FindMethod(reader, "misspelled$native");
+        var variadicFactory = FindMethod(reader, "variadicFactory$native");
+        var variadicAppend = FindMethod(reader, "variadicAppend$native");
+        var directIl = peReader.GetMethodBody(
+            reader.GetMethodDefinition(direct).RelativeVirtualAddress).GetILBytes();
+        var misspelledIl = peReader.GetMethodBody(
+            reader.GetMethodDefinition(misspelled).RelativeVirtualAddress).GetILBytes();
+        var variadicFactoryIl = peReader.GetMethodBody(
+            reader.GetMethodDefinition(variadicFactory).RelativeVirtualAddress).GetILBytes();
+        var variadicAppendIl = peReader.GetMethodBody(
+            reader.GetMethodDefinition(variadicAppend).RelativeVirtualAddress).GetILBytes();
+
+        Assert.Contains(
+            FindMemberTokens(reader, nameof(ScriptPathValue), nameof(ScriptPathValue.OfCore)),
+            token => ContainsInstruction(directIl, 0x28, token));
+        Assert.Contains(
+            FindMemberTokens(reader, nameof(ScriptPathValue), nameof(ScriptPathValue.AppendCore)),
+            token => ContainsInstruction(directIl, 0x6F, token));
+        Assert.Contains(
+            FindMemberTokens(reader, nameof(ScriptPathValue), nameof(ScriptPathValue.ToStringCore)),
+            token => ContainsInstruction(directIl, 0x6F, token));
+        AssertNoCallsTo(reader, directIl, nameof(CallOps), nameof(CallOps.InvokeProperty1));
+        AssertNoCallsTo(reader, directIl, nameof(CallOps), nameof(CallOps.InvokeProperty2));
+        AssertNoCallsTo(reader, directIl, nameof(CallOps), nameof(CallOps.InvokeProperty3));
+        Assert.Contains(
+            FindMemberTokens(reader, nameof(CallOps), nameof(CallOps.InvokeProperty1)),
+            token => ContainsInstruction(misspelledIl, 0x28, token));
+        Assert.Contains(
+            FindMemberTokens(reader, nameof(CallOps), nameof(CallOps.InvokeProperty4)),
+            token => ContainsInstruction(variadicFactoryIl, 0x28, token));
+        Assert.Contains(
+            FindMemberTokens(reader, nameof(CallOps), nameof(CallOps.InvokeProperty4)),
+            token => ContainsInstruction(variadicAppendIl, 0x28, token));
+        Assert.DoesNotContain(
+            FindMemberTokens(reader, nameof(ScriptPathValue), nameof(ScriptPathValue.OfCore)),
+            token => ContainsInstruction(variadicFactoryIl, 0x28, token));
     }
 
     private static MethodDefinitionHandle FindMethod(MetadataReader reader, string name)

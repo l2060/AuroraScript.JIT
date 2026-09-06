@@ -51,20 +51,27 @@ namespace AuroraScript.Compiler.Backend.Emission
             method = null;
             owner = _code.GetNativeObjectType(receiver);
             if (owner == null ||
-                !owner.TryGetMethod(memberName, out var candidate) ||
-                (candidate.TakesContext && !HasContextArgument) ||
-                !CanBindNativeArguments(
-                    call,
-                    candidate.ParameterKinds,
-                    candidate.RequiredScriptParameterCount,
-                    candidate.Method.GetParameters(),
-                    candidate.TakesContext ? 1 : 0))
+                !owner.TryGetMethod(memberName, out var candidate))
             {
                 return false;
             }
 
-            method = candidate;
-            return true;
+            for (; candidate != null; candidate = candidate.NextOverload)
+            {
+                if ((!candidate.TakesContext || HasContextArgument) &&
+                    CanBindNativeArguments(
+                        call,
+                        candidate.ParameterKinds,
+                        candidate.RequiredScriptParameterCount,
+                        candidate.Method.GetParameters(),
+                        candidate.TakesContext ? 1 : 0,
+                        candidate.UseDynamicForExtraArguments))
+                {
+                    method = candidate;
+                    return true;
+                }
+            }
+            return false;
         }
 
         private bool TryGetNativeGetter(
@@ -135,9 +142,11 @@ namespace AuroraScript.Compiler.Backend.Emission
             AuroraExportValueKind[] parameterKinds,
             int requiredCount,
             System.Reflection.ParameterInfo[] clrParameters,
-            int prefix)
+            int prefix,
+            bool useDynamicForExtraArguments = false)
         {
-            if (HasSpread(call.Arguments) || call.Arguments.Count < requiredCount)
+            if (HasSpread(call.Arguments) || call.Arguments.Count < requiredCount ||
+                useDynamicForExtraArguments && call.Arguments.Count > parameterKinds.Length)
             {
                 return false;
             }

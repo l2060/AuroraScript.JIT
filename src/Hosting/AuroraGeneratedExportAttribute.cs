@@ -59,6 +59,9 @@ namespace AuroraScript.Hosting
         /// that is not a script argument.
         /// </summary>
         public bool TakesThisObject { get; }
+
+        /// <summary>True when surplus script arguments must use the dynamic adapter.</summary>
+        public bool UseDynamicForExtraArguments { get; set; }
     }
 
     /// <summary>

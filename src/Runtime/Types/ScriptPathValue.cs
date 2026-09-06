@@ -51,6 +51,24 @@ namespace AuroraScript.Runtime.Types
             _value = AppendPathText(Value, segments, segmentStart);
         }
 
+        private void Append(string segment)
+        {
+            if (segment == null)
+            {
+                return;
+            }
+            var builder = new ScriptPath.PathTextBuilder(Value);
+            try
+            {
+                builder.Append(segment);
+                _value = builder.ToStringAndReturn();
+            }
+            finally
+            {
+                builder.Dispose();
+            }
+        }
+
         internal void ChangeExt(string extension)
         {
             _value = ScriptPath.EnsureExtensionNormalizedText(Value, extension);
@@ -193,8 +211,35 @@ namespace AuroraScript.Runtime.Types
         [AuroraExport("toString")]
         public string ToStringCore() => Value;
 
-        /// <summary>Appends zero or more segments to this path.</summary>
-        [AuroraExport("append")]
+        /// <summary>Appends one segment to this path.</summary>
+        [AuroraExport("append", DynamicAdapter = nameof(APPEND))]
+        public ScriptPathValue AppendCore(string segment0)
+        {
+            Append(segment0);
+            return this;
+        }
+
+        /// <summary>Appends two segments to this path.</summary>
+        [AuroraExport("append", DynamicAdapter = nameof(APPEND))]
+        public ScriptPathValue AppendCore(string segment0, string segment1)
+        {
+            Append(segment0);
+            Append(segment1);
+            return this;
+        }
+
+        /// <summary>Appends three segments to this path.</summary>
+        [AuroraExport("append", DynamicAdapter = nameof(APPEND))]
+        public ScriptPathValue AppendCore(string segment0, string segment1, string segment2)
+        {
+            Append(segment0);
+            Append(segment1);
+            Append(segment2);
+            return this;
+        }
+
+        /// <summary>Provides the dynamic fallback for other argument shapes.</summary>
+        [AuroraExport("append", DynamicAdapter = nameof(APPEND))]
         public ScriptPathValue AppendCore(params ScriptDatum[] segments)
         {
             Append(segments);
@@ -202,11 +247,15 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary>Replaces this path with a new root and optional segments.</summary>
-        [AuroraExport("reset")]
-        public ScriptPathValue ResetCore(params ScriptDatum[] segments)
+        [AuroraExport("reset", DynamicAdapter = nameof(RESET))]
+        public ScriptPathValue ResetCore(
+            string root = null,
+            string segment1 = null,
+            string segment2 = null)
         {
-            var values = segments.AsSpan();
-            Reset(GetPathString(values, 0), values, 1);
+            _value = ScriptPath.NormalizeText(root ?? string.Empty);
+            Append(segment1);
+            Append(segment2);
             return this;
         }
 
@@ -239,8 +288,62 @@ namespace AuroraScript.Runtime.Types
         public ScriptPathValue CloneCore() => Clone();
 
         /// <summary>Creates a path from a root and optional segments.</summary>
-        [AuroraExport("of")]
-        public static ScriptPathValue OfCore(params ScriptDatum[] segments) => new ScriptPathValue(segments);
+        [AuroraExport("of", DynamicAdapter = nameof(OF))]
+        public static ScriptPathValue OfCore(
+            string root = null,
+            string segment1 = null,
+            string segment2 = null)
+        {
+            var result = new ScriptPathValue(root ?? string.Empty);
+            result.Append(segment1);
+            result.Append(segment2);
+            return result;
+        }
+
+        /// <summary>Dynamic adapter for variadic Path.of calls.</summary>
+        public static void OF(
+            ScriptContext context,
+            ScriptObject thisObject,
+            Span<ScriptDatum> args,
+            ref ScriptDatum result)
+        {
+            result = ScriptDatum.FromObject(new ScriptPathValue(
+                GetPathString(args, 0),
+                args,
+                1));
+        }
+
+        /// <summary>Dynamic adapter for variadic Path append calls.</summary>
+        public static void APPEND(
+            ScriptContext context,
+            ScriptObject thisObject,
+            Span<ScriptDatum> args,
+            ref ScriptDatum result)
+        {
+            if (thisObject is not ScriptPathValue path)
+            {
+                result = ScriptDatum.Null;
+                return;
+            }
+            path.Append(args);
+            result = ScriptDatum.FromObject(path);
+        }
+
+        /// <summary>Dynamic adapter for variadic Path reset calls.</summary>
+        public static void RESET(
+            ScriptContext context,
+            ScriptObject thisObject,
+            Span<ScriptDatum> args,
+            ref ScriptDatum result)
+        {
+            if (thisObject is not ScriptPathValue path)
+            {
+                result = ScriptDatum.Null;
+                return;
+            }
+            path.Reset(GetPathString(args, 0), args, 1);
+            result = ScriptDatum.FromObject(path);
+        }
 
         /// <summary>Returns whether the supplied value is a Path.</summary>
         [AuroraExport("isPath")]

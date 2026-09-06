@@ -150,5 +150,8 @@ namespace AuroraScript.Hosting
 
         /// <summary>True when binding requires an in-bounds receiver index proof.</summary>
         public bool RequiresIndexProof { get; set; }
+
+        /// <summary>True when surplus script arguments must use the dynamic adapter.</summary>
+        public bool UseDynamicForExtraArguments { get; set; }
     }
 }

@@ -2381,7 +2381,8 @@
         },
         "DynamicAdapter": {
           "kind": "property",
-          "signature": "string DynamicAdapter"
+          "signature": "string DynamicAdapter",
+          "summary": "Optional compatible Datum callback used for dynamic calls while the exported fixed Core remains available to direct-call compilation."
         },
         "IsGetter": {
           "kind": "property",
@@ -2454,6 +2455,11 @@
         "Constructor": {
           "kind": "constructor",
           "signature": "AuroraGeneratedExportAttribute(string globalName, string memberName, Type declaringType, string methodName, AuroraExportValueKind returnKind, AuroraExportValueKind[] parameterKinds, bool takesContext = false, bool takesThisObject = false)"
+        },
+        "UseDynamicForExtraArguments": {
+          "kind": "property",
+          "signature": "bool UseDynamicForExtraArguments",
+          "summary": "True when calls with more arguments than the fixed Core signature must remain on the dynamic adapter."
         }
       }
     },

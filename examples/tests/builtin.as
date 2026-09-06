@@ -86,3 +86,14 @@ native func packetArrayWork(Float64Array array) void{
 	}
 
 }
+native func log(String text) void{
+	console.log(text);
+}
+
+native func testPath() void{
+	var p1 = Path.of('media', 'input.mp4');
+	var path = Path.of('a','b','c');
+	path.append('data');
+	path.appent(p1);
+	log(path);
+}

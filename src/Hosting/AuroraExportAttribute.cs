@@ -39,7 +39,7 @@ namespace AuroraScript.Hosting
         /// <summary>Controls whether the export belongs to script instances or the script type object.</summary>
         public AuroraExportTarget Target { get; set; } = AuroraExportTarget.Auto;
 
-        /// <summary>Optional existing dynamic adapter for a primitive instance or static member. When omitted,
+        /// <summary>Optional existing dynamic adapter for an exported instance or static member. When omitted,
         /// the generator creates the adapter using the usual parameter coercion and failure rules.
         /// Overloads and proof-dependent signatures require an explicit shared compatibility adapter.</summary>
         public string DynamicAdapter { get; set; }

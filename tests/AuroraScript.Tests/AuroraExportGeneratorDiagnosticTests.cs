@@ -545,6 +545,53 @@ public sealed class AuroraExportGeneratorDiagnosticTests
     }
 
     [Fact]
+    public void ObjectNativeTypeCanUseExplicitDynamicAdaptersForDirectCores()
+    {
+        var updated = RunCore(
+            """
+            using System;
+            using AuroraScript.Hosting;
+            using AuroraScript.Runtime;
+            using AuroraScript.Runtime.Types;
+            namespace Test;
+
+            [AuroraNativeType("Widget")]
+            public sealed partial class Widget : ScriptObject
+            {
+                [AuroraExport("format", DynamicAdapter = nameof(FORMAT))]
+                public string FormatCore(string value) => value;
+
+                [AuroraExport("format", DynamicAdapter = nameof(FORMAT))]
+                public string FormatCore(string left, string right) => left + right;
+
+                [AuroraExport("format", DynamicAdapter = nameof(FORMAT))]
+                public string FormatCore(params ScriptDatum[] values) => string.Empty;
+
+                [AuroraExport("create", DynamicAdapter = nameof(CREATE))]
+                public static Widget CreateCore(string value = null) => new Widget();
+
+                public static void FORMAT(ScriptContext context, ScriptObject receiver,
+                    Span<ScriptDatum> args, ref ScriptDatum result) { }
+                public static void CREATE(ScriptContext context, ScriptObject receiver,
+                    Span<ScriptDatum> args, ref ScriptDatum result) { }
+            }
+            """,
+            out var diagnostics);
+
+        Assert.DoesNotContain(diagnostics, diagnostic =>
+            diagnostic.Severity == DiagnosticSeverity.Error);
+        Assert.DoesNotContain(updated.GetDiagnostics(), diagnostic =>
+            diagnostic.Severity == DiagnosticSeverity.Error);
+        var generated = string.Join(
+            Environment.NewLine,
+            updated.SyntaxTrees.Select(tree => tree.ToString()));
+        Assert.Contains("prototype.Define(\"format\", ScriptDatum.FromBonding(FORMAT)", generated);
+        Assert.Contains("Define(\"create\", ScriptDatum.FromBonding(CREATE)", generated);
+        Assert.Equal(1, generated.Split("public static void FORMAT(").Length - 1);
+        Assert.Equal(3, generated.Split("UseDynamicForExtraArguments = true").Length - 1);
+    }
+
+    [Fact]
     public void ReportsInvalidNativeObjectStaticConstant()
     {
         var diagnostics = Run(

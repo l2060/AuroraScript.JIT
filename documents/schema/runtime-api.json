@@ -2530,10 +2530,12 @@
       ],
       "notes": {
         "en": [
-          "Path instance methods are non-enumerable prototype members; Object.keys(path) does not include them."
+          "Path instance methods are non-enumerable prototype members; Object.keys(path) does not include them.",
+          "String-only Path.of, append, and reset calls with up to three arguments can bind directly; append selects fixed one-, two-, or three-segment Core overloads, while broader variadic shapes retain dynamic behavior."
         ],
         "zh-CN": [
-          "Path 实例方法是不可枚举的原型成员；Object.keys(path) 不会返回这些方法。"
+          "Path 实例方法是不可枚举的原型成员；Object.keys(path) 不会返回这些方法。",
+          "纯字符串的 Path.of、append 和 reset 在最多三个参数时可直调；append 会选择固定的一段、两段或三段 Core 重载，更宽泛的可变参数形状仍保留动态行为。"
         ]
       },
       "members": {

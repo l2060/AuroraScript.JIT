@@ -1374,20 +1374,28 @@ namespace AuroraScript.Compiler.Backend.Code
                 if (call?.Target is not GetPropertyExpression property ||
                     !TryGetStaticPropertyName(property.Property, out var name) ||
                     !_nativeObjectTypes.TryGetValue(property.Object, out var receiver) ||
-                    !receiver.TryGetMethod(name, out var candidate) ||
-                    !CanBindNativeArguments(
-                        call,
-                        candidate.ParameterKinds,
-                        candidate.RequiredScriptParameterCount,
-                        candidate.Method.GetParameters(),
-                        prefix: candidate.TakesContext ? 1 : 0))
+                    !receiver.TryGetMethod(name, out var candidate))
                 {
                     return false;
                 }
 
                 owner = receiver;
-                method = candidate;
-                return true;
+                for (; candidate != null; candidate = candidate.NextOverload)
+                {
+                    if (CanBindNativeArguments(
+                        call,
+                        candidate.ParameterKinds,
+                        candidate.RequiredScriptParameterCount,
+                        candidate.Method.GetParameters(),
+                        prefix: candidate.TakesContext ? 1 : 0,
+                        useDynamicForExtraArguments: candidate.UseDynamicForExtraArguments))
+                    {
+                        method = candidate;
+                        return true;
+                    }
+                }
+                owner = null;
+                return false;
             }
 
             private bool CanBindNativeArguments(
@@ -1395,9 +1403,11 @@ namespace AuroraScript.Compiler.Backend.Code
                 AuroraExportValueKind[] parameterKinds,
                 int requiredCount,
                 ParameterInfo[] clrParameters,
-                int prefix)
+                int prefix,
+                bool useDynamicForExtraArguments = false)
             {
-                if (HasSpreadArgument(call) || call.Arguments.Count < requiredCount)
+                if (HasSpreadArgument(call) || call.Arguments.Count < requiredCount ||
+                    useDynamicForExtraArguments && call.Arguments.Count > parameterKinds.Length)
                 {
                     return false;
                 }
@@ -2021,7 +2031,8 @@ namespace AuroraScript.Compiler.Backend.Code
                 factory = null;
                 if (call?.Target is not NameExpression name || !_names.TryGetValue(name, out var binding) ||
                     !binding.IsUnshadowedGlobal || !_hostExports.TryGetValueFactory(binding.Name, out factory) ||
-                    call.Arguments.Count < factory.RequiredScriptParameterCount) return false;
+                    call.Arguments.Count < factory.RequiredScriptParameterCount ||
+                    factory.UseDynamicForExtraArguments && call.Arguments.Count > factory.ParameterKinds.Length) return false;
                 for (var i = 0; i < call.Arguments.Count; i++)
                 {
                     if (call.Arguments[i] is SpreadExpression) return false;
@@ -2046,10 +2057,17 @@ namespace AuroraScript.Compiler.Backend.Code
                     return false;
                 }
 
-                return _hostExports.TryGetGlobal(
-                    binding.Name,
-                    memberName,
-                    out descriptor);
+                if (!_hostExports.TryGetGlobal(binding.Name, memberName, out descriptor))
+                {
+                    return false;
+                }
+                return CanBindNativeArguments(
+                    call,
+                    descriptor.ParameterKinds,
+                    descriptor.RequiredScriptParameterCount,
+                    descriptor.Method.GetParameters(),
+                    (descriptor.TakesContext ? 1 : 0) + (descriptor.TakesThisObject ? 1 : 0),
+                    descriptor.UseDynamicForExtraArguments);
             }
 
             private bool TryGetHostExportConstant(GetPropertyExpression property)

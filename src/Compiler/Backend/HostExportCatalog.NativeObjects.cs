@@ -186,7 +186,8 @@ namespace AuroraScript.Compiler.Backend
                     owner.IsValueReceiver,
                     attribute.IsGetter,
                     attribute.IsSetter,
-                    attribute.RequiresIndexProof));
+                    attribute.RequiresIndexProof,
+                    attribute.UseDynamicForExtraArguments));
             }
         }
 
@@ -391,12 +392,13 @@ namespace AuroraScript.Compiler.Backend
             }
             if (!_fields.ContainsKey(method.MemberName) && !_getters.ContainsKey(method.MemberName) &&
                 !_setters.ContainsKey(method.MemberName) && _methods.TryAdd(method.MemberName, method)) return;
-            if (IsValueReceiver && _methods.TryGetValue(method.MemberName, out var first))
+            if (_methods.TryGetValue(method.MemberName, out var first))
             {
                 for (var current = first; current != null; current = current.NextOverload)
                 {
                     if (current.IsGetter != method.IsGetter || current.IsGetter ||
-                        current.ReceiverType == method.ReceiverType && current.RequiresIndexProof == method.RequiresIndexProof &&
+                        (!IsValueReceiver || current.ReceiverType == method.ReceiverType) &&
+                        current.RequiresIndexProof == method.RequiresIndexProof &&
                         current.ParameterKinds.AsSpan().SequenceEqual(method.ParameterKinds))
                         throw new InvalidOperationException($"Duplicate generated Aurora native member '{TypeName}.{method.MemberName}'.");
                 }
@@ -509,7 +511,8 @@ namespace AuroraScript.Compiler.Backend
             bool isValueReceiver = false,
             bool isGetter = false,
             bool isSetter = false,
-            bool requiresIndexProof = false)
+            bool requiresIndexProof = false,
+            bool useDynamicForExtraArguments = false)
         {
             MemberName = memberName ?? throw new ArgumentNullException(nameof(memberName));
             Method = method ?? throw new ArgumentNullException(nameof(method));
@@ -520,6 +523,7 @@ namespace AuroraScript.Compiler.Backend
             IsGetter = isGetter;
             IsSetter = isSetter;
             RequiresIndexProof = requiresIndexProof;
+            UseDynamicForExtraArguments = useDynamicForExtraArguments;
             _parameters = method.GetParameters();
             RequiredScriptParameterCount = HostNativeObjectDescriptor.CountRequiredParameters(
                 _parameters, ParameterOffset);
@@ -534,6 +538,7 @@ namespace AuroraScript.Compiler.Backend
         public bool IsGetter { get; }
         public bool IsSetter { get; }
         public bool RequiresIndexProof { get; }
+        public bool UseDynamicForExtraArguments { get; }
         public Type ReceiverType => IsValueReceiver ? _parameters[TakesContext ? 1 : 0].ParameterType : null;
         internal HostNativeMethodDescriptor NextOverload { get; set; }
         private readonly ParameterInfo[] _parameters;
