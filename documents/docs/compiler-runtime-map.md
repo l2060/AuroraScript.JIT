@@ -44,7 +44,7 @@ Use this map when changing language behavior.
 - Object and collection boundaries: `src/Runtime/ObjectOps.cs`, `src/Runtime/IterationOps.cs`
 - Calls and lightweight frames: `src/Runtime/CallOps.cs`, `src/Runtime/CallFrameOps.cs`
 - Scope and exception boundaries: `src/Runtime/ScopeOps.cs`, `src/Runtime/ExceptionOps.cs`
-- Prototypes: `src/Runtime/Types/Prototypes.cs`
+- Shared legacy prototypes: `src/Runtime/Types/Prototypes.cs`; NativeType-owned frozen prototypes and `RegisterNativeMembers`: `language-tools/AuroraScript.Hosting.Generators/AuroraNativeObjectGenerator.cs`
 - Console/JSON/TDoc/Math/Conv8/Env/HotPatch (NativeType): `src/Runtime/Builtin`
 - NativeType source generator: `language-tools/AuroraScript.Hosting.Generators/AuroraNativeObjectGenerator.cs`
 - Host export attributes: `src/Hosting` (`AuroraNativeTypeAttribute`, `AuroraExportAttribute`, `AuroraExportTarget`)

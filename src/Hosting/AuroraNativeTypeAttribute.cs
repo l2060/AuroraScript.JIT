@@ -5,7 +5,9 @@ namespace AuroraScript.Hosting
     /// <summary>
     /// Marks a partial CLR type whose exported static members form a script type and
     /// whose exported instance members, when present, belong to native instances.
-    /// An exported constructor makes the script type constructible.
+    /// Ordinary instance methods use a generated frozen prototype; native fields and
+    /// accessor exports use generated property overrides. An exported constructor
+    /// makes the script type constructible.
     /// </summary>
     [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
     public sealed class AuroraNativeTypeAttribute : Attribute

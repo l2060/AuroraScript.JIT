@@ -628,14 +628,16 @@ public sealed partial class StringValue
 
 `AuroraNativeType.NativeReceiverType` supports engine-owned `string`, `double`,
 `long`, and `ulong` representations; it is not a host extension point for replacing
-shared frozen prototypes. `AuroraExport.Target = AuroraExportTarget.Instance`
+their object wrappers. `AuroraExport.Target = AuroraExportTarget.Instance`
 marks a static Core as a primitive instance member. `Auto` is the default and maps
 CLR static members to the script type object and CLR instance members to script
 instances. `Type` explicitly selects the script type object. The first receiver Core
 argument (after an optional `ScriptContext`) is the raw CLR receiver, not a script
-argument. The generator registers members on the existing prototype; it does not
-create an `IAuroraNativeInstance` wrapper. Primitive types with static exports or
-an explicit constructor factory also receive a generated frozen `Type` and `Register`.
+argument. When instance members exist, the generator creates one lazy, frozen
+`NativePrototype` for that NativeType and calls the generated `RegisterNativeMembers`
+to install them as non-writable, non-enumerable prototype properties. It does not
+create an `IAuroraNativeInstance` wrapper. Primitive types with static exports or an
+explicit constructor factory also receive a generated frozen `Type` and `Register`.
 
 When `DynamicAdapter` is omitted, the existing coercion, failure handling and result
 writer generate the dynamic entry point automatically. Set `IsGetter = true` for a
@@ -719,9 +721,10 @@ Native `int64`/`uint64` type annotations remain lowercase.
 
 The same `[AuroraNativeType]` supports fixed-shape native instances. A type with
 instance exports must derive `ScriptObject`. Generated code adds the native
-instance marker and property overrides, so unannotated CLR members are not
-exposed through reflection. Native fields stay as CLR storage. Instances use
-the ordinary `Object` prototype.
+instance marker, so unannotated CLR members are not exposed through reflection.
+Native fields and exported getter/setter pairs stay on the instance and use generated
+property-access overrides. Ordinary exported instance methods instead live on a
+generated, frozen prototype owned by that NativeType.
 
 ```csharp
 using AuroraScript.Hosting;
@@ -737,7 +740,7 @@ public sealed partial class Vec2 : ScriptObject
     public double Y;
 
     [AuroraExport]
-    public Vec2(double x, double y)
+    public Vec2(double x, double y) : base(NativePrototype)
     {
         X = x;
         Y = y;
@@ -764,6 +767,21 @@ return vec.length();
 ```
 
 Host code can also `new Vec2(3, 4)` and pass the instance as `ScriptDatum.FromObject(vec)`.
+
+If a NativeType has at least one ordinary instance method, every user-written
+constructor must explicitly call `base(NativePrototype)`, as in the example. The
+generator does this automatically for constructors that it creates. If a NativeType
+has only native fields, getter/setter exports, or static exports, no per-type prototype
+is generated and `base(NativePrototype)` must not be used; the normal `ScriptObject`
+constructor remains valid.
+
+`RegisterNativeMembers` is generated only to populate the per-type prototype. Method
+properties are non-writable and non-enumerable, and the prototype is frozen after
+registration. Consequently dynamic calls such as `vec.length()` resolve through the
+prototype, while `Object.keys(vec)` reports enumerable native fields and dynamic own
+properties, not prototype methods. Native fields and getter/setter exports are not
+stored in HiddenClass slots: generated `GetPropertyDatum` / `SetPropertyDatum`
+overrides route their reads and writes directly to CLR storage or Core methods.
 
 Native instances can expose a property without a CLR field by pairing one getter and
 one setter under the same script name:

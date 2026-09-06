@@ -47,7 +47,7 @@ namespace AuroraScript.Hosting
         /// <summary>Exports a zero-argument instance Core method as a property getter.</summary>
         public bool IsGetter { get; set; }
 
-        /// <summary>Exports a one-argument native instance Core method as a property setter.</summary>
+        /// <summary>Exports a one-argument object-backed native instance Core method as a property setter.</summary>
         public bool IsSetter { get; set; }
 
         /// <summary>Only bind this signature when argument zero is proven to index the receiver in bounds.</summary>

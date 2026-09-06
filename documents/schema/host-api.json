@@ -1451,7 +1451,10 @@
       "members": {
         "Constructor": {
           "kind": "constructor",
-          "signature": "ScriptObject()"
+          "overloads": [
+            "ScriptObject()",
+            "protected internal ScriptObject(ScriptObject prototype)"
+          ]
         },
         "Prototype": {
           "kind": "property",
@@ -2334,6 +2337,8 @@
       "notes": [
         "A type with instance exports or an exported constructor must derive ScriptObject. Generated code adds the native-instance marker.",
         "Exactly one public constructor may be marked [AuroraExport] to enable native instance construction. Engine-owned native receiver types may instead name a NativeConstructor.",
+        "Ordinary instance methods are registered as non-writable, non-enumerable members of a generated lazy frozen NativePrototype. A user-written constructor on such a type must explicitly call base(NativePrototype); generated constructors do so automatically.",
+        "Native fields and getter/setter exports use generated property access overrides rather than prototype members. A type with no ordinary instance methods does not receive NativePrototype and can use the normal ScriptObject constructor.",
         "Register the generated Type with Type.Register(ScriptObject target) on the engine global, or Define(typeName, Type).",
         "Static factory returns of a native instance preserve concrete type inference and direct instance member calls."
       ]
@@ -2397,7 +2402,8 @@
         "Core methods may prefix ScriptContext ctx and ScriptObject thisObject. Script parameters support double, int, bool, string, ScriptDatum, ScriptObject subclasses, trailing defaults, and params double[] or params ScriptDatum[].",
         "A CLR void return is a procedure. Direct native calls used as statements do not materialize a result; dynamic or exported calls observe script null, matching native func ... void.",
         "params exports generate Datum adapters only; they are not compiler direct-call candidates.",
-        "DynamicAdapter names an existing compatibility callback when omitted adapters would change missing-argument or conversion behavior. IsGetter exports a zero-argument instance Core as a property getter. IsSetter exports a one-required-argument void native-instance Core as the matching setter; immutable NativeReceiverType members do not support setters. RequiresIndexProof binds only when argument zero is a proven in-bounds index."
+        "DynamicAdapter names an existing compatibility callback when omitted adapters would change missing-argument or conversion behavior. IsGetter exports a zero-argument instance Core as a property getter. IsSetter exports a one-required-argument void native-instance Core as the matching setter; immutable NativeReceiverType members do not support setters. RequiresIndexProof binds only when argument zero is a proven in-bounds index.",
+        "Ordinary instance methods are installed on the NativeType's frozen prototype with enumerable false; native fields and getter/setter exports are routed by generated instance property overrides."
       ]
     },
     "AuroraParamAttribute": {

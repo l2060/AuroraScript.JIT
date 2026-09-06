@@ -79,7 +79,7 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary>
-        /// Initializes an internal object with a specific prototype.
+        /// Initializes a derived or runtime-internal object with a specific prototype.
         /// </summary>
         /// <param name="prototype">The prototype object.</param>
         protected internal ScriptObject(ScriptObject prototype)

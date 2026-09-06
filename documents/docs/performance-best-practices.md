@@ -88,7 +88,9 @@ a local that is never reassigned to an unproven value and never captured by a
 closure. This applies to both `new Vec2(...)` and static factories such as
 `Vec2.from(...)`. The compiler then stores the CLR instance directly; field
 `++`/`+=` and method calls stay on `ldfld`/`stfld`/`callvirt` instead of boxing
-through `ScriptDatum`.
+through `ScriptDatum`. At dynamic boundaries, ordinary exported instance methods
+resolve from the NativeType's generated frozen prototype, while native fields
+and getter/setter exports use generated property-access overrides.
 
 A module-level `context player as Vec2;` is the same proof for
 `ScriptContext.UserState`. Each used context name is loaded once per function
@@ -170,6 +172,9 @@ for (var i = 0; i < count; i++) {
 ```
 
 Prefer `Array.withCapacity(count)` when the final capacity is known but the logical length must start at zero. `new Array(count)` creates `count` actual null slots and has different semantics. If an array crosses an ordinary object property or another dynamic boundary, subsequent access keeps full behavior but no longer has an exact compile-time array type.
+
+General Array `length` is writable: shrinking truncates and clears removed elements,
+while growing appends `null` slots. Packed-array `length` remains read-only.
 
 ## Packed Primitive Arrays
 

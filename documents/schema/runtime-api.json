@@ -2528,6 +2528,14 @@
           }
         }
       ],
+      "notes": {
+        "en": [
+          "Path instance methods are non-enumerable prototype members; Object.keys(path) does not include them."
+        ],
+        "zh-CN": [
+          "Path 实例方法是不可枚举的原型成员；Object.keys(path) 不会返回这些方法。"
+        ]
+      },
       "members": {
         "of": {
           "kind": "method",
@@ -3003,12 +3011,13 @@
       "length": {
         "kind": "property",
         "returns": "number",
+        "writable": true,
         "notes": {
           "en": [
-            "Returns the array length."
+            "Gets or sets the array length. Shrinking clears removed elements; growing appends null slots."
           ],
           "zh-CN": [
-            "返回数组长度。"
+            "获取或设置数组长度；缩短会清除被移除的元素，增长会追加 null 槽位。"
           ]
         }
       },
