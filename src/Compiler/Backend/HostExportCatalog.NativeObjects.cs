@@ -186,7 +186,6 @@ namespace AuroraScript.Compiler.Backend
                     owner.IsValueReceiver,
                     attribute.IsGetter,
                     attribute.IsSetter,
-                    attribute.RequiresIndexProof,
                     attribute.UseDynamicForExtraArguments));
             }
         }
@@ -229,14 +228,14 @@ namespace AuroraScript.Compiler.Backend
             foreach (var method in attribute.DeclaringType.GetMethods(
                 BindingFlags.Public | (owner.IsValueReceiver ? BindingFlags.Static : BindingFlags.Instance)))
             {
+                var receiverExport = method.GetCustomAttribute<AuroraReceiverExportAttribute>();
+                var objectExport = method.GetCustomAttribute<AuroraExportAttribute>();
                 if (!StringComparer.Ordinal.Equals(method.Name, attribute.MethodName) ||
                     !MatchesClrType(attribute.ReturnKind, method.ReturnType) ||
-                    method.GetCustomAttribute<AuroraExportAttribute>() is not { } export ||
-                    export.IsGetter != attribute.IsGetter ||
-                    export.IsSetter != attribute.IsSetter ||
-                    (owner.IsValueReceiver
-                        ? export.Target != AuroraExportTarget.Instance
-                        : export.Target == AuroraExportTarget.Type))
+                    (owner.IsValueReceiver && receiverExport == null) ||
+                    (!owner.IsValueReceiver && objectExport == null) ||
+                    (receiverExport?.IsGetter ?? objectExport?.IsGetter) != attribute.IsGetter ||
+                    (objectExport?.IsSetter ?? false) != attribute.IsSetter)
                 {
                     continue;
                 }
@@ -398,7 +397,6 @@ namespace AuroraScript.Compiler.Backend
                 {
                     if (current.IsGetter != method.IsGetter || current.IsGetter ||
                         (!IsValueReceiver || current.ReceiverType == method.ReceiverType) &&
-                        current.RequiresIndexProof == method.RequiresIndexProof &&
                         current.ParameterKinds.AsSpan().SequenceEqual(method.ParameterKinds))
                         throw new InvalidOperationException($"Duplicate generated Aurora native member '{TypeName}.{method.MemberName}'.");
                 }
@@ -426,7 +424,7 @@ namespace AuroraScript.Compiler.Backend
 
         /// <summary>Bind exact-arity value members; ambiguous or coercive calls retain the dynamic adapter.</summary>
         public HostNativeMethodDescriptor BindValueMethod(string name, IReadOnlyList<Expression> arguments,
-            IReadOnlyDictionary<Expression, FlowValueType> types, bool indexIsInBounds, FlowValueType receiver)
+            IReadOnlyDictionary<Expression, FlowValueType> types, FlowValueType receiver)
         {
             if (!IsValueReceiver || !TryGetMethod(name, out var first)) return null;
             HostNativeMethodDescriptor best = null;
@@ -434,10 +432,10 @@ namespace AuroraScript.Compiler.Backend
             var ambiguous = false;
             for (var candidate = first; candidate != null; candidate = candidate.NextOverload)
             {
-                if (candidate.ParameterKinds.Length != arguments.Count || candidate.RequiresIndexProof && !indexIsInBounds) continue;
+                if (candidate.ParameterKinds.Length != arguments.Count) continue;
                 var receiverCost = candidate.GetReceiverCost(receiver);
                 if (receiverCost < 0) continue;
-                var cost = candidate.RequiresIndexProof ? -100 : receiverCost;
+                var cost = receiverCost;
                 var matches = true;
                 for (var i = 0; i < arguments.Count; i++)
                 {
@@ -511,7 +509,6 @@ namespace AuroraScript.Compiler.Backend
             bool isValueReceiver = false,
             bool isGetter = false,
             bool isSetter = false,
-            bool requiresIndexProof = false,
             bool useDynamicForExtraArguments = false)
         {
             MemberName = memberName ?? throw new ArgumentNullException(nameof(memberName));
@@ -522,7 +519,6 @@ namespace AuroraScript.Compiler.Backend
             IsValueReceiver = isValueReceiver;
             IsGetter = isGetter;
             IsSetter = isSetter;
-            RequiresIndexProof = requiresIndexProof;
             UseDynamicForExtraArguments = useDynamicForExtraArguments;
             _parameters = method.GetParameters();
             RequiredScriptParameterCount = HostNativeObjectDescriptor.CountRequiredParameters(
@@ -537,7 +533,6 @@ namespace AuroraScript.Compiler.Backend
         public bool IsValueReceiver { get; }
         public bool IsGetter { get; }
         public bool IsSetter { get; }
-        public bool RequiresIndexProof { get; }
         public bool UseDynamicForExtraArguments { get; }
         public Type ReceiverType => IsValueReceiver ? _parameters[TakesContext ? 1 : 0].ParameterType : null;
         internal HostNativeMethodDescriptor NextOverload { get; set; }

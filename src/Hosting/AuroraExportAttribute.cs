@@ -36,12 +36,9 @@ namespace AuroraScript.Hosting
         /// <summary>Failure behavior for generated Datum adapters on dynamic call sites.</summary>
         public MatchFailure Failure { get; set; } = MatchFailure.Default;
 
-        /// <summary>Controls whether the export belongs to script instances or the script type object.</summary>
-        public AuroraExportTarget Target { get; set; } = AuroraExportTarget.Auto;
-
         /// <summary>Optional existing dynamic adapter for an exported instance or static member. When omitted,
         /// the generator creates the adapter using the usual parameter coercion and failure rules.
-        /// Overloads and proof-dependent signatures require an explicit shared compatibility adapter.</summary>
+        /// Overloads require an explicit shared compatibility adapter.</summary>
         public string DynamicAdapter { get; set; }
 
         /// <summary>Exports a zero-argument instance Core method as a property getter.</summary>
@@ -50,7 +47,10 @@ namespace AuroraScript.Hosting
         /// <summary>Exports a one-argument object-backed native instance Core method as a property setter.</summary>
         public bool IsSetter { get; set; }
 
-        /// <summary>Only bind this signature when argument zero is proven to index the receiver in bounds.</summary>
-        public bool RequiresIndexProof { get; set; }
+        /// <summary>Allows scripts to replace the exported property slot.</summary>
+        public bool Writable { get; set; }
+
+        /// <summary>Includes the exported member in property enumeration.</summary>
+        public bool Enumerable { get; set; }
     }
 }

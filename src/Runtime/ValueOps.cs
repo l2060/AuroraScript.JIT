@@ -207,26 +207,6 @@ namespace AuroraScript.Runtime
             return value?.Length ?? 0;
         }
 
-        /// <summary>Returns String.charCodeAt for an already native index.</summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static double GetStringCharCodeAt(string value, int index)
-        {
-            return value != null && (uint)index < (uint)value.Length
-                ? value[index]
-                : double.NaN;
-        }
-
-        /// <summary>
-        /// Returns a UTF-16 code unit for an index proven by flow analysis to
-        /// be within the string. Keeping the Int32 signature prevents valid
-        /// character scans from widening every code unit to double.
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int GetStringCharCodeAtInt32(string value, int index)
-        {
-            return value[index];
-        }
-
         /// <summary>
         /// Converts the upper bound of an ascending counted loop into the
         /// integer limit that answers <c>counter &lt; bound</c> identically.

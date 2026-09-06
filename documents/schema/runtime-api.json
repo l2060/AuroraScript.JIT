@@ -2819,7 +2819,8 @@
           "kind": "method",
           "overloads": [
             "replace(script: string, ignoreDepends?: boolean)",
-            "replace(modulePath: string, script: string, ignoreDepends?: boolean)"
+            "replace(modulePath: string, script: string, ignoreDepends?: boolean)",
+            "replace(modulePath: Path, script: string, ignoreDepends?: boolean)"
           ],
           "returns": "null",
           "notes": {
@@ -2841,7 +2842,8 @@
           "kind": "method",
           "overloads": [
             "incremental(script: string, ignoreDepends?: boolean)",
-            "incremental(modulePath: string, script: string, ignoreDepends?: boolean)"
+            "incremental(modulePath: string, script: string, ignoreDepends?: boolean)",
+            "incremental(modulePath: Path, script: string, ignoreDepends?: boolean)"
           ],
           "returns": "null",
           "notes": {

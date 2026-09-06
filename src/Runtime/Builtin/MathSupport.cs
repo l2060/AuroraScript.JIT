@@ -31,35 +31,39 @@ namespace AuroraScript.Runtime.Builtin
         public static double AbsCore(double value) => Math.Abs(value);
 
         /// <summary>Returns the largest argument.</summary>
-        [AuroraExport("max", MatchFailure.ReturnNaN)]
-        public static double MaxCore(params double[] values)
-        {
-            var max = values[0];
-            for (var i = 1; i < values.Length; i++)
-            {
-                if (values[i] > max)
-                {
-                    max = values[i];
-                }
-            }
+        [AuroraExport("max", MatchFailure.ReturnNaN, DynamicAdapter = nameof(MAX))]
+        public static double MaxCore(double value, double other = double.NaN) => other > value ? other : value;
 
-            return max;
+        private static void MAX(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            if (!args.TryGetNumber(0, out var max))
+            {
+                ScriptDatum.WriteAsNumber(ref result, double.NaN);
+                return;
+            }
+            for (var i = 1; i < args.Length && args.TryGetNumber(i, out var value); i++)
+            {
+                if (value > max) max = value;
+            }
+            ScriptDatum.WriteAsNumber(ref result, max);
         }
 
         /// <summary>Returns the smallest argument.</summary>
-        [AuroraExport("min", MatchFailure.ReturnNaN)]
-        public static double MinCore(params double[] values)
-        {
-            var min = values[0];
-            for (var i = 1; i < values.Length; i++)
-            {
-                if (values[i] < min)
-                {
-                    min = values[i];
-                }
-            }
+        [AuroraExport("min", MatchFailure.ReturnNaN, DynamicAdapter = nameof(MIN))]
+        public static double MinCore(double value, double other = double.NaN) => other < value ? other : value;
 
-            return min;
+        private static void MIN(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            if (!args.TryGetNumber(0, out var min))
+            {
+                ScriptDatum.WriteAsNumber(ref result, double.NaN);
+                return;
+            }
+            for (var i = 1; i < args.Length && args.TryGetNumber(i, out var value); i++)
+            {
+                if (value < min) min = value;
+            }
+            ScriptDatum.WriteAsNumber(ref result, min);
         }
 
         /// <summary>Returns a pseudo-random number.</summary>

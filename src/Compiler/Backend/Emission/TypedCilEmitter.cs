@@ -4162,33 +4162,46 @@ namespace AuroraScript.Compiler.Backend.Emission
                 receiver is not NameExpression ||
                 !binding.IsUnshadowedGlobal ||
                 !_session.CompileSession.HostExports.TryGetGlobal(
-                    binding.Name,
-                    memberName,
-                    out descriptor) ||
-                call.Arguments.Count < descriptor.RequiredScriptParameterCount ||
-                descriptor.UseDynamicForExtraArguments &&
-                    call.Arguments.Count > descriptor.ParameterKinds.Length)
+                    binding.Name, memberName, out descriptor))
             {
                 descriptor = null;
                 return false;
             }
 
-            var provided = call.Arguments.Count < descriptor.ParameterKinds.Length
-                ? call.Arguments.Count
-                : descriptor.ParameterKinds.Length;
-            for (var i = 0; i < provided; i++)
+            HostExportDescriptor match = null;
+            for (var candidate = descriptor; candidate != null; candidate = candidate.NextOverload)
             {
-                if (!HostExportArgumentFacts.CanPass(
-                        descriptor.ParameterKinds[i],
-                        descriptor.GetScriptParameterType(i),
-                        _code.GetExpressionType(call.Arguments[i]),
-                        _code.GetNativeObjectType(call.Arguments[i])?.ClrType))
+                if (call.Arguments.Count < candidate.RequiredScriptParameterCount ||
+                    candidate.UseDynamicForExtraArguments &&
+                        call.Arguments.Count > candidate.ParameterKinds.Length)
+                {
+                    continue;
+                }
+                var provided = Math.Min(call.Arguments.Count, candidate.ParameterKinds.Length);
+                var compatible = true;
+                for (var i = 0; i < provided; i++)
+                {
+                    if (HostExportArgumentFacts.CanPass(
+                            candidate.ParameterKinds[i],
+                            candidate.GetScriptParameterType(i),
+                            _code.GetExpressionType(call.Arguments[i]),
+                            _code.GetNativeObjectType(call.Arguments[i])?.ClrType))
+                    {
+                        continue;
+                    }
+                    compatible = false;
+                    break;
+                }
+                if (!compatible) continue;
+                if (match != null)
                 {
                     descriptor = null;
                     return false;
                 }
+                match = candidate;
             }
-            return true;
+            descriptor = match;
+            return descriptor != null;
         }
 
         private StackValueKind EmitHostExportCall(

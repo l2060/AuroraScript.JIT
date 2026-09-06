@@ -512,7 +512,7 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
-    public void TypedModuleCodeKeepsGuardedStringCodesAndWhileCountersAsInt32()
+    public void TypedModuleCodeKeepsSafeStringCodesAsNumberAndWhileCountersAsInt32()
     {
         var root = Path.GetTempPath();
         var options = EngineOptions.Default
@@ -549,7 +549,7 @@ public sealed class CompilerBackendPlanTests
                 run.LocalSlots.Single(slot => slot.Name == name).Id);
         }
 
-        Assert.Equal(FlowValueType.Int32, LocalType("code"));
+        Assert.Equal(FlowValueType.Number, LocalType("code"));
         Assert.Equal(FlowValueType.Int32, LocalType("left"));
         Assert.Equal(FlowValueType.Int32, LocalType("right"));
         Assert.Equal(FlowValueType.Number, LocalType("invalid"));

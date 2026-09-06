@@ -83,6 +83,31 @@ public sealed class HostExportGeneratorTests
         Assert.True(catalog.TryGetGlobal("Vec2", "from", out _));
         Assert.False(catalog.TryGetGlobal("Stats", "mean", out _));
         Assert.True(catalog.TryGetGlobal("Math", "abs", out _));
+        Assert.True(catalog.TryGetGlobal("JSON", "parse", out _));
+        Assert.True(catalog.TryGetGlobal("console", "log", out _));
+        Assert.True(catalog.TryGetGlobal("console", "time", out _));
+    }
+
+    [Fact]
+    public void CompilerCatalogKeepsStaticExportOverloadsWithOneDynamicAdapter()
+    {
+        var catalog = new HostExportCatalog([]);
+
+        Assert.True(catalog.TryGetGlobal("HotPatch", "incremental", out var incremental));
+        var modulePathTypes = new System.Collections.Generic.HashSet<Type>();
+        for (var method = incremental; method != null; method = method.NextOverload)
+        {
+            Assert.Equal(nameof(AuroraScript.Runtime.Builtin.HotPatchSupport.IncrementalCore), method.Method.Name);
+            Assert.True(method.UseDynamicForExtraArguments);
+            modulePathTypes.Add(method.GetScriptParameterType(0));
+        }
+
+        Assert.Equal(2, modulePathTypes.Count);
+        Assert.Contains(typeof(string), modulePathTypes);
+        Assert.Contains(typeof(ScriptPathValue), modulePathTypes);
+
+        Assert.True(catalog.TryGetGlobal("HotPatch", "replace", out var replace));
+        Assert.NotNull(replace.NextOverload);
     }
 
     [Fact]
@@ -309,6 +334,63 @@ public sealed class HostExportGeneratorTests
         var il = peReader.GetMethodBody(
             callerMethod.RelativeVirtualAddress).GetILBytes();
         Assert.True(ContainsCall(il, coreToken));
+    }
+
+    [Fact]
+    public async Task ProvenBaseModuleResultCallsHotPatchCoreDirectly()
+    {
+        using var workspace = new TestWorkspace();
+        var assemblyPath = Path.Combine(workspace.Root, "hot-patch-export.dll");
+        workspace.WriteSource(
+            "main.as",
+            """
+            @module(TEST);
+            export func run() {
+                HotPatch.incremental(Path.baseModule('unit.as'), '@module(TEST);');
+            }
+            """);
+
+        var engine = workspace.CreateEngine(
+            CompilationMode.Persistence,
+            assemblyOut: assemblyPath,
+            enableHotReload: true);
+        await engine.BuildAsync(["main.as"]);
+
+        using var stream = File.OpenRead(assemblyPath);
+        using var peReader = new PEReader(stream);
+        var reader = peReader.GetMetadataReader();
+        var coreToken = 0;
+        var baseModuleToken = 0;
+        foreach (var handle in reader.MemberReferences)
+        {
+            var name = reader.GetString(reader.GetMemberReference(handle).Name);
+            if (name == nameof(AuroraScript.Runtime.Builtin.HotPatchSupport.IncrementalCore))
+            {
+                coreToken = MetadataTokens.GetToken(handle);
+            }
+            else if (name == nameof(ScriptPathValue.BaseModuleCore))
+            {
+                baseModuleToken = MetadataTokens.GetToken(handle);
+            }
+        }
+
+        Assert.NotEqual(0, coreToken);
+        Assert.NotEqual(0, baseModuleToken);
+        foreach (var handle in reader.MethodDefinitions)
+        {
+            var method = reader.GetMethodDefinition(handle);
+            if (reader.GetString(method.Name) == "run$typed")
+            {
+                Assert.True(ContainsCall(
+                    peReader.GetMethodBody(method.RelativeVirtualAddress).GetILBytes(),
+                    coreToken));
+                Assert.True(ContainsCall(
+                    peReader.GetMethodBody(method.RelativeVirtualAddress).GetILBytes(),
+                    baseModuleToken));
+                return;
+            }
+        }
+        Assert.Fail("Generated typed function was not found.");
     }
 
     [Fact]

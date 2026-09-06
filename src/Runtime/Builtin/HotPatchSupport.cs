@@ -9,13 +9,55 @@ namespace AuroraScript.Runtime.Builtin
     /// Script hot-patch Type implemented through generated native exports.
     /// </summary>
     [AuroraNativeType("HotPatch")]
-    internal sealed partial class HotPatchSupport : ScriptObject
+    public sealed partial class HotPatchSupport : ScriptObject
     {
-        [AuroraExport("replace", MatchFailure.Throw)]
-        public static void ReplaceCore(ScriptContext ctx, params ScriptDatum[] args)
+        /// <summary>Applies a replacement patch addressed by string path.</summary>
+        [AuroraExport("replace", MatchFailure.Throw, DynamicAdapter = nameof(REPLACE))]
+        public static void ReplaceCore(ScriptContext ctx, string modulePath, string script, bool ignoreDepends = false)
         {
-            ReadPatchArguments(ctx, args.AsSpan(), out var modulePath, out var script, out var ignoreDepends);
-            var patchType = HotPatchType.Replace;
+            ApplyPatch(ctx, ResolveModulePath(ctx, modulePath), script, HotPatchType.Replace, ignoreDepends);
+        }
+
+        /// <summary>Applies a replacement patch addressed by a native Path value.</summary>
+        [AuroraExport("replace", MatchFailure.Throw, DynamicAdapter = nameof(REPLACE))]
+        public static void ReplaceCore(ScriptContext ctx, ScriptPathValue modulePath, string script, bool ignoreDepends = false)
+        {
+            ApplyPatch(ctx, ResolveModulePath(ctx, modulePath.Value), script, HotPatchType.Replace, ignoreDepends);
+        }
+
+        private static void REPLACE(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            ReadPatchArguments(ctx, args, out var modulePath, out var script, out var ignoreDepends);
+            ApplyPatch(ctx, modulePath, script, HotPatchType.Replace, ignoreDepends);
+        }
+
+        /// <summary>Applies an incremental patch addressed by string path.</summary>
+        [AuroraExport("incremental", MatchFailure.Throw, DynamicAdapter = nameof(INCREMENTAL))]
+        public static void IncrementalCore(ScriptContext ctx, string modulePath, string script, bool ignoreDepends = false)
+        {
+            ApplyIncrementalPatch(ctx, ResolveModulePath(ctx, modulePath), script, ignoreDepends);
+        }
+
+        /// <summary>Applies an incremental patch addressed by a native Path value.</summary>
+        [AuroraExport("incremental", MatchFailure.Throw, DynamicAdapter = nameof(INCREMENTAL))]
+        public static void IncrementalCore(ScriptContext ctx, ScriptPathValue modulePath, string script, bool ignoreDepends = false)
+        {
+            ApplyIncrementalPatch(ctx, ResolveModulePath(ctx, modulePath.Value), script, ignoreDepends);
+        }
+
+        private static void INCREMENTAL(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            ReadPatchArguments(ctx, args, out var modulePath, out var script, out var ignoreDepends);
+            ApplyIncrementalPatch(ctx, modulePath, script, ignoreDepends);
+        }
+
+        private static void ApplyIncrementalPatch(ScriptContext ctx, string modulePath, string script, bool ignoreDepends)
+        {
+            ApplyPatch(ctx, modulePath, script, HotPatchType.Incremental, ignoreDepends);
+        }
+
+        private static void ApplyPatch(ScriptContext ctx, string modulePath, string script, HotPatchType patchType, bool ignoreDepends)
+        {
             if (ignoreDepends)
             {
                 patchType |= HotPatchType.IgnoreDepends;
@@ -23,24 +65,7 @@ namespace AuroraScript.Runtime.Builtin
             ctx.Domain.DynamicPatch(modulePath, script, patchType);
         }
 
-        [AuroraExport("incremental", MatchFailure.Throw)]
-        public static void IncrementalCore(ScriptContext ctx, params ScriptDatum[] args)
-        {
-            ReadPatchArguments(ctx, args.AsSpan(), out var modulePath, out var script, out var ignoreDepends);
-            var patchType = HotPatchType.Incremental;
-            if (ignoreDepends)
-            {
-                patchType |= HotPatchType.IgnoreDepends;
-            }
-            ctx.Domain.DynamicPatch(modulePath, script, patchType);
-        }
-
-        private static void ReadPatchArguments(
-            ScriptContext ctx,
-            Span<ScriptDatum> args,
-            out string modulePath,
-            out string script,
-            out bool ignoreDepends)
+        private static void ReadPatchArguments(ScriptContext ctx, Span<ScriptDatum> args, out string modulePath, out string script, out bool ignoreDepends)
         {
             if (args.Length == 0)
             {
@@ -58,7 +83,7 @@ namespace AuroraScript.Runtime.Builtin
                 return;
             }
 
-            if (!args.TryGetString(0, out modulePath))
+            if (!ScriptPathValue.TryGetPathString(args, 0, out modulePath))
             {
                 ThrowHelper.ThrowInvalidHotPatchParam(nameof(modulePath));
             }

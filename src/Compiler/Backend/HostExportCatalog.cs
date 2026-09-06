@@ -115,12 +115,40 @@ namespace AuroraScript.Compiler.Backend
                 var key = new ExportKey(
                     attribute.GlobalName,
                     attribute.MemberName);
-                if (_constants.ContainsKey(key) ||
-                    !_exports.TryAdd(key, descriptor))
+                if (_constants.ContainsKey(key))
                 {
                     throw new InvalidOperationException(
                         $"Duplicate generated Aurora export " +
                         $"'{attribute.GlobalName}.{attribute.MemberName}'.");
+                }
+                if (_exports.TryGetValue(key, out var existing))
+                {
+                    var adapter = method.GetCustomAttribute<AuroraExportAttribute>()?.DynamicAdapter;
+                    if (string.IsNullOrWhiteSpace(adapter) ||
+                        existing.Method.DeclaringType != method.DeclaringType ||
+                        !StringComparer.Ordinal.Equals(
+                            existing.Method.GetCustomAttribute<AuroraExportAttribute>()?.DynamicAdapter,
+                            adapter))
+                    {
+                        throw new InvalidOperationException(
+                            $"Duplicate generated Aurora export " +
+                            $"'{attribute.GlobalName}.{attribute.MemberName}'.");
+                    }
+                    for (var overload = existing; overload != null; overload = overload.NextOverload)
+                    {
+                        if (overload.ParameterKinds.AsSpan().SequenceEqual(descriptor.ParameterKinds))
+                        {
+                            throw new InvalidOperationException(
+                                $"Duplicate generated Aurora export " +
+                                $"'{attribute.GlobalName}.{attribute.MemberName}'.");
+                        }
+                    }
+                    descriptor.NextOverload = existing.NextOverload;
+                    existing.NextOverload = descriptor;
+                }
+                else
+                {
+                    _exports.Add(key, descriptor);
                 }
             }
 
@@ -148,7 +176,7 @@ namespace AuroraScript.Compiler.Backend
                 }
 
                 var export = method.GetCustomAttribute<AuroraExportAttribute>();
-                if (export == null || export.Target == AuroraExportTarget.Instance ||
+                if (export == null ||
                     !StringComparer.Ordinal.Equals(
                         GetScriptName(export.ScriptName, method.Name),
                         attribute.MemberName))
@@ -271,6 +299,7 @@ namespace AuroraScript.Compiler.Backend
         public bool TakesThisObject { get; }
         public bool UseDynamicForExtraArguments { get; }
         public int RequiredScriptParameterCount { get; }
+        internal HostExportDescriptor NextOverload { get; set; }
 
         public Type GetScriptParameterType(int index)
         {

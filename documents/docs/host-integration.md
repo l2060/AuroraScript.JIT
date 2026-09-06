@@ -621,33 +621,43 @@ immutable String members:
 [AuroraNativeType("String", NativeReceiverType = typeof(string))]
 public sealed partial class StringValue
 {
-    [AuroraExport("trim", Target = AuroraExportTarget.Instance)]
+    [AuroraReceiverExport("trim")]
     public static string TrimCore(string value) => value.Trim();
 }
 ```
 
 `AuroraNativeType.NativeReceiverType` supports engine-owned `string`, `double`,
 `long`, and `ulong` representations; it is not a host extension point for replacing
-their object wrappers. `AuroraExport.Target = AuroraExportTarget.Instance`
-marks a static Core as a primitive instance member. `Auto` is the default and maps
-CLR static members to the script type object and CLR instance members to script
-instances. `Type` explicitly selects the script type object. The first receiver Core
-argument (after an optional `ScriptContext`) is the raw CLR receiver, not a script
-argument. When instance members exist, the generator creates one lazy, frozen
+their object wrappers. `AuroraReceiverExport` visibly marks a static Core as a
+primitive instance member; `AuroraExport` on a static member always belongs to the
+script type object. The first receiver Core argument (after an optional
+`ScriptContext`) is the raw CLR receiver, not a script argument. When instance
+members exist, the generator creates one lazy
 `NativePrototype` for that NativeType and calls the generated `RegisterNativeMembers`
-to install them as non-writable, non-enumerable prototype properties. It does not
+to install them using each export's `Writable` and `Enumerable` flags. It does not
 create an `IAuroraNativeInstance` wrapper. Primitive types with static exports or an
-explicit constructor factory also receive a generated frozen `Type` and `Register`.
+explicit constructor factory also receive a generated `Type` and `Register`. A
+prototype or Type is frozen only when none of its generated slots is writable.
 
 When `DynamicAdapter` is omitted, the existing coercion, failure handling and result
 writer generate the dynamic entry point automatically. Set `IsGetter = true` for a
-zero-argument, context-free read-only getter. An explicit `DynamicAdapter` names a
-legacy callback when its missing-argument or conversion behavior differs from the
-standard rules. Exact-arity overloads must share one explicit adapter; an unchecked
-`RequiresIndexProof` signature also requires a safe explicit adapter.
+zero-argument, context-free read-only getter. An explicit `DynamicAdapter` names the
+callback used for dynamic calls and suppresses generation of a dynamic wrapper.
+Exact-arity overloads must share one explicit adapter.
+
+Method and constant exports default to non-writable and non-enumerable. Native
+instance fields retain their CLR defaults: mutable fields are writable and fields
+are enumerable. Set `Writable` or `Enumerable` explicitly to override those field
+defaults. Set `Writable = true` on a method or constant only when scripts may
+replace that exported slot, and `Enumerable = true` only when it should appear in
+property enumeration.
+Writable method and constant slots are deliberately omitted from the compiler's
+native-call catalog because a script may replace their values. Native field access
+and explicit getter/setter access remain eligible for direct compilation when their
+generated binding is stable. Replaceable accessor exports are rejected.
 
 The compiler selects and saves a proven signature during type analysis, then emits
-a direct CLR call. String `substring` and `slice` export only `int` indices, with
+a direct CLR call for stable exports. String `substring` and `slice` export only `int` indices, with
 the second index still meaning **end**, not length. Number, Int64/UInt64, spread,
 and unsupported argument shapes retain their dynamic semantics when the compiler
 cannot prove the native signature applicable. No unchecked Number-to-Int32 narrowing
@@ -682,11 +692,10 @@ public sealed partial class StringValue
 }
 ```
 
-`AuroraExport.Target` controls script ownership independently from the CLR invocation
-shape. A static method with `Auto` or `Type` is exported on the type object, while
-`Instance` uses the declared native receiver. `NativeConstructor` names a static Type
-export whose CLR Core must return `NativeReceiverType`; both `String(...)` and
-`new String(...)` use it.
+`AuroraExport` on a static Core always exports to the Type object, while
+`AuroraReceiverExport` identifies a static Core whose first business parameter is the
+declared native receiver. `NativeConstructor` names a static Type export whose CLR
+Core must return `NativeReceiverType`; both `String(...)` and `new String(...)` use it.
 Factory metadata points to the existing static export catalog; no separate factory
 registry is introduced. The generated type adapter handles dynamic construction,
 aliases and spreads, while proven calls use the raw CLR factory directly.

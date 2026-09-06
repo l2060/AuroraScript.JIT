@@ -22,60 +22,56 @@ namespace AuroraScript.Runtime.Types
 
 
         /// <summary>Native read-only string length without a wrapper object.</summary>
-        [AuroraExport("length", IsGetter = true, Target = AuroraExportTarget.Instance)]
+        [AuroraReceiverExport("length", IsGetter = true)]
         public static int LengthCore(string value) => ValueOps.GetStringLength(value);
 
         /// <summary>Lowercases using the current culture, matching the script API.</summary>
-        [AuroraExport("toLowerCase", Target = AuroraExportTarget.Instance)]
+        [AuroraReceiverExport("toLowerCase")]
         public static string ToLowerCaseCore(string value) => value.ToLower(CultureInfo.CurrentCulture);
 
         /// <summary>Uppercases using the current culture, matching the script API.</summary>
-        [AuroraExport("toUpperCase", Target = AuroraExportTarget.Instance)]
+        [AuroraReceiverExport("toUpperCase")]
         public static string ToUpperCaseCore(string value) => value.ToUpper(CultureInfo.CurrentCulture);
 
         /// <summary>Trims whitespace from both ends.</summary>
-        [AuroraExport("trim", Target = AuroraExportTarget.Instance)]
+        [AuroraReceiverExport("trim")]
         public static string TrimCore(string value) => value.Trim();
 
         /// <summary>Trims leading whitespace.</summary>
-        [AuroraExport("trimLeft", Target = AuroraExportTarget.Instance)]
+        [AuroraReceiverExport("trimLeft")]
         public static string TrimLeftCore(string value) => value.TrimStart();
 
         /// <summary>Trims trailing whitespace.</summary>
-        [AuroraExport("trimRight", Target = AuroraExportTarget.Instance)]
+        [AuroraReceiverExport("trimRight")]
         public static string TrimRightCore(string value) => value.TrimEnd();
 
         /// <summary>Returns the raw string without materializing a wrapper.</summary>
-        [AuroraExport("toString", Target = AuroraExportTarget.Instance)]
+        [AuroraReceiverExport("toString")]
         public static string ToStringCore(string value) => value;
 
         /// <summary>Tests ordinal substring containment.</summary>
-        [AuroraExport("contains", DynamicAdapter = nameof(CONTANINS), Target = AuroraExportTarget.Instance)]
+        [AuroraReceiverExport("contains", DynamicAdapter = nameof(CONTANINS))]
         public static bool ContainsCore(string value, string search) => value.Contains(search);
 
         /// <summary>Returns the first ordinal match index or -1.</summary>
-        [AuroraExport("indexOf", DynamicAdapter = nameof(INDEXOF), Target = AuroraExportTarget.Instance)]
+        [AuroraReceiverExport("indexOf", DynamicAdapter = nameof(INDEXOF))]
         public static int IndexOfCore(string value, string search) => value.IndexOf(search, StringComparison.Ordinal);
 
         /// <summary>Returns the last ordinal match index or -1.</summary>
-        [AuroraExport("lastIndexOf", DynamicAdapter = nameof(LASTINDEXOF), Target = AuroraExportTarget.Instance)]
+        [AuroraReceiverExport("lastIndexOf", DynamicAdapter = nameof(LASTINDEXOF))]
         public static int LastIndexOfCore(string value, string search) => value.LastIndexOf(search, StringComparison.Ordinal);
 
         /// <summary>Tests an ordinal prefix.</summary>
-        [AuroraExport("startsWith", DynamicAdapter = nameof(STARTSWITH), Target = AuroraExportTarget.Instance)]
+        [AuroraReceiverExport("startsWith", DynamicAdapter = nameof(STARTSWITH))]
         public static bool StartsWithCore(string value, string search) => value.StartsWith(search, StringComparison.Ordinal);
 
         /// <summary>Tests an ordinal suffix.</summary>
-        [AuroraExport("endsWith", DynamicAdapter = nameof(ENDSWITH), Target = AuroraExportTarget.Instance)]
+        [AuroraReceiverExport("endsWith", DynamicAdapter = nameof(ENDSWITH))]
         public static bool EndsWithCore(string value, string search) => value.EndsWith(search, StringComparison.Ordinal);
 
         /// <summary>Native character access retaining NaN for invalid indices.</summary>
-        [AuroraExport("charCodeAt", DynamicAdapter = nameof(CHARCODEAT), Target = AuroraExportTarget.Instance)]
-        public static double CharCodeAtCore(string value, int index) => ValueOps.GetStringCharCodeAt(value, index);
-
-        /// <summary>Native character access when the compiler has proven the index in bounds.</summary>
-        [AuroraExport("charCodeAt", DynamicAdapter = nameof(CHARCODEAT), RequiresIndexProof = true, Target = AuroraExportTarget.Instance)]
-        public static int CharCodeAtInt32Core(string value, int index) => ValueOps.GetStringCharCodeAtInt32(value, index);
+        [AuroraReceiverExport("charCodeAt", DynamicAdapter = nameof(CHARCODEAT))]
+        public static double CharCodeAtCore(string value, int index) => value != null && (uint)index < (uint)value.Length ? value[index] : double.NaN;
 
         /// <summary>
         /// Native implementation for String.contains().
@@ -205,7 +201,7 @@ namespace AuroraScript.Runtime.Types
             => value.Substring((int)Math.Clamp(start, 0, Math.Max(0, value.Length)));
 
         /// <summary>Native Int32 indices, preserving the dynamic range rules.</summary>
-        [AuroraExport("substring", DynamicAdapter = nameof(SUBSTRING), Target = AuroraExportTarget.Instance)]
+        [AuroraReceiverExport("substring", DynamicAdapter = nameof(SUBSTRING))]
         public static string Substring(string value, int start, int end)
         {
             if (start > end) (start, end) = (end, start);
@@ -216,7 +212,7 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary>Native Int32 start index without a Number/Int64 round trip.</summary>
-        [AuroraExport("substring", DynamicAdapter = nameof(SUBSTRING), Target = AuroraExportTarget.Instance)]
+        [AuroraReceiverExport("substring", DynamicAdapter = nameof(SUBSTRING))]
         public static string Substring(string value, int start)
             => value.Substring(Math.Clamp(start, 0, value.Length));
 
@@ -229,11 +225,11 @@ namespace AuroraScript.Runtime.Types
             => Substring(value, (long)start);
 
         /// <summary>Preserves slice's historical alias to substring.</summary>
-        [AuroraExport("slice", DynamicAdapter = nameof(SUBSTRING), Target = AuroraExportTarget.Instance)]
+        [AuroraReceiverExport("slice", DynamicAdapter = nameof(SUBSTRING))]
         public static string SliceCore(string value, int start, int end) => Substring(value, start, end);
 
         /// <summary>Preserves the one-index slice alias.</summary>
-        [AuroraExport("slice", DynamicAdapter = nameof(SUBSTRING), Target = AuroraExportTarget.Instance)]
+        [AuroraReceiverExport("slice", DynamicAdapter = nameof(SUBSTRING))]
         public static string SliceCore(string value, int start) => Substring(value, start);
 
         /// <summary>
@@ -258,7 +254,7 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary>Splits a raw string without materializing a StringValue receiver.</summary>
-        [AuroraExport("split", DynamicAdapter = nameof(SPLIT), Target = AuroraExportTarget.Instance)]
+        [AuroraReceiverExport("split", DynamicAdapter = nameof(SPLIT))]
         public static ScriptArray SplitCore(string value, string separator)
         {
             var segments = value.Split(separator, StringSplitOptions.None);
@@ -268,7 +264,7 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary>Returns a one-element array when no separator is supplied.</summary>
-        [AuroraExport("split", DynamicAdapter = nameof(SPLIT), Target = AuroraExportTarget.Instance)]
+        [AuroraReceiverExport("split", DynamicAdapter = nameof(SPLIT))]
         public static ScriptArray SplitCore(string value)
         {
             var array = ScriptArray.CreateWithCapacity(1);
@@ -292,11 +288,11 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary>Matches a string pattern, retaining the historical result datum kind.</summary>
-        [AuroraExport("match", DynamicAdapter = nameof(MATCH), Target = AuroraExportTarget.Instance)]
+        [AuroraReceiverExport("match", DynamicAdapter = nameof(MATCH))]
         public static ScriptDatum MatchCore(string value, string pattern) => MatchRegex(value, RegexManager.Resolve(pattern, ""));
 
         /// <summary>Matches a regex or weakly converted pattern without asserting an argument or result type.</summary>
-        [AuroraExport("match", DynamicAdapter = nameof(MATCH), Target = AuroraExportTarget.Instance)]
+        [AuroraReceiverExport("match", DynamicAdapter = nameof(MATCH))]
         public static ScriptDatum MatchCore(string value, ScriptDatum pattern)
         {
             DatumBuffer1 args = default;
@@ -305,7 +301,7 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary>Preserves the missing-pattern behavior.</summary>
-        [AuroraExport("match", DynamicAdapter = nameof(MATCH), Target = AuroraExportTarget.Instance)]
+        [AuroraReceiverExport("match", DynamicAdapter = nameof(MATCH))]
         public static ScriptDatum MatchCore(string value) => MatchRegex(value, RegexManager.Resolve("undefined", ""));
 
         private static ScriptDatum MatchRegex(string value, ScriptRegex regex)
@@ -333,11 +329,11 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary>Matches all occurrences of a string pattern; no match remains Null.</summary>
-        [AuroraExport("matchAll", DynamicAdapter = nameof(MATCHALL), Target = AuroraExportTarget.Instance)]
+        [AuroraReceiverExport("matchAll", DynamicAdapter = nameof(MATCHALL))]
         public static ScriptDatum MatchAllCore(string value, string pattern) => MatchAllRegex(value, RegexManager.Resolve(pattern, "g"));
 
         /// <summary>Accepts a global regex or a weakly converted pattern, retaining Datum results.</summary>
-        [AuroraExport("matchAll", DynamicAdapter = nameof(MATCHALL), Target = AuroraExportTarget.Instance)]
+        [AuroraReceiverExport("matchAll", DynamicAdapter = nameof(MATCHALL))]
         public static ScriptDatum MatchAllCore(string value, ScriptDatum pattern)
         {
             DatumBuffer1 args = default;
@@ -346,7 +342,7 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary>Preserves the missing-pattern behavior of matchAll.</summary>
-        [AuroraExport("matchAll", DynamicAdapter = nameof(MATCHALL), Target = AuroraExportTarget.Instance)]
+        [AuroraReceiverExport("matchAll", DynamicAdapter = nameof(MATCHALL))]
         public static ScriptDatum MatchAllCore(string value) => MatchAllRegex(value, RegexManager.Resolve("undefined", "g"));
 
         private static ScriptDatum MatchAllRegex(string value, ScriptRegex regex)
@@ -371,11 +367,11 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary>Replaces literal strings without a dynamic receiver, argument buffer or callback closure.</summary>
-        [AuroraExport("replace", DynamicAdapter = nameof(REPLACE), Target = AuroraExportTarget.Instance)]
+        [AuroraReceiverExport("replace", DynamicAdapter = nameof(REPLACE))]
         public static string ReplaceCore(string value, string search, string replacement) => value.Replace(search, replacement);
 
         /// <summary>Preserves regex, callback and weak-conversion semantics for uncertain argument types.</summary>
-        [AuroraExport("replace", DynamicAdapter = nameof(REPLACE), Target = AuroraExportTarget.Instance)]
+        [AuroraReceiverExport("replace", DynamicAdapter = nameof(REPLACE))]
         public static string ReplaceCore(ScriptContext ctx, string value, ScriptDatum search, ScriptDatum replacement)
         {
             DatumBuffer2 args = default;
@@ -448,11 +444,11 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary>Pads with the first UTF-16 code unit, preserving the existing width and empty-pad behavior.</summary>
-        [AuroraExport("padLeft", DynamicAdapter = nameof(PADLEFT), Target = AuroraExportTarget.Instance)]
+        [AuroraReceiverExport("padLeft", DynamicAdapter = nameof(PADLEFT))]
         public static string PadLeftCore(string value, int width, string padding) => value.PadLeft(width, padding[0]);
 
         /// <summary>Pads on the right using the existing first-code-unit rule.</summary>
-        [AuroraExport("padRight", DynamicAdapter = nameof(PADRIGHT), Target = AuroraExportTarget.Instance)]
+        [AuroraReceiverExport("padRight", DynamicAdapter = nameof(PADRIGHT))]
         public static string PadRightCore(string value, int width, string padding) => value.PadRight(width, padding[0]);
 
         /// <summary>

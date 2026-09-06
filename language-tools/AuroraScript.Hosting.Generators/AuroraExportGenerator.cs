@@ -25,18 +25,13 @@ namespace AuroraScript.Hosting.Generators
         Throw
     }
 
-    internal enum HostExportTarget
-    {
-        Auto,
-        Type,
-        Instance
-    }
     [Generator]
     public sealed partial class AuroraExportGenerator : IIncrementalGenerator
     {
         private const string NativeTypeAttribute = "AuroraScript.Hosting.AuroraNativeTypeAttribute";
         private const string TypedDocumentInterface = "AuroraScript.Runtime.Serialization.INativeTypedDocument";
         private const string ExportAttribute = "AuroraScript.Hosting.AuroraExportAttribute";
+        private const string ReceiverExportAttribute = "AuroraScript.Hosting.AuroraReceiverExportAttribute";
         private const string ParamAttribute = "AuroraScript.Hosting.AuroraParamAttribute";
         private static readonly DiagnosticDescriptor InvalidGlobal = new(
             "AURORAEXP001",
@@ -209,7 +204,9 @@ namespace AuroraScript.Hosting.Generators
                 takesThisObject,
                 isInstance: !methodSymbol.IsStatic)
             {
-                ReceiverType = receiverType?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+                ReceiverType = receiverType?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                Writable = exportAttribute.NamedArguments.Any(pair => pair.Key == "Writable" && pair.Value.Value is true),
+                Enumerable = exportAttribute.NamedArguments.Any(pair => pair.Key == "Enumerable" && pair.Value.Value is true)
             };
         }
 
@@ -235,7 +232,9 @@ namespace AuroraScript.Hosting.Generators
             return new ConstantModel(
                 scriptName!,
                 fieldSymbol.Name,
-                fieldSymbol.ContainingType.ToDisplayString());
+                fieldSymbol.ContainingType.ToDisplayString(),
+                exportAttribute.NamedArguments.Any(pair => pair.Key == "Writable" && pair.Value.Value is true),
+                exportAttribute.NamedArguments.Any(pair => pair.Key == "Enumerable" && pair.Value.Value is true));
         }
 
         private static string GetCatalogKind(ParameterKind kind)
@@ -983,16 +982,22 @@ namespace AuroraScript.Hosting.Generators
             public ConstantModel(
                 string scriptName,
                 string fieldName,
-                string containingTypeDisplayName)
+                string containingTypeDisplayName,
+                bool writable,
+                bool enumerable)
             {
                 ScriptName = scriptName;
                 FieldName = fieldName;
                 ContainingTypeDisplayName = containingTypeDisplayName;
+                Writable = writable;
+                Enumerable = enumerable;
             }
 
             public string ScriptName { get; }
             public string FieldName { get; }
             public string ContainingTypeDisplayName { get; }
+            public bool Writable { get; }
+            public bool Enumerable { get; }
         }
 
         private sealed class ExportModel
@@ -1042,7 +1047,8 @@ namespace AuroraScript.Hosting.Generators
             public string? ReceiverType { get; set; }
             public bool IsGetter { get; set; }
             public bool IsSetter { get; set; }
-            public bool RequiresIndexProof { get; set; }
+            public bool Writable { get; set; }
+            public bool Enumerable { get; set; }
 
             private static HostExportFailure ResolveDefaultFailure(ReturnKind returnKind)
             {

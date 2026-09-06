@@ -28,11 +28,11 @@ namespace AuroraScript.Runtime.Types
         public override bool IsTrue() => Value != 0;
 
         /// <summary>Formats the exact integer without a Number conversion.</summary>
-        [AuroraExport("toString", DynamicAdapter = nameof(TOSTRING), Target = AuroraExportTarget.Instance)]
+        [AuroraReceiverExport("toString", DynamicAdapter = nameof(TOSTRING))]
         public static string FormatString(long value) => NumberValue.FormatString(value);
 
         /// <summary>Formats the exact integer with an integer radix.</summary>
-        [AuroraExport("toString", DynamicAdapter = nameof(TOSTRING), Target = AuroraExportTarget.Instance)]
+        [AuroraReceiverExport("toString", DynamicAdapter = nameof(TOSTRING))]
         public static string FormatString(long value, int radix) => NumberValue.FormatString(value, radix);
 
         internal new static void TOSTRING(ScriptContext ctx, ScriptObject receiver, Span<ScriptDatum> args, ref ScriptDatum result)

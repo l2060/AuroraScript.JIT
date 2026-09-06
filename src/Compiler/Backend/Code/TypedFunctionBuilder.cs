@@ -420,7 +420,6 @@ namespace AuroraScript.Compiler.Backend.Code
             private readonly DirectParameterType[][] _directParameterTypes;
             private readonly FlowValueType[] _upvalueTypes;
             private readonly HashSet<int> _safeInt32Mutations;
-            private readonly Dictionary<int, int> _provenStringIndices;
             private readonly Dictionary<ForStatement, CountedLoop> _countedLoops;
             private readonly Dictionary<int, Dictionary<string, FlowValueType>> _localFields;
             private readonly HashSet<int> _invalidLocalFields;
@@ -467,7 +466,6 @@ namespace AuroraScript.Compiler.Backend.Code
                 _directParameterTypes = directParameterTypes;
                 _optimisticDirect = parameterTypes != null;
                 _safeInt32Mutations = new HashSet<int>();
-                _provenStringIndices = new Dictionary<int, int>();
                 _countedLoops = new Dictionary<ForStatement, CountedLoop>(
                     ReferenceEqualityComparer.Instance);
                 _localFields = new Dictionary<int, Dictionary<string, FlowValueType>>();
@@ -798,14 +796,6 @@ namespace AuroraScript.Compiler.Backend.Code
                         if (TryGetSafeInt32Induction(@for, out var inductionSlot))
                         {
                             _safeInt32Mutations.Add(inductionSlot.Value);
-                            var hasStringIndex = TryGetProvenStringIndex(
-                                @for,
-                                inductionSlot,
-                                out var stringSlot);
-                            if (hasStringIndex)
-                            {
-                                _provenStringIndices[inductionSlot.Value] = stringSlot.Value;
-                            }
                             _integerRangeLoopDepth++;
                             try
                             {
@@ -815,10 +805,6 @@ namespace AuroraScript.Compiler.Backend.Code
                             finally
                             {
                                 _integerRangeLoopDepth--;
-                                if (hasStringIndex)
-                                {
-                                    _provenStringIndices.Remove(inductionSlot.Value);
-                                }
                                 _safeInt32Mutations.Remove(inductionSlot.Value);
                             }
                         }
@@ -2061,13 +2047,28 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     return false;
                 }
-                return CanBindNativeArguments(
-                    call,
-                    descriptor.ParameterKinds,
-                    descriptor.RequiredScriptParameterCount,
-                    descriptor.Method.GetParameters(),
-                    (descriptor.TakesContext ? 1 : 0) + (descriptor.TakesThisObject ? 1 : 0),
-                    descriptor.UseDynamicForExtraArguments);
+                HostExportDescriptor match = null;
+                for (var candidate = descriptor; candidate != null; candidate = candidate.NextOverload)
+                {
+                    if (!CanBindNativeArguments(
+                            call,
+                            candidate.ParameterKinds,
+                            candidate.RequiredScriptParameterCount,
+                            candidate.Method.GetParameters(),
+                            (candidate.TakesContext ? 1 : 0) + (candidate.TakesThisObject ? 1 : 0),
+                            candidate.UseDynamicForExtraArguments))
+                    {
+                        continue;
+                    }
+                    if (match != null)
+                    {
+                        descriptor = null;
+                        return false;
+                    }
+                    match = candidate;
+                }
+                descriptor = match;
+                return descriptor != null;
             }
 
             private bool TryGetHostExportConstant(GetPropertyExpression property)
@@ -2103,167 +2104,11 @@ namespace AuroraScript.Compiler.Backend.Code
                     !_expressionTypes.TryGetValue(property.Object, out var receiver))
                     return false;
                 if (!_hostExports.TryGetNativeValue(receiver, out var owner)) return false;
-                var binding = owner.BindValueMethod(name, call.Arguments, _expressionTypes,
-                    IsProvenStringCharCodeAtCall(call), receiver);
+                var binding = owner.BindValueMethod(name, call.Arguments, _expressionTypes, receiver);
                 if (binding == null) return false;
                 (_nativeValueCalls ??= new Dictionary<FunctionCallExpression, HostNativeMethodDescriptor>())[call] = binding;
                 type = GetNativeFlowType(binding.ReturnKind);
                 return true;
-            }
-
-            private bool IsProvenStringCharCodeAtCall(FunctionCallExpression call)
-            {
-                if (call.Target is not GetPropertyExpression property ||
-                    property.Object is not NameExpression receiver ||
-                    call.Arguments.Count != 1 ||
-                    !_names.TryGetValue(receiver, out var receiverBinding) ||
-                    !receiverBinding.IsLocal)
-                {
-                    return false;
-                }
-
-                if (TryGetProvenStringIndexBase(
-                        call.Arguments[0],
-                        receiverBinding.Local,
-                        out var offset) &&
-                    offset == 0)
-                {
-                    return true;
-                }
-
-                return offset > 0 &&
-                    IsGuardedByStringLength(
-                        call,
-                        call.Arguments[0],
-                        receiverBinding.Local);
-            }
-
-            private bool TryGetProvenStringIndexBase(
-                Expression expression,
-                LocalSlotId receiver,
-                out int offset)
-            {
-                offset = 0;
-                if (expression is NameExpression index &&
-                    _names.TryGetValue(index, out var indexBinding) &&
-                    indexBinding.IsLocal)
-                {
-                    return _provenStringIndices.TryGetValue(
-                            indexBinding.Local.Value,
-                            out var stringSlot) &&
-                        stringSlot == receiver.Value;
-                }
-
-                if (expression is BinaryExpression binary &&
-                    binary.Operator == Operator.Add &&
-                    binary.Left is NameExpression &&
-                    TryEvaluateInt32Constant(binary.Right, out offset) &&
-                    offset > 0 && offset <= 32)
-                {
-                    return TryGetProvenStringIndexBase(
-                        binary.Left,
-                        receiver,
-                        out _);
-                }
-
-                return false;
-            }
-
-            private bool IsGuardedByStringLength(
-                AstNode node,
-                Expression index,
-                LocalSlotId receiver)
-            {
-                var current = node;
-                while (current?.Parent != null &&
-                    current.Parent is not Statement)
-                {
-                    if (current.Parent is BinaryExpression logical &&
-                        logical.Operator == Operator.LogicalAnd &&
-                        ReferenceEquals(logical.Right, current) &&
-                        ContainsStringIndexUpperBound(
-                            logical.Left,
-                            index,
-                            receiver))
-                    {
-                        return true;
-                    }
-                    current = current.Parent;
-                }
-                return false;
-            }
-
-            private bool ContainsStringIndexUpperBound(
-                Expression expression,
-                Expression index,
-                LocalSlotId receiver)
-            {
-                if (expression is BinaryExpression binary)
-                {
-                    if (binary.Operator == Operator.LessThan &&
-                        IsSameStringIndex(binary.Left, index) &&
-                        IsStringLengthValue(binary.Right, receiver))
-                    {
-                        return true;
-                    }
-                    if (binary.Operator == Operator.LogicalAnd)
-                    {
-                        return ContainsStringIndexUpperBound(
-                                binary.Left,
-                                index,
-                                receiver) ||
-                            ContainsStringIndexUpperBound(
-                                binary.Right,
-                                index,
-                                receiver);
-                    }
-                }
-                return false;
-            }
-
-            private bool IsSameStringIndex(Expression left, Expression right)
-            {
-                if (left is NameExpression leftName &&
-                    right is NameExpression rightName &&
-                    _names.TryGetValue(leftName, out var leftBinding) &&
-                    _names.TryGetValue(rightName, out var rightBinding))
-                {
-                    return leftBinding.IsLocal && rightBinding.IsLocal &&
-                        leftBinding.Local.Equals(rightBinding.Local);
-                }
-                if (left is BinaryExpression leftBinary &&
-                    right is BinaryExpression rightBinary &&
-                    leftBinary.Operator == Operator.Add &&
-                    rightBinary.Operator == Operator.Add &&
-                    TryEvaluateInt32Constant(leftBinary.Right, out var leftOffset) &&
-                    TryEvaluateInt32Constant(rightBinary.Right, out var rightOffset) &&
-                    leftOffset == rightOffset)
-                {
-                    return IsSameStringIndex(
-                        leftBinary.Left,
-                        rightBinary.Left);
-                }
-                return false;
-            }
-
-            private bool IsStringLengthValue(
-                Expression expression,
-                LocalSlotId receiver)
-            {
-                if (expression is NameExpression name &&
-                    _names.TryGetValue(name, out var binding) &&
-                    binding.IsLocal &&
-                    !WritesLocal(_function.Declaration?.Body, binding.Local))
-                {
-                    expression = (_function.LocalSlots[binding.Local.Value]
-                        .Declaration as VariableDeclaration)?.Initializer;
-                }
-                return expression is GetPropertyExpression length &&
-                    IsStaticProperty(length.Property, "length") &&
-                    length.Object is NameExpression owner &&
-                    _names.TryGetValue(owner, out var ownerBinding) &&
-                    ownerBinding.IsLocal &&
-                    ownerBinding.Local.Equals(receiver);
             }
 
             private bool IsDirectFunctionCall(FunctionCallExpression call)
@@ -3082,57 +2927,6 @@ namespace AuroraScript.Compiler.Backend.Code
                 }
 
                 slot = conditionBinding.Local;
-                return true;
-            }
-
-            private bool TryGetProvenStringIndex(
-                ForStatement statement,
-                LocalSlotId inductionSlot,
-                out LocalSlotId stringSlot)
-            {
-                stringSlot = LocalSlotId.Invalid;
-                if (statement?.Condition is not BinaryExpression condition ||
-                    condition.Operator != Operator.LessThan ||
-                    condition.Left is not NameExpression conditionName ||
-                    !_names.TryGetValue(conditionName, out var conditionBinding) ||
-                    !conditionBinding.IsLocal ||
-                    !conditionBinding.Local.Equals(inductionSlot))
-                {
-                    return false;
-                }
-
-                var inductionDeclaration = _function.LocalSlots[inductionSlot.Value]
-                    .Declaration as VariableDeclaration;
-                if (inductionDeclaration?.Initializer == null ||
-                    !TryEvaluateInt32Constant(
-                        inductionDeclaration.Initializer,
-                        out var initialIndex) ||
-                    initialIndex < 0)
-                {
-                    return false;
-                }
-
-                Expression bound = condition.Right;
-                if (bound is NameExpression boundName &&
-                    _names.TryGetValue(boundName, out var boundBinding) &&
-                    boundBinding.IsLocal &&
-                    !WritesLocal(_function.Declaration?.Body, boundBinding.Local))
-                {
-                    bound = (_function.LocalSlots[boundBinding.Local.Value]
-                        .Declaration as VariableDeclaration)?.Initializer;
-                }
-
-                if (bound is not GetPropertyExpression length ||
-                    !IsStaticProperty(length.Property, "length") ||
-                    length.Object is not NameExpression stringName ||
-                    !_names.TryGetValue(stringName, out var stringBinding) ||
-                    !stringBinding.IsLocal ||
-                    _locals[stringBinding.Local.Value] != FlowValueType.String)
-                {
-                    return false;
-                }
-
-                stringSlot = stringBinding.Local;
                 return true;
             }
 

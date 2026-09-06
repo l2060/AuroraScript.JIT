@@ -238,20 +238,9 @@ namespace AuroraScript.Runtime.Types
             return this;
         }
 
-        /// <summary>Provides the dynamic fallback for other argument shapes.</summary>
-        [AuroraExport("append", DynamicAdapter = nameof(APPEND))]
-        public ScriptPathValue AppendCore(params ScriptDatum[] segments)
-        {
-            Append(segments);
-            return this;
-        }
-
         /// <summary>Replaces this path with a new root and optional segments.</summary>
         [AuroraExport("reset", DynamicAdapter = nameof(RESET))]
-        public ScriptPathValue ResetCore(
-            string root = null,
-            string segment1 = null,
-            string segment2 = null)
+        public ScriptPathValue ResetCore(string root = null, string segment1 = null, string segment2 = null)
         {
             _value = ScriptPath.NormalizeText(root ?? string.Empty);
             Append(segment1);
@@ -289,10 +278,7 @@ namespace AuroraScript.Runtime.Types
 
         /// <summary>Creates a path from a root and optional segments.</summary>
         [AuroraExport("of", DynamicAdapter = nameof(OF))]
-        public static ScriptPathValue OfCore(
-            string root = null,
-            string segment1 = null,
-            string segment2 = null)
+        public static ScriptPathValue OfCore(string root = null, string segment1 = null, string segment2 = null)
         {
             var result = new ScriptPathValue(root ?? string.Empty);
             result.Append(segment1);
@@ -301,11 +287,7 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary>Dynamic adapter for variadic Path.of calls.</summary>
-        public static void OF(
-            ScriptContext context,
-            ScriptObject thisObject,
-            Span<ScriptDatum> args,
-            ref ScriptDatum result)
+        public static void OF(ScriptContext context, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             result = ScriptDatum.FromObject(new ScriptPathValue(
                 GetPathString(args, 0),
@@ -314,11 +296,7 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary>Dynamic adapter for variadic Path append calls.</summary>
-        public static void APPEND(
-            ScriptContext context,
-            ScriptObject thisObject,
-            Span<ScriptDatum> args,
-            ref ScriptDatum result)
+        public static void APPEND(ScriptContext context, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             if (thisObject is not ScriptPathValue path)
             {
@@ -330,11 +308,7 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary>Dynamic adapter for variadic Path reset calls.</summary>
-        public static void RESET(
-            ScriptContext context,
-            ScriptObject thisObject,
-            Span<ScriptDatum> args,
-            ref ScriptDatum result)
+        public static void RESET(ScriptContext context, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             if (thisObject is not ScriptPathValue path)
             {
@@ -350,22 +324,39 @@ namespace AuroraScript.Runtime.Types
         public static bool IsPathCore(ScriptDatum value = default) => value.Object is ScriptPathValue;
 
         /// <summary>Joins and normalizes path segments.</summary>
-        [AuroraExport("join")]
-        public static string JoinCore(params ScriptDatum[] segments)
+        [AuroraExport("join", DynamicAdapter = nameof(JOIN))]
+        public static string JoinCore(string root = null, string segment1 = null, string segment2 = null)
         {
-            var values = segments.AsSpan();
-            return BuildPathText(GetPathString(values, 0), values, 1);
+            return JoinStrings(root, segment1, segment2);
+        }
+
+        private static void JOIN(ScriptContext context, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            result = ScriptDatum.FromString(BuildPathText(GetPathString(args, 0), args, 1));
         }
 
         /// <summary>Resolves segments relative to the current module directory.</summary>
-        [AuroraExport("baseModule")]
-        public static ScriptDatum BaseModuleCore(ScriptContext context, params ScriptDatum[] segments)
+        [AuroraExport("baseModule", DynamicAdapter = nameof(BASE_MODULE))]
+        public static string BaseModuleCore(ScriptContext context, string segment0 = null, string segment1 = null, string segment2 = null)
         {
             var fullPath = context?.Module?.Source.FullPath;
-            return string.IsNullOrEmpty(fullPath)
-                ? ScriptDatum.Null
-                : ScriptDatum.FromString(AppendPathText(
-                    ScriptPath.GetDirectoryNameNormalizedText(fullPath), segments));
+            return string.IsNullOrEmpty(fullPath) ? null : JoinStrings(
+                ScriptPath.GetDirectoryNameNormalizedText(fullPath), segment0, segment1, segment2);
+        }
+
+        private static void BASE_MODULE(ScriptContext context, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            var fullPath = context?.Module?.Source.FullPath;
+            result = string.IsNullOrEmpty(fullPath) ? ScriptDatum.Null : ScriptDatum.FromString(
+                AppendPathText(ScriptPath.GetDirectoryNameNormalizedText(fullPath), args));
+        }
+
+        private static string JoinStrings(string root, string segment1, string segment2, string segment3 = null)
+        {
+            var path = ScriptPath.NormalizeText(root);
+            path = ScriptPath.CombineNormalizedText(path, segment1);
+            path = ScriptPath.CombineNormalizedText(path, segment2);
+            return ScriptPath.CombineNormalizedText(path, segment3);
         }
 
         /// <summary>Normalizes path text.</summary>

@@ -513,7 +513,7 @@ public sealed class StringOptimizationTests
 #if NET9_0_OR_GREATER
     [InlineData(CompilationMode.Persistence)]
 #endif
-    public async Task StringMemberBindingsPreserveLengthAndCharCodeIndexProofs(CompilationMode mode)
+    public async Task StringMemberBindingsPreserveLengthAndSafeCharCodeCalls(CompilationMode mode)
     {
         using var workspace = new TestWorkspace();
         var (_, domain) = await workspace.CompileModuleAsync("""
@@ -552,7 +552,7 @@ public sealed class StringOptimizationTests
             Assert.Contains(GetCalls(methods.Single(method => method.Name == "code$native")),
                 call => call.Name == nameof(StringValue.CharCodeAtCore));
             Assert.Contains(GetCalls(methods.Single(method => method.Name == "sum$native")),
-                call => call.Name == nameof(StringValue.CharCodeAtInt32Core));
+                call => call.Name == nameof(StringValue.CharCodeAtCore));
         }
 #endif
     }

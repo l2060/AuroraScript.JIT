@@ -106,7 +106,7 @@ These short-probe medians are not statistical speedup guarantees.
 
 The two construction workloads bring the suite to 20 cases. String construction
 and static members use NativeType; `NativeReceiverType` declares primitive storage
-and `AuroraExportTarget.Instance` identifies instance Core methods. The wrapper pool
+and `AuroraReceiverExport` identifies static Core methods exposed on primitive instances. The wrapper pool
 and its configuration/API have been removed. Native construction reuses the raw
 string; unknown receivers still permit dynamic dispatch and wrapper allocation.
 Consequently, the earlier dynamic allocation snapshots above predate pool removal.

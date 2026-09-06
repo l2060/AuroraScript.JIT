@@ -47,7 +47,7 @@ Use this map when changing language behavior.
 - Shared legacy prototypes: `src/Runtime/Types/Prototypes.cs`; NativeType-owned frozen prototypes and `RegisterNativeMembers`: `language-tools/AuroraScript.Hosting.Generators/AuroraNativeObjectGenerator.cs`
 - Console/JSON/TDoc/Math/Conv8/Env/HotPatch (NativeType): `src/Runtime/Builtin`
 - NativeType source generator: `language-tools/AuroraScript.Hosting.Generators/AuroraNativeObjectGenerator.cs`
-- Host export attributes: `src/Hosting` (`AuroraNativeTypeAttribute`, `AuroraExportAttribute`, `AuroraExportTarget`)
+- Host export attributes: `src/Hosting` (`AuroraNativeTypeAttribute`, `AuroraExportAttribute`, `AuroraReceiverExportAttribute`)
 - Compiler native-type catalog: `src/Compiler/Backend/HostExportCatalog.cs`; application types come from `CompilerOptions.NativeTypes`
 - Hot-patch graph and path matching: `src/Compiler/IncrementalCompiler.cs`, `src/Compiler/Backend/Emission/HotPatchEmitter.cs`
 

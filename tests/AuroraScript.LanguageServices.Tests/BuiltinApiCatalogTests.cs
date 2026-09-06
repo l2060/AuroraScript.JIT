@@ -343,6 +343,6 @@ public sealed class BuiltinApiCatalogTests
     }
 
     private static readonly Regex DefinePattern = new("\\bDefine\\(\"(?<name>[^\"]+)\"", RegexOptions.Compiled);
-    private static readonly Regex AuroraExportPattern = new("\\[AuroraExport\\(\"(?<name>[^\"]+)\"", RegexOptions.Compiled);
+    private static readonly Regex AuroraExportPattern = new("\\[Aurora(?:Receiver)?Export\\(\"(?<name>[^\"]+)\"", RegexOptions.Compiled);
     private static readonly Regex PrototypeDefinePattern = new("\\b(?<prototype>[A-Za-z0-9_]+Prototype)\\.Define\\(\"(?<name>[^\"]+)\"", RegexOptions.Compiled);
 }

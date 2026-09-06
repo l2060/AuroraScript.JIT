@@ -5,11 +5,11 @@ using System.Text.Json;
 
 namespace AuroraScript.Runtime.Builtin
 {
-
+    /// <summary>Exposes JSON serialization through generated native exports.</summary>
     [AuroraNativeType("JSON")]
-    internal sealed partial class JsonSupport : ScriptObject
+    public sealed partial class JsonSupport : ScriptObject
     {
-
+        /// <summary>Deserializes JSON text.</summary>
         [AuroraExport("parse", MatchFailure.Throw)]
         public static ScriptDatum ParseCore(ScriptContext ctx, string text)
         {
@@ -24,7 +24,7 @@ namespace AuroraScript.Runtime.Builtin
             }
         }
 
-
+        /// <summary>Serializes a script value as JSON text.</summary>
         [AuroraExport("stringify", MatchFailure.Throw)]
         public static string StringifyCore(ScriptContext ctx, ScriptDatum value, bool indented = false)
         {
@@ -37,9 +37,6 @@ namespace AuroraScript.Runtime.Builtin
             {
                 throw new AuroraRuntimeException($"TDoc.stringify error: {exception.Message}");
             }
-
-
         }
-
     }
 }

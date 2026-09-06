@@ -353,6 +353,54 @@ public sealed class HotReloadTests
     }
 
     [Fact]
+    public async Task ScriptHotPatchAcceptsNativePathValue()
+    {
+        using var workspace = new TestWorkspace();
+        var (engine, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func version() { return 1; }
+            export func patchSelf() {
+                var patch =
+                |> @module(TEST);
+                |> export func version() { return 4; }
+                    ;
+                HotPatch.incremental(Path.of('./main'), patch);
+            }
+            """,
+            enableHotReload: true);
+
+        TestWorkspace.Execute(domain, "patchSelf");
+
+        ScriptAssert.Equal(4, TestWorkspace.Execute(domain, "version"));
+    }
+
+    [Fact]
+    public async Task ScriptReplaceAcceptsNativePathValue()
+    {
+        using var workspace = new TestWorkspace();
+        var (engine, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func old() { return 1; }
+            export func version() { return 1; }
+            export func patchSelf() {
+                var patch =
+                |> @module(TEST);
+                |> export func version() { return 5; }
+                    ;
+                HotPatch.replace(Path.of('./main'), patch);
+            }
+            """,
+            enableHotReload: true);
+
+        TestWorkspace.Execute(domain, "patchSelf");
+
+        Assert.Null(domain.GetMethod("TEST", "old"));
+        ScriptAssert.Equal(5, TestWorkspace.Execute(domain, "version"));
+    }
+
+    [Fact]
     public async Task ReplacePatchCanUseModulePathAndSourceText()
     {
         using var workspace = new TestWorkspace();
