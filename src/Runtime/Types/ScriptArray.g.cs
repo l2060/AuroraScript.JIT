@@ -16,14 +16,7 @@ namespace AuroraScript.Runtime.Types
     {
         private static readonly IComparer<ScriptDatum> CompareDatumForSort = new DefaultComparer();
 
-        /// <summary> Native implementation for the 'length' property. </summary>
-        internal new static void LENGTH(ScriptObject thisObject, ref ScriptDatum result)
-        {
-            if (thisObject is ScriptArray array)
-            {
-                ScriptDatum.WriteAsNumber(ref result, array.Length);
-            }
-        }
+
 
         /// <summary> Native implementation for the 'push' method. Appends one or more items. </summary>
         internal static void PUSH(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
@@ -33,6 +26,58 @@ namespace AuroraScript.Runtime.Types
                 array.AddRange(args);
                 ScriptDatum.WriteAsNumber(ref result, array._count);
             }
+        }
+
+        /// <summary> Native implementation for the 'length' property. </summary>
+        internal static void GET_LENGTH(ScriptObject thisObject, ref ScriptDatum result)
+        {
+            if (thisObject is ScriptArray array)
+            {
+                ScriptDatum.WriteAsNumber(ref result, array.Length);
+            }
+        }
+
+
+        /// <summary> Native implementation for assigning the 'length' property. </summary>
+        internal static void SET_LENGTH(ScriptContext context, ScriptObject thisObject, ScriptDatum value)
+        {
+            if (thisObject is not ScriptArray array || !TryGetLength(value, out var length))
+            {
+                throw new AuroraRuntimeException("Invalid array length.");
+            }
+            array.SetLength(length);
+        }
+
+        private static bool TryGetLength(ScriptDatum value, out int length)
+        {
+            switch (value.Kind)
+            {
+                case ValueKind.Number:
+                    var number = value.Number;
+                    if (double.IsFinite(number) && number >= 0d && number <= Array.MaxLength &&
+                        number == Math.Truncate(number))
+                    {
+                        length = (int)number;
+                        return true;
+                    }
+                    break;
+                case ValueKind.Int64:
+                    if (value.Int64 >= 0 && value.Int64 <= Array.MaxLength)
+                    {
+                        length = (int)value.Int64;
+                        return true;
+                    }
+                    break;
+                case ValueKind.UInt64:
+                    if (value.UInt64 <= (ulong)Array.MaxLength)
+                    {
+                        length = (int)value.UInt64;
+                        return true;
+                    }
+                    break;
+            }
+            length = 0;
+            return false;
         }
 
 

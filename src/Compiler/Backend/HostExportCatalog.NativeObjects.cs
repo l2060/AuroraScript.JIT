@@ -185,6 +185,7 @@ namespace AuroraScript.Compiler.Backend
                     attribute.TakesContext,
                     owner.IsValueReceiver,
                     attribute.IsGetter,
+                    attribute.IsSetter,
                     attribute.RequiresIndexProof));
             }
         }
@@ -230,6 +231,8 @@ namespace AuroraScript.Compiler.Backend
                 if (!StringComparer.Ordinal.Equals(method.Name, attribute.MethodName) ||
                     !MatchesClrType(attribute.ReturnKind, method.ReturnType) ||
                     method.GetCustomAttribute<AuroraExportAttribute>() is not { } export ||
+                    export.IsGetter != attribute.IsGetter ||
+                    export.IsSetter != attribute.IsSetter ||
                     (owner.IsValueReceiver
                         ? export.Target != AuroraExportTarget.Instance
                         : export.Target == AuroraExportTarget.Type))
@@ -290,6 +293,8 @@ namespace AuroraScript.Compiler.Backend
     {
         private readonly Dictionary<string, HostNativeFieldDescriptor> _fields;
         private readonly Dictionary<string, HostNativeMethodDescriptor> _methods;
+        private readonly Dictionary<string, HostNativeMethodDescriptor> _getters;
+        private readonly Dictionary<string, HostNativeMethodDescriptor> _setters;
 
         public HostNativeObjectDescriptor(
             string typeName,
@@ -310,6 +315,8 @@ namespace AuroraScript.Compiler.Backend
                 : CountRequiredParameters(constructor.GetParameters(), 0);
             _fields = new Dictionary<string, HostNativeFieldDescriptor>(StringComparer.Ordinal);
             _methods = new Dictionary<string, HostNativeMethodDescriptor>(StringComparer.Ordinal);
+            _getters = new Dictionary<string, HostNativeMethodDescriptor>(StringComparer.Ordinal);
+            _setters = new Dictionary<string, HostNativeMethodDescriptor>(StringComparer.Ordinal);
         }
 
         public string TypeName { get; }
@@ -341,6 +348,26 @@ namespace AuroraScript.Compiler.Backend
             return _methods.TryGetValue(name, out method);
         }
 
+        public bool TryGetGetter(string name, out HostNativeMethodDescriptor getter)
+        {
+            if (name == null)
+            {
+                getter = null;
+                return false;
+            }
+            return _getters.TryGetValue(name, out getter);
+        }
+
+        public bool TryGetSetter(string name, out HostNativeMethodDescriptor setter)
+        {
+            if (name == null)
+            {
+                setter = null;
+                return false;
+            }
+            return _setters.TryGetValue(name, out setter);
+        }
+
         internal void AddField(HostNativeFieldDescriptor field)
         {
             if (!_fields.TryAdd(field.MemberName, field))
@@ -352,7 +379,18 @@ namespace AuroraScript.Compiler.Backend
 
         internal void AddMethod(HostNativeMethodDescriptor method)
         {
-            if (!_fields.ContainsKey(method.MemberName) && _methods.TryAdd(method.MemberName, method)) return;
+            if (method.IsGetter)
+            {
+                AddAccessor(_getters, method);
+                return;
+            }
+            if (method.IsSetter)
+            {
+                AddAccessor(_setters, method);
+                return;
+            }
+            if (!_fields.ContainsKey(method.MemberName) && !_getters.ContainsKey(method.MemberName) &&
+                !_setters.ContainsKey(method.MemberName) && _methods.TryAdd(method.MemberName, method)) return;
             if (IsValueReceiver && _methods.TryGetValue(method.MemberName, out var first))
             {
                 for (var current = first; current != null; current = current.NextOverload)
@@ -369,14 +407,26 @@ namespace AuroraScript.Compiler.Backend
             throw new InvalidOperationException($"Duplicate generated Aurora native member '{TypeName}.{method.MemberName}'.");
         }
 
+        private void AddAccessor(
+            Dictionary<string, HostNativeMethodDescriptor> accessors,
+            HostNativeMethodDescriptor method)
+        {
+            if (_fields.ContainsKey(method.MemberName) || _methods.ContainsKey(method.MemberName) ||
+                !accessors.TryAdd(method.MemberName, method))
+            {
+                throw new InvalidOperationException(
+                    $"Duplicate generated Aurora native member '{TypeName}.{method.MemberName}'.");
+            }
+        }
+
         public HostNativeMethodDescriptor GetValueGetter(string name)
-            => IsValueReceiver && TryGetMethod(name, out var method) && method.IsGetter ? method : null;
+            => IsValueReceiver && TryGetGetter(name, out var method) ? method : null;
 
         /// <summary>Bind exact-arity value members; ambiguous or coercive calls retain the dynamic adapter.</summary>
         public HostNativeMethodDescriptor BindValueMethod(string name, IReadOnlyList<Expression> arguments,
             IReadOnlyDictionary<Expression, FlowValueType> types, bool indexIsInBounds, FlowValueType receiver)
         {
-            if (!IsValueReceiver || !TryGetMethod(name, out var first) || first.IsGetter) return null;
+            if (!IsValueReceiver || !TryGetMethod(name, out var first)) return null;
             HostNativeMethodDescriptor best = null;
             var bestCost = int.MaxValue;
             var ambiguous = false;
@@ -458,6 +508,7 @@ namespace AuroraScript.Compiler.Backend
             bool takesContext,
             bool isValueReceiver = false,
             bool isGetter = false,
+            bool isSetter = false,
             bool requiresIndexProof = false)
         {
             MemberName = memberName ?? throw new ArgumentNullException(nameof(memberName));
@@ -467,6 +518,7 @@ namespace AuroraScript.Compiler.Backend
             TakesContext = takesContext;
             IsValueReceiver = isValueReceiver;
             IsGetter = isGetter;
+            IsSetter = isSetter;
             RequiresIndexProof = requiresIndexProof;
             _parameters = method.GetParameters();
             RequiredScriptParameterCount = HostNativeObjectDescriptor.CountRequiredParameters(
@@ -480,6 +532,7 @@ namespace AuroraScript.Compiler.Backend
         public bool TakesContext { get; }
         public bool IsValueReceiver { get; }
         public bool IsGetter { get; }
+        public bool IsSetter { get; }
         public bool RequiresIndexProof { get; }
         public Type ReceiverType => IsValueReceiver ? _parameters[TakesContext ? 1 : 0].ParameterType : null;
         internal HostNativeMethodDescriptor NextOverload { get; set; }

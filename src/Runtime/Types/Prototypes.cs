@@ -16,18 +16,10 @@ namespace AuroraScript.Runtime.Types
         public static readonly ScriptObject CallablePrototype = new ScriptObject(Prototypes.ObjectPrototype);
         /// <summary> The prototype for null values. </summary>
         public static readonly ScriptObject NullValuePrototype = new ScriptObject(null);
-        /// <summary> The prototype for number primitive values. </summary>
-        public static readonly ScriptObject NumberValuePrototype = new ScriptObject(Prototypes.ObjectPrototype);
-        /// <summary> The immutable prototype for exact signed 64-bit values. </summary>
-        public static readonly ScriptObject Int64ValuePrototype = new ScriptObject(Prototypes.ObjectPrototype);
-        /// <summary> The immutable prototype for exact unsigned 64-bit values. </summary>
-        public static readonly ScriptObject UInt64ValuePrototype = new ScriptObject(Prototypes.ObjectPrototype);
         /// <summary> The prototype for script arrays. </summary>
         public static readonly ScriptObject ScriptArrayPrototype = new ScriptObject(Prototypes.ObjectPrototype);
         /// <summary> The shared prototype for fixed-length primitive arrays. </summary>
         public static readonly ScriptObject ScriptPackedArrayPrototype = new ScriptObject(Prototypes.ObjectPrototype);
-        /// <summary> The prototype for string primitive values. </summary>
-        public static readonly ScriptObject StringValuePrototype = new ScriptObject(Prototypes.ObjectPrototype);
         /// <summary> The prototype for regular expression objects. </summary>
         public static readonly ScriptObject RegexPrototype = new ScriptObject(Prototypes.ObjectPrototype);
         /// <summary> The prototype for date objects. </summary>
@@ -36,8 +28,6 @@ namespace AuroraScript.Runtime.Types
         public static readonly ScriptObject HashMapPrototype = new ScriptObject(Prototypes.ObjectPrototype);
         /// <summary> The prototype for hash StringBuffer objects. </summary>
         public static readonly ScriptObject StringBufferPrototype = new ScriptObject(Prototypes.ObjectPrototype);
-        /// <summary> The prototype for path value objects. </summary>
-        public static readonly ScriptObject PathPrototype = new ScriptObject(Prototypes.ObjectPrototype);
         /// <summary>
         /// Forces pre-loading of prototypes.
         /// </summary>
@@ -93,19 +83,11 @@ namespace AuroraScript.Runtime.Types
             NullValuePrototype.Define("toString", ScriptDatum.FromBonding(NullValue.TOSTRING), writeable: false, enumerable: false);
             NullValuePrototype.Frozen();
 
-            // --- Number ---
-            NumberValue.RegisterNativeMembers(NumberValuePrototype);
-            NumberValuePrototype.Frozen();
-            Int64Value.RegisterNativeMembers(Int64ValuePrototype);
-            Int64ValuePrototype.Frozen();
-            UInt64Value.RegisterNativeMembers(UInt64ValuePrototype);
-            UInt64ValuePrototype.Frozen();
-
             // --- Array ---
             ScriptArrayPrototype.Define("has", ScriptDatum.FromBonding(ScriptArray.HAS), writeable: false, enumerable: false);
             ScriptArrayPrototype.Define("indexOf", ScriptDatum.FromBonding(ScriptArray.INDEXOF), writeable: false, enumerable: false);
             ScriptArrayPrototype.Define("lastIndexOf", ScriptDatum.FromBonding(ScriptArray.LASTINDEXOF), writeable: false, enumerable: false);
-            ScriptArrayPrototype.Define("length", ScriptDatum.FromBondingGetter(ScriptArray.LENGTH), writeable: false, enumerable: false);
+            ScriptArrayPrototype.Define("length", ScriptDatum.FromBondingAccessor(ScriptArray.GET_LENGTH, ScriptArray.SET_LENGTH), writeable: false, enumerable: false);
             ScriptArrayPrototype.Define("push", ScriptDatum.FromBonding(ScriptArray.PUSH), writeable: false, enumerable: false);
             ScriptArrayPrototype.Define("pop", ScriptDatum.FromBonding(ScriptArray.POP), writeable: false, enumerable: false);
             ScriptArrayPrototype.Define("sort", ScriptDatum.FromBonding(ScriptArray.SORT), writeable: false, enumerable: false);
@@ -132,15 +114,6 @@ namespace AuroraScript.Runtime.Types
             ScriptPackedArrayPrototype.Define("fill", ScriptDatum.FromBonding(ScriptPackedArray.FILL), writeable: false, enumerable: false);
             ScriptPackedArrayPrototype.Frozen();
 
-
-
-            // --- String ---
-            StringValue.RegisterNativeMembers(StringValuePrototype);
-            StringValuePrototype.Frozen();
-
-
-
-
             // --- StringBuffer ---
             StringBufferPrototype.Define("toString", ScriptDatum.FromBonding(StringBuffer.TO_STRING), writeable: false, enumerable: false);
             StringBufferPrototype.Define("append", ScriptDatum.FromBonding(StringBuffer.APPEND), writeable: false, enumerable: false);
@@ -150,18 +123,6 @@ namespace AuroraScript.Runtime.Types
             StringBufferPrototype.Define("release", ScriptDatum.FromBonding(StringBuffer.RELEASE), writeable: false, enumerable: false);
             StringBufferPrototype.Define("stringAndRelease", ScriptDatum.FromBonding(StringBuffer.STRINGANDRELEASE), writeable: false, enumerable: false);
             StringBufferPrototype.Frozen();
-
-            // --- Path ---
-            PathPrototype.Define("toString", ScriptDatum.FromBonding(ScriptPathValue.TO_STRING), writeable: false, enumerable: false);
-            PathPrototype.Define("append", ScriptDatum.FromBonding(ScriptPathValue.APPEND), writeable: false, enumerable: false);
-            PathPrototype.Define("reset", ScriptDatum.FromBonding(ScriptPathValue.RESET), writeable: false, enumerable: false);
-            PathPrototype.Define("changeExt", ScriptDatum.FromBonding(ScriptPathValue.CHANGE_EXT), writeable: false, enumerable: false);
-            PathPrototype.Define("directoryName", ScriptDatum.FromBonding(ScriptPathValue.DIRECTORY_NAME), writeable: false, enumerable: false);
-            PathPrototype.Define("fileName", ScriptDatum.FromBonding(ScriptPathValue.FILE_NAME), writeable: false, enumerable: false);
-            PathPrototype.Define("extName", ScriptDatum.FromBonding(ScriptPathValue.EXT_NAME), writeable: false, enumerable: false);
-            PathPrototype.Define("protocol", ScriptDatum.FromBonding(ScriptPathValue.PROTOCOL), writeable: false, enumerable: false);
-            PathPrototype.Define("clone", ScriptDatum.FromBonding(ScriptPathValue.CLONE), writeable: false, enumerable: false);
-            PathPrototype.Frozen();
         }
     }
 }

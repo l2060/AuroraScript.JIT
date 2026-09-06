@@ -112,7 +112,7 @@ namespace AuroraScript
             StringValue.Register(Global);
             Global.Define("Boolean", BooleanConstructor.INSTANCE, writeable: false, enumerable: false);
             Global.Define("Object", ScriptObjectConstructor.INSTANCE, writeable: false, enumerable: false);
-            Global.Define("Number", NumberConstructor.INSTANCE, writeable: false, enumerable: false);
+            NumberValue.Register(Global);
             Global.Define("Date", ScriptDateConstructor.INSTANCE, writeable: false, enumerable: false);
 
             // register advanced type
@@ -121,7 +121,7 @@ namespace AuroraScript
             Global.Define("Regex", ScriptRegexConstructor.INSTANCE, writeable: false, enumerable: false);
             Global.Define("Proxy", ScriptProxyConstructor.INSTANCE, writeable: false, enumerable: false);
             Global.Define("StringBuffer", StringBufferConstructor.INSTANCE, writeable: false, enumerable: false);
-            Global.Define("Path", PathConstructor.INSTANCE, writeable: false, enumerable: false);
+            ScriptPathValue.Register(Global);
 
             // Built-in infrastructure
             ConsoleSupport.Register(Global);

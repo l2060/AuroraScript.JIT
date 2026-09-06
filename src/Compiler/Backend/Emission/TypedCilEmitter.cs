@@ -2350,6 +2350,10 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 return EmitNativeFieldRead(expression.Object, nativeOwner, nativeField);
             }
+            if (TryGetNativeGetter(expression.Object, name, out var getterOwner, out var getter))
+            {
+                return EmitNativeGetter(expression.Object, getterOwner, getter);
+            }
             var receiverKind = EmitExpression(expression.Object);
             if (receiverKind == StackValueKind.Object)
             {
@@ -2480,6 +2484,26 @@ namespace AuroraScript.Compiler.Backend.Emission
             if (TryEmitNativeFieldWrite(expression, name, out var nativeKind))
             {
                 return nativeKind;
+            }
+            if (TryEmitNativeSetterWrite(expression, name, out nativeKind))
+            {
+                return nativeKind;
+            }
+            if (_code.GetExpressionType(expression.Object) == FlowValueType.Array &&
+                StringComparer.Ordinal.Equals(name, "length") &&
+                _code.GetExpressionType(expression.Value) == FlowValueType.Int32)
+            {
+                var array = DeclareLocal(typeof(ScriptArray));
+                EmitArrayReference(expression.Object);
+                _il.Emit(OpCodes.Stloc, array);
+                var length = DeclareLocal(typeof(int));
+                EmitInt32Value(expression.Value);
+                _il.Emit(OpCodes.Stloc, length);
+                _il.Emit(OpCodes.Ldloc, array);
+                _il.Emit(OpCodes.Ldloc, length);
+                _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptArraySetLength);
+                _il.Emit(OpCodes.Ldloc, length);
+                return StackValueKind.Int32;
             }
 
             var receiverKind = EmitExpression(expression.Object);
@@ -4248,6 +4272,12 @@ namespace AuroraScript.Compiler.Backend.Emission
                     return;
                 case AuroraExportValueKind.Int32:
                     EmitInt32Value(argument);
+                    return;
+                case AuroraExportValueKind.Int64:
+                    EmitInt64Value(argument);
+                    return;
+                case AuroraExportValueKind.UInt64:
+                    EmitUInt64Value(argument);
                     return;
                 case AuroraExportValueKind.Boolean:
                     EmitCondition(argument);

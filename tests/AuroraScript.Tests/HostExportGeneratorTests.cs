@@ -36,7 +36,12 @@ public sealed class HostExportGeneratorTests
         Assert.Equal(nameof(StringValue.CreateCore), factory.Method.Name);
         Assert.Equal(typeof(string), factory.Method.ReturnType);
         Assert.Equal(0, factory.RequiredScriptParameterCount);
-        Assert.False(catalog.TryGetValueFactory("Number", out _));
+        Assert.True(catalog.TryGetValueFactory("Number", out var numberFactory));
+        Assert.Equal(nameof(NumberValue.CreateCore), numberFactory.Method.Name);
+        Assert.Equal(typeof(double), numberFactory.Method.ReturnType);
+        Assert.True(catalog.TryGetConstant("Number", "MAX_VALUE", out var maxValue));
+        Assert.Equal(typeof(NumberValue), maxValue.DeclaringType);
+        Assert.Equal(nameof(NumberValue.MaxValue), maxValue.Name);
         Assert.False(catalog.TryGetNativeObject("String", out _));
         Assert.False(catalog.TryGetNativeObject(typeof(string), out _));
         Assert.True(catalog.TryGetNativeValue(FlowValueType.Number, out var number));
@@ -78,6 +83,22 @@ public sealed class HostExportGeneratorTests
         Assert.True(catalog.TryGetGlobal("Vec2", "from", out _));
         Assert.False(catalog.TryGetGlobal("Stats", "mean", out _));
         Assert.True(catalog.TryGetGlobal("Math", "abs", out _));
+    }
+
+    [Fact]
+    public void NativeTypesReuseFrozenGeneratedPrototypesOnlyWhenRequired()
+    {
+        var path = new ScriptPathValue(ScriptDatum.FromString("mem://app"));
+        var vector = new Vec2(1, 2);
+
+        Assert.Same(ScriptPathValue.NativePrototype, path.Prototype);
+        Assert.Same(Vec2.NativePrototype, vector.Prototype);
+        Assert.Same(StringValue.NativePrototype, new StringValue("value").Prototype);
+        Assert.Same(NumberValue.NativePrototype, new NumberValue(1).Prototype);
+        Assert.Same(Prototypes.ObjectPrototype, new NativeRecord("value").Prototype);
+        Assert.True(path.Prototype.IsFrozen);
+        Assert.True(vector.Prototype.IsFrozen);
+        Assert.NotSame(path.Prototype, vector.Prototype);
     }
 
     [Fact]

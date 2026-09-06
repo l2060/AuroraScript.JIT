@@ -74,7 +74,7 @@ public sealed class IntegerHostExportTests
 public sealed partial class IntegerExportHost : ScriptObject
 {
     [AuroraExport]
-    public IntegerExportHost() { }
+    public IntegerExportHost() : base(NativePrototype) { }
 
     [AuroraExport("signed")]
     public static long Signed(bool minimum) => minimum ? long.MinValue : long.MaxValue;

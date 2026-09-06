@@ -1041,6 +1041,7 @@ namespace AuroraScript.Hosting.Generators
             public string? DynamicAdapter { get; set; }
             public string? ReceiverType { get; set; }
             public bool IsGetter { get; set; }
+            public bool IsSetter { get; set; }
             public bool RequiresIndexProof { get; set; }
 
             private static HostExportFailure ResolveDefaultFailure(ReturnKind returnKind)

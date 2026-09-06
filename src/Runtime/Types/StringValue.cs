@@ -21,7 +21,7 @@ namespace AuroraScript.Runtime.Types
         /// Initializes a new instance of the <see cref="StringValue"/> class from a string.
         /// </summary>
         /// <param name="str">The string value.</param>
-        public StringValue(string str) : base(Prototypes.StringValuePrototype)
+        public StringValue(string str) : base(NativePrototype)
         {
             Value = str;
         }
@@ -30,7 +30,7 @@ namespace AuroraScript.Runtime.Types
         /// Initializes a new instance of the <see cref="StringValue"/> class from a character.
         /// </summary>
         /// <param name="str">The character.</param>
-        public StringValue(char str) : base(Prototypes.StringValuePrototype)
+        public StringValue(char str) : base(NativePrototype)
         {
             Value = str.ToString();
         }

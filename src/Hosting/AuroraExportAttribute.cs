@@ -44,8 +44,11 @@ namespace AuroraScript.Hosting
         /// Overloads and proof-dependent signatures require an explicit shared compatibility adapter.</summary>
         public string DynamicAdapter { get; set; }
 
-        /// <summary>Exports a zero-argument value-receiver Core method as a read-only property.</summary>
+        /// <summary>Exports a zero-argument instance Core method as a property getter.</summary>
         public bool IsGetter { get; set; }
+
+        /// <summary>Exports a one-argument native instance Core method as a property setter.</summary>
+        public bool IsSetter { get; set; }
 
         /// <summary>Only bind this signature when argument zero is proven to index the receiver in bounds.</summary>
         public bool RequiresIndexProof { get; set; }

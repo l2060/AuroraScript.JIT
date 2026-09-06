@@ -1378,7 +1378,9 @@
             "static ScriptDatum FromRegex(ScriptRegex value)",
             "static ScriptDatum FromObject(ScriptObject value)",
             "static ScriptDatum FromError(ScriptError value)",
-            "static ScriptDatum FromBonding(ClrDatumDelegate value)"
+            "static ScriptDatum FromBonding(ClrDatumDelegate value)",
+            "static ScriptDatum FromBondingGetter(ClrGetterDelegate callback)",
+            "static ScriptDatum FromBondingAccessor(ClrGetterDelegate getter, ClrSetterDelegate setter)"
           ]
         },
         "Inspect": {
@@ -2380,6 +2382,10 @@
           "kind": "property",
           "signature": "bool IsGetter"
         },
+        "IsSetter": {
+          "kind": "property",
+          "signature": "bool IsSetter"
+        },
         "RequiresIndexProof": {
           "kind": "property",
           "signature": "bool RequiresIndexProof"
@@ -2391,7 +2397,7 @@
         "Core methods may prefix ScriptContext ctx and ScriptObject thisObject. Script parameters support double, int, bool, string, ScriptDatum, ScriptObject subclasses, trailing defaults, and params double[] or params ScriptDatum[].",
         "A CLR void return is a procedure. Direct native calls used as statements do not materialize a result; dynamic or exported calls observe script null, matching native func ... void.",
         "params exports generate Datum adapters only; they are not compiler direct-call candidates.",
-        "DynamicAdapter names an existing compatibility callback when omitted adapters would change missing-argument or conversion behavior. IsGetter exports a zero-argument value-receiver Core as a read-only property. RequiresIndexProof binds only when argument zero is a proven in-bounds index."
+        "DynamicAdapter names an existing compatibility callback when omitted adapters would change missing-argument or conversion behavior. IsGetter exports a zero-argument instance Core as a property getter. IsSetter exports a one-required-argument void native-instance Core as the matching setter; immutable NativeReceiverType members do not support setters. RequiresIndexProof binds only when argument zero is a proven in-bounds index."
       ]
     },
     "AuroraParamAttribute": {
@@ -2464,6 +2470,36 @@
         "Invoke": {
           "kind": "method",
           "signature": "void Invoke(ScriptObject @object, ref ScriptDatum result)"
+        }
+      }
+    },
+    "ClrSetterDelegate": {
+      "kind": "delegate",
+      "namespace": "AuroraScript.Runtime.Types",
+      "summary": "Advanced delegate shape for host-backed dynamic setters.",
+      "members": {
+        "Invoke": {
+          "kind": "method",
+          "signature": "void Invoke(ScriptContext context, ScriptObject @object, ScriptDatum value)"
+        }
+      }
+    },
+    "BondingAccessor": {
+      "kind": "class",
+      "namespace": "AuroraScript.Runtime.Types",
+      "summary": "Script object wrapper for optional native getter and setter delegates.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "signature": "BondingAccessor(ClrGetterDelegate getter, ClrSetterDelegate setter)"
+        },
+        "Getter": {
+          "kind": "property",
+          "signature": "ClrGetterDelegate Getter"
+        },
+        "Setter": {
+          "kind": "property",
+          "signature": "ClrSetterDelegate Setter"
         }
       }
     },

@@ -14,7 +14,7 @@ namespace AuroraScript.Runtime.Types
         /// Initializes a new instance of the <see cref="NumberValue"/> class.
         /// </summary>
         /// <param name="dValue">The double precision value.</param>
-        public NumberValue(double dValue = 0) : base(Prototypes.NumberValuePrototype)
+        public NumberValue(double dValue = 0) : base(NativePrototype)
         {
             _value = dValue;
         }
@@ -61,7 +61,7 @@ namespace AuroraScript.Runtime.Types
         {
             if (double.IsNaN(value))
             {
-                return NaN;
+                return NaNValue;
             }
             if (value == 0d)
             {

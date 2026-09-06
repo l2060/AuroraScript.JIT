@@ -85,6 +85,30 @@ public sealed class NativeObjectTests
     }
 
     [Fact]
+    public async Task HostInstanceExposesNativeAccessors()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync(
+            """
+            @module(TEST);
+            export func run(vec) {
+                var assigned = vec.value = 12;
+                return [assigned, vec.value];
+            }
+            """,
+            configureGlobal: global => Vec2.Register(global));
+
+        var vec = new Vec2(1, 2);
+        ScriptAssert.Equal(
+            new object?[] { 12D, 12D },
+            TestWorkspace.Execute(
+                domain,
+                "run",
+                arguments: [ScriptDatum.FromObject(vec)]));
+        Assert.Equal(12D, vec.GetValueCore());
+    }
+
+    [Fact]
     public async Task ScriptCanConstructNativeObject()
     {
         using var workspace = new TestWorkspace();

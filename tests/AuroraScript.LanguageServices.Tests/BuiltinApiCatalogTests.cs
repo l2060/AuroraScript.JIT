@@ -185,13 +185,13 @@ public sealed class BuiltinApiCatalogTests
             ["Math"] = Path.Combine(runtimeRoot, "Builtin", "MathSupport.cs"),
             ["Env"] = Path.Combine(runtimeRoot, "Builtin", "EnvSupport.cs"),
             ["Conv8"] = Path.Combine(runtimeRoot, "Builtin", "Conv8Support.cs"),
-            ["Path"] = Path.Combine(runtimeRoot, "Types", "TypeConstruct", "PathConstructor.cs"),
+            ["Path"] = Path.Combine(runtimeRoot, "Types", "ScriptPathValue.cs"),
             ["HotPatch"] = Path.Combine(runtimeRoot, "Builtin", "HotPatchSupport.cs"),
             ["Array"] = Path.Combine(runtimeRoot, "Types", "TypeConstruct", "ArrayConstructor.cs"),
             ["String"] = Path.Combine(runtimeRoot, "Types", "StringValue.Static.cs"),
             ["Boolean"] = Path.Combine(runtimeRoot, "Types", "TypeConstruct", "BooleanConstructor.cs"),
             ["Object"] = Path.Combine(runtimeRoot, "Types", "TypeConstruct", "ScriptObjectConstructor.cs"),
-            ["Number"] = Path.Combine(runtimeRoot, "Types", "TypeConstruct", "NumberConstructor.cs"),
+            ["Number"] = Path.Combine(runtimeRoot, "Types", "NumberValue.Static.cs"),
             ["Date"] = Path.Combine(runtimeRoot, "Types", "TypeConstruct", "ScriptDateConstructor.cs")
         };
 
@@ -199,7 +199,7 @@ public sealed class BuiltinApiCatalogTests
         {
             Assert.True(catalog.TryGetGlobal(registration.Key, out var global), $"runtime-api.json is missing global '{registration.Key}'.");
             var source = File.ReadAllText(registration.Value);
-            var memberNames = registration.Key is "console" or "JSON" or "TDoc" or "Math" or "Env" or "Conv8" or "HotPatch" or "String"
+            var memberNames = registration.Key is "console" or "JSON" or "TDoc" or "Math" or "Env" or "Conv8" or "HotPatch" or "String" or "Number"
                 ? ExtractAuroraExportNames(source)
                 : ExtractDefineNames(source, null);
             foreach (var memberName in memberNames)

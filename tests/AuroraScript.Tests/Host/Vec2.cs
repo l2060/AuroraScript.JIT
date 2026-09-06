@@ -10,6 +10,7 @@ namespace AuroraScript.Tests.Host;
 public sealed partial class Vec2 : ScriptObject, INativeTypedDocument
 {
     private double _factoryValue;
+    private double _value;
 
     [AuroraExport("DIMENSIONS")]
     public static readonly double Dimensions = 2;
@@ -21,7 +22,7 @@ public sealed partial class Vec2 : ScriptObject, INativeTypedDocument
     public double Y;
 
     [AuroraExport]
-    public Vec2(double x, double y)
+    public Vec2(double x, double y) : base(NativePrototype)
     {
         X = x;
         Y = y;
@@ -100,4 +101,10 @@ public sealed partial class Vec2 : ScriptObject, INativeTypedDocument
 
     [AuroraExport("add")]
     public Vec2 AddCore(Vec2 other) => new Vec2(X + other.X, Y + other.Y);
+
+    [AuroraExport("value", IsGetter = true)]
+    public double GetValueCore() => _value;
+
+    [AuroraExport("value", IsSetter = true)]
+    public void SetValueCore(double value) => _value = value;
 }

@@ -318,6 +318,15 @@ namespace AuroraScript.Runtime
             return CreateReference(ValueKind.ClrBonding, new BondingGetter(callback));
         }
 
+        /// <summary> Creates a new datum from native property accessor delegates. </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum FromBondingAccessor(
+            ClrGetterDelegate getter,
+            ClrSetterDelegate setter)
+        {
+            return CreateReference(ValueKind.ClrBonding, new BondingAccessor(getter, setter));
+        }
+
         /// <summary> Writes a generic script object into the destination datum. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void WriteAsObject(ref ScriptDatum dst, ScriptObject value)

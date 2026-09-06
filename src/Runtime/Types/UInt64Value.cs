@@ -9,7 +9,7 @@ namespace AuroraScript.Runtime.Types
     public sealed partial class UInt64Value : ScriptImmutable
     {
         /// <summary>Creates an immutable wrapper for an exact unsigned 64-bit value.</summary>
-        public UInt64Value(ulong value) : base(Prototypes.UInt64ValuePrototype)
+        public UInt64Value(ulong value) : base(NativePrototype)
         {
             Value = value;
         }

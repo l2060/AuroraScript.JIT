@@ -1454,6 +1454,11 @@ namespace AuroraScript.Compiler.Backend.Code
                     type = GetNativeFlowType(field.Kind);
                     return type != FlowValueType.None;
                 }
+                if (receiver.TryGetGetter(name, out var getter))
+                {
+                    type = GetNativeFlowType(getter.ReturnKind);
+                    return type != FlowValueType.None;
+                }
                 if (receiver.TryGetMethod(name, out _))
                 {
                     // A bare member reference still materializes a bound function.

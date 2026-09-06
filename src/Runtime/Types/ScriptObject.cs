@@ -1,6 +1,6 @@
-﻿using AuroraScript.Runtime.Interop;
+﻿using AuroraScript.Runtime.Debugging;
+using AuroraScript.Runtime.Interop;
 using AuroraScript.Runtime.Property;
-using AuroraScript.Runtime.Debugging;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -82,7 +82,7 @@ namespace AuroraScript.Runtime.Types
         /// Initializes an internal object with a specific prototype.
         /// </summary>
         /// <param name="prototype">The prototype object.</param>
-        internal ScriptObject(ScriptObject prototype)
+        protected internal ScriptObject(ScriptObject prototype)
         {
             this.prototype = prototype;
         }
@@ -290,10 +290,18 @@ namespace AuroraScript.Runtime.Types
         /// <summary>Sets a property from a <see cref="ScriptDatum"/>.</summary>
         protected internal virtual void SetPropertyDatum(ScriptContext ctx, string key, ScriptDatum value)
         {
-            if (TryResolveProperty(key, out var property) && property.Setter != null)
+            if (TryResolveProperty(key, out var property))
             {
-                property.Setter.Invoke(ctx, value);
-                return;
+                if (property.Setter != null)
+                {
+                    property.Setter.Invoke(ctx, value);
+                    return;
+                }
+                if (property.Datum.Reference is BondingAccessor { Setter: { } setter })
+                {
+                    setter(ctx, this, value);
+                    return;
+                }
             }
             InternalDefine(key, value);
         }
@@ -311,9 +319,10 @@ namespace AuroraScript.Runtime.Types
                 property = GetOwnProperty(meta.Slot);
                 return true;
             }
-            if (prototype != null)
+            var currentPrototype = Prototype;
+            if (currentPrototype != null)
             {
-                return prototype.TryResolveProperty(key, out property);
+                return currentPrototype.TryResolveProperty(key, out property);
             }
             property = default;
             return false;
@@ -472,10 +481,10 @@ namespace AuroraScript.Runtime.Types
                 // Object compatibility view would materialize a StringValue wrapper
                 // every time a CLR string property is read.
                 var valueObject = value.Reference as ScriptObject;
-                if (valueObject is BondingGetter getter)
+                if (valueObject is BondingAccessor { Getter: { } getter })
                 {
                     ScriptDatum datum = default;
-                    getter.Invoke(this, ref datum);
+                    getter(this, ref datum);
                     return datum;
                 }
                 if (valueObject is BondingFunction clrFunc)
@@ -534,9 +543,10 @@ namespace AuroraScript.Runtime.Types
                 }
                 return true;
             }
-            if (prototype != null)
+            var currentPrototype = Prototype;
+            if (currentPrototype != null)
             {
-                return prototype.DeletePropertyValue(key);
+                return currentPrototype.DeletePropertyValue(key);
             }
             return false;
         }
@@ -598,21 +608,21 @@ namespace AuroraScript.Runtime.Types
                         }
                     }
                 }
-                current = current.prototype;
+                current = current.Prototype;
             }
             return new ScriptEnumerator(result);
         }
 
         internal bool HasEnumerablePrototypeProperties()
         {
-            var current = prototype;
+            var current = Prototype;
             while (current != null)
             {
                 if (!current.Immutable && current.hiddenClass.EnumerableCount > 0)
                 {
                     return true;
                 }
-                current = current.prototype;
+                current = current.Prototype;
             }
             return false;
         }
@@ -641,9 +651,10 @@ namespace AuroraScript.Runtime.Types
                     list.Add(item.Name);
                 }
             }
-            if (prototype != null)
+            var currentPrototype = Prototype;
+            if (currentPrototype != null)
             {
-                prototype.CollectEnumerationKeys(list);
+                currentPrototype.CollectEnumerationKeys(list);
             }
         }
 

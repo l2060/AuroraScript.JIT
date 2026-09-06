@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using System;
 using System.Collections.Generic;
@@ -119,11 +120,26 @@ namespace AuroraScript.Hosting.Generators
                 {
                     if (target == HostExportTarget.Type)
                     {
+                        if (member is IFieldSymbol { IsStatic: true } staticField)
+                        {
+                            var constant = ParseConstant(staticField, exportAttribute);
+                            if (constant == null || exportAttribute.NamedArguments.Any(
+                                pair => pair.Key is "DynamicAdapter" or "IsGetter" or "IsSetter" or "RequiresIndexProof"))
+                            {
+                                diagnostics.Add(Diagnostic.Create(InvalidExport, GetLocation(member),
+                                    "Static value-type constants require a public static readonly double field."));
+                                continue;
+                            }
+                            if (!staticExportedNames.Add(constant.ScriptName))
+                                diagnostics.Add(Diagnostic.Create(DuplicateExport, GetLocation(member), typeName, constant.ScriptName));
+                            else staticConstants.Add(constant);
+                            continue;
+                        }
                         var staticExport = member is IMethodSymbol { IsStatic: true } staticCore
                             ? ParseExport(typeSymbol, staticCore, exportAttribute, adapterPrefix: "__Static_") : null;
                         if (staticExport == null || !staticExport.CanDirectCall || staticExport.TakesThisObject ||
                             !ConfigureValueReceiverExport(typeSymbol, staticExport, exportAttribute) ||
-                            staticExport.IsGetter || staticExport.RequiresIndexProof)
+                            staticExport.IsGetter || staticExport.IsSetter || staticExport.RequiresIndexProof)
                         {
                             diagnostics.Add(Diagnostic.Create(InvalidExport, GetLocation(member),
                                 "Static value-type exports require a public static Core and a compatible dynamic adapter."));
@@ -180,7 +196,7 @@ namespace AuroraScript.Hosting.Generators
                     continue;
                 }
 
-                if (exportAttribute.NamedArguments.Any(pair => pair.Key is "DynamicAdapter" or "IsGetter" or "RequiresIndexProof"))
+                if (exportAttribute.NamedArguments.Any(pair => pair.Key is "DynamicAdapter" or "RequiresIndexProof"))
                 {
                     diagnostics.Add(Diagnostic.Create(InvalidExport, GetLocation(member),
                         "Value-receiver export options require AuroraNativeType.NativeReceiverType and AuroraExport.Target.Instance."));
@@ -201,11 +217,25 @@ namespace AuroraScript.Hosting.Generators
                         continue;
                     }
 
-                    var export = ParseExport(typeSymbol, methodSymbol, exportAttribute);
-                    if (export != null)
+                    var isGetter = exportAttribute.NamedArguments.Any(
+                        pair => pair.Key == "IsGetter" && pair.Value.Value is true);
+                    var isSetter = exportAttribute.NamedArguments.Any(
+                        pair => pair.Key == "IsSetter" && pair.Value.Value is true);
+                    var export = ParseExport(
+                        typeSymbol,
+                        methodSymbol,
+                        exportAttribute,
+                        adapterPrefix: isGetter ? "__Get_" : isSetter ? "__Set_" : "");
+                    if (export != null && ConfigureNativeAccessorExport(export, isGetter, isSetter))
                     {
-                        if (exportedNames.Add(export.ScriptName) &&
-                            adapterNames.Add(export.AdapterMethodName))
+                        var sameName = exports.Where(candidate =>
+                            candidate.ScriptName == export.ScriptName).ToList();
+                        var canPair = sameName.Count == 1 &&
+                            (sameName[0].IsGetter && export.IsSetter ||
+                                sameName[0].IsSetter && export.IsGetter);
+                        if ((exportedNames.Add(export.ScriptName) || canPair) &&
+                            adapterNames.Add(export.AdapterMethodName) &&
+                            !fields.Any(field => field.ScriptName == export.ScriptName))
                         {
                             exports.Add(export);
                         }
@@ -232,7 +262,8 @@ namespace AuroraScript.Hosting.Generators
                     !fieldSymbol.IsImplicitlyDeclared)
                 {
                     var field = ParseInstanceField(fieldSymbol, exportAttribute);
-                    if (field != null)
+                    if (field != null && !exportAttribute.NamedArguments.Any(
+                        pair => pair.Key is "IsGetter" or "IsSetter" or "DynamicAdapter" or "RequiresIndexProof"))
                     {
                         if (exportedNames.Add(field.ScriptName))
                         {
@@ -265,7 +296,8 @@ namespace AuroraScript.Hosting.Generators
                         staticMethodSymbol,
                         exportAttribute,
                         adapterPrefix: "__Static_");
-                    if (export != null)
+                    if (export != null && !exportAttribute.NamedArguments.Any(
+                        pair => pair.Key is "IsGetter" or "IsSetter" or "RequiresIndexProof" or "DynamicAdapter"))
                     {
                         if (staticExportedNames.Add(export.ScriptName) &&
                             adapterNames.Add(export.AdapterMethodName))
@@ -327,6 +359,22 @@ namespace AuroraScript.Hosting.Generators
             }
 
             var constructor = SelectConstructor(typeSymbol, diagnostics, typeName!);
+            var requiresNativePrototype = receiverType == null && scriptObjectBase != null &&
+                exports.Any(static export => !export.IsGetter && !export.IsSetter);
+            if (requiresNativePrototype)
+            {
+                foreach (var candidate in typeSymbol.InstanceConstructors.Where(static candidate =>
+                    !candidate.IsImplicitlyDeclared && !candidate.IsStatic))
+                {
+                    if (!UsesGeneratedNativePrototype(candidate, cancellationToken))
+                    {
+                        diagnostics.Add(Diagnostic.Create(
+                            InvalidGlobal,
+                            GetLocation(candidate),
+                            $"Constructor '{candidate.ToDisplayString()}' must explicitly call base(NativePrototype)."));
+                    }
+                }
+            }
             var factoryName = typeAttribute.NamedArguments.FirstOrDefault(pair => pair.Key == "NativeConstructor").Value.Value as string;
             ExportModel? factory = null;
             if (factoryName != null)
@@ -470,7 +518,9 @@ namespace AuroraScript.Hosting.Generators
             var exportAttribute = selected.GetAttributes().First(
                 attribute => attribute.AttributeClass?.ToDisplayString() == ExportAttribute);
             if (!HasValidEnumArgument<HostExportTarget>(exportAttribute, -1, "Target") ||
-                GetNamedEnum<HostExportTarget>(exportAttribute, "Target") != HostExportTarget.Auto)
+                GetNamedEnum<HostExportTarget>(exportAttribute, "Target") != HostExportTarget.Auto ||
+                exportAttribute.NamedArguments.Any(pair =>
+                    pair.Key is "IsGetter" or "IsSetter" or "DynamicAdapter" or "RequiresIndexProof"))
             {
                 diagnostics.Add(Diagnostic.Create(
                     InvalidExport,
@@ -503,9 +553,7 @@ namespace AuroraScript.Hosting.Generators
                 }
 
                 var kind = ResolveParameterKind(parameter);
-                if (kind is ParameterKind.Unsupported or
-                    ParameterKind.NumberParams or
-                    ParameterKind.DatumParams)
+                if (kind == ParameterKind.Unsupported)
                 {
                     diagnostics.Add(Diagnostic.Create(
                         InvalidExport,
@@ -580,8 +628,10 @@ namespace AuroraScript.Hosting.Generators
         {
             export.DynamicAdapter = attribute.NamedArguments.FirstOrDefault(pair => pair.Key == "DynamicAdapter").Value.Value as string;
             export.IsGetter = attribute.NamedArguments.Any(pair => pair.Key == "IsGetter" && pair.Value.Value is true);
+            export.IsSetter = attribute.NamedArguments.Any(pair => pair.Key == "IsSetter" && pair.Value.Value is true);
             export.RequiresIndexProof = attribute.NamedArguments.Any(pair => pair.Key == "RequiresIndexProof" && pair.Value.Value is true);
-            if (export.IsGetter && (export.Parameters.Count != 0 || export.TakesContext || export.RequiresIndexProof || export.ReturnKind == ReturnKind.Void) ||
+            if (export.IsSetter ||
+                export.IsGetter && (export.Parameters.Count != 0 || export.TakesContext || export.RequiresIndexProof || export.ReturnKind == ReturnKind.Void) ||
                 export.RequiresIndexProof && (export.ReceiverType != "string" || export.Parameters.Count != 1 ||
                     export.Parameters[0].Kind != ParameterKind.Int32 || export.ReturnKind != ReturnKind.Int32))
                 return false;
@@ -604,6 +654,53 @@ namespace AuroraScript.Hosting.Generators
                 return true;
             }
             return false;
+        }
+
+        private static bool UsesGeneratedNativePrototype(
+            IMethodSymbol constructor,
+            System.Threading.CancellationToken cancellationToken)
+        {
+            foreach (var syntaxReference in constructor.DeclaringSyntaxReferences)
+            {
+                if (syntaxReference.GetSyntax(cancellationToken) is not ConstructorDeclarationSyntax declaration ||
+                    declaration.Initializer == null ||
+                    declaration.Initializer.ThisOrBaseKeyword.ValueText != "base")
+                {
+                    continue;
+                }
+
+                var arguments = declaration.Initializer.ArgumentList.Arguments;
+                if (arguments.Count == 1 &&
+                    arguments[0].Expression is IdentifierNameSyntax identifier &&
+                    identifier.Identifier.ValueText == "NativePrototype")
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool ConfigureNativeAccessorExport(
+            ExportModel export,
+            bool isGetter,
+            bool isSetter)
+        {
+            export.IsGetter = isGetter;
+            export.IsSetter = isSetter;
+            if (isGetter == isSetter)
+            {
+                return !isGetter;
+            }
+            if (export.TakesContext || export.TakesThisObject)
+            {
+                return false;
+            }
+            return isGetter
+                ? export.Parameters.Count == 0 && export.ReturnKind != ReturnKind.Void
+                : export.Parameters.Count == 1 && !export.Parameters[0].IsOptional &&
+                    export.Parameters[0].Kind is not (ParameterKind.NumberParams or ParameterKind.DatumParams) &&
+                    export.ReturnKind == ReturnKind.Void;
         }
 
         private static void ExecuteNativeObjects(
@@ -672,12 +769,15 @@ namespace AuroraScript.Hosting.Generators
                     builder.Append("[assembly: global::AuroraScript.Hosting.AuroraGeneratedNativeObjectAttribute(");
                     builder.Append('"').Append(EscapeString(model.TypeName)).Append("\", ");
                     builder.Append("typeof(global::").Append(model.TypeDisplayName).Append("), ");
+                    var directConstructor = model.Constructor != null &&
+                        !model.Constructor.Parameters.Any(static parameter =>
+                            parameter.Kind is ParameterKind.NumberParams or ParameterKind.DatumParams);
                     AppendCatalogKinds(
                         builder,
-                        model.Constructor?.Parameters,
+                        directConstructor ? model.Constructor?.Parameters : null,
                         static parameter => GetCatalogKind(parameter.Kind));
                     builder.Append(", ");
-                    builder.Append(model.Constructor != null ? "true" : "false");
+                    builder.Append(directConstructor ? "true" : "false");
                     if (model.ReceiverType != null)
                         builder.Append(", ReceiverType = typeof(").Append(model.ReceiverType).Append(')');
                     if (model.Factory != null)
@@ -719,10 +819,11 @@ namespace AuroraScript.Hosting.Generators
                             static parameter => GetCatalogKind(parameter.Kind));
                         builder.Append(", ");
                         builder.Append(export.TakesContext ? "true" : "false");
+                        builder.Append(", IsGetter = ").Append(export.IsGetter ? "true" : "false");
+                        builder.Append(", IsSetter = ").Append(export.IsSetter ? "true" : "false");
                         if (model.ReceiverType != null)
                         {
                             builder.Append(", ReceiverType = typeof(").Append(export.ReceiverType).Append(')');
-                            builder.Append(", IsGetter = ").Append(export.IsGetter ? "true" : "false");
                             builder.Append(", RequiresIndexProof = ").Append(export.RequiresIndexProof ? "true" : "false");
                         }
                         builder.AppendLine(")]");
@@ -797,8 +898,9 @@ namespace AuroraScript.Hosting.Generators
             var builder = new StringBuilder();
             builder.AppendLine("// <auto-generated />");
             builder.AppendLine("#nullable disable");
-            builder.AppendLine("#pragma warning disable CS1591");
+            builder.AppendLine("#pragma warning disable CS0108, CS1591");
             builder.AppendLine("using System;");
+            builder.AppendLine("using System.Runtime.InteropServices;");
             builder.AppendLine("using AuroraScript;");
             builder.AppendLine("using AuroraScript.Core;");
             builder.AppendLine("using AuroraScript.Runtime;");
@@ -815,6 +917,24 @@ namespace AuroraScript.Hosting.Generators
             builder.AppendLine("    {");
             if (model.ReceiverType != null)
             {
+                if (model.Exports.Count != 0)
+                {
+                    builder.AppendLine("        internal static ScriptObject NativePrototype => NativePrototypeHolder.Value;");
+                    builder.AppendLine();
+                    builder.AppendLine("        private static class NativePrototypeHolder");
+                    builder.AppendLine("        {");
+                    builder.AppendLine("            internal static readonly ScriptObject Value = CreateNativePrototype();");
+                    builder.AppendLine("        }");
+                    builder.AppendLine();
+                    builder.AppendLine("        private static ScriptObject CreateNativePrototype()");
+                    builder.AppendLine("        {");
+                    builder.AppendLine("            var prototype = new ScriptObject();");
+                    builder.AppendLine("            RegisterNativeMembers(prototype);");
+                    builder.AppendLine("            prototype.Frozen();");
+                    builder.AppendLine("            return prototype;");
+                    builder.AppendLine("        }");
+                    builder.AppendLine();
+                }
                 builder.AppendLine("        internal static void RegisterNativeMembers(ScriptObject prototype)");
                 builder.AppendLine("        {");
                 foreach (var export in model.Exports.GroupBy(export => export.ScriptName).Select(group => group.First()))
@@ -865,13 +985,46 @@ namespace AuroraScript.Hosting.Generators
                 builder.AppendLine("        private static readonly ScriptDatum NativeTypeName = ScriptDatum.FromString(\"" +
                     EscapeString(model.TypeName) + "\");");
             }
+            var prototypeExports = model.Exports
+                .Where(static export => !export.IsGetter && !export.IsSetter)
+                .GroupBy(static export => export.ScriptName)
+                .Select(static group => group.First())
+                .ToList();
+            if (prototypeExports.Count != 0)
+            {
+                builder.AppendLine("        internal static ScriptObject NativePrototype => NativePrototypeHolder.Value;");
+                builder.AppendLine();
+                builder.AppendLine("        private static class NativePrototypeHolder");
+                builder.AppendLine("        {");
+                builder.AppendLine("            internal static readonly ScriptObject Value = CreateNativePrototype();");
+                builder.AppendLine("        }");
+                builder.AppendLine();
+                builder.AppendLine("        private static ScriptObject CreateNativePrototype()");
+                builder.AppendLine("        {");
+                builder.AppendLine("            var prototype = new ScriptObject();");
+                builder.AppendLine("            RegisterNativeMembers(prototype);");
+                builder.AppendLine("            prototype.Frozen();");
+                builder.AppendLine("            return prototype;");
+                builder.AppendLine("        }");
+                builder.AppendLine();
+                builder.AppendLine("        internal static void RegisterNativeMembers(ScriptObject prototype)");
+                builder.AppendLine("        {");
+                foreach (var export in prototypeExports)
+                {
+                    builder.Append("            prototype.Define(\"").Append(EscapeString(export.ScriptName))
+                        .Append("\", ScriptDatum.FromBonding(").Append(export.AdapterMethodName)
+                        .AppendLine("), writeable: false, enumerable: false);");
+                }
+                builder.AppendLine("        }");
+                builder.AppendLine();
+            }
             builder.AppendLine("        public static readonly ScriptType Type = new NativeConstructor();");
             builder.AppendLine();
             if (model.GenerateConstructor)
             {
                 builder.Append("        ").Append(model.ConstructorAccessibility)
                     .Append(' ').Append(model.ClassName)
-                    .AppendLine("()");
+                    .AppendLine(prototypeExports.Count != 0 ? "() : base(NativePrototype)" : "()");
                 builder.AppendLine("        {");
                 builder.AppendLine("        }");
                 builder.AppendLine();
@@ -884,7 +1037,9 @@ namespace AuroraScript.Hosting.Generators
                 builder.AppendLine("        }");
                 builder.AppendLine();
                 builder.Append("        private ").Append(model.ClassName)
-                    .AppendLine("(__AuroraTypedDocumentConstruction _)");
+                    .AppendLine(prototypeExports.Count != 0
+                        ? "(__AuroraTypedDocumentConstruction _) : base(NativePrototype)"
+                        : "(__AuroraTypedDocumentConstruction _)");
                 builder.AppendLine("        {");
                 builder.AppendLine("        }");
                 builder.AppendLine();
@@ -906,25 +1061,13 @@ namespace AuroraScript.Hosting.Generators
                     " override ScriptDatum TypeOfValue => NativeTypeName;");
                 builder.AppendLine();
             }
-            foreach (var export in model.Exports)
-            {
-                builder.AppendLine("        private static readonly BondingFunction " +
-                    export.AdapterMethodName + "Bonding = new BondingFunction(" +
-                    export.AdapterMethodName + ");");
-            }
-            foreach (var export in model.StaticExports)
-            {
-                builder.AppendLine("        private static readonly BondingFunction " +
-                    export.AdapterMethodName + "Bonding = new BondingFunction(" +
-                    export.AdapterMethodName + ");");
-            }
-            if (model.Exports.Count != 0 || model.StaticExports.Count != 0)
-            {
-                builder.AppendLine();
-            }
             if (model.HasNativeInstances)
             {
-                AppendNativePropertyAccess(builder, model);
+                if (model.Fields.Count != 0 ||
+                    model.Exports.Any(static export => export.IsGetter || export.IsSetter))
+                {
+                    AppendNativePropertyAccess(builder, model);
+                }
                 AppendNativeEnumerator(builder, model);
             }
 
@@ -976,7 +1119,7 @@ namespace AuroraScript.Hosting.Generators
             builder.AppendLine("        " + model.OverrideAccessibility +
                 " override ScriptDatum GetPropertyDatum(ScriptContext ctx, string key)");
             builder.AppendLine("        {");
-            if (model.Fields.Count != 0 || model.Exports.Count != 0)
+            if (model.Fields.Count != 0 || model.Exports.Any(static export => export.IsGetter || export.IsSetter))
             {
                 builder.AppendLine("            switch (key)");
                 builder.AppendLine("            {");
@@ -986,11 +1129,25 @@ namespace AuroraScript.Hosting.Generators
                     builder.Append("                    return ");
                     builder.AppendLine(GetFieldReadExpression(field) + ";");
                 }
-                foreach (var export in model.Exports)
+                foreach (var group in model.Exports
+                    .Where(static export => export.IsGetter || export.IsSetter)
+                    .GroupBy(export => export.ScriptName))
                 {
-                    builder.Append("                case \"").Append(EscapeString(export.ScriptName)).AppendLine("\":");
-                    builder.AppendLine("                    return ScriptDatum.FromObject(" +
-                        export.AdapterMethodName + "Bonding.Bind(this));");
+                    var getter = group.FirstOrDefault(export => export.IsGetter);
+                    builder.Append("                case \"").Append(EscapeString(group.Key)).AppendLine("\":");
+                    if (getter != null)
+                    {
+                        builder.AppendLine("                {");
+                        builder.AppendLine("                    var result = default(ScriptDatum);");
+                        builder.Append("                    ").Append(getter.AdapterMethodName)
+                            .AppendLine("(ctx, this, Span<ScriptDatum>.Empty, ref result);");
+                        builder.AppendLine("                    return result;");
+                        builder.AppendLine("                }");
+                    }
+                    else
+                    {
+                        builder.AppendLine("                    return ScriptDatum.Null;");
+                    }
                 }
                 builder.AppendLine("            }");
             }
@@ -1002,7 +1159,8 @@ namespace AuroraScript.Hosting.Generators
                 " override void SetPropertyDatum(ScriptContext ctx, string key, ScriptDatum value)");
             builder.AppendLine("        {");
             var writable = model.Fields.Where(static field => !field.IsReadOnly).ToList();
-            if (writable.Count != 0)
+            var setters = model.Exports.Where(static export => export.IsSetter).ToList();
+            if (writable.Count != 0 || setters.Count != 0)
             {
                 builder.AppendLine("            switch (key)");
                 builder.AppendLine("            {");
@@ -1012,11 +1170,29 @@ namespace AuroraScript.Hosting.Generators
                     AppendFieldWrite(builder, field);
                     builder.AppendLine("                    return;");
                 }
+                foreach (var setter in setters)
+                {
+                    builder.Append("                case \"").Append(EscapeString(setter.ScriptName)).AppendLine("\":");
+                    builder.AppendLine("                {");
+                    builder.AppendLine("                    var result = default(ScriptDatum);");
+                    builder.Append("                    ").Append(setter.AdapterMethodName)
+                        .AppendLine("(ctx, this, MemoryMarshal.CreateSpan(ref value, 1), ref result);");
+                    builder.AppendLine("                    return;");
+                    builder.AppendLine("                }");
+                }
                 builder.AppendLine("            }");
             }
             foreach (var field in model.Fields.Where(static field => field.IsReadOnly))
             {
                 builder.AppendLine("            if (key == \"" + EscapeString(field.ScriptName) + "\")");
+                builder.AppendLine("            {");
+                builder.AppendLine("                return;");
+                builder.AppendLine("            }");
+            }
+            foreach (var getter in model.Exports.Where(export => export.IsGetter &&
+                !model.Exports.Any(candidate => candidate.ScriptName == export.ScriptName && candidate.IsSetter)))
+            {
+                builder.AppendLine("            if (key == \"" + EscapeString(getter.ScriptName) + "\")");
                 builder.AppendLine("            {");
                 builder.AppendLine("                return;");
                 builder.AppendLine("            }");
@@ -1035,7 +1211,10 @@ namespace AuroraScript.Hosting.Generators
                 builder.AppendLine("                return false;");
                 builder.AppendLine("            }");
             }
-            foreach (var export in model.Exports)
+            foreach (var export in model.Exports
+                .Where(static export => export.IsGetter || export.IsSetter)
+                .GroupBy(export => export.ScriptName)
+                .Select(group => group.First()))
             {
                 builder.AppendLine("            if (key == \"" + EscapeString(export.ScriptName) + "\")");
                 builder.AppendLine("            {");

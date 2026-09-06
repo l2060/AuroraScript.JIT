@@ -350,6 +350,7 @@ public sealed class BuiltInLibraryTests
                 return [
                     Path.isPath(path),
                     Path.isPath(constructed),
+                    Object.keys(path).length,
                     typeof path,
                     constructed.toString(),
                     path.toString(),
@@ -382,6 +383,7 @@ public sealed class BuiltInLibraryTests
             {
                 true,
                 true,
+                0D,
                 "Path",
                 "res://pkg/modules/runtime.as",
                 "mem://app/shared/main.as",

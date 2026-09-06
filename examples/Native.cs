@@ -15,7 +15,7 @@ namespace Examples
         public static readonly double Dimensions = 2;
 
         [AuroraExport]
-        public Vec2(double x, double y)
+        public Vec2(double x, double y) : base(NativePrototype)
         {
             X = x;
             Y = y;

@@ -1264,6 +1264,25 @@
             ]
           }
         },
+        "valueOf": {
+          "kind": "method",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "any",
+              "optional": true
+            }
+          ],
+          "returns": "number",
+          "notes": {
+            "en": [
+              "Converts a value to Number. Failed or missing conversion produces NaN."
+            ],
+            "zh-CN": [
+              "将值转换为 Number；转换失败或缺少参数时返回 NaN。"
+            ]
+          }
+        },
         "isNaN": {
           "kind": "method",
           "parameters": [

@@ -67,6 +67,43 @@ namespace AuroraScript.Compiler.Backend.Emission
             return true;
         }
 
+        private bool TryGetNativeGetter(
+            Expression receiver,
+            string memberName,
+            out HostNativeObjectDescriptor owner,
+            out HostNativeMethodDescriptor getter)
+        {
+            owner = _code.GetNativeObjectType(receiver);
+            if (owner == null || !owner.TryGetGetter(memberName, out getter) ||
+                getter.TakesContext && !HasContextArgument)
+            {
+                getter = null;
+                return false;
+            }
+            return true;
+        }
+
+        private bool TryGetNativeSetter(
+            SetPropertyExpression expression,
+            string memberName,
+            out HostNativeObjectDescriptor owner,
+            out HostNativeMethodDescriptor setter)
+        {
+            owner = _code.GetNativeObjectType(expression.Object);
+            if (owner == null || !owner.TryGetSetter(memberName, out setter) ||
+                setter.TakesContext && !HasContextArgument || setter.ParameterKinds.Length != 1 ||
+                !HostExportArgumentFacts.CanPass(
+                    setter.ParameterKinds[0],
+                    setter.GetScriptParameterType(0),
+                    _code.GetExpressionType(expression.Value),
+                    _code.GetNativeObjectType(expression.Value)?.ClrType))
+            {
+                setter = null;
+                return false;
+            }
+            return true;
+        }
+
         private bool TryGetNativeConstruction(
             NewExpression expression,
             out HostNativeObjectDescriptor descriptor)
@@ -171,6 +208,52 @@ namespace AuroraScript.Compiler.Backend.Emission
             EmitNativeReceiver(receiver, owner);
             _il.Emit(OpCodes.Ldfld, field.Field);
             return GetNativeStackKind(field.Kind);
+        }
+
+        private StackValueKind EmitNativeGetter(
+            Expression receiver,
+            HostNativeObjectDescriptor owner,
+            HostNativeMethodDescriptor getter)
+        {
+            EmitNativeReceiver(receiver, owner);
+            if (getter.TakesContext)
+            {
+                _il.Emit(OpCodes.Ldarg_0);
+            }
+            _il.Emit(OpCodes.Callvirt, getter.Method);
+            return GetNativeStackKind(getter.ReturnKind);
+        }
+
+        private bool TryEmitNativeSetterWrite(
+            SetPropertyExpression expression,
+            string memberName,
+            out StackValueKind kind)
+        {
+            kind = StackValueKind.Datum;
+            if (!TryGetNativeSetter(expression, memberName, out var owner, out var setter))
+            {
+                return false;
+            }
+
+            var receiver = DeclareLocal(owner.ClrType);
+            EmitNativeReceiver(expression.Object, owner);
+            _il.Emit(OpCodes.Stloc, receiver);
+
+            var parameterType = setter.GetScriptParameterType(0);
+            var value = DeclareLocal(parameterType);
+            EmitHostExportArgument(expression.Value, setter.ParameterKinds[0], parameterType);
+            _il.Emit(OpCodes.Stloc, value);
+
+            _il.Emit(OpCodes.Ldloc, receiver);
+            if (setter.TakesContext)
+            {
+                _il.Emit(OpCodes.Ldarg_0);
+            }
+            _il.Emit(OpCodes.Ldloc, value);
+            _il.Emit(OpCodes.Callvirt, setter.Method);
+            _il.Emit(OpCodes.Ldloc, value);
+            kind = GetNativeStackKind(setter.ParameterKinds[0]);
+            return true;
         }
 
         /// <summary>

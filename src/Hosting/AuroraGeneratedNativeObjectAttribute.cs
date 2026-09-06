@@ -145,6 +145,9 @@ namespace AuroraScript.Hosting
         /// <summary>True when this Core method implements a read-only property.</summary>
         public bool IsGetter { get; set; }
 
+        /// <summary>True when this Core method implements a property setter.</summary>
+        public bool IsSetter { get; set; }
+
         /// <summary>True when binding requires an in-bounds receiver index proof.</summary>
         public bool RequiresIndexProof { get; set; }
     }

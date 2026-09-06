@@ -357,7 +357,7 @@ var fractions = new Float64Array(size);
 var flags = new BooleanArray(size);
 ```
 
-Each constructor accepts an optional non-negative length and zero-initializes contiguous primitive storage. `length` is read-only; `push`, `pop`, and element deletion are not supported. Use a general `Array` when the collection must grow or contain mixed values. Script numbers are doubles, so values read from `Int64Array` and `UInt64Array` must be exactly representable as a script number; use TDoc typed values when exact 64-bit persistence is required.
+Each constructor accepts an optional non-negative length and zero-initializes contiguous primitive storage. `length` is read-only; `push`, `pop`, and element deletion are not supported. A general `Array` has writable `length`: shortening clears removed elements, while growing appends `null` slots. Use a general `Array` when the collection must grow or contain mixed values. Script numbers are doubles, so values read from `Int64Array` and `UInt64Array` must be exactly representable as a script number; use TDoc typed values when exact 64-bit persistence is required.
 
 `Conv8` reads and writes scalars and UTF-8 text on a `UInt8Array` only. Multi-byte integers and floats take `littleEndian` (default `true`). `typeof Conv8` is `"type"`; `new Conv8()` fails. There is no script `Encoding` global.
 

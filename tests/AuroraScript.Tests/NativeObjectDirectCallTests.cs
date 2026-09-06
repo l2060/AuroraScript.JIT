@@ -72,6 +72,11 @@ public sealed class NativeObjectDirectCallTests
                 vec.x += 2;
                 return read();
             }
+            export func accessor() Number {
+                var vec = new Vec2(1, 2);
+                var assigned = vec.value = 9;
+                return assigned + vec.value;
+            }
             """,
             mode,
             nativeTypes: true);
@@ -105,6 +110,7 @@ public sealed class NativeObjectDirectCallTests
                 arguments: [ScriptDatum.FromObject(new Vec2(7, 8))]));
         ScriptAssert.Equal(3066, TestWorkspace.Execute(domain, "mutate"));
         ScriptAssert.Equal(3, TestWorkspace.Execute(domain, "captured"));
+        ScriptAssert.Equal(18, TestWorkspace.Execute(domain, "accessor"));
     }
 
     [Fact]
@@ -280,6 +286,7 @@ public sealed class NativeObjectDirectCallTests
                 constructor(Number x, Number y);
                 Number x;
                 Number y;
+                Number value;
                 func length() Number;
             }
             """);
@@ -292,7 +299,8 @@ public sealed class NativeObjectDirectCallTests
                 var original = vec.x++;
                 vec.x += 2;
                 vec.x = 3;
-                return original + vec.length() + vec.y;
+                vec.value = 11;
+                return original + vec.length() + vec.y + vec.value;
             }
             export func dynamicReceiver(vec) Number {
                 return vec.length();
@@ -306,7 +314,7 @@ public sealed class NativeObjectDirectCallTests
         await engine.BuildAsync(["main.as"]);
         using var domain = engine.CreateDomain();
         // length() runs after the field write, so it measures (3, 8).
-        ScriptAssert.Equal(6D + Math.Sqrt(73D) + 8D, TestWorkspace.Execute(domain, "direct"));
+        ScriptAssert.Equal(6D + Math.Sqrt(73D) + 8D + 11D, TestWorkspace.Execute(domain, "direct"));
 
         using var stream = File.OpenRead(assemblyPath);
         using var peReader = new PEReader(stream);
@@ -330,6 +338,12 @@ public sealed class NativeObjectDirectCallTests
         Assert.Contains(
             FindVec2MemberTokens(reader, "X"),
             token => ContainsInstruction(directIl, 0x7D, token));
+        Assert.Contains(
+            FindVec2MemberTokens(reader, nameof(Vec2.SetValueCore)),
+            token => ContainsInstruction(directIl, 0x6F, token));
+        Assert.Contains(
+            FindVec2MemberTokens(reader, nameof(Vec2.GetValueCore)),
+            token => ContainsInstruction(directIl, 0x6F, token));
         AssertNoCallsTo(reader, directIl, "ScriptDatum", "FromObject");
         AssertNoCallsTo(reader, directIl, "ScriptDatum", "ToObject");
         AssertNoCallsTo(reader, directIl, "TypedRuntimeOps", "ChangeByOne");

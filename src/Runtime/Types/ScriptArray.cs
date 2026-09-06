@@ -437,6 +437,25 @@ namespace AuroraScript.Runtime.Types
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void SetLength(int length)
+        {
+            if ((uint)length > Array.MaxLength)
+            {
+                throw new AuroraRuntimeException("Invalid array length.");
+            }
+            if (length < _count)
+            {
+                Array.Clear(_items, length, _count - length);
+            }
+            else if (length > _count)
+            {
+                EnsureCapacity(length);
+                Array.Clear(_items, _count, length - _count);
+            }
+            _count = length;
+        }
+
         /// <summary> Removes the last element and writes it to the provided datum. </summary>
         internal void PopTo(ref ScriptDatum datum)
         {

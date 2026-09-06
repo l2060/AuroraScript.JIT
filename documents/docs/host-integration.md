@@ -707,6 +707,12 @@ object method ignored the radix); no argument formats invariant decimal. Other
 radices still select decimal, consistent with the existing limited Number API.
 Number keeps its current-culture formatting and historical Int32 hexadecimal
 conversion, including the compatibility case for UInt32 values above Int32.MaxValue.
+Number construction, static parsing helpers, predicates, and constants now use the
+same generated NativeType as String. `NumberValue.Register(Global)` replaces the
+handwritten NumberConstructor, while proven `Number(...)`, `new Number(...)`,
+`Number.valueOf(...)`, parsing, predicate, and constant accesses bind directly to
+the exported CLR members. Dynamic inputs retain the previous weak-conversion rules
+through compatibility adapters.
 Native `int64`/`uint64` type annotations remain lowercase.
 
 ### Native instances
@@ -758,6 +764,26 @@ return vec.length();
 ```
 
 Host code can also `new Vec2(3, 4)` and pass the instance as `ScriptDatum.FromObject(vec)`.
+
+Native instances can expose a property without a CLR field by pairing one getter and
+one setter under the same script name:
+
+```csharp
+private double _value;
+
+[AuroraExport("value", IsGetter = true)]
+public double GetValueCore() => _value;
+
+[AuroraExport("value", IsSetter = true)]
+public void SetValueCore(double value) => _value = value;
+```
+
+A getter takes no script parameters and returns the property value. A setter returns
+`void` and takes exactly one required script parameter. `IsGetter` and `IsSetter`
+cannot be combined on one method, and setters are not supported on immutable
+`NativeReceiverType` members. Proven native-instance reads and writes call the CLR
+Core methods directly; dynamic access uses the generated adapters without allocating
+an argument array.
 
 ### Native types in TDoc
 

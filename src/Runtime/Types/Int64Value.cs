@@ -9,7 +9,7 @@ namespace AuroraScript.Runtime.Types
     public sealed partial class Int64Value : ScriptImmutable
     {
         /// <summary>Creates an immutable wrapper for an exact signed 64-bit value.</summary>
-        public Int64Value(long value) : base(Prototypes.Int64ValuePrototype)
+        public Int64Value(long value) : base(NativePrototype)
         {
             Value = value;
         }

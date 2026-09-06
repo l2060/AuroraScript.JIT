@@ -348,6 +348,70 @@ public sealed class AuroraExportGeneratorDiagnosticTests
     }
 
     [Fact]
+    public void NativeObjectGeneratesPairedPropertyAccessors()
+    {
+        var updated = RunCore(
+            """
+            using AuroraScript.Hosting;
+            using AuroraScript.Runtime.Types;
+            namespace Test;
+
+            [AuroraNativeType("Widget")]
+            public sealed partial class Widget : ScriptObject
+            {
+                [AuroraExport("value", IsGetter = true)]
+                public double GetValueCore() => 1;
+
+                [AuroraExport("value", IsSetter = true)]
+                public void SetValueCore(double value) { }
+            }
+            """,
+            out var diagnostics);
+
+        Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        Assert.DoesNotContain(updated.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        var generated = string.Join(Environment.NewLine, updated.SyntaxTrees.Select(tree => tree.ToString()));
+        Assert.Contains("__Get_VALUE(ctx, this, Span<ScriptDatum>.Empty, ref result)", generated);
+        Assert.Contains("__Set_VALUE(ctx, this, MemoryMarshal.CreateSpan(ref value, 1), ref result)", generated);
+        Assert.Contains("IsGetter = true", generated);
+        Assert.Contains("IsSetter = true", generated);
+    }
+
+    [Theory]
+    [InlineData("[AuroraExport(\"value\", IsGetter = true, IsSetter = true)] public double Core() => 0;")]
+    [InlineData("[AuroraExport(\"value\", IsGetter = true)] public void Core() { }")]
+    [InlineData("[AuroraExport(\"value\", IsGetter = true)] public double Core(double value) => value;")]
+    [InlineData("[AuroraExport(\"value\", IsSetter = true)] public double Core(double value) => value;")]
+    [InlineData("[AuroraExport(\"value\", IsSetter = true)] public void Core() { }")]
+    [InlineData("[AuroraExport(\"value\", IsSetter = true)] public void Core(double value = 0) { }")]
+    [InlineData("[AuroraExport(\"value\", IsSetter = true)] public double Value;")]
+    public void NativeObjectRejectsInvalidAccessorContracts(string member)
+    {
+        var source = $$"""
+            using AuroraScript.Hosting;
+            using AuroraScript.Runtime.Types;
+            namespace Test;
+
+            [AuroraNativeType("Widget")]
+            public sealed partial class Widget : ScriptObject
+            {
+                {{member}}
+            }
+            """;
+
+        Assert.Contains(Run(source), diagnostic => diagnostic.Id == "AURORAEXP002");
+    }
+
+    [Fact]
+    public void ValueReceiverRejectsSetter()
+    {
+        Assert.Contains(
+            Run(ValueReceiverSource(
+                "[AuroraExport(\"value\", IsSetter = true)] public static void Core(string value, int replacement) { }")),
+            diagnostic => diagnostic.Id == "AURORAEXP002");
+    }
+
+    [Fact]
     public void ReportsDuplicateGlobalNames()
     {
         var diagnostics = Run(
@@ -419,7 +483,7 @@ public sealed class AuroraExportGeneratorDiagnosticTests
                 public double X;
 
                 [AuroraExport]
-                public Vec2(double x)
+                public Vec2(double x) : base(NativePrototype)
                 {
                     X = x;
                 }
@@ -470,6 +534,11 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             Environment.NewLine,
             updated.SyntaxTrees.Select(tree => tree.ToString()));
         Assert.Contains("Define(\"value\", ScriptDatum.FromBonding(__Static_VALUE)", generated);
+        Assert.DoesNotContain("__Static_VALUEBonding", generated);
+        Assert.Contains("RegisterNativeMembers(ScriptObject prototype)", generated);
+        Assert.Contains("prototype.Define(\"value\", ScriptDatum.FromBonding(VALUE), writeable: false, enumerable: false)", generated);
+        Assert.Contains("internal static ScriptObject NativePrototype => NativePrototypeHolder.Value", generated);
+        Assert.DoesNotContain("case \"value\":", generated);
         Assert.Contains("Define(\"COUNT\", ScriptDatum.FromNumber(Count)", generated);
         Assert.Contains("AuroraGeneratedExportAttribute(\"Widget\", \"value\"", generated);
         Assert.Contains("AuroraGeneratedConstantAttribute(\"Widget\", \"COUNT\"", generated);
