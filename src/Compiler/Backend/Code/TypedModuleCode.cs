@@ -50,18 +50,19 @@ namespace AuroraScript.Compiler.Backend.Code
             var generic = new TypedFunctionCode[size];
             var direct = new TypedFunctionCode[size];
             var directParameters = new DirectParameterType[size][];
+            var bindings = TypedFunctionBuilder.BindModule(module);
             var returns = new Dictionary<FunctionId, FlowValueType>();
             for (var i = 0; i < module.Functions.Count; i++)
             {
                 var function = module.Functions[i];
+                var binding = bindings[function.Id.Value];
                 // None is the bottom value for the direct specialization lattice.
                 // Starting at Dynamic would permanently poison recursive return
                 // inference (Number | Dynamic == Dynamic), preventing an otherwise
                 // pure numeric recursive graph from ever reaching the double ABI.
                 returns[function.Id] = FlowValueType.None;
-                generic[function.Id.Value] = TypedFunctionBuilder.Build(
-                    module,
-                    function,
+                generic[function.Id.Value] = TypedFunctionBuilder.Analyze(
+                    binding,
                     hostExports,
                     directReturnTypes: returns,
                     directParameterTypes: directParameters);
@@ -74,6 +75,20 @@ namespace AuroraScript.Compiler.Backend.Code
             }
 
             var upvalueTypes = CapturedCellTypes.Analyze(module, generic);
+            if (CanAnalyzeIndependently(module, bindings))
+            {
+                AnalyzeIndependentFunctions(
+                    module,
+                    hostExports,
+                    bindings,
+                    generic,
+                    direct,
+                    directParameters,
+                    universalReturns,
+                    upvalueTypes);
+                return new TypedModuleCode(generic, direct, directParameters);
+            }
+
             var converged = false;
             var passLimit = Math.Min(64, Math.Max(6, module.Functions.Count + 2));
             var evidence = new Dictionary<FunctionId, ParameterEvidence>();
@@ -105,9 +120,8 @@ namespace AuroraScript.Compiler.Backend.Code
                         parameterDemands[function.Id.Value]);
                     var oldParameterTypes = directParameters[function.Id.Value];
                     directParameters[function.Id.Value] = parameterTypes;
-                    var code = TypedFunctionBuilder.Build(
-                        module,
-                        function,
+                    var code = TypedFunctionBuilder.Analyze(
+                        bindings[function.Id.Value],
                         hostExports,
                         parameterTypes,
                         returns,
@@ -119,9 +133,8 @@ namespace AuroraScript.Compiler.Backend.Code
                     {
                         parameterTypes = validatedParameterTypes;
                         directParameters[function.Id.Value] = parameterTypes;
-                        code = TypedFunctionBuilder.Build(
-                            module,
-                            function,
+                        code = TypedFunctionBuilder.Analyze(
+                            bindings[function.Id.Value],
                             hostExports,
                             parameterTypes,
                             returns,
@@ -147,9 +160,8 @@ namespace AuroraScript.Compiler.Backend.Code
                 for (var i = 0; i < module.Functions.Count; i++)
                 {
                     var function = module.Functions[i];
-                    generic[function.Id.Value] = TypedFunctionBuilder.Build(
-                        module,
-                        function,
+                    generic[function.Id.Value] = TypedFunctionBuilder.Analyze(
+                        bindings[function.Id.Value],
                         hostExports,
                         directReturnTypes: returns,
                         directParameterTypes: directParameters,
@@ -196,18 +208,16 @@ namespace AuroraScript.Compiler.Backend.Code
                 for (var i = 0; i < module.Functions.Count; i++)
                 {
                     var function = module.Functions[i];
-                    direct[function.Id.Value] = TypedFunctionBuilder.Build(
-                        module,
-                        function,
+                    direct[function.Id.Value] = TypedFunctionBuilder.Analyze(
+                        bindings[function.Id.Value],
                         hostExports,
                         directParameters[function.Id.Value],
                         conservativeReturns,
                         directParameters,
                         universalReturns,
                         upvalueTypes);
-                    generic[function.Id.Value] = TypedFunctionBuilder.Build(
-                        module,
-                        function,
+                    generic[function.Id.Value] = TypedFunctionBuilder.Analyze(
+                        bindings[function.Id.Value],
                         hostExports,
                         directReturnTypes: conservativeReturns,
                         directParameterTypes: directParameters,
@@ -217,6 +227,76 @@ namespace AuroraScript.Compiler.Backend.Code
             }
 
             return new TypedModuleCode(generic, direct, directParameters);
+        }
+
+        private static bool CanAnalyzeIndependently(
+            ModulePlan module,
+            TypedFunctionBuilder.FunctionBinding[] bindings)
+        {
+            for (var i = 0; i < module.Functions.Count; i++)
+            {
+                var binding = bindings[module.Functions[i].Id.Value];
+                if (binding.HasDirectFunctionReference ||
+                    binding.HasUpvalueReference)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private static void AnalyzeIndependentFunctions(
+            ModulePlan module,
+            HostExportCatalog hostExports,
+            TypedFunctionBuilder.FunctionBinding[] bindings,
+            TypedFunctionCode[] generic,
+            TypedFunctionCode[] direct,
+            DirectParameterType[][] directParameters,
+            IReadOnlyDictionary<FunctionId, FlowValueType> universalReturns,
+            IReadOnlyDictionary<FunctionId, FlowValueType[]> upvalueTypes)
+        {
+            var demands = CollectNativeParameterDemands(
+                module,
+                generic,
+                direct,
+                directParameters);
+            var noEvidence = new Dictionary<FunctionId, ParameterEvidence>();
+            for (var i = 0; i < module.Functions.Count; i++)
+            {
+                var function = module.Functions[i];
+                var parameterTypes = NormalizeParameterTypes(
+                    module,
+                    function,
+                    noEvidence,
+                    demands[function.Id.Value]);
+                directParameters[function.Id.Value] = parameterTypes;
+                var code = TypedFunctionBuilder.Analyze(
+                    bindings[function.Id.Value],
+                    hostExports,
+                    parameterTypes,
+                    universalReturns,
+                    directParameters,
+                    universalReturns,
+                    upvalueTypes);
+                var validatedParameterTypes = ValidateParameterTypes(
+                    function,
+                    code,
+                    parameterTypes);
+                if (!SameTypes(parameterTypes, validatedParameterTypes))
+                {
+                    directParameters[function.Id.Value] =
+                        validatedParameterTypes;
+                    code = TypedFunctionBuilder.Analyze(
+                        bindings[function.Id.Value],
+                        hostExports,
+                        validatedParameterTypes,
+                        universalReturns,
+                        directParameters,
+                        universalReturns,
+                        upvalueTypes);
+                }
+                direct[function.Id.Value] = code;
+            }
         }
 
         private static bool SameTypes(

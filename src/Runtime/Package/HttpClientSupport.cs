@@ -9,7 +9,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-
+#pragma warning disable CS1591 // 缺少对公共可见类型或成员的 XML 注释
 namespace AuroraScript.Runtime.Package
 {
     [NativeType("http")]

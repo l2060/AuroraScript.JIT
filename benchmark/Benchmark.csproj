@@ -24,6 +24,12 @@
     <None Update="scripts\runtime.as">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="..\examples\tests\astar.as" Link="real-scripts\astar.as">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\examples\tests\md5.as" Link="real-scripts\md5.as">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

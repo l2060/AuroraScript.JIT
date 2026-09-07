@@ -35,6 +35,8 @@ namespace AuroraBenchmark
         private string stringsTemplatesRegexSource;
         private string unicodeIdentifiersSource;
         private string compileBlockSource;
+        private string astarSource;
+        private string md5Source;
         private string multiModuleMainPath;
         private EngineOptions benchmarkOptions;
         private ModuleDeclaration[] parsedLargeModules;
@@ -52,6 +54,12 @@ namespace AuroraBenchmark
             stringsTemplatesRegexSource = CreateStringsTemplatesRegexSource(140);
             unicodeIdentifiersSource = CreateUnicodeIdentifierSource(260);
             compileBlockSource = CreateCompileBlockSource();
+            astarSource = File.ReadAllText(
+                Path.Combine(AppContext.BaseDirectory, "real-scripts", "astar.as"),
+                Encoding.UTF8);
+            md5Source = File.ReadAllText(
+                Path.Combine(AppContext.BaseDirectory, "real-scripts", "md5.as"),
+                Encoding.UTF8);
             CreateMultiModuleScripts();
             benchmarkOptions = CreateOptions();
             parsedLargeModules = new[] { (ModuleDeclaration)Parse("emit_large.as", largeSource) };
@@ -67,6 +75,8 @@ namespace AuroraBenchmark
             if (benchmarkName.Contains("UnicodeIdentifiers", StringComparison.Ordinal)) return Encoding.UTF8.GetByteCount(unicodeIdentifiersSource);
             if (benchmarkName.Contains("CompileBlock", StringComparison.Ordinal)) return Encoding.UTF8.GetByteCount(compileBlockSource);
             if (benchmarkName.Contains("MultiModule", StringComparison.Ordinal)) return GetFileBytes(multiModuleMainPath) + GetFileBytes(Path.Combine(baseDirectory, "dep.as"));
+            if (benchmarkName.Contains("RealAstar", StringComparison.Ordinal)) return Encoding.UTF8.GetByteCount(astarSource);
+            if (benchmarkName.Contains("RealMd5", StringComparison.Ordinal)) return Encoding.UTF8.GetByteCount(md5Source);
             return Encoding.UTF8.GetByteCount(smallSource);
         }
 
@@ -152,6 +162,31 @@ namespace AuroraBenchmark
             var options = CreateOptions();
             var engine = new AuroraEngine(options);
             await engine.BuildAsync("main.as");
+        }
+
+        [BenchmarkCategory("compile")]
+        [Benchmark]
+        public async Task FullCompile_RealAstar()
+        {
+            var options = CreateOptions()
+                .WithPackages(packages => packages.Add(NativePackages.FileSystem));
+            var engine = new AuroraEngine(options);
+            await engine.BuildAsync(new MemorySource(
+                baseDirectory,
+                Path.Combine(baseDirectory, "real-astar.as"),
+                astarSource));
+        }
+
+        [BenchmarkCategory("compile")]
+        [Benchmark]
+        public async Task FullCompile_RealMd5()
+        {
+            var options = CreateOptions();
+            var engine = new AuroraEngine(options);
+            await engine.BuildAsync(new MemorySource(
+                baseDirectory,
+                Path.Combine(baseDirectory, "real-md5.as"),
+                md5Source));
         }
 
         [BenchmarkCategory("compile")]

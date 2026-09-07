@@ -1,10 +1,9 @@
 using AuroraScript.Hosting;
-using AuroraScript.Runtime;
 using AuroraScript.Runtime.Types;
 using System;
 using System.IO;
 using System.Security;
-
+#pragma warning disable CS1591 // 缺少对公共可见类型或成员的 XML 注释
 namespace AuroraScript.Runtime.Package
 {
     [NativeType("fs")]

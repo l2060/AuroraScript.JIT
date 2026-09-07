@@ -15,6 +15,33 @@ namespace AuroraScript.Compiler.Backend.Code
 {
     internal static class TypedFunctionBuilder
     {
+        internal sealed class FunctionBinding
+        {
+            public FunctionBinding(
+                ModulePlan module,
+                FunctionPlan function,
+                Dictionary<NameExpression, BoundName> names,
+                Dictionary<VariableDeclaration, LocalSlotId> declarations)
+            {
+                Module = module;
+                Function = function;
+                Names = names;
+                Declarations = declarations;
+                foreach (var binding in names.Values)
+                {
+                    HasDirectFunctionReference |= binding.DirectFunction.IsValid;
+                    HasUpvalueReference |= binding.Upvalue.IsValid;
+                }
+            }
+
+            public ModulePlan Module { get; }
+            public FunctionPlan Function { get; }
+            public Dictionary<NameExpression, BoundName> Names { get; }
+            public Dictionary<VariableDeclaration, LocalSlotId> Declarations { get; }
+            public bool HasDirectFunctionReference { get; }
+            public bool HasUpvalueReference { get; }
+        }
+
         public static TypedFunctionCode Build(
             ModulePlan module,
             FunctionPlan function)
@@ -35,27 +62,114 @@ namespace AuroraScript.Compiler.Backend.Code
             IReadOnlyDictionary<FunctionId, FlowValueType> universalReturnTypes = null,
             IReadOnlyDictionary<FunctionId, FlowValueType[]> upvalueTypes = null)
         {
-            ArgumentNullException.ThrowIfNull(module);
-            ArgumentNullException.ThrowIfNull(function);
             ArgumentNullException.ThrowIfNull(hostExports);
 
-            var binder = new NameBinder(module, function);
+            return Analyze(
+                Bind(module, function),
+                hostExports,
+                parameterTypes,
+                directReturnTypes,
+                directParameterTypes,
+                universalReturnTypes,
+                upvalueTypes);
+        }
+
+        internal static FunctionBinding Bind(
+            ModulePlan module,
+            FunctionPlan function)
+        {
+            ArgumentNullException.ThrowIfNull(module);
+            ArgumentNullException.ThrowIfNull(function);
+
+            return Bind(
+                module,
+                function,
+                BuildDirectFunctionMap(module));
+        }
+
+        internal static FunctionBinding[] BindModule(ModulePlan module)
+        {
+            ArgumentNullException.ThrowIfNull(module);
+
+            var maxId = -1;
+            for (var i = 0; i < module.Functions.Count; i++)
+            {
+                maxId = Math.Max(maxId, module.Functions[i].Id.Value);
+            }
+
+            var bindings = maxId < 0
+                ? Array.Empty<FunctionBinding>()
+                : new FunctionBinding[maxId + 1];
+            var directFunctions = BuildDirectFunctionMap(module);
+            for (var i = 0; i < module.Functions.Count; i++)
+            {
+                var function = module.Functions[i];
+                bindings[function.Id.Value] = Bind(
+                    module,
+                    function,
+                    directFunctions);
+            }
+            return bindings;
+        }
+
+        private static FunctionBinding Bind(
+            ModulePlan module,
+            FunctionPlan function,
+            Dictionary<SymbolId, FunctionId> directFunctions)
+        {
+            var binder = new NameBinder(module, function, directFunctions);
             binder.Bind();
-            var analyzer = new TypeAnalyzer(
+            return new FunctionBinding(
                 module,
                 function,
                 binder.Names,
-                binder.Declarations,
+                binder.Declarations);
+        }
+
+        internal static TypedFunctionCode Analyze(
+            FunctionBinding binding,
+            HostExportCatalog hostExports,
+            DirectParameterType[] parameterTypes = null,
+            IReadOnlyDictionary<FunctionId, FlowValueType> directReturnTypes = null,
+            DirectParameterType[][] directParameterTypes = null,
+            IReadOnlyDictionary<FunctionId, FlowValueType> universalReturnTypes = null,
+            IReadOnlyDictionary<FunctionId, FlowValueType[]> upvalueTypes = null)
+        {
+            ArgumentNullException.ThrowIfNull(binding);
+            ArgumentNullException.ThrowIfNull(hostExports);
+
+            var analyzer = new TypeAnalyzer(
+                binding.Module,
+                binding.Function,
+                binding.Names,
+                binding.Declarations,
                 hostExports,
                 parameterTypes,
                 directReturnTypes,
                 directParameterTypes,
                 universalReturnTypes,
                 upvalueTypes != null &&
-                    upvalueTypes.TryGetValue(function.Id, out var functionUpvalues)
+                    upvalueTypes.TryGetValue(binding.Function.Id, out var functionUpvalues)
                         ? functionUpvalues
                         : null);
             return analyzer.Analyze();
+        }
+
+        private static Dictionary<SymbolId, FunctionId> BuildDirectFunctionMap(
+            ModulePlan module)
+        {
+            var result = new Dictionary<SymbolId, FunctionId>();
+            for (var i = 0; i < module.Functions.Count; i++)
+            {
+                var function = module.Functions[i];
+                if (function.IsDirectCallCandidate &&
+                    !string.IsNullOrEmpty(function.Name) &&
+                    module.TryGetSymbol(function.Name, out var symbol))
+                {
+                    result[symbol] = function.Id;
+                }
+            }
+            return result;
         }
 
         private sealed class NameBinder
@@ -65,13 +179,16 @@ namespace AuroraScript.Compiler.Backend.Code
             private readonly Stack<int> _scopes = new();
             private readonly Dictionary<SymbolId, FunctionId> _directFunctions;
 
-            public NameBinder(ModulePlan module, FunctionPlan function)
+            public NameBinder(
+                ModulePlan module,
+                FunctionPlan function,
+                Dictionary<SymbolId, FunctionId> directFunctions)
             {
                 _module = module;
                 _function = function;
                 Names = new Dictionary<NameExpression, BoundName>(ReferenceEqualityComparer.Instance);
                 Declarations = new Dictionary<VariableDeclaration, LocalSlotId>(ReferenceEqualityComparer.Instance);
-                _directFunctions = BuildDirectFunctionMap(module);
+                _directFunctions = directFunctions;
 
                 for (var i = 0; i < function.LocalSlots.Length; i++)
                 {
@@ -376,21 +493,6 @@ namespace AuroraScript.Compiler.Backend.Code
                     : -1;
             }
 
-            private static Dictionary<SymbolId, FunctionId> BuildDirectFunctionMap(ModulePlan module)
-            {
-                var result = new Dictionary<SymbolId, FunctionId>();
-                for (var i = 0; i < module.Functions.Count; i++)
-                {
-                    var function = module.Functions[i];
-                    if (function.IsDirectCallCandidate &&
-                        !string.IsNullOrEmpty(function.Name) &&
-                        module.TryGetSymbol(function.Name, out var symbol))
-                    {
-                        result[symbol] = function.Id;
-                    }
-                }
-                return result;
-            }
         }
 
         private sealed class TypeAnalyzer
@@ -582,43 +684,28 @@ namespace AuroraScript.Compiler.Backend.Code
                 _unobservedInitialNulls = new InitialNullReadAnalyzer(
                     _function, _names, _declarations, IsCaptured).Analyze(body);
                 var passLimit = Math.Max(4, _locals.Length + 2);
-                for (var pass = 0; pass < passLimit; pass++)
-                {
-                    _changed = false;
-                    _passReturnType = FlowValueType.None;
-                    _sawReturn = false;
-                    _expressionTypes.Clear();
-                    _nativeValueCalls?.Clear();
-                    _structuralTypes.Clear();
-                    _nativeObjectTypes.Clear();
-                    AnalyzeStatement(body as Statement);
-                    if (!_changed) break;
-                }
+                var needsFinalAnalysis = AnalyzeToFixedPoint(
+                    body as Statement,
+                    passLimit);
 
                 var storageChanged = ApplyInt32ContractStorage(body);
                 storageChanged |= ApplyExactNumericStorage(body);
                 storageChanged |= ApplyLocalCoercionStorage(body);
                 if (storageChanged)
                 {
-                    for (var pass = 0; pass < passLimit; pass++)
-                    {
-                        _changed = false;
-                        _passReturnType = FlowValueType.None;
-                        _sawReturn = false;
-                        _expressionTypes.Clear();
-                        _nativeValueCalls?.Clear();
-                        _structuralTypes.Clear();
-                        _nativeObjectTypes.Clear();
-                        AnalyzeStatement(body as Statement);
-                        if (!_changed) break;
-                    }
+                    needsFinalAnalysis = AnalyzeToFixedPoint(
+                        body as Statement,
+                        passLimit);
                 }
 
-                _expressionTypes.Clear();
-                _nativeValueCalls?.Clear();
-                _passReturnType = FlowValueType.None;
-                _sawReturn = false;
-                AnalyzeStatement(body as Statement);
+                // A converged pass already contains the final expression facts.
+                // Preserve the historical extra pass only when the safety limit
+                // was exhausted while facts were still changing.
+                if (needsFinalAnalysis)
+                {
+                    PrepareAnalysisPass(clearObjectFacts: false);
+                    AnalyzeStatement(body as Statement);
+                }
                 var returnType = _sawReturn
                     ? _passReturnType
                     : FlowValueType.Null;
@@ -663,6 +750,36 @@ namespace AuroraScript.Compiler.Backend.Code
                     returnType,
                     _countedLoops,
                     _nativeValueCalls);
+            }
+
+            private bool AnalyzeToFixedPoint(
+                Statement body,
+                int passLimit)
+            {
+                for (var pass = 0; pass < passLimit; pass++)
+                {
+                    PrepareAnalysisPass(clearObjectFacts: true);
+                    AnalyzeStatement(body);
+                    if (!_changed)
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            private void PrepareAnalysisPass(bool clearObjectFacts)
+            {
+                _changed = false;
+                _passReturnType = FlowValueType.None;
+                _sawReturn = false;
+                _expressionTypes.Clear();
+                _nativeValueCalls?.Clear();
+                if (clearObjectFacts)
+                {
+                    _structuralTypes.Clear();
+                    _nativeObjectTypes.Clear();
+                }
             }
 
             private void AnalyzeStatement(Statement statement)
