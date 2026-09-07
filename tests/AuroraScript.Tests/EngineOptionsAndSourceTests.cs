@@ -1,5 +1,6 @@
 using AuroraScript.Core;
 using AuroraScript.Runtime;
+using AuroraScript.Runtime.Builtin;
 using AuroraScript.Runtime.Types;
 using AuroraScript.Source;
 using AuroraScript.Tests.Host;
@@ -111,9 +112,42 @@ public sealed class EngineOptionsAndSourceTests
         Assert.Throws<ArgumentException>(() =>
             EngineOptions.Default.WithCompiler(compiler =>
                 compiler.WithNativeTypes(typeof(Vec2), typeof(Vec2))));
-        Assert.Throws<ArgumentException>(() =>
-            new AuroraEngine(EngineOptions.Default.WithCompiler(compiler =>
-                compiler.WithNativeTypes(typeof(string)))));
+        var unannotated = Assert.Throws<ArgumentException>(() =>
+            EngineOptions.Default.WithCompiler(compiler =>
+                compiler.WithNativeTypes(typeof(ClosureFunction))));
+        Assert.Contains("NativeTypeAttribute", unannotated.Message, StringComparison.Ordinal);
+        var notScriptObject = Assert.Throws<ArgumentException>(() =>
+            EngineOptions.Default.WithCompiler(compiler =>
+                compiler.WithNativeTypes(typeof(object))));
+        Assert.Contains("ScriptObject", notScriptObject.Message, StringComparison.Ordinal);
+        var infrastructure = Assert.Throws<ArgumentException>(() =>
+            EngineOptions.Default.WithCompiler(compiler =>
+                compiler.WithNativeTypes(typeof(MathSupport))));
+        Assert.Contains("always available", infrastructure.Message, StringComparison.Ordinal);
+        var receiver = Assert.Throws<ArgumentException>(() =>
+            EngineOptions.Default.WithCompiler(compiler =>
+                compiler.WithNativeTypes(typeof(StringValue))));
+        Assert.Contains("value receiver", receiver.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void AddNativeTypeAppendsWithoutDuplicatingExistingEntries()
+    {
+        var options = EngineOptions.Default.WithCompiler(compiler =>
+            compiler.AddNativeType<Vec2>()
+                .AddNativeType<StatsSupport>()
+                .AddNativeType<Vec2>());
+
+        Assert.Equal([typeof(Vec2), typeof(StatsSupport)], options.Compiler.NativeTypes);
+    }
+
+    [Fact]
+    public void ClearNativeTypesRemovesPreviouslySelectedTypes()
+    {
+        var options = EngineOptions.Default.WithCompiler(compiler =>
+            compiler.AddNativeType<Vec2>().AddNativeType<StatsSupport>().ClearNativeTypes());
+
+        Assert.Empty(options.Compiler.NativeTypes);
     }
 
 

@@ -43,7 +43,7 @@ namespace AuroraScript.Runtime
             // Define the 'modules' property on the global object, making it non-writable and non-enumerable.
             base.Define("modules", Modules, false, false);
             base.Define("getModule", ScriptDatum.FromBonding(GET_MODULE), false, false);
-            engine.BuiltInRegistry.RegisterModules(this);
+            engine.PackageRegistry.RegisterModules(this);
         }
 
         /// <summary>

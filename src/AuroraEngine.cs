@@ -63,9 +63,9 @@ namespace AuroraScript
         internal readonly TypedDocumentNativeCatalog TypedDocuments;
 
         /// <summary>
-        /// Engine-scoped index of the native modules selected through <see cref="EngineOptions.BuiltIns"/>.
+        /// Engine-scoped index of the native packages selected through <see cref="EngineOptions.Packages"/>.
         /// </summary>
-        internal readonly BuiltinModuleRegistry BuiltInRegistry;
+        internal readonly NativePackageRegistry PackageRegistry;
 
         /// <summary>
         /// Initializes static members of the <see cref="AuroraEngine"/> class by preloading prototypes.
@@ -87,12 +87,12 @@ namespace AuroraScript
                 throw new AuroraException("the parameter \"options\" cannot be empty");
             }
 
-            BuiltInRegistry = new BuiltinModuleRegistry(options.BuiltIns);
+            PackageRegistry = new NativePackageRegistry(options.Packages);
             var sourceResolver = options.Compiler.SourceResolver ?? FileScriptSourceResolver.Instance;
-            Options = BuiltInRegistry.Count == 0
+            Options = PackageRegistry.Count == 0
                 ? options
                 : options.WithCompiler(compiler => compiler.SourceResolver =
-                    new BuiltinScriptSourceResolver(sourceResolver, BuiltInRegistry));
+                    new NativePackageScriptSourceResolver(sourceResolver, PackageRegistry));
             TypedDocuments = new TypedDocumentNativeCatalog(Options.Compiler.NativeTypes);
             Global = new ScriptGlobal(this);
 
@@ -139,39 +139,14 @@ namespace AuroraScript
             for (var i = 0; i < nativeTypes.Count; i++)
             {
                 var nativeType = nativeTypes[i];
-                if (nativeType.Assembly == typeof(AuroraEngine).Assembly)
-                {
-                    continue;
-                }
-
-                var attribute = nativeType.GetCustomAttribute<AuroraNativeTypeAttribute>();
-                if (attribute == null)
-                {
-                    throw new ArgumentException(
-                        $"Type '{nativeType.FullName}' is not marked with AuroraNativeTypeAttribute.",
-                        nameof(nativeTypes));
-                }
-
-                if (attribute.NativeReceiverType != null)
-                {
-                    throw new ArgumentException(
-                        $"Native value receiver '{nativeType.FullName}' cannot replace an engine-owned immutable prototype.",
-                        nameof(nativeTypes));
-                }
-
+                NativeExportType.RequireHostNativeType(nativeType, nameof(nativeTypes));
                 var register = nativeType.GetMethod(
                     "Register",
                     BindingFlags.Public | BindingFlags.Static,
                     binder: null,
                     types: new[] { typeof(ScriptObject), typeof(bool), typeof(bool) },
                     modifiers: null);
-                if (register == null)
-                {
-                    throw new InvalidOperationException(
-                        $"Native type '{nativeType.FullName}' does not expose its generated Register method.");
-                }
-
-                register.Invoke(null, new object[] { Global, false, false });
+                register!.Invoke(null, new object[] { Global, false, false });
             }
         }
 
@@ -304,7 +279,7 @@ namespace AuroraScript
                 };
                 var compiler = new ScriptCompiler(Options);
                 var modules = await compiler.BuildModuleGraphAsync(sources, cancellationToken).ConfigureAwait(false);
-                ValidateBuiltInModuleConflicts(modules);
+                ValidateNativePackageConflicts(modules);
 
                 EmitProgram(builder, modules, compiler.GlobalDeclarations, cancellationToken);
 
@@ -404,14 +379,14 @@ namespace AuroraScript
             }
         }
 
-        private void ValidateBuiltInModuleConflicts(IReadOnlyList<ModuleDeclaration> modules)
+        private void ValidateNativePackageConflicts(IReadOnlyList<ModuleDeclaration> modules)
         {
             for (var i = 0; i < modules.Count; i++)
             {
                 var module = modules[i];
                 if (string.IsNullOrEmpty(module.ModuleName) ||
-                    !BuiltInRegistry.TryGetByName(module.ModuleName, out var builtIn) ||
-                    ScriptPath.PathTextEqualsNormalized(module.Source.FullPath, builtIn.Reference.FullPath))
+                    !PackageRegistry.TryGetByName(module.ModuleName, out var package) ||
+                    ScriptPath.PathTextEqualsNormalized(module.Source.FullPath, package.Reference.FullPath))
                 {
                     continue;
                 }
@@ -421,7 +396,7 @@ namespace AuroraScript
                     module.Source.FullPath,
                     1,
                     1,
-                    $"Module '{module.ModuleName}' conflicts with the enabled built-in module '{builtIn.ModulePath}'.");
+                    $"Module '{module.ModuleName}' conflicts with the enabled native package '{package.ModulePath}'.");
             }
         }
 

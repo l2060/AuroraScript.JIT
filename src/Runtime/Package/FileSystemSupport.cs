@@ -1,3 +1,5 @@
+using AuroraScript.Hosting;
+using AuroraScript.Runtime;
 using AuroraScript.Runtime.Types;
 using System;
 using System.IO;
@@ -5,34 +7,238 @@ using System.Security;
 
 namespace AuroraScript.Runtime.Package
 {
-    internal static class FileSystemModule
+    [NativeType("fs")]
+    [NativePackage("fs")]
+    public sealed partial class FileSystemSupport : ScriptObject
     {
-        internal static void Configure(ScriptModule module)
+        [Export("readText", DynamicAdapter = nameof(READ_TEXT))]
+        public static string ReadTextCore(string path) => ReadAllText(RequireNonEmptyPath(path, "readText", "path"));
+
+        [Export("readText", DynamicAdapter = nameof(READ_TEXT))]
+        public static string ReadTextCore(ScriptPathValue path) => ReadTextCore(path.Value);
+
+        [Export("readBytes", DynamicAdapter = nameof(READ_BYTES))]
+        public static ScriptUInt8Array ReadBytesCore(string path) => new ScriptUInt8Array(ReadAllBytes(RequireNonEmptyPath(path, "readBytes", "path")));
+
+        [Export("readBytes", DynamicAdapter = nameof(READ_BYTES))]
+        public static ScriptUInt8Array ReadBytesCore(ScriptPathValue path) => ReadBytesCore(path.Value);
+
+        [Export("writeText", DynamicAdapter = nameof(WRITE_TEXT))]
+        public static bool WriteTextCore(string path, string text)
         {
-            module.Define("readText", ScriptDatum.FromBonding(READ_TEXT), writeable: false, enumerable: false);
-            module.Define("readBytes", ScriptDatum.FromBonding(READ_BYTES), writeable: false, enumerable: false);
-            module.Define("writeText", ScriptDatum.FromBonding(WRITE_TEXT), writeable: false, enumerable: false);
-            module.Define("writeBytes", ScriptDatum.FromBonding(WRITE_BYTES), writeable: false, enumerable: false);
-            module.Define("appendText", ScriptDatum.FromBonding(APPEND_TEXT), writeable: false, enumerable: false);
-            module.Define("appendBytes", ScriptDatum.FromBonding(APPEND_BYTES), writeable: false, enumerable: false);
-            module.Define("exist", ScriptDatum.FromBonding(EXIST), writeable: false, enumerable: false);
-            module.Define("isFile", ScriptDatum.FromBonding(IS_FILE), writeable: false, enumerable: false);
-            module.Define("isDir", ScriptDatum.FromBonding(IS_DIR), writeable: false, enumerable: false);
-            module.Define("size", ScriptDatum.FromBonding(SIZE), writeable: false, enumerable: false);
-            module.Define("mkDir", ScriptDatum.FromBonding(MK_DIR), writeable: false, enumerable: false);
-            module.Define("dir", ScriptDatum.FromBonding(DIR), writeable: false, enumerable: false);
-            module.Define("copy", ScriptDatum.FromBonding(COPY), writeable: false, enumerable: false);
-            module.Define("move", ScriptDatum.FromBonding(MOVE), writeable: false, enumerable: false);
-            module.Define("delete", ScriptDatum.FromBonding(DELETE), writeable: false, enumerable: false);
+            WriteAllText(RequireNonEmptyPath(path, "writeText", "path"), text ?? string.Empty);
+            return true;
         }
+
+        [Export("writeText", DynamicAdapter = nameof(WRITE_TEXT))]
+        public static bool WriteTextCore(ScriptPathValue path, string text) => WriteTextCore(path.Value, text);
+
+        [Export("writeBytes", DynamicAdapter = nameof(WRITE_BYTES))]
+        public static bool WriteBytesCore(string path, ScriptUInt8Array bytes)
+        {
+            WriteAllBytes(RequireNonEmptyPath(path, "writeBytes", "path"), RequireBytes(bytes, "writeBytes"));
+            return true;
+        }
+
+        [Export("writeBytes", DynamicAdapter = nameof(WRITE_BYTES))]
+        public static bool WriteBytesCore(ScriptPathValue path, ScriptUInt8Array bytes) => WriteBytesCore(path.Value, bytes);
+
+        [Export("appendText", DynamicAdapter = nameof(APPEND_TEXT))]
+        public static bool AppendTextCore(string path, string text)
+        {
+            AppendAllText(RequireNonEmptyPath(path, "appendText", "path"), text ?? string.Empty);
+            return true;
+        }
+
+        [Export("appendText", DynamicAdapter = nameof(APPEND_TEXT))]
+        public static bool AppendTextCore(ScriptPathValue path, string text) => AppendTextCore(path.Value, text);
+
+        [Export("appendBytes", DynamicAdapter = nameof(APPEND_BYTES))]
+        public static bool AppendBytesCore(string path, ScriptUInt8Array bytes)
+        {
+            AppendAllBytes(RequireNonEmptyPath(path, "appendBytes", "path"), RequireBytes(bytes, "appendBytes"));
+            return true;
+        }
+
+        [Export("appendBytes", DynamicAdapter = nameof(APPEND_BYTES))]
+        public static bool AppendBytesCore(ScriptPathValue path, ScriptUInt8Array bytes) => AppendBytesCore(path.Value, bytes);
+
+        [Export("exist", DynamicAdapter = nameof(EXIST))]
+        public static bool ExistCore(string path)
+        {
+            path = RequireNonEmptyPath(path, "exist", "path");
+            return File.Exists(path) || Directory.Exists(path);
+        }
+
+        [Export("exist", DynamicAdapter = nameof(EXIST))]
+        public static bool ExistCore(ScriptPathValue path) => ExistCore(path.Value);
+
+        [Export("isFile", DynamicAdapter = nameof(IS_FILE))]
+        public static bool IsFileCore(string path) => File.Exists(RequireNonEmptyPath(path, "isFile", "path"));
+
+        [Export("isFile", DynamicAdapter = nameof(IS_FILE))]
+        public static bool IsFileCore(ScriptPathValue path) => IsFileCore(path.Value);
+
+        [Export("isDir", DynamicAdapter = nameof(IS_DIR))]
+        public static bool IsDirCore(string path) => Directory.Exists(RequireNonEmptyPath(path, "isDir", "path"));
+
+        [Export("isDir", DynamicAdapter = nameof(IS_DIR))]
+        public static bool IsDirCore(ScriptPathValue path) => IsDirCore(path.Value);
+
+        [Export("size", DynamicAdapter = nameof(SIZE))]
+        public static double SizeCore(string path) => GetFileLength(RequireNonEmptyPath(path, "size", "path"));
+
+        [Export("size", DynamicAdapter = nameof(SIZE))]
+        public static double SizeCore(ScriptPathValue path) => SizeCore(path.Value);
+
+        [Export("mkDir", DynamicAdapter = nameof(MK_DIR))]
+        public static bool MkDirCore(string path)
+        {
+            CreateDirectory(RequireNonEmptyPath(path, "mkDir", "path"));
+            return true;
+        }
+
+        [Export("mkDir", DynamicAdapter = nameof(MK_DIR))]
+        public static bool MkDirCore(ScriptPathValue path) => MkDirCore(path.Value);
+
+        [Export("dir", DynamicAdapter = nameof(DIR))]
+        public static ScriptArray DirCore(string path) => ListDirectory(RequireNonEmptyPath(path, "dir", "path"));
+
+        [Export("dir", DynamicAdapter = nameof(DIR))]
+        public static ScriptArray DirCore(ScriptPathValue path) => DirCore(path.Value);
+
+        [Export("copy", DynamicAdapter = nameof(COPY))]
+        public static bool CopyCore(string source, string destination, bool overwrite = false)
+        {
+            CopyPath(
+                RequireNonEmptyPath(source, "copy", "source"),
+                RequireNonEmptyPath(destination, "copy", "destination"),
+                overwrite);
+            return true;
+        }
+
+        [Export("copy", DynamicAdapter = nameof(COPY))]
+        public static bool CopyCore(ScriptPathValue source, ScriptPathValue destination, bool overwrite = false)
+            => CopyCore(source.Value, destination.Value, overwrite);
+
+        [Export("move", DynamicAdapter = nameof(MOVE))]
+        public static bool MoveCore(string source, string destination, bool overwrite = false)
+        {
+            MovePath(
+                RequireNonEmptyPath(source, "move", "source"),
+                RequireNonEmptyPath(destination, "move", "destination"),
+                overwrite);
+            return true;
+        }
+
+        [Export("move", DynamicAdapter = nameof(MOVE))]
+        public static bool MoveCore(ScriptPathValue source, ScriptPathValue destination, bool overwrite = false)
+            => MoveCore(source.Value, destination.Value, overwrite);
+
+        [Export("delete", DynamicAdapter = nameof(DELETE))]
+        public static bool DeleteCore(string path, bool recursive = false)
+            => DeletePath(RequireNonEmptyPath(path, "delete", "path"), recursive);
+
+        [Export("delete", DynamicAdapter = nameof(DELETE))]
+        public static bool DeleteCore(ScriptPathValue path, bool recursive = false)
+            => DeleteCore(path.Value, recursive);
 
         public static void READ_TEXT(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
-            var path = RequirePath(args, 0, "readText", "path");
+            ScriptDatum.WriteAsString(ref result, ReadTextCore(RequirePath(args, 0, "readText", "path")));
+        }
 
+        public static void READ_BYTES(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            ScriptDatum.WriteAsObject(ref result, ReadBytesCore(RequirePath(args, 0, "readBytes", "path")));
+        }
+
+        public static void WRITE_TEXT(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            ScriptDatum.WriteAsBoolean(ref result, WriteTextCore(
+                RequirePath(args, 0, "writeText", "path"),
+                RequireString(args, 1, "writeText", "text")));
+        }
+
+        public static void WRITE_BYTES(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            ScriptDatum.WriteAsBoolean(ref result, WriteBytesCore(
+                RequirePath(args, 0, "writeBytes", "path"),
+                RequireBytes(args, 1, "writeBytes")));
+        }
+
+        public static void APPEND_TEXT(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            ScriptDatum.WriteAsBoolean(ref result, AppendTextCore(
+                RequirePath(args, 0, "appendText", "path"),
+                RequireString(args, 1, "appendText", "text")));
+        }
+
+        public static void APPEND_BYTES(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            ScriptDatum.WriteAsBoolean(ref result, AppendBytesCore(
+                RequirePath(args, 0, "appendBytes", "path"),
+                RequireBytes(args, 1, "appendBytes")));
+        }
+
+        public static void EXIST(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            ScriptDatum.WriteAsBoolean(ref result, ExistCore(RequirePath(args, 0, "exist", "path")));
+        }
+
+        public static void IS_FILE(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            ScriptDatum.WriteAsBoolean(ref result, IsFileCore(RequirePath(args, 0, "isFile", "path")));
+        }
+
+        public static void IS_DIR(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            ScriptDatum.WriteAsBoolean(ref result, IsDirCore(RequirePath(args, 0, "isDir", "path")));
+        }
+
+        public static void SIZE(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            ScriptDatum.WriteAsNumber(ref result, SizeCore(RequirePath(args, 0, "size", "path")));
+        }
+
+        public static void MK_DIR(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            ScriptDatum.WriteAsBoolean(ref result, MkDirCore(RequirePath(args, 0, "mkDir", "path")));
+        }
+
+        public static void DIR(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            ScriptDatum.WriteAsArray(ref result, DirCore(RequirePath(args, 0, "dir", "path")));
+        }
+
+        public static void COPY(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            ScriptDatum.WriteAsBoolean(ref result, CopyCore(
+                RequirePath(args, 0, "copy", "source"),
+                RequirePath(args, 1, "copy", "destination"),
+                GetOptionalBoolean(args, 2, "copy", "overwrite")));
+        }
+
+        public static void MOVE(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            ScriptDatum.WriteAsBoolean(ref result, MoveCore(
+                RequirePath(args, 0, "move", "source"),
+                RequirePath(args, 1, "move", "destination"),
+                GetOptionalBoolean(args, 2, "move", "overwrite")));
+        }
+
+        public static void DELETE(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            ScriptDatum.WriteAsBoolean(ref result, DeleteCore(
+                RequirePath(args, 0, "delete", "path"),
+                GetOptionalBoolean(args, 1, "delete", "recursive")));
+        }
+
+        private static string ReadAllText(string path)
+        {
             try
             {
-                ScriptDatum.WriteAsString(ref result, File.ReadAllText(path));
+                return File.ReadAllText(path);
             }
             catch (Exception exception) when (IsFileSystemException(exception))
             {
@@ -40,13 +246,11 @@ namespace AuroraScript.Runtime.Package
             }
         }
 
-        public static void READ_BYTES(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        private static byte[] ReadAllBytes(string path)
         {
-            var path = RequirePath(args, 0, "readBytes", "path");
-
             try
             {
-                ScriptDatum.WriteAsObject(ref result, new ScriptUInt8Array(File.ReadAllBytes(path)));
+                return File.ReadAllBytes(path);
             }
             catch (Exception exception) when (IsFileSystemException(exception))
             {
@@ -54,15 +258,11 @@ namespace AuroraScript.Runtime.Package
             }
         }
 
-        public static void WRITE_TEXT(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        private static void WriteAllText(string path, string text)
         {
-            var path = RequirePath(args, 0, "writeText", "path");
-            var text = RequireString(args, 1, "writeText", "text");
-
             try
             {
                 File.WriteAllText(path, text);
-                ScriptDatum.WriteAsBoolean(ref result, true);
             }
             catch (Exception exception) when (IsFileSystemException(exception))
             {
@@ -70,15 +270,11 @@ namespace AuroraScript.Runtime.Package
             }
         }
 
-        public static void WRITE_BYTES(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        private static void WriteAllBytes(string path, ScriptUInt8Array bytes)
         {
-            var path = RequirePath(args, 0, "writeBytes", "path");
-            var bytes = RequireBytes(args, 1, "writeBytes");
-
             try
             {
                 File.WriteAllBytes(path, bytes._items);
-                ScriptDatum.WriteAsBoolean(ref result, true);
             }
             catch (Exception exception) when (IsFileSystemException(exception))
             {
@@ -86,15 +282,11 @@ namespace AuroraScript.Runtime.Package
             }
         }
 
-        public static void APPEND_TEXT(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        private static void AppendAllText(string path, string text)
         {
-            var path = RequirePath(args, 0, "appendText", "path");
-            var text = RequireString(args, 1, "appendText", "text");
-
             try
             {
                 File.AppendAllText(path, text);
-                ScriptDatum.WriteAsBoolean(ref result, true);
             }
             catch (Exception exception) when (IsFileSystemException(exception))
             {
@@ -102,16 +294,12 @@ namespace AuroraScript.Runtime.Package
             }
         }
 
-        public static void APPEND_BYTES(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        private static void AppendAllBytes(string path, ScriptUInt8Array bytes)
         {
-            var path = RequirePath(args, 0, "appendBytes", "path");
-            var bytes = RequireBytes(args, 1, "appendBytes");
-
             try
             {
                 using var stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.Read);
                 stream.Write(bytes._items, 0, bytes._items.Length);
-                ScriptDatum.WriteAsBoolean(ref result, true);
             }
             catch (Exception exception) when (IsFileSystemException(exception))
             {
@@ -119,28 +307,8 @@ namespace AuroraScript.Runtime.Package
             }
         }
 
-        public static void EXIST(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        private static double GetFileLength(string path)
         {
-            var path = RequirePath(args, 0, "exist", "path");
-            ScriptDatum.WriteAsBoolean(ref result, File.Exists(path) || Directory.Exists(path));
-        }
-
-        public static void IS_FILE(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            var path = RequirePath(args, 0, "isFile", "path");
-            ScriptDatum.WriteAsBoolean(ref result, File.Exists(path));
-        }
-
-        public static void IS_DIR(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            var path = RequirePath(args, 0, "isDir", "path");
-            ScriptDatum.WriteAsBoolean(ref result, Directory.Exists(path));
-        }
-
-        public static void SIZE(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            var path = RequirePath(args, 0, "size", "path");
-
             try
             {
                 if (Directory.Exists(path))
@@ -154,7 +322,7 @@ namespace AuroraScript.Runtime.Package
                     throw new FileNotFoundException("The file does not exist.", path);
                 }
 
-                ScriptDatum.WriteAsNumber(ref result, file.Length);
+                return file.Length;
             }
             catch (Exception exception) when (IsFileSystemException(exception))
             {
@@ -162,14 +330,11 @@ namespace AuroraScript.Runtime.Package
             }
         }
 
-        public static void MK_DIR(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        private static void CreateDirectory(string path)
         {
-            var path = RequirePath(args, 0, "mkDir", "path");
-
             try
             {
                 Directory.CreateDirectory(path);
-                ScriptDatum.WriteAsBoolean(ref result, true);
             }
             catch (Exception exception) when (IsFileSystemException(exception))
             {
@@ -177,10 +342,8 @@ namespace AuroraScript.Runtime.Package
             }
         }
 
-        public static void DIR(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        private static ScriptArray ListDirectory(string path)
         {
-            var path = RequirePath(args, 0, "dir", "path");
-
             try
             {
                 var entries = Directory.GetFileSystemEntries(path);
@@ -191,7 +354,7 @@ namespace AuroraScript.Runtime.Package
                     names.Push(ScriptDatum.FromString(Path.GetFileName(entries[i])));
                 }
 
-                ScriptDatum.WriteAsArray(ref result, names);
+                return names;
             }
             catch (Exception exception) when (IsFileSystemException(exception))
             {
@@ -199,12 +362,8 @@ namespace AuroraScript.Runtime.Package
             }
         }
 
-        public static void COPY(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        private static void CopyPath(string source, string destination, bool overwrite)
         {
-            var source = RequirePath(args, 0, "copy", "source");
-            var destination = RequirePath(args, 1, "copy", "destination");
-            var overwrite = GetOptionalBoolean(args, 2, "copy", "overwrite");
-
             try
             {
                 if (File.Exists(source))
@@ -220,8 +379,6 @@ namespace AuroraScript.Runtime.Package
                 {
                     throw new FileNotFoundException("The source path does not exist.", source);
                 }
-
-                ScriptDatum.WriteAsBoolean(ref result, true);
             }
             catch (Exception exception) when (IsFileSystemException(exception))
             {
@@ -229,12 +386,8 @@ namespace AuroraScript.Runtime.Package
             }
         }
 
-        public static void MOVE(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        private static void MovePath(string source, string destination, bool overwrite)
         {
-            var source = RequirePath(args, 0, "move", "source");
-            var destination = RequirePath(args, 1, "move", "destination");
-            var overwrite = GetOptionalBoolean(args, 2, "move", "overwrite");
-
             try
             {
                 if (File.Exists(source))
@@ -250,8 +403,6 @@ namespace AuroraScript.Runtime.Package
                 {
                     throw new FileNotFoundException("The source path does not exist.", source);
                 }
-
-                ScriptDatum.WriteAsBoolean(ref result, true);
             }
             catch (Exception exception) when (IsFileSystemException(exception))
             {
@@ -259,28 +410,23 @@ namespace AuroraScript.Runtime.Package
             }
         }
 
-        public static void DELETE(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        private static bool DeletePath(string path, bool recursive)
         {
-            var path = RequirePath(args, 0, "delete", "path");
-            var recursive = GetOptionalBoolean(args, 1, "delete", "recursive");
-
             try
             {
                 if (File.Exists(path))
                 {
                     File.Delete(path);
-                    ScriptDatum.WriteAsBoolean(ref result, true);
-                    return;
+                    return true;
                 }
 
                 if (Directory.Exists(path))
                 {
                     Directory.Delete(path, recursive);
-                    ScriptDatum.WriteAsBoolean(ref result, true);
-                    return;
+                    return true;
                 }
 
-                ScriptDatum.WriteAsBoolean(ref result, false);
+                return false;
             }
             catch (Exception exception) when (IsFileSystemException(exception))
             {
@@ -309,6 +455,11 @@ namespace AuroraScript.Runtime.Package
                     $"fs.{method} requires '{parameter}' to be a non-empty string or Path.");
             }
 
+            return RequireNonEmptyPath(path, method, parameter);
+        }
+
+        private static string RequireNonEmptyPath(string path, string method, string parameter)
+        {
             if (string.IsNullOrEmpty(path))
             {
                 throw new AuroraRuntimeException(
@@ -339,6 +490,17 @@ namespace AuroraScript.Runtime.Package
             string method)
         {
             if ((uint)index >= (uint)args.Length || args[index].Object is not ScriptUInt8Array bytes)
+            {
+                throw new AuroraRuntimeException(
+                    $"fs.{method} requires 'bytes' to be a UInt8Array.");
+            }
+
+            return bytes;
+        }
+
+        private static ScriptUInt8Array RequireBytes(ScriptUInt8Array bytes, string method)
+        {
+            if (bytes == null)
             {
                 throw new AuroraRuntimeException(
                     $"fs.{method} requires 'bytes' to be a UInt8Array.");

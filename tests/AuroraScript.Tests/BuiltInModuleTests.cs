@@ -1,9 +1,14 @@
+using AuroraScript.Compiler.Backend;
 using AuroraScript.Core;
 using AuroraScript.Runtime;
+using AuroraScript.Runtime.Package;
 using AuroraScript.Runtime.Types;
+using AuroraScript.Tests.Host;
 using AuroraScript.Tests.Infrastructure;
 using System;
 using System.IO;
+using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -12,27 +17,27 @@ namespace AuroraScript.Tests;
 public sealed class BuiltInModuleTests
 {
     [Fact]
-    public void BuiltInsAreOptInAndOptionsRemainImmutable()
+    public void PackagesAreOptInAndOptionsRemainImmutable()
     {
         var original = EngineOptions.Default;
-        var configured = original.WithBuiltIns(builtIns =>
-            builtIns.Add(BuiltInModules.FileSystem));
+        var configured = original.WithPackages(packages =>
+            packages.Add(NativePackages.FileSystem));
 
-        Assert.Empty(original.BuiltIns);
-        Assert.Single(configured.BuiltIns);
-        Assert.Same(BuiltInModules.FileSystem, configured.BuiltIns[0]);
+        Assert.Empty(original.Packages);
+        Assert.Single(configured.Packages);
+        Assert.Same(NativePackages.FileSystem, configured.Packages[0]);
 
         var duplicate = Assert.Throws<InvalidOperationException>(() =>
-            configured.WithBuiltIns(builtIns => builtIns.Add(BuiltInModules.FileSystem)));
+            configured.WithPackages(packages => packages.Add(NativePackages.FileSystem)));
         Assert.Contains("already configured", duplicate.Message, StringComparison.Ordinal);
 
-        var cleared = configured.WithBuiltIns(builtIns => builtIns.Clear());
-        Assert.Empty(cleared.BuiltIns);
-        Assert.Single(configured.BuiltIns);
+        var cleared = configured.WithPackages(packages => packages.Clear());
+        Assert.Empty(cleared.Packages);
+        Assert.Single(configured.Packages);
     }
 
     [Fact]
-    public async Task DefaultOptionsDoNotResolveBuiltInModules()
+    public async Task DefaultOptionsDoNotResolveNativePackages()
     {
         using var workspace = new TestWorkspace();
         workspace.WriteSource(
@@ -58,7 +63,7 @@ public sealed class BuiltInModuleTests
     {
         using var workspace = new TestWorkspace();
         var textPath = Path.Combine(workspace.Root, "value.txt");
-        File.WriteAllText(textPath, "Aurora builtin");
+        File.WriteAllText(textPath, "Aurora package");
         workspace.WriteSource(
             "main.as",
             "@module(TEST); import fs from 'fs'; export func run(path) { return fs.readText(path); }");
@@ -68,12 +73,105 @@ public sealed class BuiltInModuleTests
         using var domain = engine.CreateDomain();
 
         ScriptAssert.Equal(
-            "Aurora builtin",
+            "Aurora package",
             TestWorkspace.Execute(domain, "run", arguments: ScriptDatum.FromString(textPath)));
     }
 
     [Fact]
-    public void BuiltInSelectionsDoNotLeakAcrossEngines()
+    public void FileSystemPackageIsNotRegisteredOnTheGlobal()
+    {
+        using var workspace = new TestWorkspace();
+        var engine = new AuroraEngine(CreateOptions(workspace.Root, enableFileSystem: true));
+        using var domain = engine.CreateEmptyDomain(null);
+
+        Assert.Same(ScriptObject.Null, domain.Global.GetPropertyValue("fs"));
+        Assert.NotSame(ScriptObject.Null, domain.GetModule("fs"));
+    }
+
+    [Fact]
+    public async Task FileSystemNameIsNotAGlobalWithoutImport()
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource(
+            "main.as",
+            "@module(TEST); export func run() { return typeof fs; }");
+        var engine = new AuroraEngine(CreateOptions(workspace.Root, enableFileSystem: true));
+        await engine.BuildAsync("main.as");
+        using var domain = engine.CreateDomain();
+
+        ScriptAssert.Equal("null", TestWorkspace.Execute(domain, "run"));
+    }
+
+    [Fact]
+    public void WithNativeTypesRejectsPackageTypes()
+    {
+        var error = Assert.Throws<ArgumentException>(() =>
+            EngineOptions.Default.WithCompiler(compiler =>
+                compiler.WithNativeTypes(typeof(FileSystemSupport))));
+        Assert.Contains("WithPackages", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void NativePackageDefinitionRejectsNonPackageTypes()
+    {
+        var missingPackage = Assert.Throws<ArgumentException>(() =>
+            new NativePackageDefinition(typeof(Vec2)));
+        Assert.Contains("NativePackageAttribute", missingPackage.Message, StringComparison.Ordinal);
+        var unannotated = Assert.Throws<ArgumentException>(() =>
+            new NativePackageDefinition(typeof(string)));
+        Assert.Contains("ScriptObject", unannotated.Message, StringComparison.Ordinal);
+        Assert.Throws<ArgumentNullException>(() => new NativePackageDefinition(null!));
+    }
+
+    [Fact]
+    public void WithPackagesGenericAddSelectsThePackageType()
+    {
+        var options = EngineOptions.Default.WithPackages(packages =>
+            packages.Add<CustomPackageSupport>());
+
+        Assert.Equal(typeof(CustomPackageSupport), Assert.Single(options.Packages).NativeType);
+    }
+
+    [Fact]
+    public void HostExportCatalogIndexesEnabledPackageMembers()
+    {
+        var catalog = new HostExportCatalog([], [NativePackages.FileSystem]);
+        Assert.True(catalog.TryGetGlobal("fs", "readText", out var descriptor));
+        Assert.Equal(nameof(FileSystemSupport.ReadTextCore), descriptor.Method.Name);
+        Assert.True(catalog.TryGetPackageTypeName(NativePackages.FileSystem.Reference, out var typeName));
+        Assert.Equal("fs", typeName);
+    }
+
+#if NET9_0_OR_GREATER
+    [Fact]
+    public async Task ProvenFileSystemCallsUseNativeCores()
+    {
+        using var workspace = new TestWorkspace();
+        var textPath = Path.Combine(workspace.Root, "value.txt");
+        File.WriteAllText(textPath, "direct");
+        workspace.WriteSource(
+            "main.as",
+            """
+            @module(TEST);
+            import fs from 'fs';
+            export native func run(String path) String { return fs.readText(path); }
+            """);
+        var engine = new AuroraEngine(CreateOptions(workspace.Root, enableFileSystem: true, CompilationMode.Persistence));
+        await engine.BuildAsync("main.as");
+        using var domain = engine.CreateDomain();
+        ScriptAssert.Equal("direct", TestWorkspace.Execute(domain, "run", arguments: ScriptDatum.FromString(textPath)));
+
+        var assembly = Assembly.Load(File.ReadAllBytes(Path.Combine(workspace.Root, "test-output.dll")));
+        var method = assembly.GetTypes().SelectMany(type => type.GetMethods())
+            .Single(candidate => candidate.Name == "run$native");
+        Assert.Contains(
+            StringOptimizationTests.GetCalls(method),
+            call => call.Name == nameof(FileSystemSupport.ReadTextCore));
+    }
+#endif
+
+    [Fact]
+    public void PackageSelectionsDoNotLeakAcrossEngines()
     {
         using var workspace = new TestWorkspace();
         var enabledEngine = new AuroraEngine(CreateOptions(workspace.Root, enableFileSystem: true));
@@ -87,7 +185,7 @@ public sealed class BuiltInModuleTests
     }
 
     [Fact]
-    public void BuiltInModuleInstancesAreIsolatedBetweenDomains()
+    public void NativePackageInstancesAreIsolatedBetweenDomains()
     {
         using var workspace = new TestWorkspace();
         var engine = new AuroraEngine(CreateOptions(workspace.Root, enableFileSystem: true));
@@ -99,14 +197,13 @@ public sealed class BuiltInModuleTests
         Assert.NotSame(ScriptObject.Null, firstModule);
         Assert.NotSame(ScriptObject.Null, secondModule);
         Assert.NotSame(firstModule, secondModule);
-
-        firstModule.Define("domainMarker", ScriptDatum.FromNumber(1));
-
-        Assert.Same(ScriptObject.Null, secondModule.GetPropertyValue("domainMarker"));
+        Assert.NotSame(
+            firstModule.GetPropertyValue("readText"),
+            secondModule.GetPropertyValue("readText"));
     }
 
     [Fact]
-    public async Task BareBuiltInPathTakesPriorityButRelativePathUsesProjectResolver()
+    public async Task BarePackagePathTakesPriorityButRelativePathUsesProjectResolver()
     {
         using var workspace = new TestWorkspace();
         workspace.WriteSource("fs.as", "@module(LOCAL_FS); export const value = 42;");
@@ -129,21 +226,14 @@ public sealed class BuiltInModuleTests
     }
 
     [Fact]
-    public async Task CustomBuiltInDefinitionCreatesRuntimeModule()
+    public async Task CustomPackageDefinitionCreatesRuntimeModule()
     {
         using var workspace = new TestWorkspace();
         workspace.WriteSource(
             "main.as",
             "@module(TEST); import custom from 'custom'; export func run() { return custom.answer; }");
-        var custom = new BuiltInModuleDefinition(
-            "custom",
-            module => module.Define(
-                "answer",
-                ScriptDatum.FromNumber(42),
-                writeable: false,
-                enumerable: false));
         var options = CreateOptions(workspace.Root, enableFileSystem: false)
-            .WithBuiltIns(builtIns => builtIns.Add(custom));
+            .WithPackages(packages => packages.Add(typeof(CustomPackageSupport)));
         var engine = new AuroraEngine(options);
 
         await engine.BuildAsync("main.as");
@@ -153,7 +243,7 @@ public sealed class BuiltInModuleTests
     }
 
     [Fact]
-    public async Task ProjectModuleCannotReuseEnabledBuiltInName()
+    public async Task ProjectModuleCannotReuseEnabledPackageName()
     {
         using var workspace = new TestWorkspace();
         workspace.WriteSource("main.as", "@module(fs); export const value = 1;");
@@ -162,7 +252,7 @@ public sealed class BuiltInModuleTests
         var error = await Assert.ThrowsAsync<AuroraCompilationException>(() =>
             engine.BuildAsync("main.as"));
 
-        Assert.Contains("conflicts with the enabled built-in module", error.Message, StringComparison.Ordinal);
+        Assert.Contains("conflicts with the enabled native package", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -461,8 +551,13 @@ public sealed class BuiltInModuleTests
             .WithRuntime(runtime => runtime.ConsoleStdOut = TextWriter.Null)
             .WithRuntime(runtime => runtime.ConsoleErrorOut = TextWriter.Null);
 
+        if (mode == CompilationMode.Persistence)
+        {
+            options = options.WithOutput(output => output.AssemblyFile = Path.Combine(root, "test-output.dll"));
+        }
+
         return enableFileSystem
-            ? options.WithBuiltIns(builtIns => builtIns.Add(BuiltInModules.FileSystem))
+            ? options.WithPackages(packages => packages.Add(NativePackages.FileSystem))
             : options;
     }
 }

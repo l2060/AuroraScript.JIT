@@ -28,10 +28,11 @@ namespace AuroraScript.Hosting.Generators
     [Generator]
     public sealed partial class AuroraExportGenerator : IIncrementalGenerator
     {
-        private const string NativeTypeAttribute = "AuroraScript.Hosting.AuroraNativeTypeAttribute";
+        private const string NativeTypeAttribute = "AuroraScript.Hosting.NativeTypeAttribute";
+        private const string NativePackageAttribute = "AuroraScript.Hosting.NativePackageAttribute";
         private const string TypedDocumentInterface = "AuroraScript.Runtime.Serialization.INativeTypedDocument";
-        private const string ExportAttribute = "AuroraScript.Hosting.AuroraExportAttribute";
-        private const string ReceiverExportAttribute = "AuroraScript.Hosting.AuroraReceiverExportAttribute";
+        private const string ExportAttribute = "AuroraScript.Hosting.ExportAttribute";
+        private const string ReceiverExportAttribute = "AuroraScript.Hosting.ReceiverExportAttribute";
         private const string ParamAttribute = "AuroraScript.Hosting.AuroraParamAttribute";
         private static readonly DiagnosticDescriptor InvalidGlobal = new(
             "AURORAEXP001",

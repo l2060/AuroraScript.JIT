@@ -288,7 +288,7 @@ public sealed class HttpClientModuleTests
             .WithRuntime(runtime => runtime.ConsoleErrorOut = TextWriter.Null);
 
         return enableHttpClient
-            ? options.WithBuiltIns(builtIns => builtIns.Add(BuiltInModules.HttpClient))
+            ? options.WithPackages(packages => packages.Add(NativePackages.HttpClient))
             : options;
     }
 

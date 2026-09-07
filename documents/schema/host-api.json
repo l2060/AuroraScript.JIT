@@ -122,10 +122,10 @@
           "kind": "property",
           "signature": "OutputOptions Output"
         },
-        "BuiltIns": {
+        "Packages": {
           "kind": "property",
-          "signature": "IReadOnlyList<BuiltInModuleDefinition> BuiltIns",
-          "summary": "Native modules explicitly enabled for this engine. Empty by default."
+          "signature": "IReadOnlyList<NativePackageDefinition> Packages",
+          "summary": "Native packages explicitly enabled for this engine. Empty by default. Packages are importable and are not registered on the script global."
         },
         "WithCompiler": {
           "kind": "method",
@@ -143,28 +143,27 @@
           "kind": "method",
           "signature": "EngineOptions WithOutput(Action<OutputOptionsBuilder> configure)"
         },
-        "WithBuiltIns": {
+        "WithPackages": {
           "kind": "method",
-          "signature": "EngineOptions WithBuiltIns(Action<BuiltInModulesBuilder> configure)",
-          "summary": "Returns a new immutable options snapshot with native module selections applied."
+          "signature": "EngineOptions WithPackages(Action<NativePackagesBuilder> configure)",
+          "summary": "Returns a new immutable options snapshot with native package selections applied."
         }
       }
     },
-    "BuiltInModuleDefinition": {
+    "NativePackageDefinition": {
       "kind": "class",
-      "namespace": "AuroraScript.Runtime.Package",
-      "summary": "Immutable definition and per-global factory for an opt-in native module.",
+      "namespace": "AuroraScript.Core",
+      "summary": "Immutable definition for an opt-in NativePackage generated from [NativeType] + [NativePackage].",
       "notes": [
+        "Construct from a generated package type. The type must be a sealed top-level ScriptObject with [NativeType] and [NativePackage], and must expose the generated RegisterPackage method. Do not register that type with WithNativeTypes.",
         "Module names must be non-keyword AuroraScript identifiers.",
-        "Module paths are normalized bare relative paths and cannot contain . or .. segments."
+        "Import paths are normalized bare relative paths and cannot contain . or .. segments.",
+        "Packages are not registered on the script global."
       ],
       "members": {
-        "Constructors": {
+        "Constructor": {
           "kind": "constructor",
-          "overloads": [
-            "BuiltInModuleDefinition(string name, Action<ScriptModule> configure)",
-            "BuiltInModuleDefinition(string name, string modulePath, Action<ScriptModule> configure)"
-          ]
+          "signature": "NativePackageDefinition(Type nativeType)"
         },
         "Name": {
           "kind": "property",
@@ -174,42 +173,55 @@
         "ModulePath": {
           "kind": "property",
           "signature": "string ModulePath"
+        },
+        "TypeName": {
+          "kind": "property",
+          "signature": "string TypeName",
+          "summary": "HostExportCatalog key. Not a script global name."
+        },
+        "NativeType": {
+          "kind": "property",
+          "signature": "Type NativeType"
         }
       }
     },
-    "BuiltInModulesBuilder": {
+    "NativePackagesBuilder": {
       "kind": "class",
-      "namespace": "AuroraScript.Runtime.Package",
-      "summary": "Mutable builder used by EngineOptions.WithBuiltIns.",
+      "namespace": "AuroraScript.Core",
+      "summary": "Mutable builder used by EngineOptions.WithPackages.",
       "members": {
         "Constructor": {
           "kind": "constructor",
-          "signature": "BuiltInModulesBuilder(IReadOnlyList<BuiltInModuleDefinition> definitions)"
+          "signature": "NativePackagesBuilder(IReadOnlyList<NativePackageDefinition> definitions)"
         },
         "Add": {
           "kind": "method",
-          "signature": "BuiltInModulesBuilder Add(BuiltInModuleDefinition definition)"
+          "overloads": [
+            "NativePackagesBuilder Add(NativePackageDefinition definition)",
+            "NativePackagesBuilder Add(Type nativeType)",
+            "NativePackagesBuilder Add<T>()"
+          ]
         },
         "Clear": {
           "kind": "method",
-          "signature": "BuiltInModulesBuilder Clear()"
+          "signature": "NativePackagesBuilder Clear()"
         }
       }
     },
-    "BuiltInModules": {
+    "NativePackages": {
       "kind": "factory",
-      "namespace": "AuroraScript.Runtime.Package",
-      "summary": "Catalog of native modules shipped with AuroraScript.",
+      "namespace": "AuroraScript.Core",
+      "summary": "Catalog of NativePackages shipped with AuroraScript.",
       "members": {
         "FileSystem": {
           "kind": "property",
-          "signature": "static BuiltInModuleDefinition FileSystem",
-          "summary": "Enables the fs module and its file-system APIs."
+          "signature": "static NativePackageDefinition FileSystem",
+          "summary": "Enables the fs package and its file-system APIs."
         },
         "HttpClient": {
           "kind": "property",
-          "signature": "static BuiltInModuleDefinition HttpClient",
-          "summary": "Enables the http module and its synchronous and callback-based HTTP APIs."
+          "signature": "static NativePackageDefinition HttpClient",
+          "summary": "Enables the http package and its synchronous and callback-based HTTP APIs."
         }
       }
     },
@@ -345,7 +357,8 @@
         },
         "NativeTypes": {
           "kind": "property",
-          "signature": "IReadOnlyList<Type> NativeTypes"
+          "signature": "IReadOnlyList<Type> NativeTypes",
+          "summary": "Application NativeType classes selected for this engine. Each type must be a sealed top-level ScriptObject with [NativeType], a generated Register method, and no [NativePackage]."
         },
         "WithMethods": {
           "kind": "method",
@@ -355,6 +368,8 @@
             "CompilerOptionsBuilder WithMaxDegreeOfParallelism(int value)",
             "CompilerOptionsBuilder WithSourceResolver(IScriptSourceResolver value)",
             "CompilerOptionsBuilder WithNativeTypes(params Type[] nativeTypes)",
+            "CompilerOptionsBuilder AddNativeType<T>()",
+            "CompilerOptionsBuilder ClearNativeTypes()",
             "CompilerOptionsBuilder AddNativeTypes()",
             "CompilerOptionsBuilder AddNativeTypes(params Assembly[] assemblies)"
           ]
@@ -1964,12 +1979,12 @@
         }
       },
       "notes": [
-        "Implement on an AuroraNativeType ScriptObject. Register the type with CompilerOptionsBuilder.WithNativeTypes.",
+        "Implement on an NativeType ScriptObject. Select the type with WithNativeTypes or AddNativeType.",
         "Construction is supplied by the NativeType generator: a parameterless constructor when the type has none, otherwise CreateTypedDocument(). Host code may still write that factory to customize construction. Factories are compiled once per engine.",
         "WriteTypedDocument chooses the canonical body: WriteMember for Vec2 {x 3,y 4}, WriteElement for Vec2 [3,4], WriteValue for User \"a,b\" / State 1 / Flag false. Do not mix those calls on one write.",
         "ReadTypedDocument handles object members, array elements, and scalar values through one TypedDocumentInput.",
         "Dynamic ScriptObject properties are opt-in per NativeType. Object-body implementations call TypedDocumentOutput.WriteDynamicMembers(this) and TypedDocumentInput.DefineDynamicMember(this); array and scalar bodies cannot contain named dynamic members.",
-        "The TDoc type-name prefix comes from AuroraNativeTypeAttribute through the engine catalog; the implementation does not declare its own script name.",
+        "The TDoc type-name prefix comes from NativeTypeAttribute through the engine catalog; the implementation does not declare its own script name.",
         "Number and boolean ScriptDatum values do not allocate."
       ]
     },
@@ -2310,14 +2325,33 @@
         "For simple host functions, passing a normal CLR delegate to ScriptGlobal.Define is usually easier."
       ]
     },
-    "AuroraNativeTypeAttribute": {
+    "NativePackageAttribute": {
+      "kind": "class",
+      "namespace": "AuroraScript.Hosting",
+      "summary": "Marks a static-only NativeType as an opt-in importable NativePackage. The type is never registered on the script global.",
+      "members": {
+        "Constructor": {
+          "kind": "constructor",
+          "signature": "NativePackageAttribute(string importPath)"
+        },
+        "ImportPath": {
+          "kind": "property",
+          "signature": "string ImportPath"
+        }
+      },
+      "notes": [
+        "Enable the package with EngineOptions.WithPackages, not WithNativeTypes.",
+        "The generator emits RegisterPackage(ScriptObject module) and HostExportCatalog metadata. Catalog TypeName is not a script global."
+      ]
+    },
+    "NativeTypeAttribute": {
       "kind": "class",
       "namespace": "AuroraScript.Hosting",
       "summary": "Marks a sealed partial CLR class whose exported static members form a script Type and whose optional exported instance surface uses native CLR storage.",
       "members": {
         "Constructor": {
           "kind": "constructor",
-          "signature": "AuroraNativeTypeAttribute(string typeName)"
+          "signature": "NativeTypeAttribute(string typeName)"
         },
         "TypeName": {
           "kind": "property",
@@ -2336,7 +2370,7 @@
       },
       "notes": [
         "A type with instance exports or an exported constructor must derive ScriptObject. Generated code adds the native-instance marker.",
-        "Exactly one public constructor may be marked [AuroraExport] to enable native instance construction. Engine-owned native receiver types may instead name a NativeConstructor.",
+        "Exactly one public constructor may be marked [Export] to enable native instance construction. Engine-owned native receiver types may instead name a NativeConstructor.",
         "Ordinary instance methods are registered as non-writable, non-enumerable members of a generated lazy frozen NativePrototype. A user-written constructor on such a type must explicitly call base(NativePrototype); generated constructors do so automatically.",
         "Native fields and getter/setter exports use generated property access overrides rather than prototype members. A type with no ordinary instance methods does not receive NativePrototype and can use the normal ScriptObject constructor.",
         "Register the generated Type with Type.Register(ScriptObject target) on the engine global, or Define(typeName, Type).",
@@ -2348,7 +2382,7 @@
       "namespace": "AuroraScript.Runtime.Types",
       "summary": "Marker implemented by generated native-type instances so unannotated CLR members are not exposed through reflection fallback."
     },
-    "AuroraExportAttribute": {
+    "ExportAttribute": {
       "kind": "class",
       "namespace": "AuroraScript.Hosting",
       "summary": "Marks a Core method, constructor, native instance field, or public static readonly double field for generated script export.",
@@ -2356,9 +2390,9 @@
         "Constructor": {
           "kind": "constructor",
           "overloads": [
-            "AuroraExportAttribute()",
-            "AuroraExportAttribute(string scriptName)",
-            "AuroraExportAttribute(string scriptName, MatchFailure failure)"
+            "ExportAttribute()",
+            "ExportAttribute(string scriptName)",
+            "ExportAttribute(string scriptName, MatchFailure failure)"
           ]
         },
         "ScriptName": {
@@ -2393,7 +2427,7 @@
       },
       "notes": [
         "Use the parameterless constructor on at most one public constructor to enable script new.",
-        "CLR static members become script Type members and CLR instance members become script instance members. Use AuroraReceiverExport for a NativeReceiverType instance Core.",
+        "CLR static members become script Type members and CLR instance members become script instance members. Use ReceiverExport for a NativeReceiverType instance Core.",
         "Core methods may prefix ScriptContext ctx and ScriptObject thisObject. Script parameters support double, int, bool, string, ScriptDatum, ScriptObject subclasses, trailing defaults, and params double[] or params ScriptDatum[].",
         "A CLR void return is a procedure. Direct native calls used as statements do not materialize a result; dynamic or exported calls observe script null, matching native func ... void.",
         "params exports generate Datum adapters only; they are not compiler direct-call candidates.",
@@ -2401,7 +2435,7 @@
         "Writable and Enumerable default to false for methods and constants. Mutable native instance fields default to writable and all native instance fields default to enumerable unless explicitly overridden. Writable method and constant slots are omitted from the compiler native-call catalog. Native fields and getter/setter exports are routed by generated instance property overrides."
       ]
     },
-    "AuroraReceiverExportAttribute": {
+    "ReceiverExportAttribute": {
       "kind": "class",
       "namespace": "AuroraScript.Hosting",
       "summary": "Marks a public static Core method as an instance member of an engine-owned NativeReceiverType.",
@@ -2409,8 +2443,8 @@
         "Constructor": {
           "kind": "constructor",
           "overloads": [
-            "AuroraReceiverExportAttribute(string scriptName)",
-            "AuroraReceiverExportAttribute(string scriptName, MatchFailure failure)"
+            "ReceiverExportAttribute(string scriptName)",
+            "ReceiverExportAttribute(string scriptName, MatchFailure failure)"
           ]
         },
         "ScriptName": { "kind": "property", "signature": "string ScriptName" },
@@ -2580,9 +2614,9 @@
       "apis": ["AuroraEngine.CreateDomain", "ScriptDomain.Execute", "ScriptObject", "ScriptDatum"]
     },
     {
-      "id": "runtime.opt-in-builtins",
-      "summary": "Use EngineOptions.WithBuiltIns to grant only the shipped or custom native modules required by the application before constructing AuroraEngine.",
-      "apis": ["EngineOptions.BuiltIns", "EngineOptions.WithBuiltIns", "BuiltInModules", "BuiltInModuleDefinition"]
+      "id": "runtime.opt-in-packages",
+      "summary": "Use EngineOptions.WithPackages to grant only the shipped or custom NativePackages required by the application before constructing AuroraEngine. Packages are import-only and are not globals.",
+      "apis": ["EngineOptions.Packages", "EngineOptions.WithPackages", "NativePackages", "NativePackageDefinition", "NativePackageAttribute"]
     },
     {
       "id": "interop.domain-global",
@@ -2591,8 +2625,8 @@
     },
     {
       "id": "interop.native-host-exports",
-      "summary": "Implement static-only and constructible host Types with [AuroraNativeType] and [AuroraExport]. Select exact application types with CompilerOptionsBuilder.WithNativeTypes, or scan assemblies with AddNativeTypes; they are registered once on the engine global and available to every domain. Hand-write matching declare type contracts in an @global() file for editor assistance. Implement INativeTypedDocument on a native instance type so script tdoc literals and host TDoc serialize/deserialize construct that NativeType directly.",
-      "apis": ["AuroraNativeTypeAttribute", "AuroraExportAttribute", "AuroraReceiverExportAttribute", "AuroraParamAttribute", "CompilerOptions.NativeTypes", "CompilerOptionsBuilder.WithNativeTypes", "CompilerOptionsBuilder.AddNativeTypes", "INativeTypedDocument", "TypedDocumentOutput", "TypedDocumentInput"]
+      "summary": "Implement static-only and constructible host Types with [NativeType] and [Export]. Select exact application types with WithNativeTypes or AddNativeType, scan assemblies with AddNativeTypes, or clear the catalog with ClearNativeTypes; they are registered once on the engine global and available to every domain. Hand-write matching declare type contracts in an @global() file for editor assistance. Implement INativeTypedDocument on a native instance type so script tdoc literals and host TDoc serialize/deserialize construct that NativeType directly.",
+      "apis": ["NativeTypeAttribute", "ExportAttribute", "ReceiverExportAttribute", "AuroraParamAttribute", "CompilerOptions.NativeTypes", "CompilerOptionsBuilder.WithNativeTypes", "CompilerOptionsBuilder.AddNativeType", "CompilerOptionsBuilder.ClearNativeTypes", "CompilerOptionsBuilder.AddNativeTypes", "INativeTypedDocument", "TypedDocumentOutput", "TypedDocumentInput"]
     },
     {
       "id": "interop.register-clr-type",

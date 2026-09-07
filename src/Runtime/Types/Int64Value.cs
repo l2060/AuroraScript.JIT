@@ -5,7 +5,7 @@ using AuroraScript.Hosting;
 namespace AuroraScript.Runtime.Types
 {
     /// <summary>Immutable object view of an exact signed 64-bit integer datum.</summary>
-    [AuroraNativeType("Int64", NativeReceiverType = typeof(long))]
+    [NativeType("Int64", NativeReceiverType = typeof(long))]
     public sealed partial class Int64Value : ScriptImmutable
     {
         /// <summary>Creates an immutable wrapper for an exact signed 64-bit value.</summary>
@@ -28,11 +28,11 @@ namespace AuroraScript.Runtime.Types
         public override bool IsTrue() => Value != 0;
 
         /// <summary>Formats the exact integer without a Number conversion.</summary>
-        [AuroraReceiverExport("toString", DynamicAdapter = nameof(TOSTRING))]
+        [ReceiverExport("toString", DynamicAdapter = nameof(TOSTRING))]
         public static string FormatString(long value) => NumberValue.FormatString(value);
 
         /// <summary>Formats the exact integer with an integer radix.</summary>
-        [AuroraReceiverExport("toString", DynamicAdapter = nameof(TOSTRING))]
+        [ReceiverExport("toString", DynamicAdapter = nameof(TOSTRING))]
         public static string FormatString(long value, int radix) => NumberValue.FormatString(value, radix);
 
         internal new static void TOSTRING(ScriptContext ctx, ScriptObject receiver, Span<ScriptDatum> args, ref ScriptDatum result)

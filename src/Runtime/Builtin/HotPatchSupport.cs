@@ -8,18 +8,18 @@ namespace AuroraScript.Runtime.Builtin
     /// <summary>
     /// Script hot-patch Type implemented through generated native exports.
     /// </summary>
-    [AuroraNativeType("HotPatch")]
+    [NativeType("HotPatch")]
     public sealed partial class HotPatchSupport : ScriptObject
     {
         /// <summary>Applies a replacement patch addressed by string path.</summary>
-        [AuroraExport("replace", MatchFailure.Throw, DynamicAdapter = nameof(REPLACE))]
+        [Export("replace", MatchFailure.Throw, DynamicAdapter = nameof(REPLACE))]
         public static void ReplaceCore(ScriptContext ctx, string modulePath, string script, bool ignoreDepends = false)
         {
             ApplyPatch(ctx, ResolveModulePath(ctx, modulePath), script, HotPatchType.Replace, ignoreDepends);
         }
 
         /// <summary>Applies a replacement patch addressed by a native Path value.</summary>
-        [AuroraExport("replace", MatchFailure.Throw, DynamicAdapter = nameof(REPLACE))]
+        [Export("replace", MatchFailure.Throw, DynamicAdapter = nameof(REPLACE))]
         public static void ReplaceCore(ScriptContext ctx, ScriptPathValue modulePath, string script, bool ignoreDepends = false)
         {
             ApplyPatch(ctx, ResolveModulePath(ctx, modulePath.Value), script, HotPatchType.Replace, ignoreDepends);
@@ -32,14 +32,14 @@ namespace AuroraScript.Runtime.Builtin
         }
 
         /// <summary>Applies an incremental patch addressed by string path.</summary>
-        [AuroraExport("incremental", MatchFailure.Throw, DynamicAdapter = nameof(INCREMENTAL))]
+        [Export("incremental", MatchFailure.Throw, DynamicAdapter = nameof(INCREMENTAL))]
         public static void IncrementalCore(ScriptContext ctx, string modulePath, string script, bool ignoreDepends = false)
         {
             ApplyIncrementalPatch(ctx, ResolveModulePath(ctx, modulePath), script, ignoreDepends);
         }
 
         /// <summary>Applies an incremental patch addressed by a native Path value.</summary>
-        [AuroraExport("incremental", MatchFailure.Throw, DynamicAdapter = nameof(INCREMENTAL))]
+        [Export("incremental", MatchFailure.Throw, DynamicAdapter = nameof(INCREMENTAL))]
         public static void IncrementalCore(ScriptContext ctx, ScriptPathValue modulePath, string script, bool ignoreDepends = false)
         {
             ApplyIncrementalPatch(ctx, ResolveModulePath(ctx, modulePath.Value), script, ignoreDepends);

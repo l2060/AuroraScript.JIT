@@ -200,7 +200,7 @@ public sealed class BuiltinApiCatalogTests
             Assert.True(catalog.TryGetGlobal(registration.Key, out var global), $"runtime-api.json is missing global '{registration.Key}'.");
             var source = File.ReadAllText(registration.Value);
             var memberNames = registration.Key is "console" or "JSON" or "TDoc" or "Math" or "Env" or "Conv8" or "HotPatch" or "String" or "Number"
-                ? ExtractAuroraExportNames(source)
+                ? ExtractExportNames(source)
                 : ExtractDefineNames(source, null);
             foreach (var memberName in memberNames)
             {
@@ -253,7 +253,7 @@ public sealed class BuiltinApiCatalogTests
         var catalog = LoadCatalog();
         var source = File.ReadAllText(Path.Combine(GetRuntimeRoot(), "Types", "StringValue.g.cs"));
         var count = 0;
-        foreach (var name in ExtractAuroraExportNames(source))
+        foreach (var name in ExtractExportNames(source))
         {
             Assert.True(catalog.TryGetPrototypeMember("String", name, out _),
                 $"runtime-api.json is missing generated String prototype member '{name}'.");
@@ -313,10 +313,10 @@ public sealed class BuiltinApiCatalogTests
         throw new DirectoryNotFoundException("src/Runtime was not found from test output path.");
     }
 
-    private static IEnumerable<string> ExtractAuroraExportNames(string source)
+    private static IEnumerable<string> ExtractExportNames(string source)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (Match match in AuroraExportPattern.Matches(source))
+        foreach (Match match in ExportPattern.Matches(source))
         {
             var name = match.Groups["name"].Value;
             if (seen.Add(name))
@@ -343,6 +343,6 @@ public sealed class BuiltinApiCatalogTests
     }
 
     private static readonly Regex DefinePattern = new("\\bDefine\\(\"(?<name>[^\"]+)\"", RegexOptions.Compiled);
-    private static readonly Regex AuroraExportPattern = new("\\[Aurora(?:Receiver)?Export\\(\"(?<name>[^\"]+)\"", RegexOptions.Compiled);
+    private static readonly Regex ExportPattern = new("\\[Aurora(?:Receiver)?Export\\(\"(?<name>[^\"]+)\"", RegexOptions.Compiled);
     private static readonly Regex PrototypeDefinePattern = new("\\b(?<prototype>[A-Za-z0-9_]+Prototype)\\.Define\\(\"(?<name>[^\"]+)\"", RegexOptions.Compiled);
 }

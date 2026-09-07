@@ -5,7 +5,7 @@ import http from 'http';
 import constant from 'constant';
 
 
-func testFileSystem() {
+export func testFileSystem() {
 	var text = (fs.readText('config.tdoc'));
 	console.log(text);
 
@@ -16,14 +16,14 @@ func testFileSystem() {
 	console.log(TDoc.stringify(t));
 }
 
-func testHttpGet() {
+export func testHttpGet() {
 
-	http.getAsync("https://www.baidu.com", {}, (error, res) => {
+	http.getAsync("https://www.baidu.com", (error, res) => {
 			console.log(error, res.status);
 		});
 }
 
-func testNative() {
+export func testNative() {
 	var a = "Hello";
 	var b = 123;
 	var c = 123.45;
@@ -52,7 +52,7 @@ func testNative() {
 }
 
 
-func testNativeScript() {
+export func testNativeScript() {
 	var t = constant.COMPLEX + 666;
 
 	var n = 1000000;
@@ -68,7 +68,7 @@ func testNativeScript() {
 }
 
 
-native func testPacketArray() void{
+export native func testPacketArray() void{
 	packetArrayInit(null);
 }
 
@@ -90,7 +90,7 @@ native func log(String text) void{
 	console.log(text);
 }
 
-native func testPath() void{
+export native func testPath() void{
 	var p1 = Path.of('media', 'input.mp4');
 	var path = Path.of('a','b','c');
 	path.append('data');

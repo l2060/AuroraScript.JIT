@@ -1,6 +1,7 @@
 ﻿using AuroraScript.Core;
 using AuroraScript.Hosting;
 using AuroraScript.Runtime.Serialization;
+using AuroraScript.Runtime.Types;
 using AuroraScript.Source;
 using System;
 using System.Collections.Generic;
@@ -63,7 +64,7 @@ namespace AuroraScript
         private CompilerOptions _compiler = CompilerOptions.Default;
         private OptimizationOptions _optimization = OptimizationOptions.Default;
         private OutputOptions _output = OutputOptions.Default;
-        private IReadOnlyList<BuiltInModuleDefinition> _builtIns = Array.Empty<BuiltInModuleDefinition>();
+        private IReadOnlyList<NativePackageDefinition> _packages = Array.Empty<NativePackageDefinition>();
 
         /// <summary>
         /// Provides a default set of options for the engine.
@@ -107,13 +108,14 @@ namespace AuroraScript
         }
 
         /// <summary>
-        /// Gets the native modules explicitly enabled for this engine.
-        /// The default collection is empty.
+        /// Gets the native packages explicitly enabled for this engine.
+        /// The default collection is empty. Enabled packages are importable and
+        /// are not registered on the script global.
         /// </summary>
-        public IReadOnlyList<BuiltInModuleDefinition> BuiltIns
+        public IReadOnlyList<NativePackageDefinition> Packages
         {
-            get => _builtIns;
-            init => _builtIns = BuiltInModulesBuilder.CreateSnapshot(value);
+            get => _packages;
+            init => _packages = NativePackagesBuilder.CreateSnapshot(value);
         }
 
         /// <summary>
@@ -151,16 +153,16 @@ namespace AuroraScript
         }
 
         /// <summary>
-        /// Configures the native modules available to the engine and returns a new
+        /// Configures the native packages available to the engine and returns a new
         /// immutable options instance.
         /// </summary>
-        public EngineOptions WithBuiltIns(Action<BuiltInModulesBuilder> configure)
+        public EngineOptions WithPackages(Action<NativePackagesBuilder> configure)
         {
             if (configure == null) throw new ArgumentNullException(nameof(configure));
 
-            var builder = new BuiltInModulesBuilder(BuiltIns);
+            var builder = new NativePackagesBuilder(Packages);
             configure(builder);
-            return this with { BuiltIns = builder.ToDefinitions() };
+            return this with { Packages = builder.ToDefinitions() };
         }
 
         private static RuntimeOptions ConfigureRuntime(RuntimeOptions options, Action<RuntimeOptionsBuilder> configure)
@@ -418,6 +420,7 @@ namespace AuroraScript
             {
                 var type = value[i] ??
                     throw new ArgumentException("Native types cannot contain null.", nameof(value));
+                NativeExportType.RequireHostNativeType(type, nameof(value));
                 if (!seen.Add(type))
                 {
                     throw new ArgumentException(
@@ -558,7 +561,44 @@ namespace AuroraScript
         }
 
         /// <summary>
-        /// Adds every public <see cref="AuroraNativeTypeAttribute"/> type from the
+        /// Adds one host native type to the compiler and engine catalog.
+        /// Types already listed are skipped.
+        /// </summary>
+        public CompilerOptionsBuilder AddNativeType<T>()
+            where T : ScriptObject
+        {
+            var type = typeof(T);
+            NativeExportType.RequireHostNativeType(type, nameof(T));
+            for (var i = 0; i < _nativeTypes.Count; i++)
+            {
+                if (_nativeTypes[i] == type)
+                {
+                    return this;
+                }
+            }
+
+            var types = new Type[_nativeTypes.Count + 1];
+            for (var i = 0; i < _nativeTypes.Count; i++)
+            {
+                types[i] = _nativeTypes[i];
+            }
+            types[_nativeTypes.Count] = type;
+            NativeTypes = types;
+            return this;
+        }
+
+        /// <summary>
+        /// Removes all host native types from the builder.
+        /// Engine infrastructure types remain available.
+        /// </summary>
+        public CompilerOptionsBuilder ClearNativeTypes()
+        {
+            NativeTypes = Array.Empty<Type>();
+            return this;
+        }
+
+        /// <summary>
+        /// Adds every public <see cref="NativeTypeAttribute"/> type from the
         /// calling assembly to the host native-type catalog.
         /// </summary>
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -568,7 +608,7 @@ namespace AuroraScript
         }
 
         /// <summary>
-        /// Adds every public <see cref="AuroraNativeTypeAttribute"/> type from the
+        /// Adds every public <see cref="NativeTypeAttribute"/> type from the
         /// given assemblies to the host native-type catalog. Types already listed
         /// are skipped. Infrastructure types from the engine assembly are ignored.
         /// </summary>
@@ -621,11 +661,7 @@ namespace AuroraScript
 
         private static bool IsHostNativeType(Type type)
         {
-            return type.IsClass &&
-                !type.IsAbstract &&
-                !type.IsGenericType &&
-                !type.IsNested &&
-                type.GetCustomAttribute<AuroraNativeTypeAttribute>() != null;
+            return NativeExportType.IsSelectableHostNativeType(type);
         }
 
         internal CompilerOptions ToOptions()

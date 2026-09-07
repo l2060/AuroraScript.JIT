@@ -3,7 +3,7 @@ using System;
 namespace AuroraScript.Hosting
 {
     /// <summary>
-    /// Compiler metadata emitted for an <see cref="AuroraExportAttribute"/> core method.
+    /// Compiler metadata emitted for an <see cref="ExportAttribute"/> core method.
     /// Host code should not apply this attribute directly.
     /// </summary>
     [AttributeUsage(AttributeTargets.Assembly, AllowMultiple = true)]

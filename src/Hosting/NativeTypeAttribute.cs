@@ -10,10 +10,10 @@ namespace AuroraScript.Hosting
     /// makes the script type constructible.
     /// </summary>
     [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
-    public sealed class AuroraNativeTypeAttribute : Attribute
+    public sealed class NativeTypeAttribute : Attribute
     {
         /// <summary>Marks a generated native script type.</summary>
-        public AuroraNativeTypeAttribute(string typeName)
+        public NativeTypeAttribute(string typeName)
         {
             TypeName = typeName ?? throw new ArgumentNullException(nameof(typeName));
         }

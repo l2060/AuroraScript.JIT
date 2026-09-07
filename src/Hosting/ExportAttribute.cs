@@ -7,24 +7,24 @@ namespace AuroraScript.Hosting
     /// generated Datum adapter.
     /// </summary>
     [AttributeUsage(AttributeTargets.Method | AttributeTargets.Field | AttributeTargets.Constructor, Inherited = false, AllowMultiple = false)]
-    public sealed class AuroraExportAttribute : Attribute
+    public sealed class ExportAttribute : Attribute
     {
         /// <summary>
         /// Marks the sole constructor exposed through script <c>new</c>.
         /// </summary>
-        public AuroraExportAttribute()
+        public ExportAttribute()
             : this(null, MatchFailure.Default)
         {
         }
 
         /// <summary>Marks a Core method or constant field for generated script export.</summary>
-        public AuroraExportAttribute(string scriptName)
+        public ExportAttribute(string scriptName)
             : this(scriptName, MatchFailure.Default)
         {
         }
 
         /// <summary>Marks a Core method for generated script export.</summary>
-        public AuroraExportAttribute(string scriptName, MatchFailure failure)
+        public ExportAttribute(string scriptName, MatchFailure failure)
         {
             ScriptName = scriptName;
             Failure = failure;

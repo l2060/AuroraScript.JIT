@@ -47,7 +47,7 @@ export func run(value) {
 
 `import Alias from "path";` binds one local name to the dependency's exported module object. `include "path";` instead merges another source file into the current module and exposes its private declarations directly. Both declarations must be at the top of the module, before ordinary declarations, and paths are resolved by the host resolver. The language does not provide named-import braces, default exports, or wildcard imports.
 
-The host may opt in to native modules through `EngineOptions.BuiltIns`. Shipped modules use bare imports such as `import fs from "fs";` and `import http from "http";`; they are not global objects and are unavailable when the host has not enabled them. A relative path such as `./fs` remains a project-source import even when the `fs` native module is enabled.
+The host may opt in to NativePackages through `EngineOptions.Packages`. Shipped packages use bare imports such as `import fs from "fs";` and `import http from "http";`; they are not global objects and are unavailable when the host has not enabled them. A relative path such as `./fs` remains a project-source import even when the `fs` package is enabled.
 
 ### 3. Bind execution context
 
@@ -74,7 +74,7 @@ export func current() UserState {
 }
 ```
 
-A typed context is loaded once at the start of each function that uses it (`ldfld UserState` plus one `castclass`), then native field and method access applies. An untyped context stays dynamic. Host NativeType names are valid function return contracts. An `export native func player() UserState` entry returns the CLR `UserState` instance on the `$native` path; proven call sites invoke members without wrapping through `ScriptDatum`. Context names cannot be exported. A parameter or local of the same name shadows the context. The type listed after `as` must be a public `[AuroraNativeType]` included in `WithNativeTypes`.
+A typed context is loaded once at the start of each function that uses it (`ldfld UserState` plus one `castclass`), then native field and method access applies. An untyped context stays dynamic. Host NativeType names are valid function return contracts. An `export native func player() UserState` entry returns the CLR `UserState` instance on the `$native` path; proven call sites invoke members without wrapping through `ScriptDatum`. Context names cannot be exported. A parameter or local of the same name shadows the context. The type listed after `as` must be a `[NativeType]` selected with `WithNativeTypes`, `AddNativeType`, or `AddNativeTypes`.
 
 ### 4. Declare variables and constants
 
@@ -168,7 +168,7 @@ native func clear(Cache cache) void {
 The CLR native entry then returns `void`; falling through and bare `return;`
 are valid, while `return expression;` is rejected. A direct native call used
 as a statement does not materialize a result. Dynamic, exported, or
-value-producing calls observe `null`, matching a host `[AuroraExport]` method
+value-producing calls observe `null`, matching a host `[Export]` method
 whose CLR return type is `void`. `void` is not an alias for `Null` and is not
 valid on ordinary functions, parameters, fields, or assertions.
 
@@ -571,7 +571,7 @@ func createProfile(user) {
 
 The `tdoc` prefix is valid only in script expressions. It accepts optional explicit type names, `readonly` object members, arrays, objects, scalars (`null` / boolean / number / string), and `$(expression)` in value positions. Property names and type names are static. Standalone `.tdoc` documents start directly with the root value and do not allow the prefix or interpolation. Use `TDoc.parse` and `TDoc.stringify` to convert between text and runtime values.
 
-Host NativeTypes participate when the CLR class implements `INativeTypedDocument` and is listed in `WithNativeTypes`. Then `tdoc Vec2 { x 3, y 4 }`, `tdoc Vec2 [3, 4]`, and `tdoc Flag false` construct the native instance directly. `WriteTypedDocument` chooses the canonical stored shape (object members, array elements, or a scalar null/boolean/number/string); deserialize and literals accept the shapes that type implements.
+Host NativeTypes participate when the CLR class implements `INativeTypedDocument` and is selected with `WithNativeTypes`, `AddNativeType`, or `AddNativeTypes`. Then `tdoc Vec2 { x 3, y 4 }`, `tdoc Vec2 [3, 4]`, and `tdoc Flag false` construct the native instance directly. `WriteTypedDocument` chooses the canonical stored shape (object members, array elements, or a scalar null/boolean/number/string); deserialize and literals accept the shapes that type implements.
 
 Lambdas:
 
@@ -627,7 +627,7 @@ Object values:
 - string buffer (`typeof` → `"StringBuffer"`)
 - path (`typeof` → `"Path"`)
 - packed arrays (`typeof` → `"Int8Array"`, `"UInt8Array"`, `"Int16Array"`, `"UInt16Array"`, `"Int32Array"`, `"UInt32Array"`, `"Int64Array"`, `"UInt64Array"`, `"Float32Array"`, `"Float64Array"`, `"BooleanArray"`)
-- infrastructure and host NativeTypes (`typeof` → `"type"`): `Math`, `JSON`, `TDoc`, `console`, `Conv8`, `HotPatch`, and types selected with `WithNativeTypes`
+- infrastructure and host NativeTypes (`typeof` → `"type"`): `Math`, `JSON`, `TDoc`, `console`, `Conv8`, `HotPatch`, and types selected with `WithNativeTypes` / `AddNativeType` / `AddNativeTypes`
 - CLR interop objects exposed by the host
 
 ## Runtime Constructors

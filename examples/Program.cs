@@ -28,14 +28,16 @@ namespace Examples
 
         private static readonly EngineOptions engineOptions = EngineOptions.Default
 
-        .WithBuiltIns(builtIns => builtIns.Add(BuiltInModules.FileSystem).Add(BuiltInModules.HttpClient))
+        .WithPackages(packages => packages.Add(NativePackages.FileSystem).Add(NativePackages.HttpClient))
         .WithCompiler(compiler =>
         {
             compiler.SourceResolver = ScriptSources.Composite(memorySource, fileSystemSource);
             compiler.MaxDegreeOfParallelism = 0;
             compiler.ExtName = "as";
             compiler.Mode = CompilationMode.Persistence;
-            compiler.WithNativeTypes(typeof(Vec2), typeof(UserState));
+            compiler.AddNativeType<Vec2>();
+            compiler.AddNativeType<UserState>();
+            compiler.AddNativeType<StatsSupport>();
         })
         .WithOutput(output =>
         {
@@ -54,7 +56,7 @@ namespace Examples
         {
             optimization.StackTrace = false;
             optimization.ModuleConstInlining = true;
-            optimization.Level = OptimizeOptions.Release;
+            optimization.Level = OptimizeOptions.Debug;
         });
 
 
@@ -269,6 +271,9 @@ namespace Examples
             Console.WriteLine($"closure1 result type: {result.Kind}");
             //RunAndReportUnitTests(domain);
             //BenchmarkScript(domain, "DEBUG_TEST", "main");
+            BenchmarkScript(domain, "BUILTIN", "testNative");
+
+
             BenchmarkScript(domain, "UNIT_LIB", "testEmpty");
             BenchmarkScript(domain, "UNIT_LIB", "testMD5");
             BenchmarkScript(domain, "UNIT_LIB", "testClosure");

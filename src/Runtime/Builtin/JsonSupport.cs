@@ -6,11 +6,11 @@ using System.Text.Json;
 namespace AuroraScript.Runtime.Builtin
 {
     /// <summary>Exposes JSON serialization through generated native exports.</summary>
-    [AuroraNativeType("JSON")]
+    [NativeType("JSON")]
     public sealed partial class JsonSupport : ScriptObject
     {
         /// <summary>Deserializes JSON text.</summary>
-        [AuroraExport("parse", MatchFailure.Throw)]
+        [Export("parse", MatchFailure.Throw)]
         public static ScriptDatum ParseCore(ScriptContext ctx, string text)
         {
             try
@@ -25,7 +25,7 @@ namespace AuroraScript.Runtime.Builtin
         }
 
         /// <summary>Serializes a script value as JSON text.</summary>
-        [AuroraExport("stringify", MatchFailure.Throw)]
+        [Export("stringify", MatchFailure.Throw)]
         public static string StringifyCore(ScriptContext ctx, ScriptDatum value, bool indented = false)
         {
             try

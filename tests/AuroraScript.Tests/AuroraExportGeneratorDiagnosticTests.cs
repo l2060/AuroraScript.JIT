@@ -19,7 +19,7 @@ public sealed class AuroraExportGeneratorDiagnosticTests
     public void UnmarkedStaticExportsAlwaysBelongToType(bool primitive)
     {
         var source = ValueReceiverSource("""
-            [AuroraExport("echo")]
+            [Export("echo")]
             public static string EchoCore(string value) => value;
             """, annotateReceivers: false);
         if (!primitive) source = source.Replace(", NativeReceiverType = typeof(string)", "", StringComparison.Ordinal);
@@ -33,24 +33,24 @@ public sealed class AuroraExportGeneratorDiagnosticTests
     }
 
     [Theory]
-    [InlineData("[AuroraNativeType(\"String\", NativeReceiverType = null)]")]
-    [InlineData("[AuroraNativeType(\"String\", NativeReceiverType = typeof(int))]")]
-    [InlineData("[AuroraNativeType(\"String\")]")]
+    [InlineData("[NativeType(\"String\", NativeReceiverType = null)]")]
+    [InlineData("[NativeType(\"String\", NativeReceiverType = typeof(int))]")]
+    [InlineData("[NativeType(\"String\")]")]
     public void ReceiverExportRequiresAValidNativeReceiverType(string typeAttribute)
     {
         var source = ValueReceiverSource("""
-            [AuroraExport("echo")]
+            [Export("echo")]
             public static string EchoCore(string value) => value;
             """).Replace(
-                "[AuroraNativeType(\"String\", NativeReceiverType = typeof(string))]",
+                "[NativeType(\"String\", NativeReceiverType = typeof(string))]",
                 typeAttribute,
                 StringComparison.Ordinal);
         Assert.Contains(Run(source), d => d.Id is "AURORAEXP001" or "AURORAEXP002");
     }
 
     [Theory]
-    [InlineData("[AuroraReceiverExport(\"echo\")] public string EchoCore(string value) => value;")]
-    [InlineData("[AuroraReceiverExport(\"echo\")] public static string EchoCore(int value) => value.ToString();")]
+    [InlineData("[ReceiverExport(\"echo\")] public string EchoCore(string value) => value;")]
+    [InlineData("[ReceiverExport(\"echo\")] public static string EchoCore(int value) => value.ToString();")]
     public void ReceiverExportRejectsInvalidContracts(string member)
     {
         Assert.Contains(Run(ValueReceiverSource(member, annotateReceivers: false)), d => d.Id == "AURORAEXP002");
@@ -60,11 +60,11 @@ public sealed class AuroraExportGeneratorDiagnosticTests
     public void PrimitiveFactoryReusesStaticExportCatalogAndGeneratedType()
     {
         var source = ValueReceiverSource("""
-            [AuroraExport("valueOf")]
+            [Export("valueOf")]
             public static string CreateCore(string value = "") => value;
-            [AuroraExport("compare", DynamicAdapter = nameof(Call))]
+            [Export("compare", DynamicAdapter = nameof(Call))]
             public static int CompareCore(string left, string right) => 1;
-            [AuroraReceiverExport("toString")]
+            [ReceiverExport("toString")]
             public static string TextCore(string value) => value;
             """, annotateReceivers: false).Replace("NativeReceiverType = typeof(string)", "NativeReceiverType = typeof(string), NativeConstructor = nameof(CreateCore)", StringComparison.Ordinal);
         var updated = RunCore(source, out var diagnostics);
@@ -83,18 +83,18 @@ public sealed class AuroraExportGeneratorDiagnosticTests
     }
 
     [Theory]
-    [InlineData("Missing", "[AuroraExport(\"valueOf\")] public static string CreateCore(string value) => value;")]
-    [InlineData("CreateCore", "[AuroraReceiverExport(\"valueOf\")] public static string CreateCore(string value) => value;")]
-    [InlineData("CreateCore", "[AuroraExport(\"valueOf\")] public static int CreateCore(string value) => 1;")]
-    [InlineData("CreateCore", "[AuroraExport(\"valueOf\", IsGetter = true)] public static string CreateCore() => \"\";")]
-    [InlineData("CreateCore", "[AuroraExport(\"valueOf\", DynamicAdapter = \"Missing\")] public static string CreateCore(string value) => value;")]
-    [InlineData("CreateCore", "[AuroraExport(\"valueOf\")] private static string CreateCore(string value) => value;")]
-    [InlineData("CreateCore", "[AuroraExport(\"valueOf\")] public string CreateCore(string value) => value;")]
-    [InlineData("CreateCore", "[AuroraExport(\"valueOf\")] public static string CreateCore(params ScriptDatum[] args) => \"\";")]
+    [InlineData("Missing", "[Export(\"valueOf\")] public static string CreateCore(string value) => value;")]
+    [InlineData("CreateCore", "[ReceiverExport(\"valueOf\")] public static string CreateCore(string value) => value;")]
+    [InlineData("CreateCore", "[Export(\"valueOf\")] public static int CreateCore(string value) => 1;")]
+    [InlineData("CreateCore", "[Export(\"valueOf\", IsGetter = true)] public static string CreateCore() => \"\";")]
+    [InlineData("CreateCore", "[Export(\"valueOf\", DynamicAdapter = \"Missing\")] public static string CreateCore(string value) => value;")]
+    [InlineData("CreateCore", "[Export(\"valueOf\")] private static string CreateCore(string value) => value;")]
+    [InlineData("CreateCore", "[Export(\"valueOf\")] public string CreateCore(string value) => value;")]
+    [InlineData("CreateCore", "[Export(\"valueOf\")] public static string CreateCore(params ScriptDatum[] args) => \"\";")]
     public void PrimitiveFactoryRejectsInvalidContracts(string factory, string members)
     {
-        var source = ValueReceiverSource(members, annotateReceivers: false).Replace("AuroraNativeType(\"String\", NativeReceiverType = typeof(string))",
-            "AuroraNativeType(\"String\", NativeReceiverType = typeof(string), NativeConstructor = \"" + factory + "\")", StringComparison.Ordinal);
+        var source = ValueReceiverSource(members, annotateReceivers: false).Replace("NativeType(\"String\", NativeReceiverType = typeof(string))",
+            "NativeType(\"String\", NativeReceiverType = typeof(string), NativeConstructor = \"" + factory + "\")", StringComparison.Ordinal);
         Assert.Contains(Run(source), diagnostic => diagnostic.Id == "AURORAEXP002");
     }
 
@@ -103,13 +103,13 @@ public sealed class AuroraExportGeneratorDiagnosticTests
     {
         var updated = RunCore(ValueReceiverSource(
             """
-            [AuroraExport("slice", DynamicAdapter = nameof(Call))]
+            [Export("slice", DynamicAdapter = nameof(Call))]
             public static string SliceCore(string value, int index) => value.Substring(index);
-            [AuroraExport("slice", DynamicAdapter = nameof(Call))]
+            [Export("slice", DynamicAdapter = nameof(Call))]
             public static string SliceCore(string value, double index) => value.Substring((int)index);
-            [AuroraExport("length", IsGetter = true, DynamicAdapter = nameof(Get))]
+            [Export("length", IsGetter = true, DynamicAdapter = nameof(Get))]
             public static int LengthCore(string value) => value.Length;
-            [AuroraReceiverExport("code", DynamicAdapter = nameof(Call))]
+            [ReceiverExport("code", DynamicAdapter = nameof(Call))]
             public static int CodeCore(string value, int index) => value[index];
             """), out var diagnostics);
 
@@ -140,18 +140,18 @@ public sealed class AuroraExportGeneratorDiagnosticTests
     public void ValueReceiverRejectsUnsupportedCoreSignatures(string method)
     {
         var diagnostics = Run(ValueReceiverSource(
-            "[AuroraReceiverExport(\"value\", DynamicAdapter = nameof(Call))] " + method, annotateReceivers: false));
+            "[ReceiverExport(\"value\", DynamicAdapter = nameof(Call))] " + method, annotateReceivers: false));
         Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "AURORAEXP002");
     }
 
     [Theory]
-    [InlineData("[AuroraReceiverExport(\"value\", DynamicAdapter = \"Missing\")] public static int Core(string value) => 0;")]
-    [InlineData("[AuroraReceiverExport(\"value\", DynamicAdapter = nameof(Get))] public static int Core(string value) => 0;")]
-    [InlineData("[AuroraReceiverExport(\"value\", DynamicAdapter = nameof(Call), IsGetter = true)] public static int Core(string value) => 0;")]
-    [InlineData("[AuroraReceiverExport(\"value\", DynamicAdapter = nameof(Get), IsGetter = true)] public static void Core(string value) { }")]
-    [InlineData("[AuroraReceiverExport(\"value\", DynamicAdapter = nameof(Get), IsGetter = true)] public static int Core(string value, int index) => 0;")]
-    [InlineData("[AuroraReceiverExport(\"value\", DynamicAdapter = nameof(Get), IsGetter = true, Writable = true)] public static int Core(string value) => 0;")]
-    [InlineData("[AuroraExport] public ValueMembers() { }")]
+    [InlineData("[ReceiverExport(\"value\", DynamicAdapter = \"Missing\")] public static int Core(string value) => 0;")]
+    [InlineData("[ReceiverExport(\"value\", DynamicAdapter = nameof(Get))] public static int Core(string value) => 0;")]
+    [InlineData("[ReceiverExport(\"value\", DynamicAdapter = nameof(Call), IsGetter = true)] public static int Core(string value) => 0;")]
+    [InlineData("[ReceiverExport(\"value\", DynamicAdapter = nameof(Get), IsGetter = true)] public static void Core(string value) { }")]
+    [InlineData("[ReceiverExport(\"value\", DynamicAdapter = nameof(Get), IsGetter = true)] public static int Core(string value, int index) => 0;")]
+    [InlineData("[ReceiverExport(\"value\", DynamicAdapter = nameof(Get), IsGetter = true, Writable = true)] public static int Core(string value) => 0;")]
+    [InlineData("[Export] public ValueMembers() { }")]
     public void ValueReceiverRejectsInvalidAdapterContracts(string members)
     {
         Assert.Contains(Run(ValueReceiverSource(members, annotateReceivers: false)), diagnostic => diagnostic.Id == "AURORAEXP002");
@@ -165,9 +165,9 @@ public sealed class AuroraExportGeneratorDiagnosticTests
     {
         var secondParameter = parameter.Length == 0 ? "" : ", " + parameter + " index";
         var diagnostics = Run(ValueReceiverSource($$"""
-            [AuroraExport("value", DynamicAdapter = nameof(Call))]
+            [Export("value", DynamicAdapter = nameof(Call))]
             public static int First(string value, int index) => 0;
-            [AuroraExport("value", DynamicAdapter = nameof({{adapter}}), IsGetter = {{getter.ToString().ToLowerInvariant()}})]
+            [Export("value", DynamicAdapter = nameof({{adapter}}), IsGetter = {{getter.ToString().ToLowerInvariant()}})]
             public static int Second(string value{{secondParameter}}) => 0;
             private static void OtherCall(ScriptContext context, ScriptObject receiver, Span<ScriptDatum> args, ref ScriptDatum result) { }
             """));
@@ -185,11 +185,11 @@ public sealed class AuroraExportGeneratorDiagnosticTests
     public void ValueReceiverGeneratesDefaultAdaptersUsingSharedCoercionAndInvocation()
     {
         var compilation = RunCore(ValueReceiverSource("""
-            [AuroraExport("trim")]
+            [Export("trim")]
             public static string TrimCore(string value) => value.Trim();
-            [AuroraExport("length", IsGetter = true)]
+            [Export("length", IsGetter = true)]
             public static int LengthCore(string value) => value.Length;
-            [AuroraExport("has")]
+            [Export("has")]
             public static bool HasCore(string value, string search) => value.Contains(search);
             """), out var diagnostics);
         Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
@@ -206,9 +206,9 @@ public sealed class AuroraExportGeneratorDiagnosticTests
     public void ValueReceiverRequiresExplicitAdapterForOverloads()
     {
         Assert.Contains(Run(ValueReceiverSource("""
-            [AuroraExport("value")]
+            [Export("value")]
             public static int First(string value, int index) => 0;
-            [AuroraExport("value")]
+            [Export("value")]
             public static int Second(string value, double index) => 0;
             """)), diagnostic => diagnostic.Id == "AURORAEXP003");
     }
@@ -219,10 +219,10 @@ public sealed class AuroraExportGeneratorDiagnosticTests
         using AuroraScript.Runtime;
         using AuroraScript.Runtime.Types;
         namespace Test;
-        [AuroraNativeType("String", NativeReceiverType = typeof(string))]
+        [NativeType("String", NativeReceiverType = typeof(string))]
         public sealed partial class ValueMembers
         {
-            {{(annotateReceivers ? members.Replace("AuroraExport", "AuroraReceiverExport", StringComparison.Ordinal) : members)}}
+            {{(annotateReceivers ? members.Replace("[Export", "[ReceiverExport", StringComparison.Ordinal) : members)}}
             private static void Call(ScriptContext context, ScriptObject receiver, Span<ScriptDatum> args, ref ScriptDatum result) { }
             private static void Get(ScriptObject receiver, ref ScriptDatum result) { }
         }
@@ -235,7 +235,7 @@ public sealed class AuroraExportGeneratorDiagnosticTests
     public void NumericReceiverGeneratesDefaultAdapter(string receiver, string wrapper, string property)
     {
         var source = ValueReceiverSource($$"""
-            [AuroraExport("format")]
+            [Export("format")]
             public static string FormatCore({{receiver}} value) => value.ToString();
             """).Replace("typeof(string)", $"typeof({receiver})", StringComparison.Ordinal);
         var compilation = RunCore(source, out var diagnostics);
@@ -250,11 +250,11 @@ public sealed class AuroraExportGeneratorDiagnosticTests
     public void NumberReceiverOverloadsRetainTheirClrReceiverInMetadata()
     {
         var source = ValueReceiverSource("""
-            [AuroraExport("format", DynamicAdapter = nameof(Call))]
+            [Export("format", DynamicAdapter = nameof(Call))]
             public static string FormatCore(double value, int radix) => value.ToString();
-            [AuroraExport("format", DynamicAdapter = nameof(Call))]
+            [Export("format", DynamicAdapter = nameof(Call))]
             public static string FormatCore(int value, int radix) => value.ToString();
-            [AuroraExport("format", DynamicAdapter = nameof(Call))]
+            [Export("format", DynamicAdapter = nameof(Call))]
             public static string FormatCore(uint value, int radix) => value.ToString();
             """).Replace("typeof(string)", "typeof(double)", StringComparison.Ordinal);
         var compilation = RunCore(source, out var diagnostics);
@@ -270,7 +270,7 @@ public sealed class AuroraExportGeneratorDiagnosticTests
     public void NumberReceiverSpecializationNeedsAnExplicitDynamicAdapter()
     {
         var source = ValueReceiverSource("""
-            [AuroraExport("format")]
+            [Export("format")]
             public static string FormatCore(int value) => value.ToString();
             """).Replace("typeof(string)", "typeof(double)", StringComparison.Ordinal);
         Assert.Contains(Run(source), d => d.Id == "AURORAEXP002");
@@ -285,10 +285,10 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             using AuroraScript.Runtime.Types;
             namespace Test;
 
-            [AuroraNativeType("Bad")]
+            [NativeType("Bad")]
             public sealed class Bad : ScriptObject
             {
-                [AuroraExport("value")]
+                [Export("value")]
                 public static double Value() => 1;
             }
             """);
@@ -308,10 +308,10 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             using System;
             namespace Test;
 
-            [AuroraNativeType("Bad")]
+            [NativeType("Bad")]
             public sealed partial class Bad : ScriptObject
             {
-                [AuroraExport("value")]
+                [Export("value")]
                 public static DateTime Value(DateTime value) => value;
             }
             """);
@@ -329,13 +329,13 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             using AuroraScript.Runtime.Types;
             namespace Test;
 
-            [AuroraNativeType("Bad")]
+            [NativeType("Bad")]
             public sealed partial class Bad : ScriptObject
             {
-                [AuroraExport("value")]
+                [Export("value")]
                 public static double First() => 1;
 
-                [AuroraExport("value")]
+                [Export("value")]
                 public static double Second() => 2;
             }
             """);
@@ -353,13 +353,13 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             using AuroraScript.Runtime.Types;
             namespace Test;
 
-            [AuroraNativeType("Widget")]
+            [NativeType("Widget")]
             public sealed partial class Widget : ScriptObject
             {
-                [AuroraExport("value", IsGetter = true)]
+                [Export("value", IsGetter = true)]
                 public double GetValueCore() => 1;
 
-                [AuroraExport("value", IsSetter = true)]
+                [Export("value", IsSetter = true)]
                 public void SetValueCore(double value) { }
             }
             """,
@@ -375,13 +375,13 @@ public sealed class AuroraExportGeneratorDiagnosticTests
     }
 
     [Theory]
-    [InlineData("[AuroraExport(\"value\", IsGetter = true, IsSetter = true)] public double Core() => 0;")]
-    [InlineData("[AuroraExport(\"value\", IsGetter = true)] public void Core() { }")]
-    [InlineData("[AuroraExport(\"value\", IsGetter = true)] public double Core(double value) => value;")]
-    [InlineData("[AuroraExport(\"value\", IsSetter = true)] public double Core(double value) => value;")]
-    [InlineData("[AuroraExport(\"value\", IsSetter = true)] public void Core() { }")]
-    [InlineData("[AuroraExport(\"value\", IsSetter = true)] public void Core(double value = 0) { }")]
-    [InlineData("[AuroraExport(\"value\", IsSetter = true)] public double Value;")]
+    [InlineData("[Export(\"value\", IsGetter = true, IsSetter = true)] public double Core() => 0;")]
+    [InlineData("[Export(\"value\", IsGetter = true)] public void Core() { }")]
+    [InlineData("[Export(\"value\", IsGetter = true)] public double Core(double value) => value;")]
+    [InlineData("[Export(\"value\", IsSetter = true)] public double Core(double value) => value;")]
+    [InlineData("[Export(\"value\", IsSetter = true)] public void Core() { }")]
+    [InlineData("[Export(\"value\", IsSetter = true)] public void Core(double value = 0) { }")]
+    [InlineData("[Export(\"value\", IsSetter = true)] public double Value;")]
     public void NativeObjectRejectsInvalidAccessorContracts(string member)
     {
         var source = $$"""
@@ -389,7 +389,7 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             using AuroraScript.Runtime.Types;
             namespace Test;
 
-            [AuroraNativeType("Widget")]
+            [NativeType("Widget")]
             public sealed partial class Widget : ScriptObject
             {
                 {{member}}
@@ -408,17 +408,17 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             using AuroraScript.Runtime.Types;
             namespace Test;
 
-            [AuroraNativeType("Same")]
+            [NativeType("Same")]
             public sealed partial class First : ScriptObject
             {
-                [AuroraExport("first")]
+                [Export("first")]
                 public static double Value() => 1;
             }
 
-            [AuroraNativeType("Same")]
+            [NativeType("Same")]
             public sealed partial class Second : ScriptObject
             {
-                [AuroraExport("second")]
+                [Export("second")]
                 public static double Value() => 2;
             }
             """);
@@ -439,10 +439,10 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             using AuroraScript.Runtime.Types;
             namespace Test;
 
-            [AuroraNativeType("Bad")]
+            [NativeType("Bad")]
             public sealed partial class Bad
             {
-                [AuroraExport("x")]
+                [Export("x")]
                 public double X;
             }
             """);
@@ -464,19 +464,19 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             using System;
             namespace Test;
 
-            [AuroraNativeType("Vec2")]
+            [NativeType("Vec2")]
             public sealed partial class Vec2 : ScriptObject
             {
-                [AuroraExport("x")]
+                [Export("x")]
                 public double X;
 
-                [AuroraExport]
+                [Export]
                 public Vec2(double x) : base(NativePrototype)
                 {
                     X = x;
                 }
 
-                [AuroraExport("length")]
+                [Export("length")]
                 public double LengthCore() => Math.Abs(X);
             }
             """,
@@ -484,7 +484,7 @@ public sealed class AuroraExportGeneratorDiagnosticTests
 
         Assert.Contains(updated.SyntaxTrees, tree =>
             tree.FilePath.EndsWith(
-                "Test.Vec2.AuroraNativeType.g.cs",
+                "Test.Vec2.NativeType.g.cs",
                 StringComparison.Ordinal));
         Assert.DoesNotContain(updated.GetDiagnostics(), diagnostic =>
             diagnostic.Severity == DiagnosticSeverity.Error);
@@ -499,16 +499,16 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             using AuroraScript.Runtime.Types;
             namespace Test;
 
-            [AuroraNativeType("Widget")]
+            [NativeType("Widget")]
             public sealed partial class Widget : ScriptObject
             {
-                [AuroraExport("value")]
+                [Export("value")]
                 public double ValueCore() => 1;
 
-                [AuroraExport("value")]
+                [Export("value")]
                 public static double StaticValueCore() => 2;
 
-                [AuroraExport("COUNT")]
+                [Export("COUNT")]
                 public static readonly double Count = 3;
             }
             """,
@@ -543,22 +543,22 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             using AuroraScript.Runtime.Types;
             namespace Test;
 
-            [AuroraNativeType("Widget")]
+            [NativeType("Widget")]
             public sealed partial class Widget : ScriptObject
             {
-                [AuroraExport("format", DynamicAdapter = nameof(FORMAT))]
+                [Export("format", DynamicAdapter = nameof(FORMAT))]
                 public string FormatCore(string value) => value;
 
-                [AuroraExport("format", DynamicAdapter = nameof(FORMAT))]
+                [Export("format", DynamicAdapter = nameof(FORMAT))]
                 public string FormatCore(string left, string right) => left + right;
 
-                [AuroraExport("format", DynamicAdapter = nameof(FORMAT))]
+                [Export("format", DynamicAdapter = nameof(FORMAT))]
                 public string FormatCore(params ScriptDatum[] values) => string.Empty;
 
-                [AuroraExport("create", DynamicAdapter = nameof(CREATE))]
+                [Export("create", DynamicAdapter = nameof(CREATE))]
                 public static Widget CreateCore(string value = null) => new Widget();
 
-                [AuroraExport("create", DynamicAdapter = nameof(CREATE))]
+                [Export("create", DynamicAdapter = nameof(CREATE))]
                 public static Widget CreateCore(ScriptObject value) => new Widget();
 
                 public static void FORMAT(ScriptContext context, ScriptObject receiver,
@@ -591,16 +591,16 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             using AuroraScript.Runtime.Types;
             namespace Test;
 
-            [AuroraNativeType("Widget")]
+            [NativeType("Widget")]
             public sealed partial class Widget : ScriptObject
             {
-                [AuroraExport("stable")]
+                [Export("stable")]
                 public string StableCore() => "stable";
 
-                [AuroraExport("replaceable", Writable = true, Enumerable = true)]
+                [Export("replaceable", Writable = true, Enumerable = true)]
                 public string ReplaceableCore() => "replaceable";
 
-                [AuroraExport("visible", Enumerable = true)]
+                [Export("visible", Enumerable = true)]
                 public double Visible;
             }
             """,
@@ -627,10 +627,10 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             using AuroraScript.Runtime.Types;
             namespace Test;
 
-            [AuroraNativeType("Bad")]
+            [NativeType("Bad")]
             public sealed partial class Bad : ScriptObject
             {
-                [AuroraExport("COUNT")]
+                [Export("COUNT")]
                 public static int Count = 3;
             }
             """);
@@ -651,13 +651,13 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             using AuroraScript.Runtime.Types;
             namespace Test;
 
-            [AuroraNativeType("Bad")]
+            [NativeType("Bad")]
             public sealed partial class Bad : ScriptObject
             {
-                [AuroraExport]
+                [Export]
                 public Bad() { }
 
-                [AuroraExport]
+                [Export]
                 public Bad(double value) { }
             }
             """);
@@ -680,13 +680,13 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             using AuroraScript.Runtime.Types;
             namespace Test;
 
-            [AuroraNativeType("Vec2")]
+            [NativeType("Vec2")]
             public sealed partial class Vec2 : ScriptObject, INativeTypedDocument
             {
-                [AuroraExport("x")] public double X;
-                [AuroraExport("y")] public double Y;
+                [Export("x")] public double X;
+                [Export("y")] public double Y;
 
-                [AuroraExport]
+                [Export]
                 public Vec2(double x, double y)
                 {
                     X = x;
@@ -713,6 +713,71 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             generated);
     }
 
+    [Fact]
+    public void PackageTypeEmitsRegisterPackageWithoutGlobalRegister()
+    {
+        var updated = RunCore(
+            """
+            using AuroraScript.Hosting;
+            using AuroraScript.Runtime.Types;
+            namespace Test;
+
+            [NativeType("fs")]
+            [NativePackage("fs")]
+            public sealed partial class FileSystemSupport : ScriptObject
+            {
+                [Export("readText")]
+                public static string ReadTextCore(string path) => path;
+            }
+            """,
+            out var diagnostics);
+
+        Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        Assert.DoesNotContain(updated.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        var generated = string.Join(Environment.NewLine, updated.SyntaxTrees.Skip(1).Select(tree => tree.ToString()));
+        Assert.Contains("public static void RegisterPackage(ScriptObject module)", generated);
+        Assert.Contains("module.Define(\"readText\"", generated);
+        Assert.DoesNotContain("public static void Register(ScriptObject target", generated);
+        Assert.Contains("AuroraGeneratedExportAttribute(\"fs\", \"readText\"", generated);
+    }
+
+    [Fact]
+    public void PackageTypeRejectsInstanceExportsAndReservedNames()
+    {
+        var instance = Run(
+            """
+            using AuroraScript.Hosting;
+            using AuroraScript.Runtime.Types;
+            namespace Test;
+
+            [NativeType("fs")]
+            [NativePackage("fs")]
+            public sealed partial class FileSystemSupport : ScriptObject
+            {
+                [Export("x")] public double X;
+            }
+            """);
+        Assert.Contains(instance, diagnostic =>
+            diagnostic.GetMessage().Contains("Native packages cannot export constructors", StringComparison.Ordinal));
+
+        var reserved = Run(
+            """
+            using AuroraScript.Hosting;
+            using AuroraScript.Runtime.Types;
+            namespace Test;
+
+            [NativeType("Math")]
+            [NativePackage("math")]
+            public sealed partial class MathPackage : ScriptObject
+            {
+                [Export("abs")]
+                public static double AbsCore(double value) => value;
+            }
+            """);
+        Assert.Contains(reserved, diagnostic =>
+            diagnostic.GetMessage().Contains("conflicts with an engine infrastructure Type", StringComparison.Ordinal));
+    }
+
     private static ImmutableArray<Diagnostic> Run(string source)
     {
         RunCore(source, out var diagnostics);
@@ -732,7 +797,7 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             references.Add(MetadataReference.CreateFromFile(path));
         }
         references.Add(MetadataReference.CreateFromFile(
-            typeof(AuroraExportAttribute).Assembly.Location));
+            typeof(ExportAttribute).Assembly.Location));
 
         var compilation = CSharpCompilation.Create(
             "GeneratorDiagnostics",

@@ -42,7 +42,7 @@ For default code generation style, also read `docs/script-authoring-best-practic
 - Host-side `DynamicPatch` / `ReplacePatch` / `IncrementalPatch` string overloads require an absolute file path or virtual full path under the current resolver root.
 - Script-side `HotPatch.replace` and `HotPatch.incremental` should pass only `script` when patching the current module. If a module path is supplied, relative paths resolve from the current module full path.
 - Hot patch targets are matched by resolved full path, never by `@module` name. A different path cannot target a loaded module by reusing its name, and an explicit patch name cannot rename a module already loaded at that path. An anonymous patch at the same path preserves the loaded module's explicit name. A new path creates a new named or anonymous module, subject to explicit-name conflict checks.
-- Native modules are opt-in host capabilities. `EngineOptions.Default.BuiltIns` is empty; the host must add `BuiltInModules.FileSystem` and/or `BuiltInModules.HttpClient` before constructing the engine.
+- Native packages are opt-in host capabilities. `EngineOptions.Default.Packages` is empty; the host must add `NativePackages.FileSystem` and/or `NativePackages.HttpClient` with `WithPackages` before constructing the engine. Do not register those types with `WithNativeTypes`.
 - Import enabled native modules by bare path (`import fs from "fs";`, `import http from "http";`). Bare native paths take priority over the project resolver, while `./fs`, `../fs`, and other relative imports remain project sources.
 
 ## Statements
@@ -50,7 +50,7 @@ For default code generation style, also read `docs/script-authoring-best-practic
 - Empty statement: `;`
 - Block: `{ statement* }`
 - Function: `func name(args) { ... }` or `function name(args) { ... }`
-- Execution context: `context name;` or `context name as NativeType;` at module scope. Each name aliases `ScriptContext.UserState`. Typed names require a public `[AuroraNativeType]` listed in `WithNativeTypes`. Do not generate `$state`.
+- Execution context: `context name;` or `context name as NativeType;` at module scope. Each name aliases `ScriptContext.UserState`. Typed names require a `[NativeType]` selected with `WithNativeTypes`, `AddNativeType`, or `AddNativeTypes`. Do not generate `$state`.
 - External declaration in an `@global()` file: `declare func name(args);`, `declare var name;`, `declare const name;`, `declare type Name { ... }`
 - Variable: `var name;`, `var name = expr;`, `const name = expr;`
 - Destructuring: `var { a, b } = obj;`, `var [ first, ...rest ] = array;`
@@ -88,10 +88,10 @@ Rules:
 - `declare const` participates in compile-time const assignment checks, but reads still resolve from host-defined `global`.
 - `declare var` reads and writes resolve through `global` unless shadowed by a local variable.
 - Do not use `export const HOST_VALUE;` for host-provided values; that emits a module property initialized to `null` and can hide the host global.
-- `declare type` is the script contract for an `[AuroraNativeType]`. Static-only
+- `declare type` is the script contract for an `[NativeType]`. Static-only
   types omit `constructor` and mark members `static`; constructible types include
   one constructor. Application native types must be selected explicitly with
-  `EngineOptions.WithCompiler(compiler => compiler.WithNativeTypes(...))`; that
+  `AddNativeType<T>()`, `WithNativeTypes(...)`, or `AddNativeTypes(...)`; that
   selection applies to every domain of the engine. Contracts are editor-only
   and must not be treated as structural `type` declarations or as compiler
   inference input. Generating `.as` from host assemblies is deferred.
@@ -232,7 +232,7 @@ Assignments are right-associative.
 `typeof` results:
 
 - lowercase for primitives and privileged kinds: `"null"`, `"boolean"`, `"number"`, `"string"`, `"object"`, `"array"`, `"date"`, `"regex"`, `"function"`, `"type"`, `"error"`, `"clr:function"`, `"clr:bonding"`
-- `"type"` for infrastructure NativeTypes (`Math`, `JSON`, `TDoc`, `console`, `Conv8`, `HotPatch`) and host types registered with `WithNativeTypes`
+- `"type"` for infrastructure NativeTypes (`Math`, `JSON`, `TDoc`, `console`, `Conv8`, `HotPatch`) and host types registered with `WithNativeTypes` / `AddNativeType`
 - constructor names for native objects stored as `ValueKind.Object`: `"Int8Array"`, `"UInt8Array"`, `"Int16Array"`, `"UInt16Array"`, `"Int32Array"`, `"UInt32Array"`, `"Int64Array"`, `"UInt64Array"`, `"Float32Array"`, `"Float64Array"`, `"BooleanArray"`, `"StringBuffer"`, `"HashMap"`, `"Path"`
 - Do not assume JavaScript `typeof new Int8Array() === "object"`. Use `typeof bytes == "Int8Array"` or `check Int8Array bytes`.
 - Do not add a new `ValueKind` member for a native type; identity lives on the object (`TypeOfValue`).
@@ -299,9 +299,9 @@ Path rules:
 - `new Path(...)` and `Path.of(...)` return mutable `Path` objects; `append`, `reset`, and `changeExt` mutate and return the same `Path`.
 - `Path` objects support `==` by normalized path text value.
 
-## Opt-In Native Modules
+## Opt-In Native Packages
 
-These modules are not runtime globals. Generated code may use them only when the host contract explicitly enables the corresponding `BuiltInModules` definition.
+These packages are not runtime globals. Generated code may use them only when the host contract explicitly enables the corresponding `NativePackages` definition. Proven `import fs from "fs"; fs.readText(path)` calls compile to Host Cores (`ReadTextCore`) when the argument type is proven; assigning the module to another name keeps the dynamic adapters.
 
 File-system module:
 
@@ -390,7 +390,7 @@ Typical diagnostics:
 
 1. Read this file.
 2. If generating script code, read `docs/script-authoring-best-practices.md`.
-3. If generating host-side C# integration code, read `docs/host-integration.md` and `schema/host-api.json`. For typed script globals implemented in C#, use `[AuroraNativeType]` / `[AuroraExport]` rather than `BondingFunction` unless you need a raw `ScriptDatum` span callback.
+3. If generating host-side C# integration code, read `docs/host-integration.md` and `schema/host-api.json`. For typed script globals implemented in C#, use `[NativeType]` / `[Export]` rather than `BondingFunction` unless you need a raw `ScriptDatum` span callback.
 4. Check examples in `examples/valid` for accepted syntax.
 5. If rejecting code, compare with `examples/invalid`.
 6. Use `aurora_search_runtime_api` or `aurora_get_runtime_api` before using runtime APIs that may be confused with JavaScript built-ins.

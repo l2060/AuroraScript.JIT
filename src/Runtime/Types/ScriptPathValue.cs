@@ -7,7 +7,7 @@ namespace AuroraScript.Runtime.Types
     /// <summary>
     /// Represents a mutable script-side path value without adding a dedicated ValueKind.
     /// </summary>
-    [AuroraNativeType("Path")]
+    [NativeType("Path")]
     public sealed partial class ScriptPathValue : ScriptObject
     {
         private string _value;
@@ -27,7 +27,7 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary>Creates a normalized path from a root and optional path segments.</summary>
-        [AuroraExport]
+        [Export]
         public ScriptPathValue(params ScriptDatum[] segments)
             : base(NativePrototype)
         {
@@ -208,11 +208,11 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary>Returns the normalized path text.</summary>
-        [AuroraExport("toString")]
+        [Export("toString")]
         public string ToStringCore() => Value;
 
         /// <summary>Appends one segment to this path.</summary>
-        [AuroraExport("append", DynamicAdapter = nameof(APPEND))]
+        [Export("append", DynamicAdapter = nameof(APPEND))]
         public ScriptPathValue AppendCore(string segment0)
         {
             Append(segment0);
@@ -220,7 +220,7 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary>Appends two segments to this path.</summary>
-        [AuroraExport("append", DynamicAdapter = nameof(APPEND))]
+        [Export("append", DynamicAdapter = nameof(APPEND))]
         public ScriptPathValue AppendCore(string segment0, string segment1)
         {
             Append(segment0);
@@ -229,7 +229,7 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary>Appends three segments to this path.</summary>
-        [AuroraExport("append", DynamicAdapter = nameof(APPEND))]
+        [Export("append", DynamicAdapter = nameof(APPEND))]
         public ScriptPathValue AppendCore(string segment0, string segment1, string segment2)
         {
             Append(segment0);
@@ -239,7 +239,7 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary>Replaces this path with a new root and optional segments.</summary>
-        [AuroraExport("reset", DynamicAdapter = nameof(RESET))]
+        [Export("reset", DynamicAdapter = nameof(RESET))]
         public ScriptPathValue ResetCore(string root = null, string segment1 = null, string segment2 = null)
         {
             _value = ScriptPath.NormalizeText(root ?? string.Empty);
@@ -249,7 +249,7 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary>Changes this path's extension.</summary>
-        [AuroraExport("changeExt")]
+        [Export("changeExt")]
         public ScriptPathValue ChangeExtCore(ScriptDatum extension = default)
         {
             ChangeExt(GetPathString(extension));
@@ -257,27 +257,27 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary>Returns this path's normalized extension.</summary>
-        [AuroraExport("extName")]
+        [Export("extName")]
         public string ExtNameCore() => ScriptPath.GetExtNameNormalizedText(Value);
 
         /// <summary>Returns this path's normalized directory name.</summary>
-        [AuroraExport("directoryName")]
+        [Export("directoryName")]
         public string DirectoryNameCore() => ScriptPath.GetDirectoryNameNormalizedText(Value);
 
         /// <summary>Returns this path's normalized file name.</summary>
-        [AuroraExport("fileName")]
+        [Export("fileName")]
         public string FileNameCore() => ScriptPath.GetFileNameNormalizedText(Value);
 
         /// <summary>Returns this path's protocol name.</summary>
-        [AuroraExport("protocol")]
+        [Export("protocol")]
         public string ProtocolCore() => ScriptPath.GetProtocolText(Value);
 
         /// <summary>Creates an independent copy of this path.</summary>
-        [AuroraExport("clone")]
+        [Export("clone")]
         public ScriptPathValue CloneCore() => Clone();
 
         /// <summary>Creates a path from a root and optional segments.</summary>
-        [AuroraExport("of", DynamicAdapter = nameof(OF))]
+        [Export("of", DynamicAdapter = nameof(OF))]
         public static ScriptPathValue OfCore(string root = null, string segment1 = null, string segment2 = null)
         {
             var result = new ScriptPathValue(root ?? string.Empty);
@@ -320,11 +320,11 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary>Returns whether the supplied value is a Path.</summary>
-        [AuroraExport("isPath")]
+        [Export("isPath")]
         public static bool IsPathCore(ScriptDatum value = default) => value.Object is ScriptPathValue;
 
         /// <summary>Joins and normalizes path segments.</summary>
-        [AuroraExport("join", DynamicAdapter = nameof(JOIN))]
+        [Export("join", DynamicAdapter = nameof(JOIN))]
         public static string JoinCore(string root = null, string segment1 = null, string segment2 = null)
         {
             return JoinStrings(root, segment1, segment2);
@@ -336,7 +336,7 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary>Resolves segments relative to the current module directory.</summary>
-        [AuroraExport("baseModule", DynamicAdapter = nameof(BASE_MODULE))]
+        [Export("baseModule", DynamicAdapter = nameof(BASE_MODULE))]
         public static string BaseModuleCore(ScriptContext context, string segment0 = null, string segment1 = null, string segment2 = null)
         {
             var fullPath = context?.Module?.Source.FullPath;
@@ -360,41 +360,41 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary>Normalizes path text.</summary>
-        [AuroraExport("normalize")]
+        [Export("normalize")]
         public static string NormalizeCore(ScriptDatum value = default) => ScriptPath.NormalizeText(GetPathString(value));
 
         /// <summary>Returns the directory portion of a path.</summary>
-        [AuroraExport("directoryName")]
+        [Export("directoryName")]
         public static string DirectoryNameCore(ScriptDatum value = default) => ScriptPath.GetDirectoryNameText(GetPathString(value));
 
         /// <summary>Returns the file-name portion of a path.</summary>
-        [AuroraExport("fileName")]
+        [Export("fileName")]
         public static string FileNameCore(ScriptDatum value = default) => ScriptPath.GetFileNameText(GetPathString(value));
 
         /// <summary>Returns the extension portion of a path.</summary>
-        [AuroraExport("extName")]
+        [Export("extName")]
         public static string ExtNameCore(ScriptDatum value = default) => ScriptPath.GetExtNameText(GetPathString(value));
 
         /// <summary>Returns the protocol portion of a path.</summary>
-        [AuroraExport("protocol")]
+        [Export("protocol")]
         public static string ProtocolCore(ScriptDatum value = default) => ScriptPath.GetProtocolText(GetPathString(value));
 
         /// <summary>Changes a path's extension.</summary>
-        [AuroraExport("changeExt")]
+        [Export("changeExt")]
         public static string ChangeExtCore(ScriptDatum path = default, ScriptDatum extension = default) =>
             ScriptPath.EnsureExtensionText(GetPathString(path), GetPathString(extension));
 
         /// <summary>Returns whether a path is rooted.</summary>
-        [AuroraExport("isRooted")]
+        [Export("isRooted")]
         public static bool IsRootedCore(ScriptDatum value = default) => ScriptPath.IsRootedText(GetPathString(value));
 
         /// <summary>Returns whether a path is under the supplied root.</summary>
-        [AuroraExport("isUnderRoot")]
+        [Export("isUnderRoot")]
         public static bool IsUnderRootCore(ScriptDatum root = default, ScriptDatum path = default) =>
             ScriptPath.IsUnderRootText(GetPathString(root), GetPathString(path));
 
         /// <summary>Returns the current module file, or null outside a module.</summary>
-        [AuroraExport("currentFile")]
+        [Export("currentFile")]
         public static ScriptDatum CurrentFileCore(ScriptContext context)
         {
             var fullPath = context?.Module?.Source.FullPath;
@@ -402,7 +402,7 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary>Returns the current module directory, or null outside a module.</summary>
-        [AuroraExport("currentDirectory")]
+        [Export("currentDirectory")]
         public static ScriptDatum CurrentDirectoryCore(ScriptContext context)
         {
             var fullPath = context?.Module?.Source.FullPath;

@@ -1,3 +1,4 @@
+using AuroraScript.Hosting;
 using AuroraScript.Runtime.Types;
 using System;
 using System.Collections.Generic;
@@ -11,26 +12,124 @@ using System.Threading.Tasks;
 
 namespace AuroraScript.Runtime.Package
 {
-    internal static class HttpClientModule
+    [NativeType("http")]
+    [NativePackage("http")]
+    public sealed partial class HttpClientSupport : ScriptObject
     {
         private static readonly HttpClient Client = CreateClient();
 
-        internal static void Configure(ScriptModule module)
+        [Export("request", DynamicAdapter = nameof(REQUEST))]
+        public static ScriptObject RequestCore(string method, string url)
+            => ExecuteObject(ParseRequest(ToArgs(method, url), "request"));
+
+        [Export("requestAsync", DynamicAdapter = nameof(REQUEST_ASYNC))]
+        public static bool RequestAsyncCore(ScriptContext ctx, string method, string url, ScriptObject callback)
+            => StartAsync(ctx, ParseRequest(ToArgs(method, url), "requestAsync"), callback, "requestAsync");
+
+        [Export("get", DynamicAdapter = nameof(GET))]
+        public static ScriptObject GetCore(string url)
+            => ExecuteObject(ParseVerb(ToArgs(url), HttpMethod.Get, "get", acceptsBody: false));
+
+        [Export("getAsync", DynamicAdapter = nameof(GET_ASYNC))]
+        public static bool GetAsyncCore(ScriptContext ctx, string url, ScriptObject callback)
+            => StartAsync(ctx, ParseVerb(ToArgs(url), HttpMethod.Get, "getAsync", acceptsBody: false), callback, "getAsync");
+
+        [Export("post", DynamicAdapter = nameof(POST))]
+        public static ScriptObject PostCore(string url)
+            => ExecuteObject(ParseVerb(ToArgs(url), HttpMethod.Post, "post", acceptsBody: true));
+
+        [Export("post", DynamicAdapter = nameof(POST))]
+        public static ScriptObject PostCore(string url, string body)
+            => ExecuteObject(ParseVerb(ToArgs(url, body), HttpMethod.Post, "post", acceptsBody: true));
+
+        [Export("post", DynamicAdapter = nameof(POST))]
+        public static ScriptObject PostCore(string url, ScriptUInt8Array body)
+            => ExecuteObject(ParseVerb(ToArgs(url, body), HttpMethod.Post, "post", acceptsBody: true));
+
+        [Export("postAsync", DynamicAdapter = nameof(POST_ASYNC))]
+        public static bool PostAsyncCore(ScriptContext ctx, string url, ScriptObject callback)
+            => StartAsync(ctx, ParseVerb(ToArgs(url), HttpMethod.Post, "postAsync", acceptsBody: true), callback, "postAsync");
+
+        [Export("put", DynamicAdapter = nameof(PUT))]
+        public static ScriptObject PutCore(string url)
+            => ExecuteObject(ParseVerb(ToArgs(url), HttpMethod.Put, "put", acceptsBody: true));
+
+        [Export("put", DynamicAdapter = nameof(PUT))]
+        public static ScriptObject PutCore(string url, string body)
+            => ExecuteObject(ParseVerb(ToArgs(url, body), HttpMethod.Put, "put", acceptsBody: true));
+
+        [Export("putAsync", DynamicAdapter = nameof(PUT_ASYNC))]
+        public static bool PutAsyncCore(ScriptContext ctx, string url, ScriptObject callback)
+            => StartAsync(ctx, ParseVerb(ToArgs(url), HttpMethod.Put, "putAsync", acceptsBody: true), callback, "putAsync");
+
+        [Export("patch", DynamicAdapter = nameof(PATCH))]
+        public static ScriptObject PatchCore(string url)
+            => ExecuteObject(ParseVerb(ToArgs(url), HttpMethod.Patch, "patch", acceptsBody: true));
+
+        [Export("patch", DynamicAdapter = nameof(PATCH))]
+        public static ScriptObject PatchCore(string url, string body)
+            => ExecuteObject(ParseVerb(ToArgs(url, body), HttpMethod.Patch, "patch", acceptsBody: true));
+
+        [Export("patchAsync", DynamicAdapter = nameof(PATCH_ASYNC))]
+        public static bool PatchAsyncCore(ScriptContext ctx, string url, ScriptObject callback)
+            => StartAsync(ctx, ParseVerb(ToArgs(url), HttpMethod.Patch, "patchAsync", acceptsBody: true), callback, "patchAsync");
+
+        [Export("delete", DynamicAdapter = nameof(DELETE))]
+        public static ScriptObject DeleteCore(string url)
+            => ExecuteObject(ParseVerb(ToArgs(url), HttpMethod.Delete, "delete", acceptsBody: false));
+
+        [Export("deleteAsync", DynamicAdapter = nameof(DELETE_ASYNC))]
+        public static bool DeleteAsyncCore(ScriptContext ctx, string url, ScriptObject callback)
+            => StartAsync(ctx, ParseVerb(ToArgs(url), HttpMethod.Delete, "deleteAsync", acceptsBody: false), callback, "deleteAsync");
+
+        [Export("head", DynamicAdapter = nameof(HEAD))]
+        public static ScriptObject HeadCore(string url)
+            => ExecuteObject(ParseVerb(ToArgs(url), HttpMethod.Head, "head", acceptsBody: false));
+
+        [Export("headAsync", DynamicAdapter = nameof(HEAD_ASYNC))]
+        public static bool HeadAsyncCore(ScriptContext ctx, string url, ScriptObject callback)
+            => StartAsync(ctx, ParseVerb(ToArgs(url), HttpMethod.Head, "headAsync", acceptsBody: false), callback, "headAsync");
+
+        private static ScriptObject ExecuteObject(HttpRequestSpec spec)
         {
-            module.Define("request", ScriptDatum.FromBonding(REQUEST), writeable: false, enumerable: false);
-            module.Define("requestAsync", ScriptDatum.FromBonding(REQUEST_ASYNC), writeable: false, enumerable: false);
-            module.Define("get", ScriptDatum.FromBonding(GET), writeable: false, enumerable: false);
-            module.Define("getAsync", ScriptDatum.FromBonding(GET_ASYNC), writeable: false, enumerable: false);
-            module.Define("post", ScriptDatum.FromBonding(POST), writeable: false, enumerable: false);
-            module.Define("postAsync", ScriptDatum.FromBonding(POST_ASYNC), writeable: false, enumerable: false);
-            module.Define("put", ScriptDatum.FromBonding(PUT), writeable: false, enumerable: false);
-            module.Define("putAsync", ScriptDatum.FromBonding(PUT_ASYNC), writeable: false, enumerable: false);
-            module.Define("patch", ScriptDatum.FromBonding(PATCH), writeable: false, enumerable: false);
-            module.Define("patchAsync", ScriptDatum.FromBonding(PATCH_ASYNC), writeable: false, enumerable: false);
-            module.Define("delete", ScriptDatum.FromBonding(DELETE), writeable: false, enumerable: false);
-            module.Define("deleteAsync", ScriptDatum.FromBonding(DELETE_ASYNC), writeable: false, enumerable: false);
-            module.Define("head", ScriptDatum.FromBonding(HEAD), writeable: false, enumerable: false);
-            module.Define("headAsync", ScriptDatum.FromBonding(HEAD_ASYNC), writeable: false, enumerable: false);
+            var result = default(ScriptDatum);
+            ExecuteSynchronously(spec, ref result);
+            return result.Object;
+        }
+
+        private static bool StartAsync(
+            ScriptContext ctx,
+            HttpRequestSpec spec,
+            ScriptObject callback,
+            string apiName)
+        {
+            if (callback is not ClosureFunction function)
+            {
+                throw new AuroraRuntimeException(
+                    $"http.{apiName} requires a callback function as its final argument.");
+            }
+
+            var result = default(ScriptDatum);
+            StartAsynchronous(ctx, spec, function, ref result);
+            return result.Boolean;
+        }
+
+        private static ScriptDatum[] ToArgs(params object[] values)
+        {
+            var args = new ScriptDatum[values.Length];
+            for (var i = 0; i < values.Length; i++)
+            {
+                args[i] = values[i] switch
+                {
+                    null => default,
+                    string text => ScriptDatum.FromString(text),
+                    ScriptUInt8Array bytes => ScriptDatum.FromObject(bytes),
+                    ScriptObject obj => ScriptDatum.FromObject(obj),
+                    _ => throw new InvalidOperationException("Unsupported HTTP core argument.")
+                };
+            }
+
+            return args;
         }
 
         public static void REQUEST(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)

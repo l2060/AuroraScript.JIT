@@ -5,7 +5,7 @@ using AuroraScript.Hosting;
 namespace AuroraScript.Runtime.Types
 {
     /// <summary>Immutable object view of an exact unsigned 64-bit integer datum.</summary>
-    [AuroraNativeType("UInt64", NativeReceiverType = typeof(ulong))]
+    [NativeType("UInt64", NativeReceiverType = typeof(ulong))]
     public sealed partial class UInt64Value : ScriptImmutable
     {
         /// <summary>Creates an immutable wrapper for an exact unsigned 64-bit value.</summary>
@@ -28,11 +28,11 @@ namespace AuroraScript.Runtime.Types
         public override bool IsTrue() => Value != 0;
 
         /// <summary>Formats the exact integer without a Number conversion.</summary>
-        [AuroraReceiverExport("toString", DynamicAdapter = nameof(TOSTRING))]
+        [ReceiverExport("toString", DynamicAdapter = nameof(TOSTRING))]
         public static string FormatString(ulong value) => NumberValue.FormatString(value);
 
         /// <summary>Formats the exact integer with an integer radix.</summary>
-        [AuroraReceiverExport("toString", DynamicAdapter = nameof(TOSTRING))]
+        [ReceiverExport("toString", DynamicAdapter = nameof(TOSTRING))]
         public static string FormatString(ulong value, int radix) => NumberValue.FormatString(value, radix);
 
         internal new static void TOSTRING(ScriptContext ctx, ScriptObject receiver, Span<ScriptDatum> args, ref ScriptDatum result)

@@ -26,15 +26,16 @@ var options = EngineOptions.Default
 var engine = new AuroraEngine(options);
 ```
 
-### Opt-In Built-In Modules
+### Opt-In Native Packages
 
-Native modules are capabilities selected by the host. `EngineOptions.Default.BuiltIns` is empty, so modules such as file-system or HTTP access are unavailable unless the host explicitly enables them:
+Native packages are import-only capabilities selected by the host. They are not builtins and are not registered on the script global. `EngineOptions.Default.Packages` is empty, so file-system or HTTP access is unavailable unless the host enables it:
 
 ```csharp
+using AuroraScript.Core;
 using AuroraScript.Runtime.Package;
 
 var options = EngineOptions.Default
-    .WithBuiltIns(builtIns => builtIns.Add(BuiltInModules.FileSystem))
+    .WithPackages(packages => packages.Add(NativePackages.FileSystem))
     .WithCompiler(compiler =>
         compiler.SourceResolver = ScriptSources.FileSystem("scripts"));
 ```
@@ -45,9 +46,9 @@ Scripts can then import the selected module by its bare path:
 import fs from "fs";
 ```
 
-Bare `"fs"` resolves to the enabled native module before the project resolver. Relative paths such as `"./fs"` and `"../fs"` continue to use the project resolver. Built-in modules are dependency-only sources and are not returned by `BuildAsync()` source enumeration.
+Bare `"fs"` resolves to the enabled native package before the project resolver. Relative paths such as `"./fs"` and `"../fs"` continue to use the project resolver. Packages are dependency-only sources and are not returned by `BuildAsync()` source enumeration.
 
-Each engine and script domain receives its own module instance. Selecting a module for one engine does not make it available to another engine. Built-in selections must be finalized before constructing `AuroraEngine` so compiler resolution and runtime registration stay consistent.
+Each engine and script domain receives its own module instance. Selecting a package for one engine does not make it available to another engine. Package selections must be finalized before constructing `AuroraEngine` so compiler resolution, Host Core direct calls, and runtime registration stay consistent. `WithNativeTypes(typeof(FileSystemSupport))` and `AddNativeType<FileSystemSupport>()` are rejected; enable packages only with `WithPackages`. Custom packages can also be added with `packages.Add<T>()` when `T` is a generated `[NativePackage]` type.
 
 Every path parameter exposed by `fs` accepts either a path string or a script `Path` object. Write, append, copy, move, and directory-creation operations return `true` when they complete. The module provides these baseline APIs:
 
@@ -73,8 +74,8 @@ File-system failures are reported as `AuroraRuntimeException` values whose messa
 Enable HTTP access independently and import its bare module path:
 
 ```csharp
-var options = EngineOptions.Default.WithBuiltIns(builtIns =>
-    builtIns.Add(BuiltInModules.HttpClient));
+var options = EngineOptions.Default.WithPackages(packages =>
+    packages.Add(NativePackages.HttpClient));
 ```
 
 ```as
@@ -146,7 +147,7 @@ var result = domain.Execute("MAIN", "run");
 
 The entry source in this example must declare `@module(MAIN);`. An anonymous module can still initialize and be imported by other scripts, but host name-based APIs do not expose it.
 
-Pass a `ScriptObject` as `userState` when a module needs per-execution host state. Script code binds that object with module-level `context` aliases. A typed alias requires a **public** `[AuroraNativeType]` listed in `WithNativeTypes`:
+Pass a `ScriptObject` as `userState` when a module needs per-execution host state. Script code binds that object with module-level `context` aliases. A typed alias requires a `[NativeType]` selected with `WithNativeTypes` or `AddNativeType`:
 
 ```csharp
 using var domain = engine.CreateDomain(userState: new UserState());
@@ -516,7 +517,7 @@ declare var ONLINE_TOTAL;
 
 `declare` is compile-time only and is only valid in `@global()` files. These files cannot be imported or included, are not compiled as modules, and are loaded by scanning resolver-visible project `.as` files before module analysis. If no `@global()` file exists, the host globals still work at runtime; the project simply lacks those optional compile-time symbols. Do not write `export declare`; it is invalid. Reads and writes go to the domain `global` unless a local variable shadows the name. Do not model host globals as `export const NAME;` or `export var NAME;`; those forms create module properties and can hide the host-defined value.
 
-Hand-write `declare type` for `[AuroraNativeType]` host types. A type without a
+Hand-write `declare type` for `[NativeType]` host types. A type without a
 `constructor` is a static-only type such as `Stats` or `Math`; a type with a
 `constructor` can be used with `new`. These contracts are editor-only:
 completion, hover, definition, signatures, and coloring. They do not drive
@@ -551,13 +552,23 @@ Use `ScriptDatum` when you need exact runtime values and minimum conversion over
 
 ## Native Host Exports
 
-Use `[AuroraNativeType]` when a host global should be a script Type with typed
+Use `[NativeType]` when a host global should be a script Type with typed
 static members and optional native instances. Referencing the
 `AuroraScript.JIT` package (or the `AuroraScript` project in this repo) brings
 in the hosting source generator automatically. The analyzer turns
-`[AuroraExport]` members into Datum adapters and compiler catalog metadata.
+`[Export]` members into Datum adapters and compiler catalog metadata.
 
-This is distinct from script `native func` (a module ABI) and from opt-in `BuiltInModules` such as `fs` and `http`.
+AuroraScript has three host identities:
+
+| Identity | Script use | Host enablement | Compiler direct-call key |
+| --- | --- | --- | --- |
+| Builtin / infrastructure NativeType | Global name (`Math`, `JSON`, …) | Always `Register(Global)` | Unshadowed global |
+| Application NativeType | Global Type | `WithNativeTypes` / `AddNativeType` / `AddNativeTypes` | Unshadowed global |
+| NativePackage | `import alias from "path"` only; not a global | `WithPackages` | Import alias bound to an enabled package path |
+
+`fs` and `http` are NativePackages. Proven calls such as `import fs from "fs"; fs.readText(path)` with a proven string compile to the same Host Core path as `Math.abs`. `var x = fs; x.readText(...)` stays on the generated dynamic adapters.
+
+This is distinct from script `native func` (a module ABI). Do not list a package type in `WithNativeTypes`.
 
 Declare a sealed partial class. Static-only types may derive `ScriptObject` and
 omit an exported constructor:
@@ -567,18 +578,19 @@ using AuroraScript.Hosting;
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Types;
 
-[AuroraNativeType("Stats")]
+[NativeType("Stats")]
 public sealed partial class StatsSupport : ScriptObject
 {
-    [AuroraExport("mean", MatchFailure.ReturnNaN)]
+    [Export("mean", MatchFailure.ReturnNaN)]
     public static double MeanCore(double a, double b) => (a + b) / 2D;
 
-    [AuroraExport("echo", MatchFailure.Throw)]
+    [Export("echo", MatchFailure.Throw)]
     public static ScriptDatum EchoCore(ScriptDatum value) => value;
 }
 ```
 
-`Register` is optional when the type is listed in `WithNativeTypes`. Call it
+`Register` is optional when the type is listed with `WithNativeTypes` or
+`AddNativeType`. Call it
 only to attach the Type to a nested object, or to register a type that is not
 in the engine catalog:
 
@@ -592,13 +604,18 @@ engine sees the same set:
 
 ```csharp
 var options = EngineOptions.Default.WithCompiler(compiler =>
-    compiler.WithNativeTypes(
-        typeof(StatsSupport),
-        typeof(Vec2)));
+    compiler.AddNativeType<StatsSupport>().AddNativeType<Vec2>());
 
-// Or scan every public [AuroraNativeType] in one or more assemblies:
+// Replace the catalog instead of appending:
+options = EngineOptions.Default.WithCompiler(compiler =>
+    compiler.WithNativeTypes(typeof(StatsSupport), typeof(Vec2)));
+
+// Or scan every public [NativeType] in one or more assemblies:
 options = EngineOptions.Default.WithCompiler(compiler =>
     compiler.AddNativeTypes(typeof(Vec2).Assembly, pluginAssembly));
+
+// Clear previously selected application types (infrastructure Types remain):
+compiler.ClearNativeTypes();
 ```
 
 `Register` accepts any `ScriptObject` when a Type needs to be exposed under a
@@ -614,22 +631,22 @@ values take `littleEndian` (default `true`). There is no script `Encoding` globa
 
 ### Built-in primitive receivers
 
-The engine also uses the same `AuroraNativeType` generator and compiler catalog for
+The engine also uses the same `NativeType` generator and compiler catalog for
 immutable String members:
 
 ```csharp
-[AuroraNativeType("String", NativeReceiverType = typeof(string))]
+[NativeType("String", NativeReceiverType = typeof(string))]
 public sealed partial class StringValue
 {
-    [AuroraReceiverExport("trim")]
+    [ReceiverExport("trim")]
     public static string TrimCore(string value) => value.Trim();
 }
 ```
 
-`AuroraNativeType.NativeReceiverType` supports engine-owned `string`, `double`,
+`NativeType.NativeReceiverType` supports engine-owned `string`, `double`,
 `long`, and `ulong` representations; it is not a host extension point for replacing
-their object wrappers. `AuroraReceiverExport` visibly marks a static Core as a
-primitive instance member; `AuroraExport` on a static member always belongs to the
+their object wrappers. `ReceiverExport` visibly marks a static Core as a
+primitive instance member; `Export` on a static member always belongs to the
 script type object. The first receiver Core argument (after an optional
 `ScriptContext`) is the raw CLR receiver, not a script argument. When instance
 members exist, the generator creates one lazy
@@ -680,20 +697,20 @@ Padding retains its historical first-UTF-16-code-unit rule and takes native `int
 String's construction and static surface use the same NativeType model as well:
 
 ```csharp
-[AuroraNativeType(
+[NativeType(
     "String",
     NativeReceiverType = typeof(string),
     NativeConstructor = nameof(CreateCore))]
 public sealed partial class StringValue
 {
-    [AuroraExport("valueOf", DynamicAdapter = nameof(CREATE))]
+    [Export("valueOf", DynamicAdapter = nameof(CREATE))]
     public static string CreateCore(string value = "") => value;
     // CREATE preserves the existing weak conversion and missing-argument rules.
 }
 ```
 
-`AuroraExport` on a static Core always exports to the Type object, while
-`AuroraReceiverExport` identifies a static Core whose first business parameter is the
+`Export` on a static Core always exports to the Type object, while
+`ReceiverExport` identifies a static Core whose first business parameter is the
 declared native receiver. `NativeConstructor` names a static Type export whose CLR
 Core must return `NativeReceiverType`; both `String(...)` and `new String(...)` use it.
 Factory metadata points to the existing static export catalog; no separate factory
@@ -736,7 +753,7 @@ dynamic property dispatch.
 
 ### Native instances
 
-The same `[AuroraNativeType]` supports fixed-shape native instances. A type with
+The same `[NativeType]` supports fixed-shape native instances. A type with
 instance exports must derive `ScriptObject`. Generated code adds the native
 instance marker, so unannotated CLR members are not exposed through reflection.
 Native fields and exported getter/setter pairs stay on the instance and use generated
@@ -747,28 +764,28 @@ generated, frozen prototype owned by that NativeType.
 using AuroraScript.Hosting;
 using AuroraScript.Runtime.Types;
 
-[AuroraNativeType("Vec2")]
+[NativeType("Vec2")]
 public sealed partial class Vec2 : ScriptObject
 {
-    [AuroraExport("x")]
+    [Export("x")]
     public double X;
 
-    [AuroraExport("y")]
+    [Export("y")]
     public double Y;
 
-    [AuroraExport]
+    [Export]
     public Vec2(double x, double y) : base(NativePrototype)
     {
         X = x;
         Y = y;
     }
 
-    [AuroraExport("length")]
+    [Export("length")]
     public double LengthCore() => Math.Sqrt((X * X) + (Y * Y));
 }
 ```
 
-When `typeof(Vec2)` is included in `WithNativeTypes`, the engine already
+When `Vec2` is selected with `WithNativeTypes` or `AddNativeType`, the engine already
 registers the constructor Type. Call `Vec2.Register` only for a nested object
 or a type outside that catalog:
 
@@ -806,10 +823,10 @@ one setter under the same script name:
 ```csharp
 private double _value;
 
-[AuroraExport("value", IsGetter = true)]
+[Export("value", IsGetter = true)]
 public double GetValueCore() => _value;
 
-[AuroraExport("value", IsSetter = true)]
+[Export("value", IsSetter = true)]
 public void SetValueCore(double value) => _value = value;
 ```
 
@@ -822,7 +839,7 @@ an argument array.
 
 ### Native types in TDoc
 
-Implement `INativeTypedDocument` on a native instance class so script `tdoc Type { ... }` / `tdoc Type [ ... ]` / `tdoc Type "a,b"` literals and host `TDoc.parse` / `TDoc.stringify` construct that NativeType directly. The engine indexes only `WithNativeTypes` classes that implement the interface and derive `ScriptObject`. There is no CLR wrapper and no property-slot reflection on this path.
+Implement `INativeTypedDocument` on a native instance class so script `tdoc Type { ... }` / `tdoc Type [ ... ]` / `tdoc Type "a,b"` literals and host `TDoc.parse` / `TDoc.stringify` construct that NativeType directly. The engine indexes selected NativeType classes that implement the interface and derive `ScriptObject`. There is no CLR wrapper and no property-slot reflection on this path.
 
 `WriteTypedDocument` chooses the canonical stored shape. The first `WriteMember` call emits an object body (`Vec2 {x 3,y 4}`); the first `WriteElement` call emits an array body (`Vec2 [3,4]`); the first `WriteValue` call emits a scalar body (`User "a,b,c"`, `State 10000000000`, `Flag false`). Do not mix those calls on one write. `WriteValue` accepts only null, boolean, number, or string. `ReadTypedDocument` handles all three shapes through one input: inspect `IsMember` / `IsElement` / `IsValue`, then get `MemberName`, `ElementIndex`, and `Value`. Array form is the compact layout for vectors; scalar form is the compact layout for ids, flags, and packed strings.
 
@@ -845,13 +862,13 @@ using AuroraScript.Runtime;
 using AuroraScript.Runtime.Serialization;
 using AuroraScript.Runtime.Types;
 
-[AuroraNativeType("Vec2")]
+[NativeType("Vec2")]
 public sealed partial class Vec2 : ScriptObject, INativeTypedDocument
 {
-    [AuroraExport("x")] public double X;
-    [AuroraExport("y")] public double Y;
+    [Export("x")] public double X;
+    [Export("y")] public double Y;
 
-    [AuroraExport]
+    [Export]
     public Vec2(double x, double y)
     {
         X = x;
@@ -912,11 +929,11 @@ var user = tdoc User "xxx,xx,xxx,xx";
 return packed.length();
 ```
 
-The TDoc type-name prefix comes from `[AuroraNativeType]` through the engine catalog, so the implementation never declares its own script name. A NativeType that does not implement `INativeTypedDocument` is omitted from TDoc output (serialized as `null`) and is not a valid TDoc type name.
+The TDoc type-name prefix comes from `[NativeType]` through the engine catalog, so the implementation never declares its own script name. A NativeType that does not implement `INativeTypedDocument` is omitted from TDoc output (serialized as `null`) and is not a valid TDoc type name.
 
 When flow analysis proves a local always holds one native object type, the compiler stores that local as the CLR type (`Vec2`) instead of `ScriptDatum`. Proven `new`, field reads/writes, `++`/`--`, compound assignments such as `+=`, and method calls bind to CLR constructors, fields, and methods (`newobj` / `ldfld` / `stfld` / `callvirt`) without boxing through `ScriptDatum`. Locals captured by closures, values reassigned to an unproven type, and receivers the compiler cannot prove (for example a function parameter) stay on the dynamic property protocol.
 
-Static `[AuroraExport]` methods and `public static readonly double` constants
+Static `[Export]` methods and `public static readonly double` constants
 live on the generated Type (`Vec2.Type`), like JavaScript class statics.
 Instance members stay on native instances. A static factory returning `Vec2`
 preserves the concrete native type proof, so subsequent instance access can
@@ -927,7 +944,7 @@ Rules:
 - Instance fields must be public `double`, `int`, `bool`, or `string`.
 - Instance methods use the same Core signatures as static exports, without a `thisObject` parameter.
 - Script construction requires exactly one public constructor marked
-  `[AuroraExport]`. With no marked constructor the Type is not constructible.
+  `[Export]`. With no marked constructor the Type is not constructible.
 - Exported static methods remain methods of the instance CLR class and may
   access its private fields. Only members called directly from generated script
   IL must themselves be public.
@@ -965,7 +982,7 @@ are allowed on Datum adapters only. An object-backed NativeType may put the broa
 behavior in an explicit `DynamicAdapter` while exporting a fixed, directly callable
 Core signature, as the variadic Path helpers do.
 
-Public static `readonly double` fields marked `[AuroraExport("PI")]` become script constants. Unshadowed reads emit `ldsfld`, not a boxed `ldc.r8`.
+Public static `readonly double` fields marked `[Export("PI")]` become script constants. Unshadowed reads emit `ldsfld`, not a boxed `ldc.r8`.
 
 `[AuroraParam(MatchLevel.Exact)]` or `Strict` tightens adapter coercion. `MatchFailure` controls adapter mismatch: `Default` infers NaN for numeric returns and null otherwise; `Throw` raises `AuroraRuntimeException`.
 
@@ -980,8 +997,9 @@ When argument types are proven, the compiler calls the Core method directly. Req
 - Compatible proven argument types, including optional trailing defaults.
 - Catalog metadata present. Infrastructure native types in the engine assembly
   are always included. Application types must be selected with
-  `CompilerOptionsBuilder.WithNativeTypes` or scanned from assemblies with
-  `AddNativeTypes`.
+  `WithNativeTypes`, `AddNativeType<T>()`, or scanned from assemblies with
+  `AddNativeTypes`. `ClearNativeTypes()` removes previously selected application
+  types; infrastructure Types stay registered.
 
 ```csharp
 var options = EngineOptions.Default.WithCompiler(compiler =>
@@ -992,7 +1010,8 @@ var options = EngineOptions.Default.WithCompiler(compiler =>
 
 ### Type and generator rules
 
-- The class must be a non-abstract, non-generic, top-level `partial` class in a namespace.
+- The class must be a public sealed, non-abstract, non-generic, top-level `partial` `ScriptObject` in a namespace. Persistence and OnlyRun emit direct calls into a generated assembly, so internal NativeTypes are not supported.
+- `WithNativeTypes`, `AddNativeType<T>()`, and `NativePackageDefinition` reject types that are not generated in that shape, package types listed as NativeTypes, value receivers, engine infrastructure types, and types missing `Register` / `RegisterPackage`.
 - Implementing `INativeTypedDocument` does not require a factory. The generator emits construction for TDoc. Write `CreateTypedDocument()` only when the empty instance needs extra setup.
 - Invalid globals are `AURORAEXP001`; unsupported members/signatures are `AURORAEXP002`; duplicate script names are `AURORAEXP003`.
 - Unsupported: `async`, `Span`/`ref`/`out`/`in`, generic methods, nested types, records, empty export names, `params` with `[AuroraParam]`, `ctx`/`thisObject` after script parameters.
@@ -1049,7 +1068,7 @@ Patch types:
 For AI-assisted development:
 
 1. Read `host-integration` for .NET host usage, including native host exports.
-2. Read `host-api` for a structured API index (`AuroraNativeType`, `AuroraExport`, `CompilerOptionsBuilder.WithNativeTypes`).
+2. Read `host-api` for a structured API index (`NativeType`, `Export`, `AddNativeType`, `WithNativeTypes`).
 3. Use `aurora_search_runtime_api` or `aurora_get_runtime_api` before using runtime APIs that look like JavaScript built-ins.
 4. Use `aurora_check_script` to validate generated in-memory script text.
 5. Use `aurora_run_script` to execute a small module or block and inspect `stdout`, `stderr`, and `result`.

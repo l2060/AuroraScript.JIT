@@ -41,7 +41,7 @@ namespace AuroraScript.Hosting.Generators
                 diagnostics.Add(Diagnostic.Create(
                     InvalidGlobal,
                     GetLocation(typeSymbol),
-                    $"Type '{typeSymbol.ToDisplayString()}' must be partial to use AuroraNativeType."));
+                    $"Type '{typeSymbol.ToDisplayString()}' must be partial to use NativeType."));
             }
             if (typeSymbol.ContainingType != null || typeSymbol.TypeParameters.Length != 0)
             {
@@ -64,11 +64,11 @@ namespace AuroraScript.Hosting.Generators
             var receiverType = receiverArgument.Value.Value as ITypeSymbol;
             if (hasReceiverArgument && receiverType == null)
                 diagnostics.Add(Diagnostic.Create(InvalidGlobal, GetLocation(typeSymbol),
-                    "AuroraNativeType.NativeReceiverType must specify a CLR receiver type."));
+                    "NativeType.NativeReceiverType must specify a CLR receiver type."));
             if (receiverType != null && receiverType.SpecialType is not (SpecialType.System_String or
                 SpecialType.System_Double or SpecialType.System_Int64 or SpecialType.System_UInt64))
                 diagnostics.Add(Diagnostic.Create(InvalidGlobal, GetLocation(typeSymbol),
-                    "AuroraNativeType.NativeReceiverType supports string, double, long and ulong."));
+                    "NativeType.NativeReceiverType supports string, double, long and ulong."));
 
             var typeName = typeAttribute.ConstructorArguments.Length > 0
                 ? typeAttribute.ConstructorArguments[0].Value as string
@@ -78,8 +78,36 @@ namespace AuroraScript.Hosting.Generators
                 diagnostics.Add(Diagnostic.Create(
                     InvalidGlobal,
                     GetLocation(typeSymbol),
-                    "AuroraNativeType requires a non-empty type name."));
+                    "NativeType requires a non-empty type name."));
                 typeName = typeSymbol.Name;
+            }
+
+            var packageAttribute = typeSymbol.GetAttributes().FirstOrDefault(
+                attribute => attribute.AttributeClass?.ToDisplayString() == NativePackageAttribute);
+            var isPackage = packageAttribute != null;
+            var packageImportPath = packageAttribute?.ConstructorArguments.Length > 0
+                ? packageAttribute.ConstructorArguments[0].Value as string
+                : null;
+            if (isPackage && string.IsNullOrWhiteSpace(packageImportPath))
+            {
+                diagnostics.Add(Diagnostic.Create(
+                    InvalidGlobal,
+                    GetLocation(typeSymbol),
+                    "NativePackage requires a non-empty import path."));
+            }
+            if (isPackage && receiverType != null)
+            {
+                diagnostics.Add(Diagnostic.Create(
+                    InvalidGlobal,
+                    GetLocation(typeSymbol),
+                    "Native packages cannot declare NativeType.NativeReceiverType."));
+            }
+            if (isPackage && IsReservedInfrastructureName(typeName!))
+            {
+                diagnostics.Add(Diagnostic.Create(
+                    InvalidGlobal,
+                    GetLocation(typeSymbol),
+                    $"Native package type name '{typeName}' conflicts with an engine infrastructure Type."));
             }
 
             var exports = new List<ExportModel>();
@@ -104,20 +132,20 @@ namespace AuroraScript.Hosting.Generators
                 if (regularExportAttribute != null && receiverExportAttribute != null)
                 {
                     diagnostics.Add(Diagnostic.Create(InvalidExport, GetLocation(member),
-                        "A member cannot use both AuroraExport and AuroraReceiverExport."));
+                        "A member cannot use both Export and ReceiverExport."));
                     continue;
                 }
                 var isReceiverExport = receiverExportAttribute != null;
                 if (isReceiverExport && receiverType == null)
                 {
                     diagnostics.Add(Diagnostic.Create(InvalidExport, GetLocation(member),
-                        "AuroraReceiverExport requires AuroraNativeType.NativeReceiverType."));
+                        "ReceiverExport requires NativeType.NativeReceiverType."));
                     continue;
                 }
                 if (isReceiverExport && !member.IsStatic)
                 {
                     diagnostics.Add(Diagnostic.Create(InvalidExport, GetLocation(member),
-                        "AuroraReceiverExport requires a static CLR Core method."));
+                        "ReceiverExport requires a static CLR Core method."));
                     continue;
                 }
                 if (receiverType != null)
@@ -159,7 +187,7 @@ namespace AuroraScript.Hosting.Generators
                     if (!member.IsStatic)
                     {
                         diagnostics.Add(Diagnostic.Create(InvalidExport, GetLocation(member),
-                            "Native receiver members require AuroraReceiverExport on a static CLR Core method."));
+                            "Native receiver members require ReceiverExport on a static CLR Core method."));
                         continue;
                     }
                     var export = member is IMethodSymbol valueMethod
@@ -398,7 +426,7 @@ namespace AuroraScript.Hosting.Generators
                 if (receiverType == null || factory == null || factoryMethod == null ||
                     !SymbolEqualityComparer.Default.Equals(factoryMethod.ReturnType, receiverType))
                     diagnostics.Add(Diagnostic.Create(InvalidExport, GetLocation(typeSymbol),
-                        "NativeConstructor must name an exported static Core returning AuroraNativeType.NativeReceiverType."));
+                        "NativeConstructor must name an exported static Core returning NativeType.NativeReceiverType."));
             }
             if (receiverType != null && constructor != null)
                 diagnostics.Add(Diagnostic.Create(InvalidExport, GetLocation(typeSymbol),
@@ -414,6 +442,17 @@ namespace AuroraScript.Hosting.Generators
             var hasUserConstructor = typeSymbol.InstanceConstructors.Any(
                 static candidate => !candidate.IsImplicitlyDeclared);
             var generateConstructor = scriptObjectBase != null && !hasUserConstructor;
+            if (isPackage)
+            {
+                generateConstructor = false;
+                if (constructor != null || fields.Count != 0 || exports.Count != 0)
+                {
+                    diagnostics.Add(Diagnostic.Create(
+                        InvalidGlobal,
+                        GetLocation(typeSymbol),
+                        "Native packages cannot export constructors, instance fields, or instance methods."));
+                }
+            }
             var generateTypedDocumentFactory = ImplementsTypedDocument(typeSymbol) &&
                 !HasCreateTypedDocumentFactory(typeSymbol) &&
                 !HasParameterlessConstructor(typeSymbol) &&
@@ -443,9 +482,11 @@ namespace AuroraScript.Hosting.Generators
                 staticExports,
                 staticConstants,
                 constructor,
-                receiverType == null && scriptObjectBase != null,
+                receiverType == null && scriptObjectBase != null && !isPackage,
                 diagnostics,
-                receiverType?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), factory);
+                receiverType?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                factory,
+                isPackage);
         }
 
         private static bool ImplementsTypedDocument(INamedTypeSymbol typeSymbol)
@@ -544,7 +585,7 @@ namespace AuroraScript.Hosting.Generators
                 diagnostics.Add(Diagnostic.Create(
                     InvalidExport,
                     GetLocation(selected),
-                    "AuroraExport member options are not valid on a constructor."));
+                    "Export member options are not valid on a constructor."));
                 return null;
             }
             if (selected.DeclaredAccessibility != Accessibility.Public)
@@ -567,7 +608,7 @@ namespace AuroraScript.Hosting.Generators
                     diagnostics.Add(Diagnostic.Create(
                         InvalidExport,
                         GetLocation(selected),
-                        $"Constructor '{selected.ToDisplayString()}' has an unsupported AuroraNativeType signature."));
+                        $"Constructor '{selected.ToDisplayString()}' has an unsupported NativeType signature."));
                     return null;
                 }
 
@@ -577,7 +618,7 @@ namespace AuroraScript.Hosting.Generators
                     diagnostics.Add(Diagnostic.Create(
                         InvalidExport,
                         GetLocation(selected),
-                        $"Constructor '{selected.ToDisplayString()}' has an unsupported AuroraNativeType signature."));
+                        $"Constructor '{selected.ToDisplayString()}' has an unsupported NativeType signature."));
                     return null;
                 }
 
@@ -788,7 +829,7 @@ namespace AuroraScript.Hosting.Generators
                 }
 
                 context.AddSource(
-                    $"{model.Namespace.Replace('.', '_')}.{model.ClassName}.AuroraNativeType.g.cs",
+                    $"{model.Namespace.Replace('.', '_')}.{model.ClassName}.NativeType.g.cs",
                     SourceText.From(GenerateNativeObjectSource(model), Encoding.UTF8));
             }
         }
@@ -931,7 +972,7 @@ namespace AuroraScript.Hosting.Generators
             if (count != 0)
             {
                 context.AddSource(
-                    "AuroraNativeTypeCatalog.g.cs",
+                    "NativeTypeCatalog.g.cs",
                     SourceText.From(builder.ToString(), Encoding.UTF8));
             }
         }
@@ -976,6 +1017,41 @@ namespace AuroraScript.Hosting.Generators
             }
             builder.AppendLine();
             builder.AppendLine("    {");
+            if (model.IsPackage)
+            {
+                AppendStaticExportAdapters(builder, model);
+                builder.AppendLine("        public static void RegisterPackage(ScriptObject module)");
+                builder.AppendLine("        {");
+                foreach (var constant in model.StaticConstants)
+                {
+                    builder.Append("            module.Define(\"")
+                        .Append(EscapeString(constant.ScriptName))
+                        .Append("\", ScriptDatum.FromNumber(")
+                        .Append(constant.FieldName)
+                        .Append("), writeable: ").Append(constant.Writable ? "true" : "false")
+                        .Append(", enumerable: ").Append(constant.Enumerable ? "true" : "false").AppendLine(");");
+                }
+                foreach (var export in model.StaticExports
+                    .GroupBy(static export => export.ScriptName)
+                    .Select(static group => group.First()))
+                {
+                    builder.Append("            module.Define(\"")
+                        .Append(EscapeString(export.ScriptName))
+                        .Append("\", ScriptDatum.FromBonding(")
+                        .Append(export.DynamicAdapter ?? export.AdapterMethodName)
+                        .Append("), writeable: ").Append(export.Writable ? "true" : "false")
+                        .Append(", enumerable: ").Append(export.Enumerable ? "true" : "false").AppendLine(");");
+                }
+                if (!model.StaticConstants.Any(static constant => constant.Writable) &&
+                    !model.StaticExports.Any(static export => export.Writable))
+                {
+                    builder.AppendLine("            module.Frozen();");
+                }
+                builder.AppendLine("        }");
+                builder.AppendLine("    }");
+                builder.AppendLine("}");
+                return builder.ToString();
+            }
             if (model.ReceiverType != null)
             {
                 if (model.Exports.Count != 0)
@@ -1440,6 +1516,16 @@ namespace AuroraScript.Hosting.Generators
             }
         }
 
+        private static bool IsReservedInfrastructureName(string typeName)
+        {
+            return typeName is "Math" or "JSON" or "TDoc" or "console" or "Conv8" or "Env" or "HotPatch"
+                or "String" or "Number" or "Boolean" or "Object" or "Array" or "Date" or "Error"
+                or "HashMap" or "Regex" or "Proxy" or "StringBuffer" or "Path"
+                or "Int8Array" or "UInt8Array" or "Int16Array" or "UInt16Array"
+                or "Int32Array" or "UInt32Array" or "Int64Array" or "UInt64Array"
+                or "Float32Array" or "Float64Array" or "BooleanArray" or "Int64" or "UInt64";
+        }
+
         private sealed class NativeObjectModel
         {
             public NativeObjectModel(
@@ -1460,7 +1546,8 @@ namespace AuroraScript.Hosting.Generators
                 bool hasNativeInstances,
                 IReadOnlyList<Diagnostic> diagnostics,
                 string? receiverType = null,
-                ExportModel? factory = null)
+                ExportModel? factory = null,
+                bool isPackage = false)
             {
                 Namespace = namespaceName;
                 ClassName = className;
@@ -1480,6 +1567,7 @@ namespace AuroraScript.Hosting.Generators
                 Diagnostics = diagnostics;
                 ReceiverType = receiverType;
                 Factory = factory;
+                IsPackage = isPackage;
             }
 
             public string Namespace { get; }
@@ -1500,6 +1588,7 @@ namespace AuroraScript.Hosting.Generators
             public IReadOnlyList<Diagnostic> Diagnostics { get; }
             public string? ReceiverType { get; }
             public ExportModel? Factory { get; }
+            public bool IsPackage { get; }
         }
 
         private sealed class InstanceFieldModel

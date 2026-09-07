@@ -66,7 +66,7 @@ namespace AuroraScript.Runtime.Serialization
                 return;
             }
 
-            var attribute = nativeType.GetCustomAttribute<AuroraNativeTypeAttribute>();
+            var attribute = nativeType.GetCustomAttribute<NativeTypeAttribute>();
             if (attribute == null || string.IsNullOrEmpty(attribute.TypeName))
             {
                 return;

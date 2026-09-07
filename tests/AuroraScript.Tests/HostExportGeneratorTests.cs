@@ -22,7 +22,7 @@ public sealed class HostExportGeneratorTests
     [Fact]
     public void StringMembersShareNativeTypeCatalogWithoutBecomingNativeObjects()
     {
-        var attribute = typeof(StringValue).GetCustomAttribute<AuroraNativeTypeAttribute>();
+        var attribute = typeof(StringValue).GetCustomAttribute<NativeTypeAttribute>();
         Assert.NotNull(attribute);
         Assert.Equal("String", attribute.TypeName);
         Assert.Equal(typeof(string), attribute.NativeReceiverType);

@@ -3,7 +3,7 @@ using AuroraScript.Runtime.Types;
 namespace AuroraScript.Runtime.Serialization
 {
     /// <summary>
-    /// Opt-in TDoc contract for host <see cref="Hosting.AuroraNativeTypeAttribute"/> objects.
+    /// Opt-in TDoc contract for host <see cref="Hosting.NativeTypeAttribute"/> objects.
     /// Implement this on a native instance type to participate in script
     /// <c>tdoc</c> literals and host serialize/deserialize without CLR reflection.
     /// </summary>
@@ -36,7 +36,7 @@ namespace AuroraScript.Runtime.Serialization
     /// </para>
     /// <para>
     /// The TDoc type-name prefix comes from
-    /// <see cref="Hosting.AuroraNativeTypeAttribute"/> through the engine
+    /// <see cref="Hosting.NativeTypeAttribute"/> through the engine
     /// catalog, so the implementation does not declare its own script name.
     /// </para>
     /// </remarks>

@@ -6,22 +6,22 @@ using System;
 
 namespace AuroraScript.Tests.Host;
 
-[AuroraNativeType("Vec2")]
+[NativeType("Vec2")]
 public sealed partial class Vec2 : ScriptObject, INativeTypedDocument
 {
     private double _factoryValue;
     private double _value;
 
-    [AuroraExport("DIMENSIONS")]
+    [Export("DIMENSIONS")]
     public static readonly double Dimensions = 2;
 
-    [AuroraExport("x")]
+    [Export("x")]
     public double X;
 
-    [AuroraExport("y")]
+    [Export("y")]
     public double Y;
 
-    [AuroraExport]
+    [Export]
     public Vec2(double x, double y) : base(NativePrototype)
     {
         X = x;
@@ -81,14 +81,14 @@ public sealed partial class Vec2 : ScriptObject, INativeTypedDocument
         return value.Number;
     }
 
-    [AuroraExport("length")]
+    [Export("length")]
     public double LengthCore() => Math.Sqrt((X * X) + (Y * Y));
 
-    [AuroraExport("length")]
+    [Export("length")]
     public static double StaticLengthCore(double x, double y) =>
         Math.Sqrt((x * x) + (y * y));
 
-    [AuroraExport("from")]
+    [Export("from")]
     public static Vec2 FromCore(double x, double y)
     {
         var result = new Vec2(x, y);
@@ -96,15 +96,15 @@ public sealed partial class Vec2 : ScriptObject, INativeTypedDocument
         return result;
     }
 
-    [AuroraExport("factoryValue")]
+    [Export("factoryValue")]
     public double FactoryValueCore() => _factoryValue;
 
-    [AuroraExport("add")]
+    [Export("add")]
     public Vec2 AddCore(Vec2 other) => new Vec2(X + other.X, Y + other.Y);
 
-    [AuroraExport("value", IsGetter = true)]
+    [Export("value", IsGetter = true)]
     public double GetValueCore() => _value;
 
-    [AuroraExport("value", IsSetter = true)]
+    [Export("value", IsSetter = true)]
     public void SetValueCore(double value) => _value = value;
 }

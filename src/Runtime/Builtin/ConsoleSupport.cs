@@ -12,7 +12,7 @@ namespace AuroraScript.Runtime.Builtin
     /// <summary>
     /// Script console Type implemented through generated native exports.
     /// </summary>
-    [AuroraNativeType("console")]
+    [NativeType("console")]
     public sealed partial class ConsoleSupport : ScriptObject
     {
         private sealed class TimerState
@@ -24,7 +24,7 @@ namespace AuroraScript.Runtime.Builtin
         private static readonly ConditionalWeakTable<AuroraEngine, TimerState> TimerStates = new();
 
         /// <summary>Writes one value to standard output.</summary>
-        [AuroraExport("log", MatchFailure.Throw, DynamicAdapter = nameof(LOG))]
+        [Export("log", MatchFailure.Throw, DynamicAdapter = nameof(LOG))]
         public static void LogCore(ScriptContext ctx, ScriptDatum value)
         {
             ctx.Engine.Options.Runtime.ConsoleStdOut?.WriteLine(DatumToString(ctx, value));
@@ -39,7 +39,7 @@ namespace AuroraScript.Runtime.Builtin
         }
 
         /// <summary>Writes one value to standard error.</summary>
-        [AuroraExport("error", MatchFailure.Throw, DynamicAdapter = nameof(ERROR))]
+        [Export("error", MatchFailure.Throw, DynamicAdapter = nameof(ERROR))]
         public static void ErrorCore(ScriptContext ctx, ScriptDatum value)
         {
             ctx.Engine.Options.Runtime.ConsoleErrorOut?.WriteLine(DatumToString(ctx, value));
@@ -95,7 +95,7 @@ namespace AuroraScript.Runtime.Builtin
         }
 
         /// <summary>Starts or resets a named timer.</summary>
-        [AuroraExport("time", MatchFailure.Throw, DynamicAdapter = nameof(TIME))]
+        [Export("time", MatchFailure.Throw, DynamicAdapter = nameof(TIME))]
         public static void TimeCore(ScriptContext ctx, string label)
         {
             var state = TimerStates.GetValue(ctx.Engine, static _ => new TimerState());
@@ -114,7 +114,7 @@ namespace AuroraScript.Runtime.Builtin
         }
 
         /// <summary>Stops a named timer and writes its elapsed time.</summary>
-        [AuroraExport("timeEnd", MatchFailure.Throw, DynamicAdapter = nameof(TIME_END))]
+        [Export("timeEnd", MatchFailure.Throw, DynamicAdapter = nameof(TIME_END))]
         public static void TimeEndCore(ScriptContext ctx, string label)
         {
             var state = TimerStates.GetValue(ctx.Engine, static _ => new TimerState());

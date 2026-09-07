@@ -70,21 +70,21 @@ public sealed class IntegerHostExportTests
     }
 }
 
-[AuroraNativeType("IntegerExports")]
+[NativeType("IntegerExports")]
 public sealed partial class IntegerExportHost : ScriptObject
 {
-    [AuroraExport]
+    [Export]
     public IntegerExportHost() : base(NativePrototype) { }
 
-    [AuroraExport("signed")]
+    [Export("signed")]
     public static long Signed(bool minimum) => minimum ? long.MinValue : long.MaxValue;
 
-    [AuroraExport("unsigned")]
+    [Export("unsigned")]
     public static ulong Unsigned() => ulong.MaxValue;
 
-    [AuroraExport("signedOdd")]
+    [Export("signedOdd")]
     public long SignedOdd() => 9007199254740993L;
 
-    [AuroraExport("unsignedOdd")]
+    [Export("unsignedOdd")]
     public ulong UnsignedOdd() => 9223372036854775809UL;
 }

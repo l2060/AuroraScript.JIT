@@ -5,13 +5,13 @@ using AuroraScript.Runtime.Types;
 
 namespace AuroraScript.Tests.Host;
 
-[AuroraNativeType("Flag")]
+[NativeType("Flag")]
 public sealed partial class Flag : ScriptObject, INativeTypedDocument
 {
-    [AuroraExport("value")]
+    [Export("value")]
     public bool Value;
 
-    [AuroraExport]
+    [Export]
     public Flag(bool value)
     {
         Value = value;
@@ -50,13 +50,13 @@ public sealed partial class Flag : ScriptObject, INativeTypedDocument
     }
 }
 
-[AuroraNativeType("State")]
+[NativeType("State")]
 public sealed partial class State : ScriptObject, INativeTypedDocument
 {
-    [AuroraExport("code")]
+    [Export("code")]
     public double Code;
 
-    [AuroraExport]
+    [Export]
     public State(double code)
     {
         Code = code;
@@ -95,13 +95,13 @@ public sealed partial class State : ScriptObject, INativeTypedDocument
     }
 }
 
-[AuroraNativeType("User")]
+[NativeType("User")]
 public sealed partial class User : ScriptObject, INativeTypedDocument
 {
-    [AuroraExport("record")]
+    [Export("record")]
     public string Record;
 
-    [AuroraExport]
+    [Export]
     public User(string record)
     {
         Record = record;
@@ -140,13 +140,13 @@ public sealed partial class User : ScriptObject, INativeTypedDocument
     }
 }
 
-[AuroraNativeType("NativeRecord")]
+[NativeType("NativeRecord")]
 public sealed partial class NativeRecord : ScriptObject, INativeTypedDocument
 {
-    [AuroraExport("name")]
+    [Export("name")]
     public string Name;
 
-    [AuroraExport]
+    [Export]
     public NativeRecord(string name)
     {
         Name = name;

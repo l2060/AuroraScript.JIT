@@ -7,11 +7,11 @@ namespace AuroraScript.Runtime.Builtin
     /// <summary>
     /// Exposes TDoc serialization through generated native exports.
     /// </summary>
-    [AuroraNativeType("TDoc")]
+    [NativeType("TDoc")]
     public sealed partial class TDocSupport : ScriptObject
     {
         /// <summary>Deserializes TDoc text.</summary>
-        [AuroraExport("parse", MatchFailure.Throw)]
+        [Export("parse", MatchFailure.Throw)]
         public static ScriptDatum ParseCore(ScriptContext ctx, string text)
         {
             try
@@ -25,7 +25,7 @@ namespace AuroraScript.Runtime.Builtin
         }
 
         /// <summary>Serializes a script value as TDoc text.</summary>
-        [AuroraExport("stringify", MatchFailure.Throw)]
+        [Export("stringify", MatchFailure.Throw)]
         public static string StringifyCore(
             ScriptContext ctx,
             ScriptDatum value,

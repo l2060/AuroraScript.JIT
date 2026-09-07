@@ -2038,12 +2038,16 @@ namespace AuroraScript.Compiler.Backend.Code
                     !TryGetStaticPropertyName(property.Property, out var memberName) ||
                     property.Object is not NameExpression receiver ||
                     !_names.TryGetValue(receiver, out var binding) ||
-                    !binding.IsUnshadowedGlobal)
+                    !_hostExports.TryResolveExportOwner(
+                        binding,
+                        receiver.Identifier?.Value,
+                        _module.Declaration.Imports,
+                        out var ownerName))
                 {
                     return false;
                 }
 
-                if (!_hostExports.TryGetGlobal(binding.Name, memberName, out descriptor))
+                if (!_hostExports.TryGetGlobal(ownerName, memberName, out descriptor))
                 {
                     return false;
                 }
@@ -2076,8 +2080,12 @@ namespace AuroraScript.Compiler.Backend.Code
                 return property.Object is NameExpression receiver &&
                     TryGetStaticPropertyName(property.Property, out var memberName) &&
                     _names.TryGetValue(receiver, out var binding) &&
-                    binding.IsUnshadowedGlobal &&
-                    _hostExports.TryGetConstant(binding.Name, memberName, out _);
+                    _hostExports.TryResolveExportOwner(
+                        binding,
+                        receiver.Identifier?.Value,
+                        _module.Declaration.Imports,
+                        out var ownerName) &&
+                    _hostExports.TryGetConstant(ownerName, memberName, out _);
             }
 
             private static bool IsStaticProperty(Expression property, string expected)

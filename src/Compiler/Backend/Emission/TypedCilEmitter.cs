@@ -2837,8 +2837,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 EmitFastMapEntryAtTDocPath(second);
                 EmitFastMapEntryAtTDocPath(third);
                 _il.Emit(OpCodes.Call, TypedRuntimeMetadata.CreateObject3);
-                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
-                return StackValueKind.Datum;
+                return StackValueKind.Object;
             }
 
             _il.Emit(OpCodes.Newobj, TypedRuntimeMetadata.ScriptObjectConstructor);
@@ -2869,8 +2868,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptObjectSetProperty);
                 }
             }
-            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
-            return StackValueKind.Datum;
+            return StackValueKind.Object;
         }
 
         private StackValueKind EmitTypedDocument(TypedDocumentExpression expression)
@@ -4124,9 +4122,13 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
 
             var binding = _code.GetName(global);
-            if (!binding.IsUnshadowedGlobal ||
+            if (!_session.CompileSession.HostExports.TryResolveExportOwner(
+                    binding,
+                    global.Identifier?.Value,
+                    _module.Declaration.Imports,
+                    out var ownerName) ||
                 !_session.CompileSession.HostExports.TryGetConstant(
-                    binding.Name,
+                    ownerName,
                     memberName,
                     out var field))
             {
@@ -4159,10 +4161,14 @@ namespace AuroraScript.Compiler.Backend.Emission
                 ? _code.GetName(global)
                 : BoundName.Unbound;
             if (HasSpread(call.Arguments) ||
-                receiver is not NameExpression ||
-                !binding.IsUnshadowedGlobal ||
+                receiver is not NameExpression owner ||
+                !_session.CompileSession.HostExports.TryResolveExportOwner(
+                    binding,
+                    owner.Identifier?.Value,
+                    _module.Declaration.Imports,
+                    out var ownerName) ||
                 !_session.CompileSession.HostExports.TryGetGlobal(
-                    binding.Name, memberName, out descriptor))
+                    ownerName, memberName, out descriptor))
             {
                 descriptor = null;
                 return false;
@@ -4266,10 +4272,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 AuroraExportValueKind.UInt64 => StackValueKind.UInt64,
                 AuroraExportValueKind.Boolean => StackValueKind.Boolean,
                 AuroraExportValueKind.String => StackValueKind.String,
-                AuroraExportValueKind.Object =>
-                    _code.GetNativeObjectType(call) != null
-                        ? StackValueKind.Object
-                        : BoxHostExportObjectResult(),
+                AuroraExportValueKind.Object => StackValueKind.Object,
                 AuroraExportValueKind.Datum => StackValueKind.Datum,
                 _ => throw new NotSupportedException(
                     "Unsupported generated host export return type.")
@@ -4315,12 +4318,6 @@ namespace AuroraScript.Compiler.Backend.Emission
                     throw new NotSupportedException(
                         "Unsupported generated host export parameter type.");
             }
-        }
-
-        private StackValueKind BoxHostExportObjectResult()
-        {
-            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
-            return StackValueKind.Datum;
         }
 
         private void EmitHostExportDefault(ParameterInfo parameter)
@@ -4649,9 +4646,10 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 throw new NotSupportedException("Lambda is not materialized.");
             }
+            // The closure is left as a raw reference so an object consumer does
+            // not have to unwrap a ScriptDatum this method just wrapped.
             ClosureMaterializer.EmitClosure(_session, _il, function, EmitClosureUpvalue);
-            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
-            return StackValueKind.Datum;
+            return StackValueKind.Object;
         }
 
         private static bool HasSpread(IReadOnlyList<Expression> expressions)
@@ -4736,8 +4734,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     _session.Builder.LoadStringConstant(_il, regex.Pattern);
                     _session.Builder.LoadStringConstant(_il, regex.Flags);
                     _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ResolveRegex);
-                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
-                    return StackValueKind.Datum;
+                    return StackValueKind.Object;
                 default:
                     throw new NotSupportedException("Typed literal: " + literal.Token.GetType().Name);
             }

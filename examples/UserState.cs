@@ -4,18 +4,18 @@ using System;
 
 namespace Examples
 {
-    [AuroraNativeType("UserState")]
+    [NativeType("UserState")]
     public sealed partial class UserState : ScriptObject
     {
-        [AuroraExport("x")] public double X;
-        [AuroraExport("y")] public double Y;
-        [AuroraExport("name")] public String Name = "Hanks";
-        [AuroraExport("identity")] public String Identity = null;
-        [AuroraExport("age")] public int Age = 18;
+        [Export("x")] public double X;
+        [Export("y")] public double Y;
+        [Export("name")] public String Name = "Hanks";
+        [Export("identity")] public String Identity = null;
+        [Export("age")] public int Age = 18;
 
 
 
-        [AuroraExport("test")]
+        [Export("test")]
         public String Test(double offset, string str)
         {
             return str + offset;

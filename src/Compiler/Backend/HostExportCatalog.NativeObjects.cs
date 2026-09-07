@@ -228,8 +228,8 @@ namespace AuroraScript.Compiler.Backend
             foreach (var method in attribute.DeclaringType.GetMethods(
                 BindingFlags.Public | (owner.IsValueReceiver ? BindingFlags.Static : BindingFlags.Instance)))
             {
-                var receiverExport = method.GetCustomAttribute<AuroraReceiverExportAttribute>();
-                var objectExport = method.GetCustomAttribute<AuroraExportAttribute>();
+                var receiverExport = method.GetCustomAttribute<ReceiverExportAttribute>();
+                var objectExport = method.GetCustomAttribute<ExportAttribute>();
                 if (!StringComparer.Ordinal.Equals(method.Name, attribute.MethodName) ||
                     !MatchesClrType(attribute.ReturnKind, method.ReturnType) ||
                     (owner.IsValueReceiver && receiverExport == null) ||

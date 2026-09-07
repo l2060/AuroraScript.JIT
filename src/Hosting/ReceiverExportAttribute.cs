@@ -4,15 +4,15 @@ namespace AuroraScript.Hosting
 {
     /// <summary>Exports a static Core method as an instance member of a NativeReceiverType.</summary>
     [AttributeUsage(AttributeTargets.Method, Inherited = false, AllowMultiple = false)]
-    public sealed class AuroraReceiverExportAttribute : Attribute
+    public sealed class ReceiverExportAttribute : Attribute
     {
         /// <summary>Marks a native receiver Core method.</summary>
-        public AuroraReceiverExportAttribute(string scriptName) : this(scriptName, MatchFailure.Default)
+        public ReceiverExportAttribute(string scriptName) : this(scriptName, MatchFailure.Default)
         {
         }
 
         /// <summary>Marks a native receiver Core method.</summary>
-        public AuroraReceiverExportAttribute(string scriptName, MatchFailure failure)
+        public ReceiverExportAttribute(string scriptName, MatchFailure failure)
         {
             ScriptName = scriptName;
             Failure = failure;

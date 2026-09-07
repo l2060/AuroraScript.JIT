@@ -36,7 +36,7 @@ Important semantic boundaries:
   bridge, not a speedup. No unsafe narrowing or duplicated exported bridges are used.
 - String length bounds and non-negative bit masks preserve Int32 storage where
   proved safe. WordToHex's byte and literal radix now call `FormatString(int, int)`.
-- Numeric formatting shares `AuroraNativeType` metadata with String. Its radix
+- Numeric formatting shares `NativeType` metadata with String. Its radix
   parameter is `int`; Int64/UInt64 receivers never pass through double. Only base
   16 selects hexadecimal, as in the existing limited Number API.
 - The benchmark validates the existing unusual WordToHex output `7531`, not a
@@ -106,7 +106,7 @@ These short-probe medians are not statistical speedup guarantees.
 
 The two construction workloads bring the suite to 20 cases. String construction
 and static members use NativeType; `NativeReceiverType` declares primitive storage
-and `AuroraReceiverExport` identifies static Core methods exposed on primitive instances. The wrapper pool
+and `ReceiverExport` identifies static Core methods exposed on primitive instances. The wrapper pool
 and its configuration/API have been removed. Native construction reuses the raw
 string; unknown receivers still permit dynamic dispatch and wrapper allocation.
 Consequently, the earlier dynamic allocation snapshots above predate pool removal.

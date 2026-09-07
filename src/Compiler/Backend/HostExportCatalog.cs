@@ -1,3 +1,7 @@
+using AuroraScript;
+using AuroraScript.Compiler.Ast;
+using AuroraScript.Compiler.Backend.Code;
+using AuroraScript.Core;
 using AuroraScript.Hosting;
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Types;
@@ -15,13 +19,24 @@ namespace AuroraScript.Compiler.Backend
         private readonly Dictionary<ExportKey, HostExportDescriptor> _exports;
         private readonly Dictionary<ExportKey, FieldInfo> _constants;
 
+        private readonly Dictionary<string, string> _packageTypeNames;
+
         public HostExportCatalog(IReadOnlyList<Type> nativeTypes)
+            : this(nativeTypes, Array.Empty<NativePackageDefinition>())
+        {
+        }
+
+        public HostExportCatalog(
+            IReadOnlyList<Type> nativeTypes,
+            IReadOnlyList<NativePackageDefinition> packages)
         {
             ArgumentNullException.ThrowIfNull(nativeTypes);
+            ArgumentNullException.ThrowIfNull(packages);
             _exports = new Dictionary<ExportKey, HostExportDescriptor>();
             _constants = new Dictionary<ExportKey, FieldInfo>();
             _nativeObjects = new Dictionary<string, HostNativeObjectDescriptor>(StringComparer.Ordinal);
             _nativeObjectsByClrType = new Dictionary<Type, HostNativeObjectDescriptor>();
+            _packageTypeNames = new Dictionary<string, string>(ScriptPath.Comparer);
             AddAssembly(typeof(AuroraEngine).Assembly);
             for (var i = 0; i < nativeTypes.Count; i++)
             {
@@ -33,6 +48,21 @@ namespace AuroraScript.Compiler.Backend
                 {
                     AddAssembly(nativeType.Assembly, nativeType);
                 }
+            }
+
+            for (var i = 0; i < packages.Count; i++)
+            {
+                var package = packages[i] ??
+                    throw new ArgumentException(
+                        "Native packages cannot contain null.",
+                        nameof(packages));
+                if (package.NativeType.Assembly != typeof(AuroraEngine).Assembly)
+                {
+                    AddAssembly(package.NativeType.Assembly, package.NativeType);
+                }
+
+                _packageTypeNames[package.Reference.FullPath] = package.TypeName;
+                _packageTypeNames[package.ModulePath] = package.TypeName;
             }
         }
 
@@ -54,6 +84,54 @@ namespace AuroraScript.Compiler.Backend
             return _constants.TryGetValue(
                 new ExportKey(globalName, memberName),
                 out field);
+        }
+
+        public bool TryGetPackageTypeName(ScriptSourceReference reference, out string typeName)
+        {
+            typeName = null;
+            return !string.IsNullOrEmpty(reference.FullPath) &&
+                _packageTypeNames.TryGetValue(reference.FullPath, out typeName);
+        }
+
+        public bool TryResolveExportOwner(
+            BoundName binding,
+            string alias,
+            IReadOnlyList<ImportDeclaration> imports,
+            out string ownerName)
+        {
+            ownerName = null;
+            if (string.IsNullOrEmpty(alias) ||
+                binding.IsLocal ||
+                binding.Upvalue.IsValid)
+            {
+                return false;
+            }
+
+            if (binding.IsUnshadowedGlobal)
+            {
+                ownerName = binding.Name;
+                return true;
+            }
+
+            if (imports == null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < imports.Count; i++)
+            {
+                var import = imports[i];
+                if (import.Include ||
+                    import.Name?.Value != alias ||
+                    string.IsNullOrEmpty(import.Reference.FullPath))
+                {
+                    continue;
+                }
+
+                return TryGetPackageTypeName(import.Reference, out ownerName);
+            }
+
+            return false;
         }
 
         private void AddAssembly(Assembly assembly, Type selectedType = null)
@@ -123,11 +201,11 @@ namespace AuroraScript.Compiler.Backend
                 }
                 if (_exports.TryGetValue(key, out var existing))
                 {
-                    var adapter = method.GetCustomAttribute<AuroraExportAttribute>()?.DynamicAdapter;
+                    var adapter = method.GetCustomAttribute<ExportAttribute>()?.DynamicAdapter;
                     if (string.IsNullOrWhiteSpace(adapter) ||
                         existing.Method.DeclaringType != method.DeclaringType ||
                         !StringComparer.Ordinal.Equals(
-                            existing.Method.GetCustomAttribute<AuroraExportAttribute>()?.DynamicAdapter,
+                            existing.Method.GetCustomAttribute<ExportAttribute>()?.DynamicAdapter,
                             adapter))
                     {
                         throw new InvalidOperationException(
@@ -175,7 +253,7 @@ namespace AuroraScript.Compiler.Backend
                     continue;
                 }
 
-                var export = method.GetCustomAttribute<AuroraExportAttribute>();
+                var export = method.GetCustomAttribute<ExportAttribute>();
                 if (export == null ||
                     !StringComparer.Ordinal.Equals(
                         GetScriptName(export.ScriptName, method.Name),
