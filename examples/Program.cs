@@ -80,11 +80,16 @@ namespace Examples
             var fo = new TestObject();
             g.SetPropertyValue("fo", fo);
         }
-        public static async Task Main()
+        public static async Task Main(string[] args)
         {
             Thread.CurrentThread.Priority = ThreadPriority.AboveNormal;
             engine.RegisterType<TestObject>();
             engine.RegisterType(typeof(Math), "Math2");
+            if (Array.IndexOf(args, "--compile-benchmark") >= 0)
+            {
+                await MeasureCompilation();
+                return;
+            }
             try
             {
                 var time = Stopwatch.StartNew();
@@ -121,6 +126,24 @@ namespace Examples
                 Thread.Sleep(100);
             }
             Console.ReadLine();
+        }
+
+        private static async Task MeasureCompilation()
+        {
+            Console.WriteLine("Run,ElapsedMs,AllocatedBytes,Gen0,Gen1,Gen2");
+            for (var run = 0; run < 16; run++)
+            {
+                var gen0 = GC.CollectionCount(0);
+                var gen1 = GC.CollectionCount(1);
+                var gen2 = GC.CollectionCount(2);
+                var allocated = GC.GetTotalAllocatedBytes(true);
+                var start = Stopwatch.GetTimestamp();
+                await engine.BuildAsync();
+                var elapsed = Stopwatch.GetElapsedTime(start);
+                allocated = GC.GetTotalAllocatedBytes(true) - allocated;
+                Console.WriteLine(FormattableString.Invariant(
+                    $"{run},{elapsed.TotalMilliseconds:F3},{allocated},{GC.CollectionCount(0) - gen0},{GC.CollectionCount(1) - gen1},{GC.CollectionCount(2) - gen2}"));
+            }
         }
 
         /// <summary>

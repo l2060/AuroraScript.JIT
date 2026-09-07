@@ -19,12 +19,18 @@ namespace AuroraScript.Runtime.Types
         /// Initializes a new instance of the <see cref="ScriptType"/> class.
         /// </summary>
         /// <param name="name">The name of the type.</param>
-        /// <param name="callable">Can the type be called as a method?</param>
+        /// <param name="callable">Requests conversion calls, supported only by the engine's Number, Boolean and String types.</param>
         protected ScriptType(string name, Boolean callable = false) : base(Prototypes.ObjectPrototype)
         {
             Name = name;
-            Callable = callable;
+            Callable = callable && IsPrimitiveConversion(GetType().DeclaringType);
         }
+
+        internal static bool IsPrimitiveConversion(Type type) =>
+            type == typeof(NumberValue) || type == typeof(BooleanValue) || type == typeof(StringValue);
+
+        private ScriptDatum RejectDirectCall() =>
+            throw new AuroraRuntimeException($"Type '{Name}' requires the 'new' keyword.");
 
         internal override ScriptDatum Invoke(ScriptContext ctx, Span<ScriptDatum> args)
         {
@@ -34,7 +40,7 @@ namespace AuroraScript.Runtime.Types
                 Construct(ctx, args, ref result);
                 return result;
             }
-            return base.Invoke(ctx, args);
+            return RejectDirectCall();
         }
 
         internal override ScriptDatum Invoke(ScriptContext ctx)
@@ -45,7 +51,7 @@ namespace AuroraScript.Runtime.Types
                 Construct(ctx, Span<ScriptDatum>.Empty, ref result);
                 return result;
             }
-            return base.Invoke(ctx);
+            return RejectDirectCall();
         }
 
         internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1)
@@ -58,7 +64,7 @@ namespace AuroraScript.Runtime.Types
                 Construct(ctx, buf, ref result);
                 return result;
             }
-            return base.Invoke(ctx, arg1);
+            return RejectDirectCall();
         }
 
         internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2)
@@ -72,7 +78,7 @@ namespace AuroraScript.Runtime.Types
                 Construct(ctx, buf, ref result);
                 return result;
             }
-            return base.Invoke(ctx, arg1, arg2);
+            return RejectDirectCall();
         }
 
         internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3)
@@ -87,7 +93,7 @@ namespace AuroraScript.Runtime.Types
                 Construct(ctx, buf, ref result);
                 return result;
             }
-            return base.Invoke(ctx, arg1, arg2, arg3);
+            return RejectDirectCall();
         }
 
         internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4)
@@ -103,7 +109,7 @@ namespace AuroraScript.Runtime.Types
                 Construct(ctx, buf, ref result);
                 return result;
             }
-            return base.Invoke(ctx, arg1, arg2, arg3, arg4);
+            return RejectDirectCall();
         }
 
         internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5)
@@ -120,7 +126,7 @@ namespace AuroraScript.Runtime.Types
                 Construct(ctx, buf, ref result);
                 return result;
             }
-            return base.Invoke(ctx, arg1, arg2, arg3, arg4, arg5);
+            return RejectDirectCall();
         }
 
         internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6)
@@ -138,7 +144,7 @@ namespace AuroraScript.Runtime.Types
                 Construct(ctx, buf, ref result);
                 return result;
             }
-            return base.Invoke(ctx, arg1, arg2, arg3, arg4, arg5, arg6);
+            return RejectDirectCall();
         }
 
         internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6, ScriptDatum arg7)
@@ -157,7 +163,7 @@ namespace AuroraScript.Runtime.Types
                 Construct(ctx, buf, ref result);
                 return result;
             }
-            return base.Invoke(ctx, arg1, arg2, arg3, arg4, arg5, arg6, arg7);
+            return RejectDirectCall();
         }
 
         internal override ScriptDatum Invoke(ScriptContext ctx, ScriptDatum arg1, ScriptDatum arg2, ScriptDatum arg3, ScriptDatum arg4, ScriptDatum arg5, ScriptDatum arg6, ScriptDatum arg7, ScriptDatum arg8)
@@ -177,7 +183,7 @@ namespace AuroraScript.Runtime.Types
                 Construct(ctx, buf, ref result);
                 return result;
             }
-            return base.Invoke(ctx, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
+            return RejectDirectCall();
         }
 
         /// <summary>

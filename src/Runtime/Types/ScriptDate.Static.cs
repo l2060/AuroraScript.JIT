@@ -1,40 +1,31 @@
 ﻿using System;
 using System.Globalization;
+using System.Runtime.InteropServices;
+using AuroraScript.Hosting;
 
-namespace AuroraScript.Runtime.Types.TypeConstruct
+namespace AuroraScript.Runtime.Types
 {
     /// <summary>
     /// Represents the native 'Date' constructor function in AuroraScript.
     /// Provides methods for retrieving the current time and parsing date strings.
     /// </summary>
-    internal class ScriptDateConstructor : ScriptType
+    public sealed partial class ScriptDate
     {
-        /// <summary> The global singleton instance of the Date constructor. </summary>
-        internal static ScriptDateConstructor INSTANCE = new ScriptDateConstructor();
+        /// <summary>Creates a date containing the current local time.</summary>
+        [Export("now", DynamicAdapter = nameof(NOW))]
+        public static ScriptDate NowCore() => new ScriptDate(System.DateTime.Now);
 
-        internal ScriptDateConstructor() : base("Date", true)
+        /// <summary>Creates a date containing the current UTC time.</summary>
+        [Export("utcNow", DynamicAdapter = nameof(UTC_NOW))]
+        public static ScriptDate UtcNowCore() => new ScriptDate(System.DateTime.UtcNow);
+
+        /// <summary>Parses ticks or text with the existing date conversion rules.</summary>
+        [Export("parse", DynamicAdapter = nameof(PARSE))]
+        public static ScriptDatum ParseCore(ScriptContext ctx, ScriptDatum value)
         {
-            Define("now", ScriptDatum.FromBonding(NOW), writeable: false, enumerable: false);
-            Define("utcNow", ScriptDatum.FromBonding(UTC_NOW), writeable: false, enumerable: false);
-            Define("parse", ScriptDatum.FromBonding(PARSE), writeable: false, enumerable: false);
-            Frozen();
-        }
-
-
-
-        public override void Construct(ScriptContext ctx, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            if (args.TryGetInteger(0, out var value)) // ticks
-            {
-                ScriptDatum.WriteAsDate(ref result, new ScriptDate(value));
-            }
-            else if (args.TryGetString(0, out var strValue)) // formatted string
-            {
-                if (TryParseDate(ctx, strValue, out var dateTime))
-                {
-                    ScriptDatum.WriteAsDate(ref result, new ScriptDate(dateTime));
-                }
-            }
+            var result = default(ScriptDatum);
+            PARSE(ctx, null, MemoryMarshal.CreateSpan(ref value, 1), ref result);
+            return result;
         }
 
         /// <summary> Supported date formats for parsing strings. </summary>
@@ -83,7 +74,7 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
                 }
             }
 
-            if (DateTime.TryParseExact(
+            if (System.DateTime.TryParseExact(
                 text,
                 formats,
                 CultureInfo.InvariantCulture,
@@ -101,13 +92,13 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
         /// <summary> Native implementation for Date.now(). Returns the current local time. </summary>
         internal static void NOW(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
-            ScriptDatum.WriteAsDate(ref result, new ScriptDate(DateTime.Now));
+            ScriptDatum.WriteAsDate(ref result, new ScriptDate(System.DateTime.Now));
         }
 
         /// <summary> Native implementation for Date.utcNow(). Returns the current UTC time. </summary>
         internal static void UTC_NOW(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
-            ScriptDatum.WriteAsDate(ref result, new ScriptDate(DateTime.UtcNow));
+            ScriptDatum.WriteAsDate(ref result, new ScriptDate(System.DateTime.UtcNow));
         }
 
         /// <summary> Native implementation for Date.toString(). Supports an optional format string. </summary>

@@ -38,7 +38,10 @@ export func testTypedDocument() {
 		Date Birthday '2026-08-22 12:34:56',
 		StringBuffer buff 'Hello ',
 		Vec2 vec {x 1000, y 2000, ext ['this', 'extend', 'members', 3000], o { k 1.1, p 2.2, i 3.3 } },
-		numbers { Int64 i64 9007199254740993, UInt64 ui64 9807199254740993 }
+		numbers {
+			INT_64 {  Int64 min -9223372036854775808, Int64 max 9223372036854775807 },
+			UINT_64 { UInt64 min 0, UInt64 max 18446744073709551615 }
+		}
 	};
 	doc.buff.append('Hanks');
 	console.log(JSON.stringify(doc));
@@ -118,7 +121,7 @@ export func testIssue1() {
 	var t = global.getModule('TIMER_LIB');
 	return ctx.player().test(123.45, 'abc');
 
-	
+
 }
 
 
@@ -181,7 +184,7 @@ func testClrType() {
 	// context user is UserState in Execute userState
 	var a = ctx.player().test(123.45, 'abc');
 	var b = ctx.bagName();
-	console.log("=============================================",a,b);
+	console.log("=============================================", a, b);
 	testIssue1();
 	testIssue2();
 }

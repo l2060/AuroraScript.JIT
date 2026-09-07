@@ -29,6 +29,7 @@ namespace AuroraScript.Hosting.Generators
     public sealed partial class AuroraExportGenerator : IIncrementalGenerator
     {
         private const string NativeTypeAttribute = "AuroraScript.Hosting.NativeTypeAttribute";
+        private const string NativeReceiverAttribute = "AuroraScript.Hosting.NativeReceiverAttribute";
         private const string NativePackageAttribute = "AuroraScript.Hosting.NativePackageAttribute";
         private const string TypedDocumentInterface = "AuroraScript.Runtime.Serialization.INativeTypedDocument";
         private const string ExportAttribute = "AuroraScript.Hosting.ExportAttribute";
@@ -206,6 +207,8 @@ namespace AuroraScript.Hosting.Generators
                 isInstance: !methodSymbol.IsStatic)
             {
                 ReceiverType = receiverType?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                CorePropertyName = methodSymbol.MethodKind == MethodKind.PropertyGet
+                    ? methodSymbol.AssociatedSymbol?.Name : null,
                 Writable = exportAttribute.NamedArguments.Any(pair => pair.Key == "Writable" && pair.Value.Value is true),
                 Enumerable = exportAttribute.NamedArguments.Any(pair => pair.Key == "Enumerable" && pair.Value.Value is true)
             };
@@ -215,7 +218,7 @@ namespace AuroraScript.Hosting.Generators
             IFieldSymbol fieldSymbol,
             AttributeData exportAttribute)
         {
-            if (fieldSymbol.Type.SpecialType != SpecialType.System_Double ||
+            if (fieldSymbol.Type.SpecialType is not (SpecialType.System_Double or SpecialType.System_Boolean) ||
                 fieldSymbol.DeclaredAccessibility != Accessibility.Public ||
                 !fieldSymbol.IsReadOnly)
             {
@@ -234,6 +237,7 @@ namespace AuroraScript.Hosting.Generators
                 scriptName!,
                 fieldSymbol.Name,
                 fieldSymbol.ContainingType.ToDisplayString(),
+                fieldSymbol.Type.SpecialType == SpecialType.System_Boolean,
                 exportAttribute.NamedArguments.Any(pair => pair.Key == "Writable" && pair.Value.Value is true),
                 exportAttribute.NamedArguments.Any(pair => pair.Key == "Enumerable" && pair.Value.Value is true));
         }
@@ -587,7 +591,10 @@ namespace AuroraScript.Hosting.Generators
                 return;
             }
 
-            builder.Append("            var coreResult = " + callee + "(" + argumentList + ");");
+            var invocation = export.CorePropertyName == null
+                ? callee + "(" + argumentList + ")"
+                : "self.@" + export.CorePropertyName;
+            builder.Append("            var coreResult = " + invocation + ";");
             builder.AppendLine();
             switch (export.ReturnKind)
             {
@@ -984,12 +991,14 @@ namespace AuroraScript.Hosting.Generators
                 string scriptName,
                 string fieldName,
                 string containingTypeDisplayName,
+                bool isBoolean,
                 bool writable,
                 bool enumerable)
             {
                 ScriptName = scriptName;
                 FieldName = fieldName;
                 ContainingTypeDisplayName = containingTypeDisplayName;
+                IsBoolean = isBoolean;
                 Writable = writable;
                 Enumerable = enumerable;
             }
@@ -997,6 +1006,7 @@ namespace AuroraScript.Hosting.Generators
             public string ScriptName { get; }
             public string FieldName { get; }
             public string ContainingTypeDisplayName { get; }
+            public bool IsBoolean { get; }
             public bool Writable { get; }
             public bool Enumerable { get; }
         }
@@ -1046,6 +1056,7 @@ namespace AuroraScript.Hosting.Generators
             public bool IsInstance { get; }
             public string? DynamicAdapter { get; set; }
             public string? ReceiverType { get; set; }
+            public string? CorePropertyName { get; set; }
             public bool IsGetter { get; set; }
             public bool IsSetter { get; set; }
             public bool Writable { get; set; }

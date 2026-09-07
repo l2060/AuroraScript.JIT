@@ -55,6 +55,7 @@ namespace AuroraScript.Compiler.Backend
             var clrType = type switch
             {
                 FlowValueType.String => typeof(string),
+                FlowValueType.Boolean => typeof(bool),
                 FlowValueType.Number or FlowValueType.Int32 or FlowValueType.UInt32 => typeof(double),
                 FlowValueType.Int64 => typeof(long),
                 FlowValueType.UInt64 => typeof(ulong),
@@ -85,7 +86,8 @@ namespace AuroraScript.Compiler.Backend
                     ? !IsPrimitiveReceiver(attribute.ReceiverType) || attribute.Constructible ||
                         attribute.ObjectType.Assembly != typeof(ScriptObject).Assembly
                     : !typeof(ScriptObject).IsAssignableFrom(attribute.ObjectType) ||
-                        !typeof(IAuroraNativeInstance).IsAssignableFrom(attribute.ObjectType))
+                        !(typeof(IAuroraNativeInstance).IsAssignableFrom(attribute.ObjectType) ||
+                          attribute.ObjectType.Assembly == typeof(ScriptObject).Assembly))
                 {
                     throw new InvalidOperationException(
                         $"Generated Aurora native object '{attribute.TypeName}' does not " +
@@ -228,11 +230,15 @@ namespace AuroraScript.Compiler.Backend
             foreach (var method in attribute.DeclaringType.GetMethods(
                 BindingFlags.Public | (owner.IsValueReceiver ? BindingFlags.Static : BindingFlags.Instance)))
             {
+                if (!StringComparer.Ordinal.Equals(method.Name, attribute.MethodName) ||
+                    !MatchesClrType(attribute.ReturnKind, method.ReturnType))
+                {
+                    continue;
+                }
+
                 var receiverExport = method.GetCustomAttribute<ReceiverExportAttribute>();
                 var objectExport = method.GetCustomAttribute<ExportAttribute>();
-                if (!StringComparer.Ordinal.Equals(method.Name, attribute.MethodName) ||
-                    !MatchesClrType(attribute.ReturnKind, method.ReturnType) ||
-                    (owner.IsValueReceiver && receiverExport == null) ||
+                if ((owner.IsValueReceiver && receiverExport == null) ||
                     (!owner.IsValueReceiver && objectExport == null) ||
                     (receiverExport?.IsGetter ?? objectExport?.IsGetter) != attribute.IsGetter ||
                     (objectExport?.IsSetter ?? false) != attribute.IsSetter)
@@ -282,7 +288,7 @@ namespace AuroraScript.Compiler.Backend
             return null;
         }
 
-        private static bool IsPrimitiveReceiver(Type type) => type == typeof(string) || type == typeof(double) ||
+        private static bool IsPrimitiveReceiver(Type type) => type == typeof(string) || type == typeof(bool) || type == typeof(double) ||
             type == typeof(long) || type == typeof(ulong);
     }
 
@@ -545,6 +551,7 @@ namespace AuroraScript.Compiler.Backend
             var clrType = type switch
             {
                 FlowValueType.String => typeof(string),
+                FlowValueType.Boolean => typeof(bool),
                 FlowValueType.Number => typeof(double),
                 FlowValueType.Int32 => typeof(int),
                 FlowValueType.UInt32 => typeof(uint),

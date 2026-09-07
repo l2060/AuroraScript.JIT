@@ -1,6 +1,7 @@
 using AuroraScript.LanguageServices;
 using AuroraScript.LanguageServices.Builtins;
 using AuroraScript.LanguageServices.Features.Formatting;
+using AuroraScript.Runtime.Serialization;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -10,6 +11,51 @@ namespace AuroraScript.LanguageServices.Tests;
 
 public sealed class FormattingFeatureTests
 {
+    [Theory]
+    [InlineData("-9223372036854775808")]
+    [InlineData("- 9223372036854775808")]
+    public void KeepsStandaloneDocumentNegativeNumbersParseable(string number)
+    {
+        var service = CreateService();
+        var source = "Object{\nInt64 min " + number + ",\nvalues [-1,-2.5,-3.75],\n}";
+        var result = service.FormatDocument("limits.tdoc", source, new FormattingOptions());
+        var formatted = Assert.Single(result.Edits).NewText;
+        Assert.Contains("Int64 min -9223372036854775808", formatted);
+        Assert.DoesNotContain("- 9223372036854775808", formatted);
+        Assert.Empty(service.FormatDocument("limits.tdoc", formatted, new FormattingOptions()).Edits);
+        var value = TypedDocumentSerializer.Deserialize(new AuroraEngine(EngineOptions.Default), formatted);
+        Assert.Equal(long.MinValue, value.Object.GetPropertyDatum(null!, "min").Int64);
+    }
+
+    [Fact]
+    public void PreservesInlineDocumentSignsWithoutChangingSubtraction()
+    {
+        const string source = """
+            var n=4;
+            var direct=-9223372036854775808L;
+            var scalar=tdoc Int64 -9223372036854775808;
+            var data=tdoc Object{
+            Int64 min -9223372036854775808,
+            negative -2.5,
+            nested { Int64 min -9223372036854775808 },
+            value $(n-1),
+            other $((tdoc Int64 -2)+n-1),
+            };
+            var tail=n-1;
+            """;
+        var service = CreateService();
+        var formatted = Assert.Single(service.FormatDocument("limits.as", source, new FormattingOptions()).Edits).NewText;
+        Assert.Contains("direct = -9223372036854775808L", formatted);
+        Assert.Contains("scalar = tdoc Int64 -9223372036854775808", formatted);
+        Assert.Contains("Int64 min -9223372036854775808", formatted);
+        Assert.Contains("negative -2.5", formatted);
+        Assert.Contains("$(n - 1)", formatted);
+        Assert.Contains("$((tdoc Int64 -2) + n - 1)", formatted);
+        Assert.Contains("tail = n - 1", formatted);
+        Assert.Empty(service.GetDiagnostics("limits.as", formatted));
+        Assert.Empty(service.FormatDocument("limits.as", formatted, new FormattingOptions()).Edits);
+    }
+
     public static IEnumerable<object[]> FormattingFixtures()
     {
         var directory = Path.Combine(AppContext.BaseDirectory, "FormattingFixtures");

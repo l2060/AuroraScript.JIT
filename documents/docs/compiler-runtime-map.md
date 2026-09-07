@@ -47,7 +47,7 @@ Use this map when changing language behavior.
 - Shared legacy prototypes: `src/Runtime/Types/Prototypes.cs`; NativeType-owned frozen prototypes and `RegisterNativeMembers`: `language-tools/AuroraScript.Hosting.Generators/AuroraNativeObjectGenerator.cs`
 - Console/JSON/TDoc/Math/Conv8/Env/HotPatch (NativeType): `src/Runtime/Builtin`
 - NativeType source generator: `language-tools/AuroraScript.Hosting.Generators/AuroraNativeObjectGenerator.cs`
-- Host export attributes: `src/Hosting` (`NativeTypeAttribute`, `ExportAttribute`, `ReceiverExportAttribute`, `NativePackageAttribute`)
+- Host export attributes: `src/Hosting` (`NativeTypeAttribute`, `ExportAttribute`, `NativePackageAttribute`); engine-only primitive markers: internal `NativeReceiverAttribute` and `ReceiverExportAttribute`
 - NativeType / NativePackage validation: `src/Hosting/NativeExportType.cs`
 - Opt-in extension packages (`fs`, `http`): `src/Core/NativePackages.cs`, `src/Core/NativePackageRegistry.cs`, `src/Source/NativePackageScriptSourceResolver.cs`
 - Compiler native-type catalog: `src/Compiler/Backend/HostExportCatalog.cs`; application types come from `CompilerOptions.NativeTypes` (`AddNativeType` / `WithNativeTypes` / `ClearNativeTypes`)

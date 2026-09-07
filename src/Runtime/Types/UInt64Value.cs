@@ -5,7 +5,8 @@ using AuroraScript.Hosting;
 namespace AuroraScript.Runtime.Types
 {
     /// <summary>Immutable object view of an exact unsigned 64-bit integer datum.</summary>
-    [NativeType("UInt64", NativeReceiverType = typeof(ulong))]
+    [NativeType("UInt64")]
+    [NativeReceiver(typeof(ulong))]
     public sealed partial class UInt64Value : ScriptImmutable
     {
         /// <summary>Creates an immutable wrapper for an exact unsigned 64-bit value.</summary>

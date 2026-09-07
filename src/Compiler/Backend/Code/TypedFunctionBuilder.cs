@@ -6,6 +6,7 @@ using AuroraScript.Compiler.Backend.Traversal;
 using AuroraScript.Hosting;
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Serialization;
+using AuroraScript.Runtime.Types;
 using AuroraScript.Tokens;
 using System;
 using System.Collections.Generic;
@@ -509,6 +510,9 @@ namespace AuroraScript.Compiler.Backend.Code
             private readonly FlowValueType[] _locals;
             private readonly TypeDeclaration[] _localStructuralTypes;
             private readonly HostNativeObjectDescriptor[] _localNativeObjectTypes;
+            private List<ShapeSnapshot> _shapeSnapshots;
+            private int _shapeSnapshotCount;
+            private sbyte[] _functionLocalWrites;
             private readonly FlowValueType[] _forcedLocalTypes;
             private readonly bool[] _writtenLocals;
             private bool[] _unobservedInitialNulls;
@@ -881,6 +885,7 @@ namespace AuroraScript.Compiler.Backend.Code
                         RestoreStructural(ifBefore);
                         AnalyzeStatement(@if.Else);
                         IntersectStructural(thenStructural);
+                        _shapeSnapshotCount -= 2;
                         return;
                     case WhileStatement @while:
                         AnalyzeExpression(@while.Condition);
@@ -904,6 +909,7 @@ namespace AuroraScript.Compiler.Backend.Code
                             }
                         }
                         IntersectStructural(whileBefore);
+                        _shapeSnapshotCount--;
                         return;
                     case ForStatement @for:
                         if (@for.Initializer is Statement initializerStatement) AnalyzeStatement(initializerStatement);
@@ -940,6 +946,7 @@ namespace AuroraScript.Compiler.Backend.Code
                             }
                         }
                         IntersectStructural(forBefore);
+                        _shapeSnapshotCount--;
                         return;
                     case ForInStatement forIn:
                         AnalyzeStatement(forIn.Initializer);
@@ -960,6 +967,7 @@ namespace AuroraScript.Compiler.Backend.Code
                             _integerRangeLoopDepth--;
                         }
                         IntersectStructural(forInBefore);
+                        _shapeSnapshotCount--;
                         return;
                     case TryStatement @try:
                         var tryBefore = SnapshotStructural();
@@ -970,8 +978,10 @@ namespace AuroraScript.Compiler.Backend.Code
                             RestoreStructural(tryBefore);
                             AnalyzeStatement(@try.CatchBody);
                             IntersectStructural(afterTry);
+                            _shapeSnapshotCount--;
                         }
                         AnalyzeStatement(@try.FinallyBody);
+                        _shapeSnapshotCount--;
                         return;
                     case ThrowStatement @throw:
                         AnalyzeExpression(@throw.Expression);
@@ -1145,7 +1155,8 @@ namespace AuroraScript.Compiler.Backend.Code
                         {
                             type = stringCallType;
                         }
-                        else if (TryGetValueFactory(call, out var valueFactory))
+                        else if (TryGetValueFactory(call, out var valueFactory) &&
+                            ScriptType.IsPrimitiveConversion(valueFactory.Method.DeclaringType))
                         {
                             type = GetNativeFlowType(valueFactory.ReturnKind);
                         }
@@ -1234,8 +1245,8 @@ namespace AuroraScript.Compiler.Backend.Code
                                     ? structuralFieldType
                                 : TryGetLocalFieldType(property, out var fieldType)
                                     ? fieldType
-                                : TryGetHostExportConstant(property)
-                                    ? FlowValueType.Number
+                                : TryGetHostExportConstant(property, out var constantType)
+                                    ? constantType
                                     : FlowValueType.Dynamic;
                         if (!TryGetStaticPropertyName(property.Property, out _))
                         {
@@ -1795,12 +1806,18 @@ namespace AuroraScript.Compiler.Backend.Code
 
             private ShapeSnapshot SnapshotStructural()
             {
-                var structural = new TypeDeclaration[_localStructuralTypes.Length];
-                Array.Copy(_localStructuralTypes, structural, structural.Length);
-                var nativeObjects =
-                    new HostNativeObjectDescriptor[_localNativeObjectTypes.Length];
-                Array.Copy(_localNativeObjectTypes, nativeObjects, nativeObjects.Length);
-                return new ShapeSnapshot(structural, nativeObjects);
+                // Scratch storage follows branch nesting, not the number of analysis passes.
+                var snapshots = _shapeSnapshots ??= new List<ShapeSnapshot>();
+                if (_shapeSnapshotCount == snapshots.Count)
+                {
+                    snapshots.Add(new ShapeSnapshot(
+                        new TypeDeclaration[_localStructuralTypes.Length],
+                        new HostNativeObjectDescriptor[_localNativeObjectTypes.Length]));
+                }
+                var snapshot = snapshots[_shapeSnapshotCount++];
+                Array.Copy(_localStructuralTypes, snapshot.Structural, _localStructuralTypes.Length);
+                Array.Copy(_localNativeObjectTypes, snapshot.NativeObjects, _localNativeObjectTypes.Length);
+                return snapshot;
             }
 
             private void RestoreStructural(ShapeSnapshot snapshot)
@@ -2192,9 +2209,10 @@ namespace AuroraScript.Compiler.Backend.Code
                 return descriptor != null;
             }
 
-            private bool TryGetHostExportConstant(GetPropertyExpression property)
+            private bool TryGetHostExportConstant(GetPropertyExpression property, out FlowValueType type)
             {
-                return property.Object is NameExpression receiver &&
+                type = FlowValueType.None;
+                if (property.Object is NameExpression receiver &&
                     TryGetStaticPropertyName(property.Property, out var memberName) &&
                     _names.TryGetValue(receiver, out var binding) &&
                     _hostExports.TryResolveExportOwner(
@@ -2202,7 +2220,12 @@ namespace AuroraScript.Compiler.Backend.Code
                         receiver.Identifier?.Value,
                         _module.Declaration.Imports,
                         out var ownerName) &&
-                    _hostExports.TryGetConstant(ownerName, memberName, out _);
+                    _hostExports.TryGetConstant(ownerName, memberName, out var field))
+                {
+                    type = field.FieldType == typeof(bool) ? FlowValueType.Boolean : FlowValueType.Number;
+                    return true;
+                }
+                return false;
             }
 
             private static bool IsStaticProperty(Expression property, string expected)
@@ -3066,7 +3089,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 if (expression is NameExpression name &&
                     _names.TryGetValue(name, out var binding) &&
                     binding.IsLocal &&
-                    !WritesLocal(_function.Declaration?.Body, binding.Local))
+                    !FunctionWritesLocal(binding.Local))
                 {
                     var declaration = _function.LocalSlots[binding.Local.Value]
                         .Declaration as VariableDeclaration;
@@ -3362,6 +3385,18 @@ namespace AuroraScript.Compiler.Backend.Code
                         _owner.Visit(node);
                     }
                 }
+            }
+
+            private bool FunctionWritesLocal(LocalSlotId slot)
+            {
+                // Syntactic writes do not change between fixed-point iterations.
+                var writes = _functionLocalWrites ??= new sbyte[_locals.Length];
+                if (writes[slot.Value] == 0)
+                {
+                    writes[slot.Value] = WritesLocal(_function.Declaration?.Body, slot)
+                        ? (sbyte)1 : (sbyte)-1;
+                }
+                return writes[slot.Value] > 0;
             }
 
             private bool WritesLocal(AstNode node, LocalSlotId slot)

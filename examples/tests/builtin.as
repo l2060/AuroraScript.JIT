@@ -45,7 +45,7 @@ export func testNative() {
 	vec.x = 10086L;
 
 	var type = Vec2;
-	console.log(typeof type);
+	console.log(typeof vec);
 
 
 	return vec;

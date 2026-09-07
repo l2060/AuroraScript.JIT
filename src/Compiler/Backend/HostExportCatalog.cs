@@ -147,11 +147,11 @@ namespace AuroraScript.Compiler.Backend
                 var field = attribute.DeclaringType.GetField(
                     attribute.FieldName,
                     BindingFlags.Public | BindingFlags.Static);
-                if (field == null || field.FieldType != typeof(double))
+                if (field == null || (field.FieldType != typeof(double) && field.FieldType != typeof(bool)))
                 {
                     throw new InvalidOperationException(
                         $"Generated Aurora constant '{attribute.GlobalName}.{attribute.MemberName}' " +
-                        $"does not resolve to a public static double field.");
+                        $"does not resolve to a public static double or bool field.");
                 }
 
                 var key = new ExportKey(

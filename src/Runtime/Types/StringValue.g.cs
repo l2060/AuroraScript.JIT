@@ -14,7 +14,8 @@ namespace AuroraScript.Runtime.Types
     /// Partial implementation of <see cref="StringValue"/> providing constants and native method implementations.
     /// This fragment exposes common string operations to the AuroraScript runtime.
     /// </summary>
-    [NativeType("String", NativeReceiverType = typeof(string), NativeConstructor = nameof(CreateCore))]
+    [NativeType("String")]
+    [NativeReceiver(typeof(string), Constructor = nameof(CreateCore))]
     public partial class StringValue
     {
         /// <summary> An empty string value. </summary>

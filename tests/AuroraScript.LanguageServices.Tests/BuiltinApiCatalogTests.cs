@@ -9,6 +9,19 @@ namespace AuroraScript.LanguageServices.Tests;
 
 public sealed class BuiltinApiCatalogTests
 {
+    [Theory]
+    [InlineData("Number", true)]
+    [InlineData("Boolean", true)]
+    [InlineData("String", true)]
+    [InlineData("Date", false)]
+    [InlineData("Array", false)]
+    [InlineData("Object", false)]
+    public void ConstructorCallabilityMatchesLanguagePolicy(string name, bool callable)
+    {
+        Assert.True(LoadCatalog().TryGetGlobal(name, out var type));
+        Assert.Equal(callable, type.Callable);
+    }
+
     [Fact]
     public void LoadsRuntimeApiMetadata()
     {
@@ -214,19 +227,19 @@ public sealed class BuiltinApiCatalogTests
             ["Conv8"] = Path.Combine(runtimeRoot, "Builtin", "Conv8Support.cs"),
             ["Path"] = Path.Combine(runtimeRoot, "Types", "ScriptPathValue.cs"),
             ["HotPatch"] = Path.Combine(runtimeRoot, "Builtin", "HotPatchSupport.cs"),
-            ["Array"] = Path.Combine(runtimeRoot, "Types", "TypeConstruct", "ArrayConstructor.cs"),
+            ["Array"] = Path.Combine(runtimeRoot, "Types", "ScriptArray.Static.cs"),
             ["String"] = Path.Combine(runtimeRoot, "Types", "StringValue.Static.cs"),
-            ["Boolean"] = Path.Combine(runtimeRoot, "Types", "TypeConstruct", "BooleanConstructor.cs"),
+            ["Boolean"] = Path.Combine(runtimeRoot, "Types", "BooleanValue.Static.cs"),
             ["Object"] = Path.Combine(runtimeRoot, "Types", "TypeConstruct", "ScriptObjectConstructor.cs"),
             ["Number"] = Path.Combine(runtimeRoot, "Types", "NumberValue.Static.cs"),
-            ["Date"] = Path.Combine(runtimeRoot, "Types", "TypeConstruct", "ScriptDateConstructor.cs")
+            ["Date"] = Path.Combine(runtimeRoot, "Types", "ScriptDate.Static.cs")
         };
 
         foreach (var registration in registrations)
         {
             Assert.True(catalog.TryGetGlobal(registration.Key, out var global), $"runtime-api.json is missing global '{registration.Key}'.");
             var source = File.ReadAllText(registration.Value);
-            var memberNames = registration.Key is "console" or "JSON" or "TDoc" or "Math" or "Env" or "Conv8" or "HotPatch" or "String" or "Number"
+            var memberNames = registration.Key is "console" or "JSON" or "TDoc" or "Math" or "Env" or "Conv8" or "HotPatch" or "String" or "Number" or "Boolean" or "Date" or "Array"
                 ? ExtractExportNames(source)
                 : ExtractDefineNames(source, null);
             foreach (var memberName in memberNames)
@@ -292,6 +305,24 @@ public sealed class BuiltinApiCatalogTests
     private static BuiltinApiCatalog LoadCatalog()
     {
         return BuiltinApiLoader.LoadFromFile(GetRuntimeApiPath());
+    }
+
+    [Theory]
+    [InlineData("StringBuffer", "StringBuffer.cs", "StringBuffer.g.cs", 7)]
+    [InlineData("HashMap", "ScriptHashMap.cs", "ScriptHashMap.g.cs", 9)]
+    [InlineData("Regex", "ScriptRegex.cs", "ScriptRegex.Static.cs", 1)]
+    [InlineData("Date", "ScriptDate.cs", "ScriptDate.g.cs", 11)]
+    public void RuntimeApiCatalogCoversMigratedBuiltinPrototypes(string owner, string first, string second, int expectedCount)
+    {
+        var catalog = LoadCatalog();
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var file in new[] { first, second })
+            foreach (var name in ExtractExportNames(File.ReadAllText(Path.Combine(GetRuntimeRoot(), "Types", file))))
+            {
+                Assert.True(catalog.TryGetPrototypeMember(owner, name, out _), $"Missing {owner}.{name}");
+                names.Add(name);
+            }
+        Assert.Equal(expectedCount, names.Count);
     }
 
     internal static string GetRuntimeApiPath()

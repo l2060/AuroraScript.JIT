@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Text.RegularExpressions;
+using AuroraScript.Hosting;
 
 namespace AuroraScript.Runtime.Types
 {
@@ -7,6 +8,7 @@ namespace AuroraScript.Runtime.Types
     /// Represents a regular expression object in AuroraScript.
     /// Wraps the CLI <see cref="Regex"/> to provide pattern matching and replacement capabilities.
     /// </summary>
+    [NativeType("Regex")]
     public sealed partial class ScriptRegex : ScriptObject
     {
         private readonly Regex _regex;
@@ -24,7 +26,8 @@ namespace AuroraScript.Runtime.Types
         /// </summary>
         /// <param name="regex">The underlying .NET Regex object.</param>
         /// <param name="flags">The regex flags (e.g., "g", "i", "m").</param>
-        public ScriptRegex(Regex regex, string flags) : base(Prototypes.RegexPrototype)
+        [Export(DynamicAdapter = nameof(CREATE))]
+        public ScriptRegex(Regex regex, string flags) : base(NativePrototype)
         {
             _regex = regex;
             _flags = flags;
@@ -36,6 +39,7 @@ namespace AuroraScript.Runtime.Types
         /// </summary>
         /// <param name="value">The datum to test.</param>
         /// <returns>True if a match is found; otherwise, false.</returns>
+        [Export("test", DynamicAdapter = nameof(TEST))]
         public bool Test(ScriptDatum value)
         {
             if (value.Kind == ValueKind.String)

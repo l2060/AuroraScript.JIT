@@ -254,7 +254,7 @@ namespace AuroraScript.Compiler
                 return;
             }
 
-            var lexer = new AuroraLexer(source.BaseDirectory, source);
+            var lexer = new AuroraLexer(source.BaseDirectory, source, sourceText);
             var parser = new AuroraParser(lexer, _options);
             var syntaxTree = parser.Parse();
             if (syntaxTree.IsGlobalDeclarationFile)

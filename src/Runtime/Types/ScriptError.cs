@@ -1,39 +1,28 @@
 ﻿using System;
 
+using AuroraScript.Hosting;
+
 namespace AuroraScript.Runtime.Types
 {
-
-
-    internal class ScriptErrorConstructor : ScriptType
-    {
-        internal readonly static ScriptErrorConstructor INSTANCE = new ScriptErrorConstructor();
-
-        internal ScriptErrorConstructor() : base("Error")
-        {
-
-        }
-
-        public override void Construct(ScriptContext ctx, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            if (args.TryGetString(0, out var errString))
-            {
-                ScriptError error = new ScriptError(errString, ctx.CallStack());
-                ScriptDatum.WriteAsError(ref result, error);
-            }
-        }
-    }
-
 
 
     /// <summary>
     /// Represents a script-level error object, including a message and a stack trace.
     /// This is the script-side representation of an exception.
     /// </summary>
-    public class ScriptError : ScriptObject
+    [NativeType("Error")]
+    public partial class ScriptError : ScriptObject
     {
+        internal static void CREATE(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            if (args.TryGetString(0, out var message))
+                ScriptDatum.WriteAsError(ref result, new ScriptError(message, ctx.CallStack()));
+        }
+
         /// <inheritdoc />
         protected internal override ScriptDatum TypeOfValue => TypeNames.Error;
 
+        [Export(DynamicAdapter = nameof(CREATE))]
         internal ScriptError(string errMsg, AuroraStackTrace[] stackTrace)
         {
             Message = errMsg;

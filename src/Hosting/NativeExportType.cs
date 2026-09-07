@@ -15,7 +15,7 @@ namespace AuroraScript.Hosting
         {
             ArgumentNullException.ThrowIfNull(type, paramName);
             RequireGeneratedClass(type, paramName);
-            var native = RequireNativeTypeAttribute(type, paramName);
+            RequireNativeTypeAttribute(type, paramName);
             if (type.GetCustomAttribute<NativePackageAttribute>() != null)
             {
                 throw new ArgumentException(
@@ -23,7 +23,7 @@ namespace AuroraScript.Hosting
                     paramName);
             }
 
-            if (native.NativeReceiverType != null)
+            if (type.IsDefined(typeof(NativeReceiverAttribute), inherit: false))
             {
                 throw new ArgumentException(
                     $"Native value receiver '{type.FullName}' cannot replace an engine-owned immutable prototype.",
@@ -58,7 +58,7 @@ namespace AuroraScript.Hosting
                     paramName);
             }
 
-            if (native.NativeReceiverType != null)
+            if (type.IsDefined(typeof(NativeReceiverAttribute), inherit: false))
             {
                 throw new ArgumentException(
                     $"Native package '{type.FullName}' cannot declare a native receiver.",
@@ -74,7 +74,8 @@ namespace AuroraScript.Hosting
             return type != null &&
                 type.Assembly != typeof(AuroraEngine).Assembly &&
                 IsGeneratedClass(type) &&
-                type.GetCustomAttribute<NativeTypeAttribute>() is { NativeReceiverType: null } &&
+                type.IsDefined(typeof(NativeTypeAttribute), inherit: false) &&
+                !type.IsDefined(typeof(NativeReceiverAttribute), inherit: false) &&
                 type.GetCustomAttribute<NativePackageAttribute>() == null &&
                 FindMethod(type, "Register", typeof(ScriptObject), typeof(bool), typeof(bool)) !=
                     null;

@@ -22,7 +22,7 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             [Export("echo")]
             public static string EchoCore(string value) => value;
             """, annotateReceivers: false);
-        if (!primitive) source = source.Replace(", NativeReceiverType = typeof(string)", "", StringComparison.Ordinal);
+        if (!primitive) source = source.Replace("[NativeReceiver(typeof(string))]", "", StringComparison.Ordinal);
         var updated = RunCore(source, out var diagnostics);
         Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
         Assert.DoesNotContain(updated.GetDiagnostics(), d => d.Severity == DiagnosticSeverity.Error);
@@ -33,16 +33,16 @@ public sealed class AuroraExportGeneratorDiagnosticTests
     }
 
     [Theory]
-    [InlineData("[NativeType(\"String\", NativeReceiverType = null)]")]
-    [InlineData("[NativeType(\"String\", NativeReceiverType = typeof(int))]")]
-    [InlineData("[NativeType(\"String\")]")]
-    public void ReceiverExportRequiresAValidNativeReceiverType(string typeAttribute)
+    [InlineData("[NativeReceiver(null)]")]
+    [InlineData("[NativeReceiver(typeof(int))]")]
+    [InlineData("")]
+    public void ReceiverExportRequiresAValidNativeReceiver(string typeAttribute)
     {
         var source = ValueReceiverSource("""
             [Export("echo")]
             public static string EchoCore(string value) => value;
             """).Replace(
-                "[NativeType(\"String\", NativeReceiverType = typeof(string))]",
+                "[NativeReceiver(typeof(string))]",
                 typeAttribute,
                 StringComparison.Ordinal);
         Assert.Contains(Run(source), d => d.Id is "AURORAEXP001" or "AURORAEXP002");
@@ -66,7 +66,7 @@ public sealed class AuroraExportGeneratorDiagnosticTests
             public static int CompareCore(string left, string right) => 1;
             [ReceiverExport("toString")]
             public static string TextCore(string value) => value;
-            """, annotateReceivers: false).Replace("NativeReceiverType = typeof(string)", "NativeReceiverType = typeof(string), NativeConstructor = nameof(CreateCore)", StringComparison.Ordinal);
+            """, annotateReceivers: false).Replace("NativeReceiver(typeof(string))", "NativeReceiver(typeof(string), Constructor = nameof(CreateCore))", StringComparison.Ordinal);
         var updated = RunCore(source, out var diagnostics);
         Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
         Assert.DoesNotContain(updated.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
@@ -93,8 +93,8 @@ public sealed class AuroraExportGeneratorDiagnosticTests
     [InlineData("CreateCore", "[Export(\"valueOf\")] public static string CreateCore(params ScriptDatum[] args) => \"\";")]
     public void PrimitiveFactoryRejectsInvalidContracts(string factory, string members)
     {
-        var source = ValueReceiverSource(members, annotateReceivers: false).Replace("NativeType(\"String\", NativeReceiverType = typeof(string))",
-            "NativeType(\"String\", NativeReceiverType = typeof(string), NativeConstructor = \"" + factory + "\")", StringComparison.Ordinal);
+        var source = ValueReceiverSource(members, annotateReceivers: false).Replace("NativeReceiver(typeof(string))",
+            "NativeReceiver(typeof(string), Constructor = \"" + factory + "\")", StringComparison.Ordinal);
         Assert.Contains(Run(source), diagnostic => diagnostic.Id == "AURORAEXP002");
     }
 
@@ -219,7 +219,8 @@ public sealed class AuroraExportGeneratorDiagnosticTests
         using AuroraScript.Runtime;
         using AuroraScript.Runtime.Types;
         namespace Test;
-        [NativeType("String", NativeReceiverType = typeof(string))]
+        [NativeType("String")]
+        [NativeReceiver(typeof(string))]
         public sealed partial class ValueMembers
         {
             {{(annotateReceivers ? members.Replace("[Export", "[ReceiverExport", StringComparison.Ordinal) : members)}}
@@ -229,10 +230,11 @@ public sealed class AuroraExportGeneratorDiagnosticTests
         """;
 
     [Theory]
+    [InlineData("bool", "BooleanValue", "Value")]
     [InlineData("double", "NumberValue", "DoubleValue")]
     [InlineData("long", "Int64Value", "Value")]
     [InlineData("ulong", "UInt64Value", "Value")]
-    public void NumericReceiverGeneratesDefaultAdapter(string receiver, string wrapper, string property)
+    public void PrimitiveReceiverGeneratesDefaultAdapter(string receiver, string wrapper, string property)
     {
         var source = ValueReceiverSource($$"""
             [Export("format")]
@@ -510,6 +512,8 @@ public sealed class AuroraExportGeneratorDiagnosticTests
 
                 [Export("COUNT")]
                 public static readonly double Count = 3;
+                [Export("ENABLED")]
+                public static readonly bool Enabled = true;
             }
             """,
             out var diagnostics);
@@ -528,8 +532,10 @@ public sealed class AuroraExportGeneratorDiagnosticTests
         Assert.Contains("internal static ScriptObject NativePrototype => NativePrototypeHolder.Value", generated);
         Assert.DoesNotContain("case \"value\":", generated);
         Assert.Contains("Define(\"COUNT\", ScriptDatum.FromNumber(Count)", generated);
+        Assert.Contains("Define(\"ENABLED\", ScriptDatum.FromBoolean(Enabled)", generated);
         Assert.Contains("AuroraGeneratedExportAttribute(\"Widget\", \"value\"", generated);
         Assert.Contains("AuroraGeneratedConstantAttribute(\"Widget\", \"COUNT\"", generated);
+        Assert.Contains("AuroraGeneratedConstantAttribute(\"Widget\", \"ENABLED\"", generated);
     }
 
     [Fact]
@@ -784,9 +790,67 @@ public sealed class AuroraExportGeneratorDiagnosticTests
         return diagnostics;
     }
 
+    [Fact]
+    public void ExternalHostCannotUseReceiverAttributes()
+    {
+        var updated = RunCore(ValueReceiverSource("""
+            [ReceiverExport("text")]
+            public static string TextCore(string value) => value;
+            """, annotateReceivers: false), out _, allowInternalReceivers: false);
+        var errors = updated.GetDiagnostics();
+        Assert.Contains(errors, d => d.Id == "CS0122" && d.GetMessage().Contains("NativeReceiver", StringComparison.Ordinal));
+        Assert.Contains(errors, d => d.Id == "CS0122" && d.GetMessage().Contains("ReceiverExport", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ConstructorCompatibilityAdapterUsesExistingExportAttribute()
+    {
+        var updated = RunCore("""
+            using System;
+            using AuroraScript.Hosting;
+            using AuroraScript.Runtime;
+            using AuroraScript.Runtime.Types;
+            namespace Test;
+            [NativeType("Custom")]
+            public sealed partial class Custom : ScriptObject {
+                [Export(DynamicAdapter = nameof(Create))]
+                private Custom() { }
+                private static void Create(ScriptContext ctx, ScriptObject self, Span<ScriptDatum> args, ref ScriptDatum result) {
+                    result = ScriptDatum.FromObject(new Custom());
+                }
+            }
+            """, out var diagnostics, allowInternalReceivers: false);
+        Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        Assert.DoesNotContain(updated.GetDiagnostics(), d => d.Severity == DiagnosticSeverity.Error);
+        var generated = string.Join(Environment.NewLine, updated.SyntaxTrees.Skip(1));
+        Assert.Contains("Create(ctx, this, args, ref result);", generated);
+        Assert.Contains("base(\"Custom\", false)", generated);
+    }
+
+    [Fact]
+    public void ClrGetterCanBeExportedWithoutAnExtraCoreWrapper()
+    {
+        var updated = RunCore("""
+            using AuroraScript.Hosting;
+            using AuroraScript.Runtime.Types;
+            namespace Test;
+            [NativeType("Meter")]
+            public sealed partial class Meter : ScriptObject {
+                public int Count { [Export("count", IsGetter = true)] get => 7; }
+            }
+            """, out var diagnostics, allowInternalReceivers: false);
+        Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        Assert.DoesNotContain(updated.GetDiagnostics(), d => d.Severity == DiagnosticSeverity.Error);
+        var generated = string.Join(Environment.NewLine, updated.SyntaxTrees.Skip(1));
+        Assert.Contains("self.@Count", generated);
+        Assert.Contains("\"get_Count\"", generated);
+        Assert.DoesNotContain("self.get_Count()", generated);
+    }
+
     private static Compilation RunCore(
         string source,
-        out ImmutableArray<Diagnostic> diagnostics)
+        out ImmutableArray<Diagnostic> diagnostics,
+        bool allowInternalReceivers = true)
     {
         var references = new List<MetadataReference>();
         var trustedAssemblies = (string?)AppContext.GetData(
@@ -799,8 +863,13 @@ public sealed class AuroraExportGeneratorDiagnosticTests
         references.Add(MetadataReference.CreateFromFile(
             typeof(ExportAttribute).Assembly.Location));
 
+        // Only primitive fixtures use the existing test friend assembly identity.
+        // Ordinary host fixtures must continue to compile without internal access.
+        var internalReceiver = allowInternalReceivers &&
+            (source.Contains("[NativeReceiver(", StringComparison.Ordinal) ||
+             source.Contains("[ReceiverExport(", StringComparison.Ordinal));
         var compilation = CSharpCompilation.Create(
-            "GeneratorDiagnostics",
+            internalReceiver ? "AuroraScript.Tests" : "GeneratorDiagnostics",
             [CSharpSyntaxTree.ParseText(source)],
             references.DistinctBy(reference => reference.Display),
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));

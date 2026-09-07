@@ -205,6 +205,8 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly ConstructorInfo ScriptArrayCapacity = Constructor(typeof(ScriptArray), typeof(int));
         public static readonly MethodInfo ScriptArrayCreateWithLength = StaticMethod(typeof(ScriptArray), nameof(ScriptArray.CreateWithLength), typeof(ScriptDatum));
         public static readonly MethodInfo ScriptArrayCreateEmptyWithCapacity = StaticMethod(typeof(ScriptArray), nameof(ScriptArray.CreateEmptyWithCapacity), typeof(ScriptDatum));
+        public static readonly MethodInfo ScriptArrayCreateEmptyWithCapacityInt32 = StaticMethod(typeof(ScriptArray), nameof(ScriptArray.CreateEmptyWithCapacity), typeof(int));
+        public static readonly MethodInfo ScriptArrayCreateEmptyWithCapacityNumber = StaticMethod(typeof(ScriptArray), nameof(ScriptArray.CreateEmptyWithCapacity), typeof(double));
         public static readonly MethodInfo ScriptArrayGetElement = InstanceMethod(typeof(ScriptArray), nameof(ScriptArray.GetElementValue), typeof(int));
         public static readonly MethodInfo ScriptArraySetElement = InstanceMethod(typeof(ScriptArray), nameof(ScriptArray.SetElementValue), typeof(int), typeof(ScriptDatum));
         public static readonly MethodInfo ScriptArrayPush = InstanceMethod(typeof(ScriptArray), nameof(ScriptArray.Push), typeof(ScriptDatum));

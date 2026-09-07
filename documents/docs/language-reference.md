@@ -634,6 +634,11 @@ Object values:
 
 Use `schema/runtime-api.json` for the complete machine-readable runtime API. Constructor globals expose structured signatures in their `constructors` arrays:
 
+Type objects require `new`, including Date, Array, Object and host NativeTypes.
+Only Number, Boolean and String also support direct conversion calls. Aliases and
+spread calls follow the same rule; explicit static methods such as Date.parse
+remain ordinary calls.
+
 - `new Array(capacity?: number): array`
 - `new String(value?: any): string` — same factory as `String(value)`; always a primitive string
 - `new Boolean(value?: any): boolean`

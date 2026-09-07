@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Text;
+using AuroraScript.Hosting;
 
 
 namespace AuroraScript.Runtime.Types
@@ -9,6 +10,7 @@ namespace AuroraScript.Runtime.Types
     /// Represents a high-performance string builder in AuroraScript.
     /// Wraps a <see cref="StringBuilder"/> to provide efficient string concatenation.
     /// </summary>
+    [NativeType("StringBuffer")]
     public sealed partial class StringBuffer : ScriptObject
     {
         private const int MaxPooledCapacity = 4096;
@@ -68,6 +70,7 @@ namespace AuroraScript.Runtime.Types
         /// <summary>
         /// Returns this instance to the pool.
         /// </summary>
+        [Export("release", DynamicAdapter = nameof(RELEASE))]
         public void Release()
         {
             if (_builder != null)
@@ -97,7 +100,8 @@ namespace AuroraScript.Runtime.Types
         /// <summary>
         /// Initializes a new instance of the <see cref="StringBuffer"/> class with an empty buffer.
         /// </summary>
-        public StringBuffer() : base(Prototypes.StringBufferPrototype)
+        [Export(DynamicAdapter = nameof(CREATE))]
+        public StringBuffer() : base(NativePrototype)
         {
             EnableValueEquality();
         }
@@ -106,7 +110,7 @@ namespace AuroraScript.Runtime.Types
         /// Initializes a new instance of the <see cref="StringBuffer"/> class with the specified initial value.
         /// </summary>
         /// <param name="initialValue">The initial string value to add to the buffer.</param>
-        public StringBuffer(String initialValue) : base(Prototypes.StringBufferPrototype)
+        public StringBuffer(String initialValue) : base(NativePrototype)
         {
             EnableValueEquality();
             _builder = Borrow(initialValue);
@@ -122,6 +126,7 @@ namespace AuroraScript.Runtime.Types
         /// Returns the complete string built by this buffer.
         /// </summary>
         /// <returns>The concatenated string.</returns>
+        [Export("toString", DynamicAdapter = nameof(TO_STRING))]
         public override string ToString()
         {
             return _builder?.ToString() ?? string.Empty;

@@ -1,11 +1,14 @@
 ﻿using System;
 
+using AuroraScript.Hosting;
+
 namespace AuroraScript.Runtime.Types
 {
     /// <summary>
     /// Represents a date and time object in AuroraScript.
     /// Wraps the CLI <see cref="DateTimeOffset"/> to provide time-related functionality.
     /// </summary>
+    [NativeType("Date")]
     public sealed partial class ScriptDate : ScriptObject
     {
         /// <summary> Gets the underlying <see cref="DateTimeOffset"/> value. </summary>
@@ -14,7 +17,7 @@ namespace AuroraScript.Runtime.Types
         /// <inheritdoc />
         protected internal override ScriptDatum TypeOfValue => TypeNames.Date;
 
-        private ScriptDate() : base(Prototypes.DatePrototype)
+        private ScriptDate() : base(NativePrototype)
         {
             EnableValueEquality();
         }
@@ -41,6 +44,7 @@ namespace AuroraScript.Runtime.Types
         /// Initializes a new instance of the <see cref="ScriptDate"/> class from UTC ticks.
         /// </summary>
         /// <param name="ticks">The number of ticks since 0001-01-01T00:00:00+00:00.</param>
+        [Export(DynamicAdapter = nameof(PARSE))]
         public ScriptDate(long ticks) : this()
         {
             this.DateTime = new DateTimeOffset(ticks, TimeSpan.Zero);

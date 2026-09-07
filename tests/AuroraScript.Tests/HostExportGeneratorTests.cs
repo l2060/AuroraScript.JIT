@@ -25,7 +25,7 @@ public sealed class HostExportGeneratorTests
         var attribute = typeof(StringValue).GetCustomAttribute<NativeTypeAttribute>();
         Assert.NotNull(attribute);
         Assert.Equal("String", attribute.TypeName);
-        Assert.Equal(typeof(string), attribute.NativeReceiverType);
+        Assert.Equal(typeof(string), typeof(StringValue).GetCustomAttribute<NativeReceiverAttribute>()!.ReceiverType);
 
         var catalog = new HostExportCatalog([]);
         Assert.True(catalog.TryGetNativeValue(FlowValueType.String, out var owner));

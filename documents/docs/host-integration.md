@@ -629,13 +629,53 @@ fail because those Types have no exported constructor.
 `Conv8` reads and writes scalars and UTF-8 text on a `UInt8Array` only. Multi-byte
 values take `littleEndian` (default `true`). There is no script `Encoding` global.
 
+### Engine-owned object exports
+
+`StringBuffer`, `HashMap`, `Regex`, `Date` and `Error` use `NativeType` and generated
+Type registration. Constructors use the existing `Export(DynamicAdapter = nameof(...))`
+option for compatibility parsing; no separate built-in marker is needed. An adapter
+receives the complete argument span and is never bypassed by direct CLR constructor
+emission. This option is also available to ordinary host NativeTypes.
+
+All type objects require `new`, except the built-in Number, Boolean and String
+conversion types. This includes Date, Array, Object, and user NativeTypes, even
+through aliases or spread calls. Explicit static methods such as Date.parse and
+Number.valueOf remain callable. Date remains frozen; the other four engine object
+Types retain their existing non-frozen state.
+
+Instance methods use `Export`; Date and HashMap getters stay on frozen prototypes,
+not newly introduced own properties. Built-in typeof identities, HashMap key
+enumeration, CLR fallback and value equality are unchanged. Error remains a
+non-sealed CLR class; its message is still a read-only enumerable own data property,
+and its constructor still captures the script call stack. No new Error prototype
+getter or wrapper object is introduced. Existing argument adapters retain missing,
+extra and weak-conversion behavior, including the historical Regex arity branches.
+
+### Array exports and specializations
+
+Array also uses NativeType registration and an Export constructor adapter. Its
+existing CLR length getter carries Export(IsGetter = true) on the getter accessor;
+the generator references that CLR getter directly, without a wrapper Core.
+Array's live prototype retains its existing length setter and member behavior.
+The compiler keeps index, push, constructor and loop specializations; known Int32
+and Number capacities use raw Core overloads, while weak/dynamic arguments share
+the canonical Datum conversion Core. Array's built-in native-function ABI is not
+changed into an ordinary host-object ABI by its NativeType metadata.
+
 ### Built-in primitive receivers
 
 The engine also uses the same `NativeType` generator and compiler catalog for
-immutable String members:
+immutable primitive members. The following annotations are engine-internal,
+not available to host extensions; host instance members use public `Export`:
+
+API compatibility: `NativeType.NativeReceiverType` and `NativeType.NativeConstructor`
+have been removed from the public attribute. Their configuration now belongs to
+internal `NativeReceiver`; `ReceiverExport` is internal as well. Ordinary host
+`[NativeType("Vec2")]` and `[Export]` declarations are unchanged.
 
 ```csharp
-[NativeType("String", NativeReceiverType = typeof(string))]
+[NativeType("String")]
+[NativeReceiver(typeof(string))]
 public sealed partial class StringValue
 {
     [ReceiverExport("trim")]
@@ -643,9 +683,9 @@ public sealed partial class StringValue
 }
 ```
 
-`NativeType.NativeReceiverType` supports engine-owned `string`, `double`,
-`long`, and `ulong` representations; it is not a host extension point for replacing
-their object wrappers. `ReceiverExport` visibly marks a static Core as a
+The internal `NativeReceiver` attribute supports engine-owned `string`, `bool`,
+`double`, `long`, and `ulong` representations; it is not a host extension point for replacing
+their object wrappers. The internal `ReceiverExport` marks a static Core as a
 primitive instance member; `Export` on a static member always belongs to the
 script type object. The first receiver Core argument (after an optional
 `ScriptContext`) is the raw CLR receiver, not a script argument. When instance
@@ -661,6 +701,15 @@ writer generate the dynamic entry point automatically. Set `IsGetter = true` for
 zero-argument, context-free read-only getter. An explicit `DynamicAdapter` names the
 callback used for dynamic calls and suppresses generation of a dynamic wrapper.
 Exact-arity overloads must share one explicit adapter.
+
+Boolean instance `toString` also uses `NativeReceiver(typeof(bool))` and
+`ReceiverExport`. Proven Boolean calls use the raw bool Core; dynamic calls keep
+the existing adapter, including its `"false"` result for invalid receivers.
+Boolean construction and `valueOf` use `NativeReceiver.Constructor = nameof(CreateCore)`
+and the existing generated Type registration. `BooleanValue.Register(Global)` replaces
+the handwritten BooleanConstructor. Its dynamic adapter preserves truthiness conversion,
+missing arguments, aliases and spreads. The generated `true`/`false` static constants
+remain Boolean values, read-only and non-enumerable; singleton values are unchanged.
 
 Method and constant exports default to non-writable and non-enumerable. Native
 instance fields retain their CLR defaults: mutable fields are writable and fields
@@ -697,10 +746,8 @@ Padding retains its historical first-UTF-16-code-unit rule and takes native `int
 String's construction and static surface use the same NativeType model as well:
 
 ```csharp
-[NativeType(
-    "String",
-    NativeReceiverType = typeof(string),
-    NativeConstructor = nameof(CreateCore))]
+[NativeType("String")]
+[NativeReceiver(typeof(string), Constructor = nameof(CreateCore))]
 public sealed partial class StringValue
 {
     [Export("valueOf", DynamicAdapter = nameof(CREATE))]
@@ -711,8 +758,8 @@ public sealed partial class StringValue
 
 `Export` on a static Core always exports to the Type object, while
 `ReceiverExport` identifies a static Core whose first business parameter is the
-declared native receiver. `NativeConstructor` names a static Type export whose CLR
-Core must return `NativeReceiverType`; both `String(...)` and `new String(...)` use it.
+declared native receiver. `NativeReceiver.Constructor` names a static Type export whose CLR
+Core must return the receiver type; both `String(...)` and `new String(...)` use it.
 Factory metadata points to the existing static export catalog; no separate factory
 registry is introduced. The generated type adapter handles dynamic construction,
 aliases and spreads, while proven calls use the raw CLR factory directly.
@@ -833,7 +880,7 @@ public void SetValueCore(double value) => _value = value;
 A getter takes no script parameters and returns the property value. A setter returns
 `void` and takes exactly one required script parameter. `IsGetter` and `IsSetter`
 cannot be combined on one method, and setters are not supported on immutable
-`NativeReceiverType` members. Proven native-instance reads and writes call the CLR
+internal `NativeReceiver` members. Proven native-instance reads and writes call the CLR
 Core methods directly; dynamic access uses the generated adapters without allocating
 an argument array.
 
@@ -933,7 +980,7 @@ The TDoc type-name prefix comes from `[NativeType]` through the engine catalog, 
 
 When flow analysis proves a local always holds one native object type, the compiler stores that local as the CLR type (`Vec2`) instead of `ScriptDatum`. Proven `new`, field reads/writes, `++`/`--`, compound assignments such as `+=`, and method calls bind to CLR constructors, fields, and methods (`newobj` / `ldfld` / `stfld` / `callvirt`) without boxing through `ScriptDatum`. Locals captured by closures, values reassigned to an unproven type, and receivers the compiler cannot prove (for example a function parameter) stay on the dynamic property protocol.
 
-Static `[Export]` methods and `public static readonly double` constants
+Static `[Export]` methods and `public static readonly double` or `bool` constants
 live on the generated Type (`Vec2.Type`), like JavaScript class statics.
 Instance members stay on native instances. A static factory returning `Vec2`
 preserves the concrete native type proof, so subsequent instance access can
@@ -982,7 +1029,7 @@ are allowed on Datum adapters only. An object-backed NativeType may put the broa
 behavior in an explicit `DynamicAdapter` while exporting a fixed, directly callable
 Core signature, as the variadic Path helpers do.
 
-Public static `readonly double` fields marked `[Export("PI")]` become script constants. Unshadowed reads emit `ldsfld`, not a boxed `ldc.r8`.
+Public static `readonly double` or `readonly bool` fields marked `[Export]` become script constants. Unshadowed reads emit `ldsfld` and preserve Number or Boolean identity, without boxing.
 
 `[AuroraParam(MatchLevel.Exact)]` or `Strict` tightens adapter coercion. `MatchFailure` controls adapter mismatch: `Default` infers NaN for numeric returns and null otherwise; `Throw` raises `AuroraRuntimeException`.
 

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using AuroraScript.Hosting;
 
 namespace AuroraScript.Runtime.Types
 {
@@ -8,6 +9,7 @@ namespace AuroraScript.Runtime.Types
     /// Represents a dynamic array in AuroraScript.
     /// Manages an internal buffer of <see cref="ScriptDatum"/> and provides methods for manipulation.
     /// </summary>
+    [NativeType("Array")]
     public sealed partial class ScriptArray : ScriptObject
     {
         internal ScriptDatum[] _items;
@@ -37,6 +39,7 @@ namespace AuroraScript.Runtime.Types
         /// Initializes a new <see cref="ScriptArray"/> with the specified initial capacity.
         /// </summary>
         /// <param name="capacity">The initial capacity of the array.</param>
+        [Export(DynamicAdapter = nameof(CREATE))]
         public ScriptArray(int capacity) : base(Prototypes.ScriptArrayPrototype)
         {
             if (capacity <= 0)
@@ -170,14 +173,19 @@ namespace AuroraScript.Runtime.Types
             return new ScriptArray(capacity);
         }
 
-        internal static ScriptArray CreateEmptyWithCapacity(ScriptDatum value)
+        internal static ScriptArray CreateEmptyWithCapacity(double value) =>
+            CreateEmptyWithCapacity(ClampCapacity((long)value));
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static int ClampCapacity(long requested) =>
+            requested <= 0 ? 0 : requested > int.MaxValue ? int.MaxValue : (int)requested;
+
+        /// <summary>Creates reserved array storage with the script's weak capacity conversions.</summary>
+        [Export("withCapacity", DynamicAdapter = nameof(WITH_CAPACITY))]
+        public static ScriptArray CreateEmptyWithCapacity(ScriptDatum value)
         {
-            var capacity = 0;
-            if (ScriptDatum.TryToInteger(in value, out var requested) && requested > 0)
-            {
-                capacity = requested > int.MaxValue ? int.MaxValue : (int)requested;
-            }
-            return CreateEmptyWithCapacity(capacity);
+            return CreateEmptyWithCapacity(ScriptDatum.TryToInteger(in value, out var requested)
+                ? ClampCapacity(requested) : 0);
         }
 
         /// <summary> Gets the element at the specified index. </summary>
@@ -431,6 +439,7 @@ namespace AuroraScript.Runtime.Types
         /// <summary> Gets the number of elements in the array. </summary>
         public int Length
         {
+            [Export("length", IsGetter = true)]
             get
             {
                 return _count;

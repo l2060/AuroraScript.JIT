@@ -62,6 +62,8 @@ namespace AuroraScript.Compiler.Backend.Code
             return hostExports != null &&
                 type != null &&
                 type.Qualifier == null &&
+                // Array keeps its established built-in ABI rather than becoming an ordinary host object.
+                type.Name != "Array" &&
                 hostExports.TryGetNativeObject(type.Name, out descriptor);
         }
 

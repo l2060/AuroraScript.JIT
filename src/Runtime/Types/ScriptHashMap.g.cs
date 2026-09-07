@@ -1,5 +1,7 @@
 ﻿using System;
 
+using AuroraScript.Hosting;
+
 namespace AuroraScript.Runtime.Types
 {
     /// <summary>
@@ -8,6 +10,29 @@ namespace AuroraScript.Runtime.Types
     /// </summary>
     public sealed partial class ScriptHashMap : ScriptObject
     {
+        internal static void CREATE(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            var capacity = args.Length > 0 && args[0].Kind == ValueKind.Number
+                ? Math.Max(0, (int)args[0].Number) : 0;
+            ScriptDatum.WriteAsObject(ref result, capacity > 0 ? new ScriptHashMap(capacity) : new ScriptHashMap());
+        }
+
+        /// <summary>Removes a key without returning the removed value to scripts.</summary>
+        [Export("delete", DynamicAdapter = nameof(DELETE))]
+        public void DeleteCore(ScriptDatum key) => Delete(key);
+
+        /// <summary>Preserves callback and default-value insertion semantics.</summary>
+        [Export("getOrInsert", DynamicAdapter = nameof(OGETORINSERT))]
+        public ScriptDatum GetOrInsertCore(ScriptContext ctx, ScriptDatum key, ScriptDatum value)
+        {
+            DatumBuffer2 args = default;
+            args[0] = key;
+            args[1] = value;
+            var result = default(ScriptDatum);
+            OGETORINSERT(ctx, this, args, ref result);
+            return result;
+        }
+
         /// <summary> Native implementation for HashMap.set(). </summary>
         internal static void SET(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
@@ -74,7 +99,7 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary> Native implementation for HashMap.keys(). Returns an array of keys. </summary>
-        internal static void KEYS(ScriptObject thisObject, ref ScriptDatum result)
+        internal static void KEYS(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             if (thisObject is ScriptHashMap hashMap)
             {
@@ -83,7 +108,7 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary> Native implementation for HashMap.values(). Returns an array of values. </summary>
-        internal static void VALUES(ScriptObject thisObject, ref ScriptDatum result)
+        internal static void VALUES(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             if (thisObject is ScriptHashMap hashMap)
             {
@@ -92,7 +117,7 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary> Native implementation for reading HashMap.size. </summary>
-        internal static void SIZE(ScriptObject thisObject, ref ScriptDatum result)
+        internal static void SIZE(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             if (thisObject is ScriptHashMap hashMap)
             {

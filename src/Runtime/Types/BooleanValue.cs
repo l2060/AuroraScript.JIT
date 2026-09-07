@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Runtime.CompilerServices;
+using AuroraScript.Hosting;
 
 namespace AuroraScript.Runtime.Types
 {
@@ -7,7 +8,9 @@ namespace AuroraScript.Runtime.Types
     /// Represents a boolean value in AuroraScript.
     /// This is an immutable object wrapping a CLI <see cref="bool"/>.
     /// </summary>
-    public sealed class BooleanValue : ScriptImmutable
+    [NativeType("Boolean")]
+    [NativeReceiver(typeof(bool), Constructor = nameof(CreateCore))]
+    public sealed partial class BooleanValue : ScriptImmutable
     {
         /// <summary> The singleton instance representing the 'true' value. </summary>
         public readonly static BooleanValue True = new BooleanValue(true, 1, new StringValue("true"));
@@ -27,16 +30,18 @@ namespace AuroraScript.Runtime.Types
         /// <inheritdoc />
         protected internal override ScriptDatum TypeOfValue => TypeNames.Boolean;
 
-        private BooleanValue(bool val, int intVal, StringValue valueString) : base(Prototypes.BooleanValuePrototype)
+        private BooleanValue(bool val, int intVal, StringValue valueString) : base(NativePrototype)
         {
             Value = val;
             IntValue = intVal;
             StrValue = valueString;
         }
 
-        /// <summary>
-        /// Native implementation for the 'toString' method.
-        /// </summary>
+        /// <summary>Formats a primitive boolean without allocating an object wrapper.</summary>
+        [ReceiverExport("toString", DynamicAdapter = nameof(TOSTRING))]
+        public static string FormatString(bool value) => value ? "true" : "false";
+
+        /// <summary>Dynamic adapter preserving the legacy invalid-receiver behavior.</summary>
         internal new static void TOSTRING(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             if (thisObject is BooleanValue boolean)

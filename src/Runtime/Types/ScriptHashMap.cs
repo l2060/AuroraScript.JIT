@@ -1,40 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
+using AuroraScript.Hosting;
 
 namespace AuroraScript.Runtime.Types
 {
     /// <summary>
-    /// Represents the native 'HashMap' constructor function in AuroraScript.
-    /// Used for creating high-performance concurrent hash map objects.
-    /// </summary>
-    internal class ScriptHashMapConstructor : ScriptType
-    {
-        /// <summary> The global singleton instance of the HashMap constructor. </summary>
-        internal readonly static ScriptHashMapConstructor INSTANCE = new ScriptHashMapConstructor();
-
-        internal ScriptHashMapConstructor() : base("HashMap")
-        {
-
-        }
-
-        /// <summary> Constructs a new <see cref="ScriptHashMap"/> instance. </summary>
-        public override void Construct(ScriptContext ctx, Span<ScriptDatum> args, ref ScriptDatum result)
-        {
-            var capacity = 0;
-            if (args.Length > 0 && args[0].Kind == ValueKind.Number)
-            {
-                capacity = Math.Max(0, (int)args[0].Number);
-            }
-
-            ScriptHashMap proxy = capacity > 0 ? new ScriptHashMap(capacity) : new ScriptHashMap();
-            ScriptDatum.WriteAsObject(ref result, proxy);
-        }
-    }
-
-    /// <summary>
     /// Represents a high-performance hash map in AuroraScript.
     /// Wraps a <see cref="Dictionary{TKey,TValue}"/> to provide low-overhead key-value storage.
     /// </summary>
+    [NativeType("HashMap")]
     public sealed partial class ScriptHashMap : ScriptObject
     {
         private readonly Dictionary<ScriptDatum, ScriptDatum> keyValues;
@@ -46,24 +20,27 @@ namespace AuroraScript.Runtime.Types
         internal Dictionary<ScriptDatum, ScriptDatum> Entries => keyValues;
 
         /// <summary> Initializes a new instance of the <see cref="ScriptHashMap"/> class. </summary>
-        public ScriptHashMap() : base(Prototypes.HashMapPrototype)
+        [Export(DynamicAdapter = nameof(CREATE))]
+        public ScriptHashMap() : base(NativePrototype)
         {
             keyValues = new Dictionary<ScriptDatum, ScriptDatum>(ScriptDatumStrictComparer.Instance);
         }
 
         /// <summary> Initializes a new instance with the specified initial capacity. </summary>
-        public ScriptHashMap(int capacity) : base(Prototypes.HashMapPrototype)
+        public ScriptHashMap(int capacity) : base(NativePrototype)
         {
             keyValues = new Dictionary<ScriptDatum, ScriptDatum>(Math.Max(0, capacity), ScriptDatumStrictComparer.Instance);
         }
 
         /// <summary> Adds or updates a value in the hash map. </summary>
+        [Export("set", DynamicAdapter = nameof(SET))]
         public void Put(ScriptDatum key, ScriptDatum value)
         {
             keyValues[key] = value;
         }
 
         /// <summary> Gets a value from the hash map. Returns <see cref="ScriptDatum.Null"/> if not found. </summary>
+        [Export("get", DynamicAdapter = nameof(GET))]
         public ScriptDatum Get(ScriptDatum key)
         {
             if (keyValues.TryGetValue(key, out var value))
@@ -99,6 +76,7 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary> Checks if the hash map contains the specified key. </summary>
+        [Export("has", DynamicAdapter = nameof(HAS))]
         public bool Has(ScriptDatum key)
         {
             return keyValues.ContainsKey(key);
@@ -127,7 +105,9 @@ namespace AuroraScript.Runtime.Types
             return values;
         }
 
-        internal ScriptArray ValuesArray()
+        /// <summary>Copies values into a script array.</summary>
+        [Export("values", IsGetter = true, DynamicAdapter = nameof(VALUES))]
+        public ScriptArray ValuesArray()
         {
             var array = ScriptArray.CreateWithCapacity(keyValues.Count);
             var index = 0;
@@ -151,7 +131,9 @@ namespace AuroraScript.Runtime.Types
             return keys;
         }
 
-        internal ScriptArray KeysArray()
+        /// <summary>Copies keys into a script array.</summary>
+        [Export("keys", IsGetter = true, DynamicAdapter = nameof(KEYS))]
+        public ScriptArray KeysArray()
         {
             var array = ScriptArray.CreateWithCapacity(keyValues.Count);
             var index = 0;
@@ -163,12 +145,14 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary> Returns the number of elements in the hash map. </summary>
+        [Export("size", IsGetter = true, DynamicAdapter = nameof(SIZE))]
         public int Length()
         {
             return keyValues.Count;
         }
 
         /// <summary> Clears all elements from the hash map. </summary>
+        [Export("clear", DynamicAdapter = nameof(CLEAR))]
         public void Clear()
         {
             keyValues.Clear();

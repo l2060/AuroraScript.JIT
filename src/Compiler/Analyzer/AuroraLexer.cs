@@ -196,12 +196,17 @@ namespace AuroraScript.Compiler.Analyzer
         }
 
         public AuroraLexer(String baseDirectory, ScriptSource source)
+            : this(baseDirectory, source, source.ReadSource())
+        {
+        }
+
+        internal AuroraLexer(String baseDirectory, ScriptSource source, String sourceText)
         {
             this.BaseDirectory = ScriptPath.NormalizeBaseDirectory(baseDirectory);
             this.SourceReference = new ScriptSourceReference(source.BaseDirectory, source.FullPath, source.SourcePath);
             this.FullPath = source.FullPath;
             this.FileName = ScriptPath.GetFileName(source.FullPath);
-            this.InputData = source.ReadSource();
+            this.InputData = sourceText;
             this.bufferLength = this.InputData.Length;
             this.tokens = new LexTokenBuffer(GetTokenChunkSize(this.bufferLength));
             this.ParseTokens();

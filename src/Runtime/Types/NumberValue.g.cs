@@ -12,7 +12,8 @@ namespace AuroraScript.Runtime.Types
     /// Partial implementation of <see cref="NumberValue"/> providing constants and native method implementations.
     /// This fragment handles specialized numeric operations and string conversions.
     /// </summary>
-    [NativeType("Number", NativeReceiverType = typeof(double), NativeConstructor = nameof(CreateCore))]
+    [NativeType("Number")]
+    [NativeReceiver(typeof(double), Constructor = nameof(CreateCore))]
     public partial class NumberValue
     {
 

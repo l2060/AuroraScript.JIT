@@ -6,8 +6,8 @@ Object {
 	names ['bolon', 'holl', 'frol'], // this type is ScriptArray
 	HashMap map [['a', 100000], ['b', 200000]],
 	Vec2 vec {x 1000, y 2000, ext ['this', 'extend', 'members', 3000], o { k 1.1, p 2.2, i 3.3 } }, // native type
-	numbers { 
-		 INT_64 {  Int64 min -9223372036854775808, Int64 max 9223372036854775807 },
-	    UINT_64 { UInt64 min 0,                 UInt64 max 18446744073709551615 }
+	numbers {
+		INT_64 {  Int64 min -9223372036854775808, Int64 max 9223372036854775807 },
+		UINT_64 { UInt64 min 0, UInt64 max 18446744073709551615 }
 	}
 }

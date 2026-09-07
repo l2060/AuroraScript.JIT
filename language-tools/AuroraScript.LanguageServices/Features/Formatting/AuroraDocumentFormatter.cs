@@ -1,5 +1,6 @@
 using AuroraScript.Compiler;
 using AuroraScript.Compiler.Syntax;
+using AuroraScript.LanguageServices.Parsing;
 using AuroraScript.LanguageServices.Text;
 using System;
 using System.Collections.Generic;
@@ -52,6 +53,9 @@ internal static class AuroraDocumentFormatter
         List<FormatToken> tokens)
     {
         var scanner = new AuroraSyntaxScanner(sourceText, sourceName);
+        var documentRoot = AuroraParseService.IsTypedDocumentPath(sourceName);
+        var contexts = new Stack<(bool IsDocument, int ClosingSymbol)>();
+        var previousDollar = false;
         while (scanner.TryRead(out var element))
         {
             if (element.IsToken)
@@ -71,12 +75,46 @@ internal static class AuroraDocumentFormatter
                     MarkProtectedLines(protectedLines, token.StartLine + 1, token.EndLine);
                 }
 
+                var hasContext = contexts.TryPeek(out var context);
+                var inDocument = hasContext ? context.IsDocument : documentRoot;
                 tokens.Add(new FormatToken(
                     token.StartLine - 1,
                     token.Offset,
                     token.Length,
                     token.Kind,
-                    token.SymbolId));
+                    token.SymbolId,
+                    inDocument && token.SymbolId == Symbols.OP_SUBTRACT.Id));
+
+                // An inline TDoc ends after its scalar or outer container. Interpolation
+                // temporarily restores script spacing, including nested expressions.
+                if (!inDocument && token.SymbolId == Symbols.KW_TDOC.Id)
+                {
+                    contexts.Push((true, -1));
+                }
+                else if (IsOpeningSymbol(token.SymbolId))
+                {
+                    if (hasContext && context.ClosingSymbol == -1) contexts.Pop();
+                    if (inDocument || contexts.Count > 0)
+                    {
+                        var interpolation = previousDollar && token.SymbolId == Symbols.PT_LEFTPARENTHESIS.Id;
+                        var closing = token.SymbolId == Symbols.PT_LEFTBRACE.Id ? Symbols.PT_RIGHTBRACE.Id
+                            : token.SymbolId == Symbols.PT_LEFTBRACKET.Id ? Symbols.PT_RIGHTBRACKET.Id
+                            : Symbols.PT_RIGHTPARENTHESIS.Id;
+                        contexts.Push((inDocument && !interpolation, closing));
+                    }
+                }
+                else if (hasContext && IsClosingSymbol(token.SymbolId) && token.SymbolId == context.ClosingSymbol)
+                {
+                    contexts.Pop();
+                }
+                else if (hasContext && context.ClosingSymbol == -1 &&
+                    token.Kind is SyntaxTokenKind.Number or SyntaxTokenKind.String or
+                        SyntaxTokenKind.StringBlock or SyntaxTokenKind.Boolean or SyntaxTokenKind.Null)
+                {
+                    contexts.Pop();
+                }
+                previousDollar = token.Kind == SyntaxTokenKind.Identifier &&
+                    token.Length == 1 && sourceText[token.Offset] == '$';
             }
             else if (element.Trivia.Kind == SyntaxTriviaKind.BlockComment &&
                 element.Trivia.EndLine > element.Trivia.StartLine)
@@ -404,6 +442,10 @@ internal static class AuroraDocumentFormatter
         out bool requiredSpace)
     {
         requiredSpace = false;
+        if (previous.IsDocumentNumberSign && current.Kind == SyntaxTokenKind.Number)
+        {
+            return true;
+        }
         if (previous.SymbolId == Symbols.PT_DOT.Id ||
             current.SymbolId == Symbols.PT_DOT.Id)
         {
@@ -644,7 +686,8 @@ internal static class AuroraDocumentFormatter
         int Offset,
         int Length,
         SyntaxTokenKind Kind,
-        int SymbolId)
+        int SymbolId,
+        bool IsDocumentNumberSign)
     {
         public int EndOffset => Offset + Length;
     }

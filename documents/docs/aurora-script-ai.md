@@ -284,6 +284,7 @@ Constructor signatures are also available in `schema/runtime-api.json` under eac
 - `new Object(prototype?: object): object`
 - `new Number(value?: any): number`
 - `new Date(value: number|string): date`; use `Date.now()` or `Date.utcNow()` for the current time.
+- Type objects require `new`, including Date, Array, Object and host NativeTypes; only Number, Boolean and String allow direct conversion calls. Aliases and spreads do not bypass this rule. Static methods such as Date.parse remain callable.
 - `new Error(message: string): Error`
 - `new HashMap(capacity?: number): HashMap`
 - `new Regex(pattern: string|Regex, flags?: string): Regex`

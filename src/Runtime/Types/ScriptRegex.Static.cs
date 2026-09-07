@@ -1,27 +1,19 @@
 ﻿using AuroraScript.Runtime.Pool;
 using System;
 
-namespace AuroraScript.Runtime.Types.TypeConstruct
+namespace AuroraScript.Runtime.Types
 {
     /// <summary>
     /// Represents the native 'Regex' constructor function in AuroraScript.
     /// Used for creating regular expression objects from patterns and flags.
     /// </summary>
-    internal class ScriptRegexConstructor : ScriptType
+    public sealed partial class ScriptRegex
     {
-        /// <summary> The global singleton instance of the Regex constructor. </summary>
-        internal static ScriptRegexConstructor INSTANCE = new ScriptRegexConstructor();
-
-        internal ScriptRegexConstructor() : base("Regex")
-        {
-
-        }
-
         /// <summary>
         /// Native implementation for constructing a new Regex object.
         /// Handles pattern strings and optional flags.
         /// </summary>
-        public override void Construct(ScriptContext ctx, Span<ScriptDatum> args, ref ScriptDatum result)
+        internal static void CREATE(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             if (args.Length == 0)
             {

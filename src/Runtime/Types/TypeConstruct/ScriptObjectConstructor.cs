@@ -12,7 +12,7 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
         /// <summary> The global singleton instance of the Object constructor. </summary>
         internal static ScriptObjectConstructor INSTANCE = new ScriptObjectConstructor();
 
-        internal ScriptObjectConstructor() : base("Object", true)
+        internal ScriptObjectConstructor() : base("Object")
         {
             // strict equal
             Define("equal$", ScriptDatum.FromBonding(STRICT_EQUAL), writeable: false, enumerable: false);

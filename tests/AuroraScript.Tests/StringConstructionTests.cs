@@ -139,7 +139,7 @@ public sealed class StringConstructionTests
         ScriptAssert.Equal(new object[] { "", "", "", "", 1, "42", "true", "null", "A", "a", "b" }, TestWorkspace.Execute(domain, "shapes"));
         ScriptAssert.Equal(new object[] { "a", "a", "a", 0, "vevevevve" }, TestWorkspace.Execute(domain, "order"));
         var fake = ScriptDatum.FromObject(new CustomType());
-        ScriptAssert.Equal("custom", TestWorkspace.Execute(domain, "shadow", arguments: [fake]));
+        Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, "shadow", arguments: [fake]));
         ScriptAssert.Equal("custom", TestWorkspace.Execute(domain, "shadowNew", arguments: [fake]));
 #if NET9_0_OR_GREATER
         if (mode == CompilationMode.Persistence)

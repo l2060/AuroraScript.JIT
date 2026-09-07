@@ -67,7 +67,7 @@ export function createTimer(callback, interval = 521) {
 	timeCount++;
 	timers.push(timer);
 	console.log(timer);
-	return Object(timer);
+	return new Object(timer);
 }
 
 func Buy(count = 1) {

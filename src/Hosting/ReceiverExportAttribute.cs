@@ -2,9 +2,9 @@ using System;
 
 namespace AuroraScript.Hosting
 {
-    /// <summary>Exports a static Core method as an instance member of a NativeReceiverType.</summary>
+    /// <summary>Exports a static Core method as an instance member of an engine-owned primitive.</summary>
     [AttributeUsage(AttributeTargets.Method, Inherited = false, AllowMultiple = false)]
-    public sealed class ReceiverExportAttribute : Attribute
+    internal sealed class ReceiverExportAttribute : Attribute
     {
         /// <summary>Marks a native receiver Core method.</summary>
         public ReceiverExportAttribute(string scriptName) : this(scriptName, MatchFailure.Default)

@@ -10,8 +10,6 @@ namespace AuroraScript.Runtime.Types
     {
         /// <summary> The base prototype for all objects. </summary>
         public static readonly ScriptObject ObjectPrototype = new ScriptObject(null);
-        /// <summary> The prototype for boolean primitive values. </summary>
-        public static readonly ScriptObject BooleanValuePrototype = new ScriptObject(ObjectPrototype);
         /// <summary> The prototype for callable objects (functions). </summary>
         public static readonly ScriptObject CallablePrototype = new ScriptObject(Prototypes.ObjectPrototype);
         /// <summary> The prototype for null values. </summary>
@@ -20,14 +18,6 @@ namespace AuroraScript.Runtime.Types
         public static readonly ScriptObject ScriptArrayPrototype = new ScriptObject(Prototypes.ObjectPrototype);
         /// <summary> The shared prototype for fixed-length primitive arrays. </summary>
         public static readonly ScriptObject ScriptPackedArrayPrototype = new ScriptObject(Prototypes.ObjectPrototype);
-        /// <summary> The prototype for regular expression objects. </summary>
-        public static readonly ScriptObject RegexPrototype = new ScriptObject(Prototypes.ObjectPrototype);
-        /// <summary> The prototype for date objects. </summary>
-        public static readonly ScriptObject DatePrototype = new ScriptObject(Prototypes.ObjectPrototype);
-        /// <summary> The prototype for hash map objects. </summary>
-        public static readonly ScriptObject HashMapPrototype = new ScriptObject(Prototypes.ObjectPrototype);
-        /// <summary> The prototype for hash StringBuffer objects. </summary>
-        public static readonly ScriptObject StringBufferPrototype = new ScriptObject(Prototypes.ObjectPrototype);
         /// <summary>
         /// Forces pre-loading of prototypes.
         /// </summary>
@@ -41,40 +31,6 @@ namespace AuroraScript.Runtime.Types
             ObjectPrototype.Define("toString", ScriptDatum.FromBonding(ScriptObject.TOSTRING), writeable: false, enumerable: false);
             ObjectPrototype.Define("length", ScriptDatum.FromBondingGetter(ScriptObject.LENGTH), writeable: false, enumerable: false);
             ObjectPrototype.Frozen();
-
-            // --- Boolean ---
-            BooleanValuePrototype.Define("toString", ScriptDatum.FromBonding(BooleanValue.TOSTRING), writeable: false, enumerable: false);
-            BooleanValuePrototype.Frozen();
-
-            // --- Regex ---
-            RegexPrototype.Define("test", ScriptDatum.FromBonding(ScriptRegex.TEST), writeable: false, enumerable: false);
-            RegexPrototype.Frozen();
-
-            // --- HashMap ---
-            HashMapPrototype.Define("has", ScriptDatum.FromBonding(ScriptHashMap.HAS), writeable: false, enumerable: false);
-            HashMapPrototype.Define("set", ScriptDatum.FromBonding(ScriptHashMap.SET), writeable: false, enumerable: false);
-            HashMapPrototype.Define("get", ScriptDatum.FromBonding(ScriptHashMap.GET), writeable: false, enumerable: false);
-            HashMapPrototype.Define("getOrInsert", ScriptDatum.FromBonding(ScriptHashMap.OGETORINSERT), writeable: false, enumerable: false);
-            HashMapPrototype.Define("delete", ScriptDatum.FromBonding(ScriptHashMap.DELETE), writeable: false, enumerable: false);
-            HashMapPrototype.Define("clear", ScriptDatum.FromBonding(ScriptHashMap.CLEAR), writeable: false, enumerable: false);
-            HashMapPrototype.Define("keys", ScriptDatum.FromBondingGetter(ScriptHashMap.KEYS), writeable: false, enumerable: false);
-            HashMapPrototype.Define("values", ScriptDatum.FromBondingGetter(ScriptHashMap.VALUES), writeable: false, enumerable: false);
-            HashMapPrototype.Define("size", ScriptDatum.FromBondingGetter(ScriptHashMap.SIZE), writeable: false, enumerable: false);
-            HashMapPrototype.Frozen();
-
-            // --- DATE ---
-            DatePrototype.Define("year", ScriptDatum.FromBondingGetter(ScriptDate.YEAR), writeable: false, enumerable: false);
-            DatePrototype.Define("month", ScriptDatum.FromBondingGetter(ScriptDate.MONTH), writeable: false, enumerable: false);
-            DatePrototype.Define("day", ScriptDatum.FromBondingGetter(ScriptDate.DAY), writeable: false, enumerable: false);
-            DatePrototype.Define("hour", ScriptDatum.FromBondingGetter(ScriptDate.HOUR), writeable: false, enumerable: false);
-            DatePrototype.Define("minute", ScriptDatum.FromBondingGetter(ScriptDate.MINUTE), writeable: false, enumerable: false);
-            DatePrototype.Define("second", ScriptDatum.FromBondingGetter(ScriptDate.SECOND), writeable: false, enumerable: false);
-            DatePrototype.Define("millisecond", ScriptDatum.FromBondingGetter(ScriptDate.MILLISECCOND), writeable: false, enumerable: false);
-            DatePrototype.Define("dayOfWeek", ScriptDatum.FromBondingGetter(ScriptDate.DAYOFWEEK), writeable: false, enumerable: false);
-            DatePrototype.Define("dayOfYear", ScriptDatum.FromBondingGetter(ScriptDate.DAYOFYEAR), writeable: false, enumerable: false);
-            DatePrototype.Define("ticks", ScriptDatum.FromBondingGetter(ScriptDate.TICKS), writeable: false, enumerable: false);
-            DatePrototype.Define("toString", ScriptDatum.FromBonding(ScriptDateConstructor.TOSTRING), writeable: false, enumerable: false);
-            DatePrototype.Frozen();
 
             // --- Callable ---
             CallablePrototype.Frozen();
@@ -114,15 +70,6 @@ namespace AuroraScript.Runtime.Types
             ScriptPackedArrayPrototype.Define("fill", ScriptDatum.FromBonding(ScriptPackedArray.FILL), writeable: false, enumerable: false);
             ScriptPackedArrayPrototype.Frozen();
 
-            // --- StringBuffer ---
-            StringBufferPrototype.Define("toString", ScriptDatum.FromBonding(StringBuffer.TO_STRING), writeable: false, enumerable: false);
-            StringBufferPrototype.Define("append", ScriptDatum.FromBonding(StringBuffer.APPEND), writeable: false, enumerable: false);
-            StringBufferPrototype.Define("insert", ScriptDatum.FromBonding(StringBuffer.INSERT), writeable: false, enumerable: false);
-            StringBufferPrototype.Define("appendLine", ScriptDatum.FromBonding(StringBuffer.APPEND_LINE), writeable: false, enumerable: false);
-            StringBufferPrototype.Define("clear", ScriptDatum.FromBonding(StringBuffer.CLEAR), writeable: false, enumerable: false);
-            StringBufferPrototype.Define("release", ScriptDatum.FromBonding(StringBuffer.RELEASE), writeable: false, enumerable: false);
-            StringBufferPrototype.Define("stringAndRelease", ScriptDatum.FromBonding(StringBuffer.STRINGANDRELEASE), writeable: false, enumerable: false);
-            StringBufferPrototype.Frozen();
         }
     }
 }

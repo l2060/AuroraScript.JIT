@@ -36,9 +36,10 @@ namespace AuroraScript.Hosting
         /// <summary>Failure behavior for generated Datum adapters on dynamic call sites.</summary>
         public MatchFailure Failure { get; set; } = MatchFailure.Default;
 
-        /// <summary>Optional existing dynamic adapter for an exported instance or static member. When omitted,
+        /// <summary>Optional existing dynamic adapter for an exported instance/static member or constructor. When omitted,
         /// the generator creates the adapter using the usual parameter coercion and failure rules.
-        /// Overloads require an explicit shared compatibility adapter.</summary>
+        /// Overloads require an explicit shared compatibility adapter. Constructor adapters receive the full argument
+        /// span; those constructors are not bypassed by direct CLR constructor emission.</summary>
         public string DynamicAdapter { get; set; }
 
         /// <summary>Exports a zero-argument instance Core method as a property getter.</summary>

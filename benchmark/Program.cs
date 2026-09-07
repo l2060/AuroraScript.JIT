@@ -13,6 +13,22 @@ namespace AuroraBenchmark
     {
         private static async Task Main(string[] args)
         {
+            if (args.Length == 3 && args[0] == "--array-ab")
+            {
+                ArrayBenchmarkComparison.CompareCompiled(args[1], args[2]);
+                return;
+            }
+            if (args.Contains("--array-compare"))
+            {
+                await ArrayBenchmarkComparison.RunAsync();
+                return;
+            }
+            if (args.Length == 2 && args[0] == "--profile-examples")
+            {
+                await ExampleCompilationProfile.RunAsync(args[1]);
+                return;
+            }
+
             if (args.Any(arg => string.Equals(arg, "--string-smoke", StringComparison.OrdinalIgnoreCase)))
             {
                 var strings = new StringBenchmarks();
@@ -38,7 +54,7 @@ namespace AuroraBenchmark
                 return;
             }
 
-            BenchmarkSwitcher.FromTypes(new[] { typeof(RuntimeBenchmarks), typeof(CompilerPipelineBenchmarks), typeof(TypedDocumentBenchmarks), typeof(StringBenchmarks) }).Run(args);
+            BenchmarkSwitcher.FromTypes(new[] { typeof(RuntimeBenchmarks), typeof(CompilerPipelineBenchmarks), typeof(TypedDocumentBenchmarks), typeof(StringBenchmarks), typeof(ArrayBenchmarks) }).Run(args);
         }
 
         private static async Task SmokeTest()

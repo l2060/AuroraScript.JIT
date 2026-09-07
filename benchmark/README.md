@@ -1,3 +1,56 @@
+# Array native benchmarks
+
+```powershell
+dotnet build benchmark/Benchmark.csproj -c Release
+dotnet benchmark/bin/Release/net10.0/Benchmark.dll --array-compare
+dotnet benchmark/bin/Release/net10.0/Benchmark.dll --filter '*ArrayBenchmarks*' --inProcess --affinity 1 --warmupCount 6 --iterationCount 10 --iterationTime 300
+```
+
+Setup validates results before measurement and writes `array-bench.dll` in the
+benchmark output directory. Each invocation performs 2,048 script operations;
+inputs and reusable arrays are prepared outside measurement. Creation benchmarks
+necessarily allocate arrays. The quick probe warms for two seconds before sampling.
+Do not run measurements alongside builds or tests.
+
+For compiler-only paired comparisons on one runtime:
+
+```powershell
+dotnet benchmark/bin/Release/net10.0/Benchmark.dll --array-ab BASELINE/array-bench.dll OPTIMIZED/array-bench.dll
+```
+
+This loads both already-compiled workloads, validates them, warms both for three
+seconds, and alternates 15 samples on the same thread (CPU 0 on Windows). It isolates
+emitted-code differences; it does not compare two different runtime implementations.
+Use separate binary snapshots with in-process BenchmarkDotNet for runtime A/B tests,
+so BenchmarkDotNet does not rebuild an old snapshot against current sources.
+
+See [array-optimization-results.md](array-optimization-results.md) for retained
+changes, measurements and limitations.
+
+# Compiler build benchmarks
+
+```powershell
+dotnet build examples/Examples.csproj -c Release
+dotnet examples/bin/Release/net10.0/Examples.dll --compile-benchmark
+dotnet build benchmark/Benchmark.csproj -c Release
+dotnet benchmark/bin/Release/net10.0/Benchmark.dll --profile-examples examples/bin/Release/net10.0/Examples.dll
+```
+
+The example probe retains its normal Persistence configuration, including PE
+serialization, writing `123.dll` in the working directory, and assembly loading.
+It skips script execution. Run 0 measures the first build after engine setup;
+runs 8-15 provide warmed full builds, not incremental or cached compilations.
+Allocation totals include all compiler worker threads. Run separate processes
+for cold samples and avoid simultaneous builds, tests, or example executions.
+
+The diagnostic probe separates source discovery, parsing/linking, binding/plans,
+and per-module type analysis. It does not emit code or measure the full build;
+its phase timings must not be added to end-to-end measurements. It reads the
+example host configuration and redirects its file/memory overlay to the supplied
+assembly's `tests` directory.
+
+See [compilation-results.md](compilation-results.md) for the optimization results.
+
 # String / numeric formatting benchmarks
 
 Run from the repository root, in Release mode:
@@ -105,8 +158,8 @@ These short-probe medians are not statistical speedup guarantees.
 ## Final factory and receiver update
 
 The two construction workloads bring the suite to 20 cases. String construction
-and static members use NativeType; `NativeReceiverType` declares primitive storage
-and `ReceiverExport` identifies static Core methods exposed on primitive instances. The wrapper pool
+and static members use NativeType; internal `NativeReceiver` declares primitive storage
+and internal `ReceiverExport` identifies static Core methods exposed on primitive instances. The wrapper pool
 and its configuration/API have been removed. Native construction reuses the raw
 string; unknown receivers still permit dynamic dispatch and wrapper allocation.
 Consequently, the earlier dynamic allocation snapshots above predate pool removal.

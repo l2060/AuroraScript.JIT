@@ -1129,6 +1129,14 @@ namespace AuroraScript.Compiler.Backend.Emission
                 _il.Emit(
                     OpCodes.Ldarg,
                     parameterIndex + (_function.IsNativeDeclared ? 1 : 0));
+                var storageType = _locals[slot.Id.Value].LocalType;
+                if (GetNativeParameterType(_directParameterTypes[parameterIndex]) == typeof(ScriptDatum) &&
+                    typeof(ScriptObject).IsAssignableFrom(storageType))
+                {
+                    // The mixed ABI carries object parameters as Datum, even when the local has a proven CLR type.
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumToObject);
+                    _il.Emit(OpCodes.Castclass, storageType);
+                }
                 EmitStoreLocalFromStack(slot.Id);
                 parameterIndex++;
             }
@@ -1286,15 +1294,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     EmitVariable(variable);
                     return;
                 case ExpressionStatement expression:
-                    if (expression.Expression != null)
-                    {
-                        if (TryEmitVoidCallStatement(expression.Expression))
-                        {
-                            return;
-                        }
-                        var kind = EmitExpression(expression.Expression);
-                        _il.Emit(OpCodes.Pop);
-                    }
+                    EmitExpressionDiscarded(expression.Expression);
                     return;
                 case ReturnStatement @return:
                     EmitReturnValue(@return.Expression);
@@ -1781,8 +1781,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
             else if (statement.Initializer is Expression initializerExpression)
             {
-                EmitExpression(initializerExpression);
-                _il.Emit(OpCodes.Pop);
+                EmitExpressionDiscarded(initializerExpression);
             }
 
             var countedBound = TryHoistCountedLoopBound(statement, out var counter);
@@ -1813,8 +1812,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 _il.MarkLabel(incrementLabel);
                 if (statement.Incrementor != null)
                 {
-                    EmitExpression(statement.Incrementor);
-                    _il.Emit(OpCodes.Pop);
+                    EmitExpressionDiscarded(statement.Incrementor);
                 }
                 _il.Emit(OpCodes.Br, conditionLabel);
                 _il.MarkLabel(endLabel);
@@ -2042,7 +2040,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             throw new NotSupportedException("Typed delete target.");
         }
 
-        private StackValueKind EmitExpression(Expression expression)
+        private StackValueKind EmitExpression(Expression expression, bool materializeVoid = true)
         {
             switch (expression)
             {
@@ -2065,10 +2063,10 @@ namespace AuroraScript.Compiler.Backend.Emission
                 case FunctionCallExpression call:
                     if (TryGetImportedNativeCall(call, out var imported))
                     {
-                        return EmitImportedNativeCall(call, imported);
+                        return EmitImportedNativeCall(call, imported, materializeVoid);
                     }
-                    if (TryGetDirectCall(call, out _)) return EmitDirectCall(call);
-                    return EmitCall(call);
+                    if (TryGetDirectCall(call, out _)) return EmitDirectCall(call, materializeVoid);
+                    return EmitCall(call, materializeVoid);
                 case GetPropertyExpression property:
                     return EmitGetProperty(property);
                 case SetPropertyExpression property:
@@ -2099,10 +2097,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                     }
                     for (var i = 0; i < group.Expressions.Count - 1; i++)
                     {
-                        EmitExpression(group.Expressions[i]);
-                        _il.Emit(OpCodes.Pop);
+                        EmitExpressionDiscarded(group.Expressions[i]);
                     }
-                    return EmitExpression(group.Expressions[^1]);
+                    return EmitExpression(group.Expressions[^1], materializeVoid);
                 default:
                     throw new NotSupportedException("Typed expression: " + expression.GetType().Name);
             }
@@ -2320,13 +2317,6 @@ namespace AuroraScript.Compiler.Backend.Emission
                 throw new NotSupportedException("Dynamic dot-property name.");
             }
             var receiverType = _code.GetExpressionType(expression.Object);
-            if (receiverType == FlowValueType.Array &&
-                StringComparer.Ordinal.Equals(name, "length"))
-            {
-                EmitArrayReference(expression.Object);
-                _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptArrayLength);
-                return StackValueKind.Int32;
-            }
             if (FlowValueTypeFacts.IsPackedArray(receiverType) &&
                 StringComparer.Ordinal.Equals(name, "length"))
             {
@@ -2342,9 +2332,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                 _il.Emit(OpCodes.Call, stringMember.Method);
                 return GetNativeStackKind(stringMember.ReturnKind);
             }
-            if (TryEmitHostExportConstant(expression.Object, name))
+            if (TryEmitHostExportConstant(expression.Object, name, out var constantKind))
             {
-                return StackValueKind.Number;
+                return constantKind;
             }
             if (TryGetNativeField(expression.Object, name, out var nativeOwner, out var nativeField))
             {
@@ -3622,26 +3612,10 @@ namespace AuroraScript.Compiler.Backend.Emission
             else EmitDatum(expression);
         }
 
-        private bool TryEmitVoidCallStatement(Expression expression)
+        private void EmitExpressionDiscarded(Expression expression)
         {
-            if (expression is not FunctionCallExpression call)
-            {
-                return false;
-            }
-            if (TryGetImportedNativeCall(call, out var imported) &&
-                TypeReferenceFacts.IsVoid(imported.Declaration.ReturnType))
-            {
-                EmitImportedNativeCall(call, imported, materializeVoid: false);
-                return true;
-            }
-            if (TryGetDirectCall(call, out var function) &&
-                _directMethods[function.Value].ReturnKind ==
-                    StackValueKind.Void)
-            {
-                EmitDirectCall(call, materializeVoid: false);
-                return true;
-            }
-            return false;
+            if (expression != null && EmitExpression(expression, materializeVoid: false) != StackValueKind.Void)
+                _il.Emit(OpCodes.Pop);
         }
 
         private StackValueKind EmitDirectCall(
@@ -3695,8 +3669,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             // though the statically bound callee does not receive them.
             for (var i = parameterCount; i < argumentCount; i++)
             {
-                EmitExpression(call.Arguments[i]);
-                _il.Emit(OpCodes.Pop);
+                EmitExpressionDiscarded(call.Arguments[i]);
             }
 
             _il.Emit(OpCodes.Call, prepared.Method);
@@ -3795,8 +3768,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 i < call.Arguments.Count;
                 i++)
             {
-                EmitExpression(call.Arguments[i]);
-                _il.Emit(OpCodes.Pop);
+                EmitExpressionDiscarded(call.Arguments[i]);
             }
 
             _il.Emit(OpCodes.Call, target.NativeEntryMethod);
@@ -3985,9 +3957,9 @@ namespace AuroraScript.Compiler.Backend.Emission
             return hasSpread || call.Arguments.Count > 2;
         }
 
-        private StackValueKind EmitCall(FunctionCallExpression call)
+        private StackValueKind EmitCall(FunctionCallExpression call, bool materializeVoid = true)
         {
-            if (TryGetValueFactoryCall(call, out var factory)) return EmitHostExportCall(call, null, factory);
+            if (TryGetValueFactoryCall(call, out var factory)) return EmitHostExportCall(call, null, factory, materializeVoid);
             if (TryEmitArrayFactoryCall(call, out var arrayFactoryResult))
             {
                 return arrayFactoryResult;
@@ -3995,7 +3967,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             if (call.Target is GetPropertyExpression property &&
                 TryGetStaticPropertyName(property.Property, out var name))
             {
-                return EmitPropertyCall(call, property.Object, name);
+                return EmitPropertyCall(call, property.Object, name, materializeVoid);
             }
 
             var hasSpread = HasSpread(call.Arguments);
@@ -4030,7 +4002,8 @@ namespace AuroraScript.Compiler.Backend.Emission
         private StackValueKind EmitPropertyCall(
             FunctionCallExpression call,
             Expression receiver,
-            string name)
+            string name,
+            bool materializeVoid = true)
         {
             if (TryGetNativeMethodCall(
                     call,
@@ -4039,7 +4012,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     out var nativeOwner,
                     out var nativeMethod))
             {
-                return EmitNativeMethodCall(call, receiver, nativeOwner, nativeMethod);
+                return EmitNativeMethodCall(call, receiver, nativeOwner, nativeMethod, materializeVoid);
             }
 
             if (TryGetHostExportCall(
@@ -4048,7 +4021,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     name,
                     out var hostExport))
             {
-                return EmitHostExportCall(call, receiver, hostExport);
+                return EmitHostExportCall(call, receiver, hostExport, materializeVoid);
             }
 
             if (_code.GetExpressionType(receiver) == FlowValueType.Array &&
@@ -4068,7 +4041,11 @@ namespace AuroraScript.Compiler.Backend.Emission
                     EmitHostExportArgument(call.Arguments[i], valueBinding.ParameterKinds[i], valueBinding.GetScriptParameterType(i));
                 }
                 _il.Emit(OpCodes.Call, valueBinding.Method);
-                if (valueBinding.ReturnKind == AuroraExportValueKind.Void) EmitNull();
+                if (valueBinding.ReturnKind == AuroraExportValueKind.Void)
+                {
+                    if (!materializeVoid) return StackValueKind.Void;
+                    EmitNull();
+                }
                 return GetNativeStackKind(valueBinding.ReturnKind);
             }
 
@@ -4106,6 +4083,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         private void EmitNativeValueReceiver(Expression expression, Type receiverType)
         {
             if (receiverType == typeof(string)) EmitString(expression);
+            else if (receiverType == typeof(bool)) EmitCondition(expression);
             else if (receiverType == typeof(double)) EmitNumber(expression);
             else if (receiverType == typeof(int)) EmitInt32Value(expression);
             else if (receiverType == typeof(uint)) EmitUInt32Value(expression);
@@ -4114,8 +4092,9 @@ namespace AuroraScript.Compiler.Backend.Emission
             else throw new InvalidOperationException($"Unsupported native value receiver '{receiverType}'.");
         }
 
-        private bool TryEmitHostExportConstant(Expression receiver, string memberName)
+        private bool TryEmitHostExportConstant(Expression receiver, string memberName, out StackValueKind kind)
         {
+            kind = default;
             if (receiver is not NameExpression global)
             {
                 return false;
@@ -4136,14 +4115,16 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
 
             _il.Emit(OpCodes.Ldsfld, field);
+            kind = field.FieldType == typeof(bool) ? StackValueKind.Boolean : StackValueKind.Number;
             return true;
         }
 
-        private bool TryGetValueFactoryCall(FunctionCallExpression call, out HostExportDescriptor factory)
+        private bool TryGetValueFactoryCall(FunctionCallExpression call, out HostExportDescriptor factory, bool constructing = false)
         {
             factory = null;
             return call?.Target is NameExpression name && _code.GetName(name).IsUnshadowedGlobal &&
                 _session.CompileSession.HostExports.TryGetValueFactory(_code.GetName(name).Name, out factory) &&
+                (constructing || ScriptType.IsPrimitiveConversion(factory.Method.DeclaringType)) &&
                 (!factory.TakesContext || HasContextArgument) &&
                 CanBindNativeArguments(call, factory.ParameterKinds, factory.RequiredScriptParameterCount,
                     factory.Method.GetParameters(), factory.TakesContext ? 1 : 0,
@@ -4213,7 +4194,8 @@ namespace AuroraScript.Compiler.Backend.Emission
         private StackValueKind EmitHostExportCall(
             FunctionCallExpression call,
             Expression receiver,
-            HostExportDescriptor descriptor)
+            HostExportDescriptor descriptor,
+            bool materializeVoid = true)
         {
             if (descriptor.TakesContext)
             {
@@ -4254,13 +4236,13 @@ namespace AuroraScript.Compiler.Backend.Emission
                 i < call.Arguments.Count;
                 i++)
             {
-                EmitExpression(call.Arguments[i]);
-                _il.Emit(OpCodes.Pop);
+                EmitExpressionDiscarded(call.Arguments[i]);
             }
 
             _il.Emit(OpCodes.Call, descriptor.Method);
             if (descriptor.ReturnKind == AuroraExportValueKind.Void)
             {
+                if (!materializeVoid) return StackValueKind.Void;
                 EmitNull();
                 return StackValueKind.Datum;
             }
@@ -4272,7 +4254,8 @@ namespace AuroraScript.Compiler.Backend.Emission
                 AuroraExportValueKind.UInt64 => StackValueKind.UInt64,
                 AuroraExportValueKind.Boolean => StackValueKind.Boolean,
                 AuroraExportValueKind.String => StackValueKind.String,
-                AuroraExportValueKind.Object => StackValueKind.Object,
+                AuroraExportValueKind.Object => descriptor.Method.ReturnType == typeof(ScriptArray)
+                    ? StackValueKind.Array : StackValueKind.Object,
                 AuroraExportValueKind.Datum => StackValueKind.Datum,
                 _ => throw new NotSupportedException(
                     "Unsupported generated host export return type.")
@@ -4422,6 +4405,32 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return false;
             }
 
+            if (call.Arguments.Count == 0)
+            {
+                EmitInt32(0);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ScriptArrayCreateEmptyWithCapacityInt32);
+                result = StackValueKind.Array;
+                return true;
+            }
+            var capacityType = _code.GetExpressionType(call.Arguments[0]);
+            if (capacityType is FlowValueType.Int32 or FlowValueType.Number)
+            {
+                if (capacityType == FlowValueType.Int32) EmitInt32Value(call.Arguments[0]);
+                else EmitNumber(call.Arguments[0]);
+                if (call.Arguments.Count > 1)
+                {
+                    var nativeCapacity = DeclareLocal(capacityType == FlowValueType.Int32 ? typeof(int) : typeof(double));
+                    _il.Emit(OpCodes.Stloc, nativeCapacity);
+                    for (var i = 1; i < call.Arguments.Count; i++) EmitExpressionDiscarded(call.Arguments[i]);
+                    _il.Emit(OpCodes.Ldloc, nativeCapacity);
+                }
+                _il.Emit(OpCodes.Call, capacityType == FlowValueType.Int32
+                    ? TypedRuntimeMetadata.ScriptArrayCreateEmptyWithCapacityInt32
+                    : TypedRuntimeMetadata.ScriptArrayCreateEmptyWithCapacityNumber);
+                result = StackValueKind.Array;
+                return true;
+            }
+
             LocalBuilder capacity = null;
             if (call.Arguments.Count > 0)
             {
@@ -4431,8 +4440,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
             for (var i = 1; i < call.Arguments.Count; i++)
             {
-                EmitExpression(call.Arguments[i]);
-                _il.Emit(OpCodes.Pop);
+                EmitExpressionDiscarded(call.Arguments[i]);
             }
 
             if (capacity == null) EmitNull();
@@ -4504,7 +4512,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         private StackValueKind EmitNew(NewExpression expression)
         {
             var call = expression.Expression;
-            if (TryGetValueFactoryCall(call, out var factory)) return EmitHostExportCall(call, null, factory);
+            if (TryGetValueFactoryCall(call, out var factory, constructing: true)) return EmitHostExportCall(call, null, factory);
             var resultType = _code.GetExpressionType(expression);
             if (TryGetNativeConstruction(expression, out var nativeObject))
             {
@@ -4551,8 +4559,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 {
                     for (var i = 0; i < call.Arguments.Count; i++)
                     {
-                        EmitExpression(call.Arguments[i]);
-                        _il.Emit(OpCodes.Pop);
+                        EmitExpressionDiscarded(call.Arguments[i]);
                     }
                     EmitInt32(0);
                     _il.Emit(OpCodes.Newobj, TypedRuntimeMetadata.ScriptArrayCapacity);
@@ -4605,8 +4612,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return;
             }
 
-            EmitExpression(expression);
-            _il.Emit(OpCodes.Pop);
+            EmitExpressionDiscarded(expression);
             EmitNull();
         }
 
@@ -4615,8 +4621,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             if (_directMode &&
                 FlowValueTypeFacts.IsPackedArray(_code.GetExpressionType(expression)))
             {
-                EmitExpression(expression);
-                _il.Emit(OpCodes.Pop);
+                EmitExpressionDiscarded(expression);
                 EmitNull();
                 return;
             }

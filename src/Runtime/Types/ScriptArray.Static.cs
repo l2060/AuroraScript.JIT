@@ -1,29 +1,37 @@
 ﻿using System;
 
-namespace AuroraScript.Runtime.Types.TypeConstruct
+using AuroraScript.Hosting;
+
+namespace AuroraScript.Runtime.Types
 {
     /// <summary>
     /// Represents the native 'Array' constructor function in AuroraScript.
     /// Provides static methods like Array.from(), Array.of(), and Array.isArray().
     /// </summary>
-    internal class ArrayConstructor : ScriptType
+    public sealed partial class ScriptArray
     {
-        /// <summary> The global singleton instance of the Array constructor. </summary>
-        internal readonly static ArrayConstructor INSTANCE = new ArrayConstructor();
-
-        internal ArrayConstructor() : base("Array", true)
+        /// <summary>Copies an iterable using the existing callback contract.</summary>
+        [Export("from", DynamicAdapter = nameof(FROM))]
+        public static ScriptDatum FromCore(ScriptContext ctx, ScriptDatum value, ScriptDatum callback)
         {
-            Define("from", ScriptDatum.FromBonding(FROM), writeable: false, enumerable: false);
-            Define("isArray", ScriptDatum.FromBonding(IS_ARRAY), writeable: false, enumerable: false);
-            Define("of", ScriptDatum.FromBonding(OF), writeable: false, enumerable: false);
-            Define("withCapacity", ScriptDatum.FromBonding(WITH_CAPACITY), writeable: false, enumerable: false);
-            Frozen();
+            DatumBuffer2 args = default;
+            args[0] = value;
+            args[1] = callback;
+            var result = default(ScriptDatum);
+            FROM(ctx, null, args, ref result);
+            return result;
         }
 
+        /// <summary>Creates an array containing the supplied values.</summary>
+        [Export("of", DynamicAdapter = nameof(OF))]
+        public static ScriptArray OfCore(params ScriptDatum[] values) =>
+            values == null || values.Length == 0 ? new ScriptArray() : new ScriptArray(values);
 
+        /// <summary>Checks the array storage tag.</summary>
+        [Export("isArray", DynamicAdapter = nameof(IS_ARRAY))]
+        public static bool IsArrayCore(ScriptDatum value) => value.Kind == ValueKind.Array;
 
-
-        public override void Construct(ScriptContext ctx, Span<ScriptDatum> args, ref ScriptDatum result)
+        internal static void CREATE(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             var capacity = 0;
             if (args.Length == 1)
@@ -86,12 +94,8 @@ namespace AuroraScript.Runtime.Types.TypeConstruct
         /// <summary> Native implementation for Array.withCapacity(). Creates an empty array with reserved storage. </summary>
         internal static void WITH_CAPACITY(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
-            var capacity = 0;
-            if (args.TryGetInteger(0, out var value) && value > 0)
-            {
-                capacity = value > int.MaxValue ? int.MaxValue : (int)value;
-            }
-            ScriptDatum.WriteAsArray(ref result, ScriptArray.CreateEmptyWithCapacity(capacity));
+            ScriptDatum.WriteAsArray(ref result, args.Length == 0
+                ? CreateEmptyWithCapacity(0) : CreateEmptyWithCapacity(args[0]));
         }
 
         /// <summary> Native implementation for Array.isArray(). Checks if the provided value is an array. </summary>

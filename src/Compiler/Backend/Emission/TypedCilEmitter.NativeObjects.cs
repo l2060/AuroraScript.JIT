@@ -1,6 +1,7 @@
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Backend.Code;
 using AuroraScript.Hosting;
+using AuroraScript.Runtime.Types;
 using System;
 using System.Reflection.Emit;
 
@@ -81,6 +82,8 @@ namespace AuroraScript.Compiler.Backend.Emission
             out HostNativeMethodDescriptor getter)
         {
             owner = _code.GetNativeObjectType(receiver);
+            if (owner == null && _code.GetExpressionType(receiver) == FlowValueType.Array)
+                _session.CompileSession.HostExports.TryGetNativeObject(typeof(ScriptArray), out owner);
             if (owner == null || !owner.TryGetGetter(memberName, out getter) ||
                 getter.TakesContext && !HasContextArgument)
             {
@@ -192,6 +195,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             HostNativeObjectDescriptor descriptor)
         {
             var kind = EmitExpression(expression);
+            if (kind == StackValueKind.Array && descriptor.ClrType == typeof(ScriptArray)) return;
             if (kind == StackValueKind.Object &&
                 ReferenceEquals(_code.GetNativeObjectType(expression), descriptor))
             {
@@ -449,7 +453,8 @@ namespace AuroraScript.Compiler.Backend.Emission
             FunctionCallExpression call,
             Expression receiver,
             HostNativeObjectDescriptor owner,
-            HostNativeMethodDescriptor method)
+            HostNativeMethodDescriptor method,
+            bool materializeVoid = true)
         {
             EmitNativeReceiver(receiver, owner);
             if (method.TakesContext)
@@ -466,6 +471,7 @@ namespace AuroraScript.Compiler.Backend.Emission
 
             if (method.ReturnKind == AuroraExportValueKind.Void)
             {
+                if (!materializeVoid) return StackValueKind.Void;
                 EmitNull();
                 return StackValueKind.Datum;
             }
@@ -514,8 +520,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             // Script calls evaluate surplus arguments before invoking the target.
             for (var i = parameterKinds.Length; i < call.Arguments.Count; i++)
             {
-                EmitExpression(call.Arguments[i]);
-                _il.Emit(OpCodes.Pop);
+                EmitExpressionDiscarded(call.Arguments[i]);
             }
         }
 
