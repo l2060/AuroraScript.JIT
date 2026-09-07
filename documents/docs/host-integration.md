@@ -28,7 +28,7 @@ var engine = new AuroraEngine(options);
 
 ### Opt-In Native Packages
 
-Native packages are import-only capabilities selected by the host. They are not builtins and are not registered on the script global. `EngineOptions.Default.Packages` is empty, so file-system or HTTP access is unavailable unless the host enables it:
+Extension packages are import-only capabilities selected by the host. They are not builtins and are not registered on the script global. `EngineOptions.Default.Packages` is empty, so file-system or HTTP access is unavailable unless the host enables it:
 
 ```csharp
 using AuroraScript.Core;
@@ -46,7 +46,7 @@ Scripts can then import the selected module by its bare path:
 import fs from "fs";
 ```
 
-Bare `"fs"` resolves to the enabled native package before the project resolver. Relative paths such as `"./fs"` and `"../fs"` continue to use the project resolver. Packages are dependency-only sources and are not returned by `BuildAsync()` source enumeration.
+Bare `"fs"` resolves to the enabled extension package before the project resolver. Relative paths such as `"./fs"` and `"../fs"` continue to use the project resolver. Packages are dependency-only sources and are not returned by `BuildAsync()` source enumeration.
 
 Each engine and script domain receives its own module instance. Selecting a package for one engine does not make it available to another engine. Package selections must be finalized before constructing `AuroraEngine` so compiler resolution, Host Core direct calls, and runtime registration stay consistent. `WithNativeTypes(typeof(FileSystemSupport))` and `AddNativeType<FileSystemSupport>()` are rejected; enable packages only with `WithPackages`. Custom packages can also be added with `packages.Add<T>()` when `T` is a generated `[NativePackage]` type.
 
@@ -550,9 +550,9 @@ declare type Vec2 {
 
 Use `ScriptDatum` when you need exact runtime values and minimum conversion overhead. `ValueKind` is the storage tag: packed arrays, `StringBuffer`, `Path`, and `HashMap` stay `ValueKind.Object`. Call `ScriptDatum.TypeOf` or `GetTypeName` for the script `typeof` string (`"Int8Array"`, `"StringBuffer"`, and so on).
 
-## Native Host Exports
+## Script Native Types
 
-Use `[NativeType]` when a host global should be a script Type with typed
+Use `[NativeType]` when a script global should be a native Type with typed
 static members and optional native instances. Referencing the
 `AuroraScript.JIT` package (or the `AuroraScript` project in this repo) brings
 in the hosting source generator automatically. The analyzer turns

@@ -125,7 +125,7 @@
         "Packages": {
           "kind": "property",
           "signature": "IReadOnlyList<NativePackageDefinition> Packages",
-          "summary": "Native packages explicitly enabled for this engine. Empty by default. Packages are importable and are not registered on the script global."
+          "summary": "Extension packages explicitly enabled for this engine. Empty by default. Packages are importable and are not registered on the script global."
         },
         "WithCompiler": {
           "kind": "method",
@@ -146,7 +146,7 @@
         "WithPackages": {
           "kind": "method",
           "signature": "EngineOptions WithPackages(Action<NativePackagesBuilder> configure)",
-          "summary": "Returns a new immutable options snapshot with native package selections applied."
+          "summary": "Returns a new immutable options snapshot with extension package selections applied."
         }
       }
     },

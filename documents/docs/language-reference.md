@@ -74,7 +74,7 @@ export func current() UserState {
 }
 ```
 
-A typed context is loaded once at the start of each function that uses it (`ldfld UserState` plus one `castclass`), then native field and method access applies. An untyped context stays dynamic. Host NativeType names are valid function return contracts. An `export native func player() UserState` entry returns the CLR `UserState` instance on the `$native` path; proven call sites invoke members without wrapping through `ScriptDatum`. Context names cannot be exported. A parameter or local of the same name shadows the context. The type listed after `as` must be a `[NativeType]` selected with `WithNativeTypes`, `AddNativeType`, or `AddNativeTypes`.
+A typed context is loaded once at the start of each function that uses it (`ldfld UserState` plus one `castclass`), then native field and method access applies. An untyped context stays dynamic. Script NativeType names are valid function return contracts. An `export native func player() UserState` entry returns the CLR `UserState` instance on the `$native` path; proven call sites invoke members without wrapping through `ScriptDatum`. Context names cannot be exported. A parameter or local of the same name shadows the context. The type listed after `as` must be a `[NativeType]` selected with `WithNativeTypes`, `AddNativeType`, or `AddNativeTypes`.
 
 ### 4. Declare variables and constants
 
@@ -571,7 +571,7 @@ func createProfile(user) {
 
 The `tdoc` prefix is valid only in script expressions. It accepts optional explicit type names, `readonly` object members, arrays, objects, scalars (`null` / boolean / number / string), and `$(expression)` in value positions. Property names and type names are static. Standalone `.tdoc` documents start directly with the root value and do not allow the prefix or interpolation. Use `TDoc.parse` and `TDoc.stringify` to convert between text and runtime values.
 
-Host NativeTypes participate when the CLR class implements `INativeTypedDocument` and is selected with `WithNativeTypes`, `AddNativeType`, or `AddNativeTypes`. Then `tdoc Vec2 { x 3, y 4 }`, `tdoc Vec2 [3, 4]`, and `tdoc Flag false` construct the native instance directly. `WriteTypedDocument` chooses the canonical stored shape (object members, array elements, or a scalar null/boolean/number/string); deserialize and literals accept the shapes that type implements.
+Script NativeTypes participate when the CLR class implements `INativeTypedDocument` and is selected with `WithNativeTypes`, `AddNativeType`, or `AddNativeTypes`. Then `tdoc Vec2 { x 3, y 4 }`, `tdoc Vec2 [3, 4]`, and `tdoc Flag false` construct the native instance directly. `WriteTypedDocument` chooses the canonical stored shape (object members, array elements, or a scalar null/boolean/number/string); deserialize and literals accept the shapes that type implements.
 
 Lambdas:
 
@@ -627,7 +627,7 @@ Object values:
 - string buffer (`typeof` → `"StringBuffer"`)
 - path (`typeof` → `"Path"`)
 - packed arrays (`typeof` → `"Int8Array"`, `"UInt8Array"`, `"Int16Array"`, `"UInt16Array"`, `"Int32Array"`, `"UInt32Array"`, `"Int64Array"`, `"UInt64Array"`, `"Float32Array"`, `"Float64Array"`, `"BooleanArray"`)
-- infrastructure and host NativeTypes (`typeof` → `"type"`): `Math`, `JSON`, `TDoc`, `console`, `Conv8`, `HotPatch`, and types selected with `WithNativeTypes` / `AddNativeType` / `AddNativeTypes`
+- infrastructure and script NativeTypes (`typeof` → `"type"`): `Math`, `JSON`, `TDoc`, `console`, `Conv8`, `HotPatch`, and types selected with `WithNativeTypes` / `AddNativeType` / `AddNativeTypes`
 - CLR interop objects exposed by the host
 
 ## Runtime Constructors

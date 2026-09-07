@@ -101,7 +101,7 @@ the dynamic adapter.
 A module-level `context player as Vec2;` is the same proof for
 `ScriptContext.UserState`. Each used context name is loaded once per function
 into its own typed local. Several names in one function are independent caches
-of that same instance. Host NativeType names are valid function return
+of that same instance. Script NativeType names are valid function return
 contracts. A native function declared `Vec2` (or another NativeType) returns
 that CLR type from `$native`; proven callees call members directly. Only the
 `$typed` shell boxes into `ScriptDatum`. The host must pass a matching

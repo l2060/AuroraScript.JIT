@@ -188,7 +188,7 @@
           "Every path parameter accepts string or Path. File-system failures are reported as AuroraRuntimeException values."
         ],
         "zh-CN": [
-          "通过 `import fs from \"fs\";` 导入的可选原生文件系统模块。",
+          "通过 `import fs from \"fs\";` 导入的可选文件系统扩展包。",
           "所有路径参数均支持 string 或 Path；文件系统失败统一报告为 AuroraRuntimeException。"
         ]
       }
@@ -419,7 +419,7 @@
           "Responses are fully buffered. Redirects and common decompression are automatic, and cookies are not retained."
         ],
         "zh-CN": [
-          "通过 `import http from \"http\";` 导入的可选原生 HTTP 客户端模块。",
+          "通过 `import http from \"http\";` 导入的可选 HTTP 客户端扩展包。",
           "HttpRequestOptions 支持 headers、body、contentType，以及以毫秒为单位的正整数 timeout。",
           "HttpResponse 包含 status、statusText、ok、url、小写键 headers、body、text 和 bytes。HTTP 错误状态码仍是正常响应；仅传输、超时和响应读取失败进入错误流程。",
           "响应会被完整缓冲；自动处理重定向和常见解压，且不会保留 Cookie。"
@@ -1837,7 +1837,7 @@
           "TDoc 类型文档解析与序列化 API。",
           "脚本原生字面量使用独立的 `tdoc [TypeName] value` 表达式语法；独立 .tdoc 文档省略此前缀。",
           "`tdoc Int64` 与 `tdoc UInt64` 保存精确 64 位整数。无类型数值 token 是 Number，因此要保留超过安全整数范围的值必须写这些类型名。",
-          "parse/stringify 由生成的宿主原生导出实现；stringify 可选参数默认 indented=false、emitTypes=false。"
+          "parse/stringify 由生成的脚本原生类型实现；stringify 可选参数默认 indented=false、emitTypes=false。"
         ]
       }
     },
@@ -1880,7 +1880,7 @@
         ],
         "zh-CN": [
           "进程内单调时钟。typeof Env 为 \"type\"；new Env() 失败。",
-          "由生成的宿主原生导出实现。未遮蔽的 ticks() 可走 Int64 Core 直调。"
+          "由生成的脚本原生类型实现。未遮蔽的 ticks() 可走 Int64 Core 直调。"
         ]
       }
     },
@@ -2232,7 +2232,7 @@
         ],
         "zh-CN": [
           "数学常量和数值函数。",
-          "由生成的宿主原生导出实现。未遮蔽的常量读取和固定参数调用可走 Core 直调；可变参数的 max/min 走 Datum 适配器。"
+          "由生成的脚本原生类型实现。未遮蔽的常量读取和固定参数调用可走 Core 直调；可变参数的 max/min 走 Datum 适配器。"
         ]
       }
     },

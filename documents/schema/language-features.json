@@ -209,7 +209,7 @@
         "Returns an interned type-name string.",
         "Primitives and privileged kinds use lowercase names: null, boolean, number, string, object, array, date, regex, function, type, error, clr:function, clr:bonding.",
         "Native objects stored as ValueKind.Object report constructor names: Int8Array, UInt8Array, Int16Array, UInt16Array, Int32Array, UInt32Array, Int64Array, UInt64Array, Float32Array, Float64Array, BooleanArray, StringBuffer, HashMap, Path.",
-        "Infrastructure NativeTypes (Math, JSON, TDoc, console, Conv8, HotPatch) and host NativeTypes report \"type\".",
+        "Infrastructure NativeTypes (Math, JSON, TDoc, console, Conv8, HotPatch) and script NativeTypes report \"type\".",
         "Do not add ValueKind members for new native types; override ScriptObject.TypeOfValue instead.",
         "check TypeName value is a separate exact runtime assertion used by the typed backend."
       ]
@@ -223,7 +223,7 @@
         "Object members use optional readonly and type-name prefixes followed by a static property name and value.",
         "Only value positions accept $(expression); property names and type names are static.",
         "Standalone .tdoc documents omit the tdoc prefix and do not allow interpolation.",
-        "Host NativeTypes listed with WithNativeTypes, AddNativeType, or AddNativeTypes that implement INativeTypedDocument can be used as TypeName; the engine constructs the native ScriptObject directly.",
+        "Script NativeTypes listed with WithNativeTypes, AddNativeType, or AddNativeTypes that implement INativeTypedDocument can be used as TypeName; the engine constructs the native ScriptObject directly.",
         "INativeTypedDocument.WriteTypedDocument chooses an object body (WriteMember), an array body (WriteElement), or a scalar body (WriteValue for null, boolean, number, or string). INativeTypedDocument.ReadTypedDocument reads those shapes through TypedDocumentInput.",
         "Dynamic ScriptObject properties are excluded unless that NativeType opts in with WriteDynamicMembers and DefineDynamicMember; those helpers require an object body."
       ]

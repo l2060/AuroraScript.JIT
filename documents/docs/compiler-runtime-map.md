@@ -49,7 +49,7 @@ Use this map when changing language behavior.
 - NativeType source generator: `language-tools/AuroraScript.Hosting.Generators/AuroraNativeObjectGenerator.cs`
 - Host export attributes: `src/Hosting` (`NativeTypeAttribute`, `ExportAttribute`, `ReceiverExportAttribute`, `NativePackageAttribute`)
 - NativeType / NativePackage validation: `src/Hosting/NativeExportType.cs`
-- Opt-in native packages (`fs`, `http`): `src/Core/NativePackages.cs`, `src/Core/NativePackageRegistry.cs`, `src/Source/NativePackageScriptSourceResolver.cs`
+- Opt-in extension packages (`fs`, `http`): `src/Core/NativePackages.cs`, `src/Core/NativePackageRegistry.cs`, `src/Source/NativePackageScriptSourceResolver.cs`
 - Compiler native-type catalog: `src/Compiler/Backend/HostExportCatalog.cs`; application types come from `CompilerOptions.NativeTypes` (`AddNativeType` / `WithNativeTypes` / `ClearNativeTypes`)
 - Hot-patch graph and path matching: `src/Compiler/IncrementalCompiler.cs`, `src/Compiler/Backend/Emission/HotPatchEmitter.cs`
 
@@ -69,6 +69,6 @@ Use this map when changing language behavior.
 - Native-object direct calls and CLR locals: `tests/AuroraScript.Tests/NativeObjectDirectCallTests.cs`
 - Primitive string catalog and native returns: `tests/AuroraScript.Tests/StringOptimizationTests.cs`
 - Number / int64 / uint64 `toString` formatting: `tests/AuroraScript.Tests/NumberFormattingTests.cs`
-- Native packages and catalog APIs: `tests/AuroraScript.Tests/BuiltInModuleTests.cs`, `tests/AuroraScript.Tests/EngineOptionsAndSourceTests.cs`
+- Extension packages and catalog APIs: `tests/AuroraScript.Tests/BuiltInModuleTests.cs`, `tests/AuroraScript.Tests/EngineOptionsAndSourceTests.cs`
 - Env clock exports: `tests/AuroraScript.Tests/EnvSupportTests.cs`
 
