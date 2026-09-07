@@ -2817,6 +2817,11 @@
       "members": {
         "replace": {
           "kind": "method",
+          "parameters": [
+            { "name": "modulePath", "type": "string|Path", "optional": true },
+            { "name": "script", "type": "string" },
+            { "name": "ignoreDepends", "type": "boolean", "optional": true, "default": false }
+          ],
           "overloads": [
             "replace(script: string, ignoreDepends?: boolean)",
             "replace(modulePath: string, script: string, ignoreDepends?: boolean)",
@@ -2840,6 +2845,11 @@
         },
         "incremental": {
           "kind": "method",
+          "parameters": [
+            { "name": "modulePath", "type": "string|Path", "optional": true },
+            { "name": "script", "type": "string" },
+            { "name": "ignoreDepends", "type": "boolean", "optional": true, "default": false }
+          ],
           "overloads": [
             "incremental(script: string, ignoreDepends?: boolean)",
             "incremental(modulePath: string, script: string, ignoreDepends?: boolean)",

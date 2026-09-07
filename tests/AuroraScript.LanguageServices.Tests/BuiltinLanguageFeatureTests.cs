@@ -31,6 +31,27 @@ public sealed class BuiltinLanguageFeatureTests
     }
 
     [Fact]
+    public void HoverReturnsHotPatchCanonicalParameters()
+    {
+        const string source =
+            """
+            @module(TEST);
+            export func run() {
+                HotPatch.incremental('@module(PATCH);');
+            }
+            """;
+        var service = CreateService();
+
+        var hover = service.GetHover("test.as", source, PositionOf(source, "incremental"));
+
+        Assert.NotNull(hover);
+        Assert.Contains(
+            "static func incremental(String | Path modulePath = null, String script, Boolean ignoreDepends = false) void",
+            hover!.Contents,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void InfersBuiltinInstanceMembersFromExpressionsAndInitializers()
     {
         const string source =

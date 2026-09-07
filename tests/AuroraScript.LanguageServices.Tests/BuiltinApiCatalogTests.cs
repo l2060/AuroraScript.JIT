@@ -26,6 +26,33 @@ public sealed class BuiltinApiCatalogTests
     }
 
     [Fact]
+    public void LoadsHotPatchCanonicalParameters()
+    {
+        var catalog = LoadCatalog();
+
+        Assert.True(catalog.TryGetGlobal("HotPatch", out var hotPatch));
+        Assert.True(hotPatch.TryGetMember("incremental", out var incremental));
+        AssertCanonicalPatchParameters(incremental.Parameters);
+        Assert.True(hotPatch.TryGetMember("replace", out var replace));
+        AssertCanonicalPatchParameters(replace.Parameters);
+    }
+
+    private static void AssertCanonicalPatchParameters(IReadOnlyList<BuiltinApiParameter> parameters)
+    {
+        Assert.Equal(3, parameters.Count);
+        Assert.Equal("modulePath", parameters[0].Name);
+        Assert.Equal("string|Path", parameters[0].Type);
+        Assert.True(parameters[0].Optional);
+        Assert.Equal("script", parameters[1].Name);
+        Assert.Equal("string", parameters[1].Type);
+        Assert.False(parameters[1].Optional);
+        Assert.Equal("ignoreDepends", parameters[2].Name);
+        Assert.Equal("boolean", parameters[2].Type);
+        Assert.True(parameters[2].Optional);
+        Assert.Equal("false", parameters[2].DefaultValue);
+    }
+
+    [Fact]
     public void LoadsPrototypeMembers()
     {
         var catalog = LoadCatalog();

@@ -219,6 +219,15 @@ namespace AuroraScript.Runtime.Types
             return this;
         }
 
+        /// <summary>Appends one segment to this path.</summary>
+        [Export("append", DynamicAdapter = nameof(APPEND))]
+        public ScriptPathValue AppendCore(ScriptPathValue segment0)
+        {
+            Append(segment0._value);
+            return this;
+        }
+
+
         /// <summary>Appends two segments to this path.</summary>
         [Export("append", DynamicAdapter = nameof(APPEND))]
         public ScriptPathValue AppendCore(string segment0, string segment1)
