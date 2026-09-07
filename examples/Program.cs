@@ -79,7 +79,6 @@ namespace Examples
             g.Define("ONLINE_TOTAL", ScriptDatum.FromNumber(0));
             var fo = new TestObject();
             g.SetPropertyValue("fo", fo);
-
         }
         public static async Task Main()
         {

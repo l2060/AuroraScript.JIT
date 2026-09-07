@@ -94,6 +94,6 @@ export native func testPath() void{
 	var p1 = Path.of('media', 'input.mp4');
 	var path = Path.of('a','b','c');
 	path.append('data');
-	path.appent(p1);
+	path.append(p1);
 	log(path);
 }
