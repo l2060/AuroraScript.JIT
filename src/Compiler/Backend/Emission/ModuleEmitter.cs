@@ -12,12 +12,6 @@ namespace AuroraScript.Compiler.Backend.Emission
             _session = session ?? throw new ArgumentNullException(nameof(session));
         }
 
-        public ModuleEmissionResult Emit(ModulePlan module)
-        {
-            ArgumentNullException.ThrowIfNull(module);
-            return Emit(Prepare(module));
-        }
-
         internal ModuleEmissionState Prepare(ModulePlan module)
         {
             ArgumentNullException.ThrowIfNull(module);
@@ -41,12 +35,6 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
 
             return new ModuleEmissionResult(module.Id, module.Name, functions, initializer);
-        }
-
-        public void EmitWithoutReport(ModulePlan module)
-        {
-            ArgumentNullException.ThrowIfNull(module);
-            EmitWithoutReport(Prepare(module));
         }
 
         internal void EmitWithoutReport(ModuleEmissionState state)

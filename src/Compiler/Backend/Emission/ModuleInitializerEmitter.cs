@@ -445,16 +445,6 @@ namespace AuroraScript.Compiler.Backend.Emission
                     FlowValueTypeFacts.GetCheckedType(expression.TypeName)));
         }
 
-        private void EmitCondition(Expression expression)
-        {
-            if (TryEmitCondition(expression))
-            {
-                return;
-            }
-
-            EmitExpressionOrNull(expression);
-            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ToBooleanDatum);
-        }
 
         private void EmitLiteral(LiteralExpression expression)
         {
@@ -570,106 +560,9 @@ namespace AuroraScript.Compiler.Backend.Emission
 
             EmitExpression(expression.Left);
             EmitExpression(expression.Right);
-            _il.Emit(OpCodes.Call, GetBinaryMethod(expression.Operator));
+            EmitBinaryOperation(expression.Operator);
         }
 
-        private bool TryEmitCondition(Expression expression)
-        {
-            switch (expression)
-            {
-                case null:
-                    _il.Emit(OpCodes.Ldc_I4_0);
-                    return true;
-                case GroupExpression group:
-                    return TryEmitCondition(group.Expression);
-                case LiteralExpression literal:
-                    return TryEmitLiteralCondition(literal);
-                case BinaryExpression binary:
-                    return TryEmitBinaryCondition(binary);
-                case UnaryExpression unary when unary.Operator == Operator.LogicalNot:
-                    EmitCondition(unary.Expression);
-                    _il.Emit(OpCodes.Ldc_I4_0);
-                    _il.Emit(OpCodes.Ceq);
-                    return true;
-                case IncludedExpression included:
-                    EmitExpression(included.Right);
-                    EmitExpression(included.Left);
-                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.Includes);
-                    return true;
-                case InExpression inExpression:
-                    EmitExpression(inExpression.Right);
-                    EmitExpression(inExpression.Left);
-                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.Includes);
-                    return true;
-                default:
-                    return false;
-            }
-        }
-
-        private bool TryEmitLiteralCondition(LiteralExpression expression)
-        {
-            switch (expression.Token)
-            {
-                case BooleanToken boolean:
-                    _il.Emit(boolean.BoolValue ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
-                    return true;
-                case NullToken:
-                    _il.Emit(OpCodes.Ldc_I4_0);
-                    return true;
-                case NumberToken number:
-                    _il.Emit(number.NumberValue != 0 && !double.IsNaN(number.NumberValue) ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
-                    return true;
-                case StringToken stringToken:
-                    _il.Emit(string.IsNullOrEmpty(stringToken.Value) ? OpCodes.Ldc_I4_0 : OpCodes.Ldc_I4_1);
-                    return true;
-                default:
-                    return false;
-            }
-        }
-
-        private bool TryEmitBinaryCondition(BinaryExpression expression)
-        {
-            if (expression.Operator == Operator.LogicalAnd)
-            {
-                var falseLabel = _il.DefineLabel();
-                var endLabel = _il.DefineLabel();
-
-                EmitCondition(expression.Left);
-                _il.Emit(OpCodes.Brfalse, falseLabel);
-                EmitCondition(expression.Right);
-                _il.Emit(OpCodes.Br, endLabel);
-                _il.MarkLabel(falseLabel);
-                _il.Emit(OpCodes.Ldc_I4_0);
-                _il.MarkLabel(endLabel);
-                return true;
-            }
-
-            if (expression.Operator == Operator.LogicalOr)
-            {
-                var trueLabel = _il.DefineLabel();
-                var endLabel = _il.DefineLabel();
-
-                EmitCondition(expression.Left);
-                _il.Emit(OpCodes.Brtrue, trueLabel);
-                EmitCondition(expression.Right);
-                _il.Emit(OpCodes.Br, endLabel);
-                _il.MarkLabel(trueLabel);
-                _il.Emit(OpCodes.Ldc_I4_1);
-                _il.MarkLabel(endLabel);
-                return true;
-            }
-
-            var conditionMethod = GetBinaryConditionMethod(expression.Operator);
-            if (conditionMethod == null)
-            {
-                return false;
-            }
-
-            EmitExpression(expression.Left);
-            EmitExpression(expression.Right);
-            _il.Emit(OpCodes.Call, conditionMethod);
-            return true;
-        }
 
         private bool TryEmitStringAddition(BinaryExpression expression)
         {
@@ -685,7 +578,8 @@ namespace AuroraScript.Compiler.Backend.Emission
                 EmitExpression(leftBinary.Left);
                 _session.Builder.LoadStringConstant(_il, middle);
                 EmitExpression(expression.Right);
-                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.AddStringMiddle);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ConcatStringMiddle);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromString);
                 return true;
             }
 
@@ -693,7 +587,8 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 EmitExpression(expression.Left);
                 _session.Builder.LoadStringConstant(_il, right);
-                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.AddStringRight);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ConcatStringRight);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromString);
                 return true;
             }
 
@@ -701,7 +596,8 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 _session.Builder.LoadStringConstant(_il, left);
                 EmitExpression(expression.Right);
-                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.AddStringLeft);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ConcatStringLeft);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromString);
                 return true;
             }
 
@@ -922,7 +818,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 EmitName(name);
                 EmitExpression(expression.Right);
-                _il.Emit(OpCodes.Call, GetBinaryMethod(expression.Operator.SimplerOperator));
+                EmitBinaryOperation(expression.Operator.SimplerOperator);
                 _il.Emit(OpCodes.Dup);
                 EmitStoreNameFromStack(name.Identifier.Value);
                 return;
@@ -946,7 +842,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 EmitName(name);
                 EmitExpression(expression.Right);
-                _il.Emit(OpCodes.Call, GetBinaryMethod(expression.Operator.SimplerOperator));
+                EmitBinaryOperation(expression.Operator.SimplerOperator);
                 EmitStoreNameFromStack(name.Identifier.Value);
                 return;
             }
@@ -1538,15 +1434,6 @@ namespace AuroraScript.Compiler.Backend.Emission
             return false;
         }
 
-        private void EmitTypedGlobalConstructor(string typeName, Expression value)
-        {
-            _il.Emit(OpCodes.Ldarg_0);
-            _session.Builder.LoadStringConstant(_il, typeName);
-            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetGlobal);
-            _il.Emit(OpCodes.Ldarg_0);
-            EmitExpression(value);
-            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.New1);
-        }
 
         private void EmitTypedRegex(Expression value)
         {
@@ -2075,6 +1962,14 @@ namespace AuroraScript.Compiler.Backend.Emission
             return false;
         }
 
+        private void EmitBinaryOperation(Operator op)
+        {
+            var method = GetBinaryMethod(op);
+            _il.Emit(OpCodes.Call, method);
+            if (method.ReturnType == typeof(bool))
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromBoolean);
+        }
+
         private static MethodInfo GetBinaryMethod(Operator op)
         {
             if (op == Operator.Add) return TypedRuntimeMetadata.Add;
@@ -2082,12 +1977,12 @@ namespace AuroraScript.Compiler.Backend.Emission
             if (op == Operator.Multiply) return TypedRuntimeMetadata.Multiply;
             if (op == Operator.Divide) return TypedRuntimeMetadata.Divide;
             if (op == Operator.Modulo) return TypedRuntimeMetadata.Modulo;
-            if (op == Operator.Equal) return TypedRuntimeMetadata.Equal;
-            if (op == Operator.NotEqual) return TypedRuntimeMetadata.NotEqual;
-            if (op == Operator.LessThan) return TypedRuntimeMetadata.Less;
-            if (op == Operator.LessThanOrEqual) return TypedRuntimeMetadata.LessEqual;
-            if (op == Operator.GreaterThan) return TypedRuntimeMetadata.Greater;
-            if (op == Operator.GreaterThanOrEqual) return TypedRuntimeMetadata.GreaterEqual;
+            if (op == Operator.Equal) return TypedRuntimeMetadata.EqualBoolean;
+            if (op == Operator.NotEqual) return TypedRuntimeMetadata.NotEqualBoolean;
+            if (op == Operator.LessThan) return TypedRuntimeMetadata.LessBoolean;
+            if (op == Operator.LessThanOrEqual) return TypedRuntimeMetadata.LessEqualBoolean;
+            if (op == Operator.GreaterThan) return TypedRuntimeMetadata.GreaterBoolean;
+            if (op == Operator.GreaterThanOrEqual) return TypedRuntimeMetadata.GreaterEqualBoolean;
             if (op == Operator.BitwiseAnd) return TypedRuntimeMetadata.BitwiseAnd;
             if (op == Operator.BitwiseOr) return TypedRuntimeMetadata.BitwiseOr;
             if (op == Operator.BitwiseXor) return TypedRuntimeMetadata.BitwiseXor;
@@ -2097,27 +1992,6 @@ namespace AuroraScript.Compiler.Backend.Emission
             return null;
         }
 
-        private static MethodInfo GetBinaryConditionMethod(Operator op)
-        {
-            if (op == Operator.Add) return TypedRuntimeMetadata.AddBoolean;
-            if (op == Operator.Subtract) return TypedRuntimeMetadata.SubtractBoolean;
-            if (op == Operator.Multiply) return TypedRuntimeMetadata.MultiplyBoolean;
-            if (op == Operator.Divide) return TypedRuntimeMetadata.DivideBoolean;
-            if (op == Operator.Modulo) return TypedRuntimeMetadata.ModuloBoolean;
-            if (op == Operator.Equal) return TypedRuntimeMetadata.EqualBoolean;
-            if (op == Operator.NotEqual) return TypedRuntimeMetadata.NotEqualBoolean;
-            if (op == Operator.LessThan) return TypedRuntimeMetadata.LessBoolean;
-            if (op == Operator.LessThanOrEqual) return TypedRuntimeMetadata.LessEqualBoolean;
-            if (op == Operator.GreaterThan) return TypedRuntimeMetadata.GreaterBoolean;
-            if (op == Operator.GreaterThanOrEqual) return TypedRuntimeMetadata.GreaterEqualBoolean;
-            if (op == Operator.BitwiseAnd) return TypedRuntimeMetadata.BitwiseAndBoolean;
-            if (op == Operator.BitwiseOr) return TypedRuntimeMetadata.BitwiseOrBoolean;
-            if (op == Operator.BitwiseXor) return TypedRuntimeMetadata.BitwiseXorBoolean;
-            if (op == Operator.LeftShift) return TypedRuntimeMetadata.LeftShiftBoolean;
-            if (op == Operator.SignedRightShift) return TypedRuntimeMetadata.RightShiftBoolean;
-            if (op == Operator.UnSignedRightShift) return TypedRuntimeMetadata.UnsignedRightShiftBoolean;
-            return null;
-        }
 
         private static MethodInfo GetUnaryMethod(Operator op)
         {

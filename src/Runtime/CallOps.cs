@@ -178,8 +178,11 @@ namespace AuroraScript.Runtime
         {
             if (value.Kind == ValueKind.Array && value.Object is ScriptArray array)
             {
-                arguments = EnsureCapacity(arguments, count + array.Length, count);
-                for (var i = 0; i < array.Length; i++) arguments[count++] = array.GetElement(i);
+                var values = array.Values();
+                var end = checked(count + values.Length);
+                arguments = EnsureCapacity(arguments, end, count);
+                values.CopyTo(arguments.AsSpan(count, values.Length));
+                count = end;
                 return arguments;
             }
             if (value.Reference is ScriptPackedArray packedArray)

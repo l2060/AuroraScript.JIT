@@ -270,11 +270,12 @@ namespace AuroraScript.Runtime
                     return value;
                 case ValueKind.UInt64 when value.UInt64 <= long.MaxValue:
                     return ScriptDatum.FromInt64((long)value.UInt64);
-                case ValueKind.Number when IsInt64(value.Number):
-                    return ScriptDatum.FromInt64((long)value.Number);
-                default:
-                    return Mismatch(CheckedType.Int64, value);
+                case ValueKind.Number:
+                    var number = value.Number;
+                    if (IsInt64(number)) return ScriptDatum.FromInt64((long)number);
+                    break;
             }
+            return Mismatch(CheckedType.Int64, value);
         }
 
         /// <summary>Returns an exact signed 64-bit integer from a dynamic value.</summary>
@@ -287,12 +288,13 @@ namespace AuroraScript.Runtime
                     return value.Int64;
                 case ValueKind.UInt64 when value.UInt64 <= long.MaxValue:
                     return (long)value.UInt64;
-                case ValueKind.Number when IsInt64(value.Number):
-                    return (long)value.Number;
-                default:
-                    Mismatch(CheckedType.Int64, value);
-                    return 0;
+                case ValueKind.Number:
+                    var number = value.Number;
+                    if (IsInt64(number)) return (long)number;
+                    break;
             }
+            Mismatch(CheckedType.Int64, value);
+            return 0;
         }
 
         /// <summary>Validates a native Number and returns it as System.Int64.</summary>
@@ -300,6 +302,12 @@ namespace AuroraScript.Runtime
         public static long CheckInt64Number(double value)
         {
             if (IsInt64(value)) return (long)value;
+            return MismatchInt64Number(value);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static long MismatchInt64Number(double value)
+        {
             Mismatch(CheckedType.Int64, ScriptDatum.FromNumber(value));
             return 0;
         }
@@ -324,11 +332,12 @@ namespace AuroraScript.Runtime
                     return value;
                 case ValueKind.Int64 when value.Int64 >= 0:
                     return ScriptDatum.FromUInt64((ulong)value.Int64);
-                case ValueKind.Number when IsUInt64(value.Number):
-                    return ScriptDatum.FromUInt64((ulong)value.Number);
-                default:
-                    return Mismatch(CheckedType.UInt64, value);
+                case ValueKind.Number:
+                    var number = value.Number;
+                    if (IsUInt64(number)) return ScriptDatum.FromUInt64((ulong)number);
+                    break;
             }
+            return Mismatch(CheckedType.UInt64, value);
         }
 
         /// <summary>Returns an exact unsigned 64-bit integer from a dynamic value.</summary>
@@ -341,12 +350,13 @@ namespace AuroraScript.Runtime
                     return value.UInt64;
                 case ValueKind.Int64 when value.Int64 >= 0:
                     return (ulong)value.Int64;
-                case ValueKind.Number when IsUInt64(value.Number):
-                    return (ulong)value.Number;
-                default:
-                    Mismatch(CheckedType.UInt64, value);
-                    return 0;
+                case ValueKind.Number:
+                    var number = value.Number;
+                    if (IsUInt64(number)) return (ulong)number;
+                    break;
             }
+            Mismatch(CheckedType.UInt64, value);
+            return 0;
         }
 
         /// <summary>Validates a native Number and returns it as System.UInt64.</summary>
@@ -354,6 +364,12 @@ namespace AuroraScript.Runtime
         public static ulong CheckUInt64Number(double value)
         {
             if (IsUInt64(value)) return (ulong)value;
+            return MismatchUInt64Number(value);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static ulong MismatchUInt64Number(double value)
+        {
             Mismatch(CheckedType.UInt64, ScriptDatum.FromNumber(value));
             return 0;
         }

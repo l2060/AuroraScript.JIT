@@ -94,77 +94,99 @@ namespace AuroraScript.Runtime
         public static ScriptInt32Array ToInt32Array(ScriptDatum value) =>
             value.Kind == ValueKind.Null
                 ? null
-                : (ScriptInt32Array)TypeCheckOps.CheckInt32Array(value).Object;
+                : value.Reference is ScriptInt32Array array
+                    ? array
+                    : (ScriptInt32Array)Reject(value, CheckedType.Int32Array);
 
         /// <summary>Converts a nullable datum to an Int8Array wrapper.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptInt8Array ToInt8Array(ScriptDatum value) =>
             value.Kind == ValueKind.Null
                 ? null
-                : (ScriptInt8Array)TypeCheckOps.CheckInt8Array(value).Object;
+                : value.Reference is ScriptInt8Array array
+                    ? array
+                    : (ScriptInt8Array)Reject(value, CheckedType.Int8Array);
 
         /// <summary>Converts a nullable datum to a Float32Array wrapper.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptFloat32Array ToFloat32Array(ScriptDatum value) =>
             value.Kind == ValueKind.Null
                 ? null
-                : (ScriptFloat32Array)TypeCheckOps.CheckFloat32Array(value).Object;
+                : value.Reference is ScriptFloat32Array array
+                    ? array
+                    : (ScriptFloat32Array)Reject(value, CheckedType.Float32Array);
 
         /// <summary>Converts a nullable datum to a Float64Array wrapper.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptFloat64Array ToFloat64Array(ScriptDatum value) =>
             value.Kind == ValueKind.Null
                 ? null
-                : (ScriptFloat64Array)TypeCheckOps.CheckFloat64Array(value).Object;
+                : value.Reference is ScriptFloat64Array array
+                    ? array
+                    : (ScriptFloat64Array)Reject(value, CheckedType.Float64Array);
 
         /// <summary>Converts a nullable datum to a BooleanArray wrapper.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptBooleanArray ToBooleanArray(ScriptDatum value) =>
             value.Kind == ValueKind.Null
                 ? null
-                : (ScriptBooleanArray)TypeCheckOps.CheckBooleanArray(value).Object;
+                : value.Reference is ScriptBooleanArray array
+                    ? array
+                    : (ScriptBooleanArray)Reject(value, CheckedType.BooleanArray);
 
         /// <summary>Converts a nullable datum to a UInt8Array wrapper.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptUInt8Array ToUInt8Array(ScriptDatum value) =>
             value.Kind == ValueKind.Null
                 ? null
-                : (ScriptUInt8Array)TypeCheckOps.CheckUInt8Array(value).Object;
+                : value.Reference is ScriptUInt8Array array
+                    ? array
+                    : (ScriptUInt8Array)Reject(value, CheckedType.UInt8Array);
 
         /// <summary>Converts a nullable datum to an Int16Array wrapper.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptInt16Array ToInt16Array(ScriptDatum value) =>
             value.Kind == ValueKind.Null
                 ? null
-                : (ScriptInt16Array)TypeCheckOps.CheckInt16Array(value).Object;
+                : value.Reference is ScriptInt16Array array
+                    ? array
+                    : (ScriptInt16Array)Reject(value, CheckedType.Int16Array);
 
         /// <summary>Converts a nullable datum to a UInt16Array wrapper.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptUInt16Array ToUInt16Array(ScriptDatum value) =>
             value.Kind == ValueKind.Null
                 ? null
-                : (ScriptUInt16Array)TypeCheckOps.CheckUInt16Array(value).Object;
+                : value.Reference is ScriptUInt16Array array
+                    ? array
+                    : (ScriptUInt16Array)Reject(value, CheckedType.UInt16Array);
 
         /// <summary>Converts a nullable datum to a UInt32Array wrapper.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptUInt32Array ToUInt32Array(ScriptDatum value) =>
             value.Kind == ValueKind.Null
                 ? null
-                : (ScriptUInt32Array)TypeCheckOps.CheckUInt32Array(value).Object;
+                : value.Reference is ScriptUInt32Array array
+                    ? array
+                    : (ScriptUInt32Array)Reject(value, CheckedType.UInt32Array);
 
         /// <summary>Converts a nullable datum to an Int64Array wrapper.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptInt64Array ToInt64Array(ScriptDatum value) =>
             value.Kind == ValueKind.Null
                 ? null
-                : (ScriptInt64Array)TypeCheckOps.CheckInt64Array(value).Object;
+                : value.Reference is ScriptInt64Array array
+                    ? array
+                    : (ScriptInt64Array)Reject(value, CheckedType.Int64Array);
 
         /// <summary>Converts a nullable datum to a UInt64Array wrapper.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptUInt64Array ToUInt64Array(ScriptDatum value) =>
             value.Kind == ValueKind.Null
                 ? null
-                : (ScriptUInt64Array)TypeCheckOps.CheckUInt64Array(value).Object;
+                : value.Reference is ScriptUInt64Array array
+                    ? array
+                    : (ScriptUInt64Array)Reject(value, CheckedType.UInt64Array);
 
         /// <summary>Narrows a nullable object to an Int32Array wrapper.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -343,6 +365,13 @@ namespace AuroraScript.Runtime
             Box(value, static storage => new ScriptUInt64Array(storage));
 
         [MethodImpl(MethodImplOptions.NoInlining)]
+        private static ScriptPackedArray Reject(ScriptDatum value, CheckedType expected)
+        {
+            TypeCheckOps.Check(value, expected);
+            return null;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
         private static ScriptPackedArray Reject(ScriptObject value, CheckedType expected)
         {
             if (value is null or NullValue) return null;
@@ -358,9 +387,16 @@ namespace AuroraScript.Runtime
             if (storage != null &&
                 !s_wrappers.TryGetValue(storage, out _))
             {
-                s_wrappers.GetValue(storage, _ => wrapper);
+                RememberSlow(wrapper, storage);
             }
             return storage;
+        }
+
+        // Keep captures out of the null/cache-hit paths, including their IL prologues.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void RememberSlow(ScriptPackedArray wrapper, Array storage)
+        {
+            s_wrappers.GetValue(storage, _ => wrapper);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -377,6 +413,15 @@ namespace AuroraScript.Runtime
             {
                 return ScriptDatum.FromObject(existing);
             }
+            return BoxSlow(storage, factory);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static ScriptDatum BoxSlow<TStorage, TWrapper>(
+            TStorage[] storage,
+            Func<TStorage[], TWrapper> factory)
+            where TWrapper : ScriptPackedArray
+        {
             var created = factory(storage);
             var wrapper = s_wrappers.GetValue(storage, _ => created);
             return ScriptDatum.FromObject(wrapper);

@@ -18,13 +18,6 @@ namespace AuroraScript.Compiler.Backend.Emission
                 (!requireName || !string.IsNullOrEmpty(function.Name));
         }
 
-        public static bool CanPlanMaterialize(FunctionPlan function, bool requireName)
-        {
-            return function != null &&
-                function.RequiresClosureObject &&
-                (!requireName || !string.IsNullOrEmpty(function.Name));
-        }
-
         public static void EmitClosure(
             EmissionSession session,
             ILGenerator il,

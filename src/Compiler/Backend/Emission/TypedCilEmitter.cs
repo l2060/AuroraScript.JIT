@@ -185,8 +185,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                         code,
                         id => HasDirectMethod(id) ||
                             (id.IsValid && (uint)id.Value < (uint)candidates.Length && candidates[id.Value]),
-                        directMode: false,
-                        requireNativeLocal: false))
+                        directMode: false))
                     {
                         continue;
                     }
@@ -245,7 +244,6 @@ namespace AuroraScript.Compiler.Backend.Emission
                             (uint)id.Value < (uint)candidates.Length &&
                             candidates[id.Value],
                         directMode: true,
-                        requireNativeLocal: false,
                         allowRuntimeBoundaryInDirectMode:
                             function.IsNativeDeclared);
                     var signatureSupported = function.IsNativeDeclared ||
@@ -4732,7 +4730,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 EmitString(left.Left);
                 EmitString(left.Right);
                 EmitString(expression.Right);
-                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.StringConcatThree);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.StringConcat3);
                 return true;
             }
             if (_code.GetExpressionType(expression.Left) != FlowValueType.String &&
@@ -4753,7 +4751,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             if (rightString) EmitString(right);
             else EmitDatum(right);
             _il.Emit(OpCodes.Call, leftString && rightString
-                ? TypedRuntimeMetadata.StringConcat
+                ? TypedRuntimeMetadata.StringConcat2
                 : leftString ? TypedRuntimeMetadata.ConcatStringLeft
                 : TypedRuntimeMetadata.ConcatStringRight);
         }
@@ -7567,8 +7565,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             Type inputType)
         {
             return TypedRuntimeMetadata.PackedArrayBoundary(
-                "To" + GetPackedBoundaryName(type) + "Storage",
-                inputType);
+                type, inputType, TypedRuntimeMetadata.PackedBoundaryConversion.ToStorage);
         }
 
         private static MethodInfo GetPackedToWrapperMethod(
@@ -7576,35 +7573,14 @@ namespace AuroraScript.Compiler.Backend.Emission
             Type inputType)
         {
             return TypedRuntimeMetadata.PackedArrayBoundary(
-                "To" + GetPackedBoundaryName(type) + "Array",
-                inputType);
+                type, inputType, TypedRuntimeMetadata.PackedBoundaryConversion.ToWrapper);
         }
 
         private static MethodInfo GetPackedFromStorageMethod(
             FlowValueType type)
         {
             return TypedRuntimeMetadata.PackedArrayBoundary(
-                "From" + GetPackedBoundaryName(type) + "Storage",
-                GetPackedStorageType(type));
-        }
-
-        private static string GetPackedBoundaryName(FlowValueType type)
-        {
-            return type switch
-            {
-                FlowValueType.Int32Array => "Int32",
-                FlowValueType.Int8Array => "Int8",
-                FlowValueType.Float32Array => "Float32",
-                FlowValueType.Float64Array => "Float64",
-                FlowValueType.BooleanArray => "Boolean",
-                FlowValueType.UInt8Array => "UInt8",
-                FlowValueType.Int16Array => "Int16",
-                FlowValueType.UInt16Array => "UInt16",
-                FlowValueType.UInt32Array => "UInt32",
-                FlowValueType.Int64Array => "Int64",
-                FlowValueType.UInt64Array => "UInt64",
-                _ => throw new ArgumentOutOfRangeException(nameof(type))
-            };
+                type, GetPackedStorageType(type), TypedRuntimeMetadata.PackedBoundaryConversion.FromStorage);
         }
 
         private static ConstructorInfo GetPackedConstructor(FlowValueType type)
@@ -8540,7 +8516,6 @@ namespace AuroraScript.Compiler.Backend.Emission
                 TypedFunctionCode code,
                 Func<FunctionId, bool> canDirectCall,
                 bool directMode,
-                bool requireNativeLocal,
                 bool allowRuntimeBoundaryInDirectMode = false)
             {
                 if (code == null || canDirectCall == null) return false;
@@ -8553,22 +8528,6 @@ namespace AuroraScript.Compiler.Backend.Emission
                     (function.UpvalueSlots.Length != 0 ||
                         function.CapturedLocalSlots.Length != 0 ||
                         function.NestedFunctions.Length != 0))
-                {
-                    return false;
-                }
-
-                var hasNativeLocal = false;
-                for (var i = 0; i < code.LocalTypes.Length; i++)
-                {
-                    if ((FlowValueTypeFacts.IsNumeric(code.LocalTypes[i]) ||
-                        FlowValueTypeFacts.IsPackedArray(code.LocalTypes[i])) &&
-                        !function.LocalSlots[i].IsParameter)
-                    {
-                        hasNativeLocal = true;
-                        break;
-                    }
-                }
-                if (requireNativeLocal && !hasNativeLocal)
                 {
                     return false;
                 }

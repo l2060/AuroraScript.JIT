@@ -744,7 +744,6 @@ namespace AuroraScript.Compiler.Backend.Code
                     _structuralTypes,
                     _nativeObjectTypes,
                     _locals,
-                    _localStructuralTypes,
                     _localNativeObjectTypes,
                     _writtenLocals,
                     returnType,

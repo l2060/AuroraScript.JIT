@@ -1,6 +1,6 @@
 # 编译器与 Runtime Ops 清理审计
 
-日期：2026-09-08。状态：仅分析，未修改实现，等待逐项选择。
+日期：2026-09-08。本文件及引用 JSON 记录 `bc1e422` 基线的审计结果；后续实施情况见 [第一批](ops-optimization-pass1.md)、[第二批](ops-optimization-pass2.md)、[第三批](ops-optimization-pass3.md) 和 [第四批优化记录](ops-optimization-pass4.md)。下文行号和可达性计数保留为审计时的快照。
 
 ## 结论
 

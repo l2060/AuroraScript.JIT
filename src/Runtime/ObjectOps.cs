@@ -89,10 +89,6 @@ namespace AuroraScript.Runtime
             }
 
             var instance = ScriptDatum.ToObject(receiver);
-            if (instance is IAuroraNativeIndexer indexedFallback && ScriptDatum.TryToInteger(in index, out numericIndex))
-            {
-                return indexedFallback[(int)numericIndex];
-            }
             return instance.GetPropertyDatum(null, ScriptDatum.ToString(index));
         }
 
@@ -107,7 +103,7 @@ namespace AuroraScript.Runtime
             {
                 return packedArray.GetElementDatum((int)index);
             }
-            return GetElement(receiver, ScriptDatum.FromNumber(index));
+            return GetNumericProperty(receiver, index);
         }
 
         /// <summary>
@@ -125,25 +121,24 @@ namespace AuroraScript.Runtime
             {
                 return packedArray.GetElementDatum(index);
             }
-            return GetElement(receiver, ScriptDatum.FromNumber(index));
+            return GetNumericProperty(receiver, index);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum SetElement(ScriptDatum receiver, ScriptDatum index, ScriptDatum value)
         {
-            var instance = ScriptDatum.ToObject(receiver);
-            if (instance is IAuroraNativeIndexer indexed && ScriptDatum.TryToInteger(in index, out var numericIndex))
+            if (receiver.Reference is IAuroraNativeIndexer indexed && ScriptDatum.TryToInteger(in index, out var numericIndex))
             {
                 indexed[(int)numericIndex] = value;
             }
-            else if (instance is ScriptPackedArray packedArray &&
+            else if (receiver.Reference is ScriptPackedArray packedArray &&
                 ScriptDatum.TryToInteger(in index, out numericIndex))
             {
                 packedArray.SetElementDatum((int)numericIndex, value);
             }
             else
             {
-                instance.SetPropertyDatum(null, ScriptDatum.ToString(index), value);
+                ScriptDatum.ToObject(receiver).SetPropertyDatum(null, ScriptDatum.ToString(index), value);
             }
             return value;
         }
@@ -161,7 +156,7 @@ namespace AuroraScript.Runtime
                 packedArray.SetElementDatum((int)index, value);
                 return value;
             }
-            return SetElement(receiver, ScriptDatum.FromNumber(index), value);
+            return SetNumericProperty(receiver, index, value);
         }
 
         /// <summary>
@@ -181,7 +176,35 @@ namespace AuroraScript.Runtime
                 packedArray.SetElementDatum(index, value);
                 return value;
             }
-            return SetElement(receiver, ScriptDatum.FromNumber(index), value);
+            return SetNumericProperty(receiver, index, value);
+        }
+
+        // Numeric property keys use Number formatting, including culture and negative zero.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ScriptDatum GetNumericProperty(ScriptDatum receiver, double index)
+        {
+            return ScriptDatum.ToObject(receiver).GetPropertyDatum(null, index.ToString());
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ScriptDatum SetNumericProperty(ScriptDatum receiver, double index, ScriptDatum value)
+        {
+            ScriptDatum.ToObject(receiver).SetPropertyDatum(null, index.ToString(), value);
+            return value;
+        }
+
+        // Int32 and its exact Number value have the same General format; integer formatting avoids widening.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ScriptDatum GetNumericProperty(ScriptDatum receiver, int index)
+        {
+            return ScriptDatum.ToObject(receiver).GetPropertyDatum(null, index.ToString());
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ScriptDatum SetNumericProperty(ScriptDatum receiver, int index, ScriptDatum value)
+        {
+            ScriptDatum.ToObject(receiver).SetPropertyDatum(null, index.ToString(), value);
+            return value;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -303,7 +326,7 @@ namespace AuroraScript.Runtime
         {
             if (source.Kind == ValueKind.Array && source.Object is ScriptArray array)
             {
-                for (var i = 0; i < array.Length; i++) target.Push(array.GetElement(i));
+                target.AddRange(array.Values());
                 return;
             }
             if (source.Reference is ScriptPackedArray packedArray)
@@ -332,10 +355,7 @@ namespace AuroraScript.Runtime
                 if (value.Kind == ValueKind.String)
                 {
                     var needle = value.StringText ?? string.Empty;
-                    if (needle.Length > 1)
-                    {
-                        return text.IndexOf(needle, StringComparison.Ordinal) >= 0;
-                    }
+                    return needle.Length != 0 && text.IndexOf(needle, StringComparison.Ordinal) >= 0;
                 }
 
                 for (var i = 0; i < text.Length; i++)
@@ -347,6 +367,21 @@ namespace AuroraScript.Runtime
             }
 
             var instance = ScriptDatum.ToObject(collection);
+            // Both array types have sealed enumerators. Preserve their length snapshot and Equals semantics.
+            if (instance is ScriptArray array)
+            {
+                var length = array.Length;
+                for (var i = 0; i < length; i++)
+                    if (array._items[i].Equals(value)) return true;
+                return false;
+            }
+            if (instance is ScriptPackedArray packed)
+            {
+                var length = packed.Length;
+                for (var i = 0; i < length; i++)
+                    if (packed.GetElementDatumUnchecked(i).Equals(value)) return true;
+                return false;
+            }
             var enumerator = instance.GetEnumerator();
             while (enumerator.NextValue(out var current))
             {

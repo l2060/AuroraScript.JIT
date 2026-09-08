@@ -459,7 +459,6 @@ namespace AuroraScript.Compiler.Backend.Code
             Dictionary<Expression, TypeDeclaration> structuralTypes,
             Dictionary<Expression, HostNativeObjectDescriptor> nativeObjectTypes,
             FlowValueType[] localTypes,
-            TypeDeclaration[] localStructuralTypes,
             HostNativeObjectDescriptor[] localNativeObjectTypes,
             bool[] writtenLocals,
             FlowValueType returnType,
@@ -473,7 +472,6 @@ namespace AuroraScript.Compiler.Backend.Code
             _structuralTypes = structuralTypes ?? throw new ArgumentNullException(nameof(structuralTypes));
             _nativeObjectTypes = nativeObjectTypes ?? throw new ArgumentNullException(nameof(nativeObjectTypes));
             LocalTypes = localTypes ?? throw new ArgumentNullException(nameof(localTypes));
-            LocalStructuralTypes = localStructuralTypes ?? throw new ArgumentNullException(nameof(localStructuralTypes));
             LocalNativeObjectTypes = localNativeObjectTypes ??
                 throw new ArgumentNullException(nameof(localNativeObjectTypes));
             WrittenLocals = writtenLocals ?? throw new ArgumentNullException(nameof(writtenLocals));
@@ -497,7 +495,6 @@ namespace AuroraScript.Compiler.Backend.Code
 
         public FunctionPlan Function { get; }
         public FlowValueType[] LocalTypes { get; }
-        public TypeDeclaration[] LocalStructuralTypes { get; }
         public HostNativeObjectDescriptor[] LocalNativeObjectTypes { get; }
         public bool[] WrittenLocals { get; }
         public FlowValueType ReturnType { get; }
@@ -535,14 +532,6 @@ namespace AuroraScript.Compiler.Backend.Code
             return expression != null &&
                 _structuralTypes.TryGetValue(expression, out var type)
                     ? type
-                    : null;
-        }
-
-        public TypeDeclaration GetLocalStructuralType(LocalSlotId slot)
-        {
-            return slot.IsValid &&
-                (uint)slot.Value < (uint)LocalStructuralTypes.Length
-                    ? LocalStructuralTypes[slot.Value]
                     : null;
         }
 

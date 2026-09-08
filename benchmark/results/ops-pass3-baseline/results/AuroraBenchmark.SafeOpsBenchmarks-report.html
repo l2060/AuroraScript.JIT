@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>AuroraBenchmark.SafeOpsBenchmarks-20260908-222013</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.15.8, Windows 11 (10.0.28000.2704/26H1/2026Update)
+13th Gen Intel Core i7-13700KF 3.40GHz, 1 CPU, 24 logical and 16 physical cores
+.NET SDK 10.0.400
+  [Host]     : .NET 10.0.11 (10.0.11, 10.0.1126.37416), X64 RyuJIT x86-64-v3
+  Job-BZNPUE : .NET 10.0.11 (10.0.11, 10.0.1126.37416), X64 RyuJIT x86-64-v3
+</code></pre>
+<pre><code>IterationCount=5  IterationTime=200ms  LaunchCount=1  
+WarmupCount=3  
+</code></pre>
+
+<table>
+<thead><tr><th>Method  </th><th>Count</th><th>Mean   </th><th>Error  </th><th>StdDev</th><th>Code Size</th><th>Gen0</th><th>Allocated</th>
+</tr>
+</thead><tbody><tr><td>ArrayMiss</td><td>32</td><td>451.9243 ns</td><td>56.7241 ns</td><td>14.7311 ns</td><td>3,757 B</td><td>0.0046</td><td>104 B</td>
+</tr><tr><td>PackedMiss</td><td>32</td><td>425.0516 ns</td><td>7.5241 ns</td><td>1.1644 ns</td><td>3,859 B</td><td>0.0062</td><td>104 B</td>
+</tr><tr><td>CharacterMiss</td><td>32</td><td>501.4966 ns</td><td>122.2036 ns</td><td>18.9111 ns</td><td>3,162 B</td><td>0.0486</td><td>768 B</td>
+</tr><tr><td>CheckedWrapper</td><td>32</td><td>3.3751 ns</td><td>0.1565 ns</td><td>0.0406 ns</td><td>843 B</td><td>-</td><td>-</td>
+</tr><tr><td>NullWrapper</td><td>32</td><td>0.6524 ns</td><td>0.3176 ns</td><td>0.0825 ns</td><td>605 B</td><td>-</td><td>-</td>
+</tr><tr><td>ArrayMiss</td><td>256</td><td>3,937.6170 ns</td><td>1,862.6078 ns</td><td>483.7133 ns</td><td>3,745 B</td><td>-</td><td>104 B</td>
+</tr><tr><td>PackedMiss</td><td>256</td><td>3,274.7556 ns</td><td>38.9584 ns</td><td>10.1174 ns</td><td>3,797 B</td><td>-</td><td>104 B</td>
+</tr><tr><td>CharacterMiss</td><td>256</td><td>4,216.5528 ns</td><td>173.5369 ns</td><td>26.8550 ns</td><td>3,180 B</td><td>0.3802</td><td>6144 B</td>
+</tr><tr><td>CheckedWrapper</td><td>256</td><td>3.1524 ns</td><td>0.2169 ns</td><td>0.0563 ns</td><td>843 B</td><td>-</td><td>-</td>
+</tr><tr><td>NullWrapper</td><td>256</td><td>0.6587 ns</td><td>0.9760 ns</td><td>0.2535 ns</td><td>605 B</td><td>-</td><td>-</td>
+</tr></tbody></table>
+</body>
+</html>

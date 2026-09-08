@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>AuroraBenchmark.BoundaryOpsBenchmarks-20260908-214438</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.15.8, Windows 11 (10.0.28000.2704/26H1/2026Update)
+13th Gen Intel Core i7-13700KF 3.40GHz, 1 CPU, 24 logical and 16 physical cores
+.NET SDK 10.0.400
+  [Host]     : .NET 10.0.11 (10.0.11, 10.0.1126.37416), X64 RyuJIT x86-64-v3
+  Job-BZNPUE : .NET 10.0.11 (10.0.11, 10.0.1126.37416), X64 RyuJIT x86-64-v3
+</code></pre>
+<pre><code>IterationCount=5  IterationTime=200ms  LaunchCount=1  
+WarmupCount=3  
+</code></pre>
+
+<table>
+<thead><tr><th>Method      </th><th>Mean</th><th>Error</th><th>StdDev</th><th>Code Size</th><th>Gen0</th><th>Allocated</th>
+</tr>
+</thead><tbody><tr><td>ReadDynamicArray</td><td>4.0579 ns</td><td>0.0079 ns</td><td>0.0020 ns</td><td>3,747 B</td><td>-</td><td>-</td>
+</tr><tr><td>WriteDynamicArray</td><td>5.0805 ns</td><td>0.0083 ns</td><td>0.0013 ns</td><td>7,941 B</td><td>-</td><td>-</td>
+</tr><tr><td>ReadNumberProperty</td><td>71.5899 ns</td><td>1.3470 ns</td><td>0.3498 ns</td><td>22,719 B</td><td>0.0018</td><td>32 B</td>
+</tr><tr><td>WriteIntProperty</td><td>34.2508 ns</td><td>0.0745 ns</td><td>0.0193 ns</td><td>14,323 B</td><td>-</td><td>-</td>
+</tr><tr><td>ArraySpread</td><td>0.6114 ns</td><td>0.0012 ns</td><td>0.0002 ns</td><td>2,182 B</td><td>-</td><td>-</td>
+</tr><tr><td>ArgumentSpread</td><td>0.3716 ns</td><td>0.0014 ns</td><td>0.0004 ns</td><td>3,708 B</td><td>-</td><td>-</td>
+</tr><tr><td>CheckUInt32Number</td><td>1.8757 ns</td><td>0.0087 ns</td><td>0.0023 ns</td><td>164 B</td><td>-</td><td>-</td>
+</tr><tr><td>IsUInt32</td><td>1.2175 ns</td><td>0.0039 ns</td><td>0.0006 ns</td><td>115 B</td><td>-</td><td>-</td>
+</tr><tr><td>CheckInt64Datum</td><td>2.8962 ns</td><td>0.0045 ns</td><td>0.0012 ns</td><td>660 B</td><td>-</td><td>-</td>
+</tr><tr><td>CheckUInt64Datum</td><td>3.3616 ns</td><td>0.0069 ns</td><td>0.0018 ns</td><td>630 B</td><td>-</td><td>-</td>
+</tr></tbody></table>
+</body>
+</html>

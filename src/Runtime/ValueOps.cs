@@ -56,16 +56,7 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool ToBoolean(ScriptDatum value)
         {
-            return value.Kind switch
-            {
-                ValueKind.Null => false,
-                ValueKind.Boolean => value.Boolean,
-                ValueKind.Number => IsTruthyNumber(value.Number),
-                ValueKind.Int64 => value.Int64 != 0,
-                ValueKind.UInt64 => value.UInt64 != 0,
-                ValueKind.String => !string.IsNullOrEmpty(value.StringText),
-                _ => value.Object != ScriptObject.Null,
-            };
+            return ScriptDatum.IsTrue(value);
         }
 
         /// <summary>Converts an object value to its script truthiness.</summary>
@@ -123,26 +114,11 @@ namespace AuroraScript.Runtime
         }
 
         /// <summary>Computes the truthiness of a dynamic addition result.</summary>
+        /// <remarks>Arithmetic/bitwise Boolean entry points remain for previously generated assemblies.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool AddBoolean(ScriptDatum left, ScriptDatum right)
         {
-            if (left.Kind == ValueKind.Int64 && right.Kind == ValueKind.Int64)
-            {
-                return unchecked(left.Int64 + right.Int64) != 0;
-            }
-            if (left.Kind == ValueKind.UInt64 && right.Kind == ValueKind.UInt64)
-            {
-                return unchecked(left.UInt64 + right.UInt64) != 0;
-            }
-            if (left.Kind != ValueKind.String &&
-                right.Kind != ValueKind.String &&
-                TryToArithmeticNumber(left, out var leftNumber) &&
-                TryToArithmeticNumber(right, out var rightNumber))
-            {
-                return IsTruthyNumber(leftNumber + rightNumber);
-            }
-
-            return ToBoolean(Add(left, right));
+            return ScriptDatum.IsTrue(Add(left, right));
         }
 
         /// <summary>
@@ -197,8 +173,12 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum AddStringMiddle(ScriptDatum left, string middle, ScriptDatum right)
         {
-            return ScriptDatum.FromString(string.Concat(ToStringForConcat(left), middle, ToStringForConcat(right)));
+            return ScriptDatum.FromString(ConcatStringMiddle(left, middle, right));
         }
+
+        /// <summary>Concatenates a literal separator without packing the result into a datum.</summary>
+        public static string ConcatStringMiddle(ScriptDatum left, string middle, ScriptDatum right)
+            => string.Concat(ToStringForConcat(left), middle, ToStringForConcat(right));
 
         /// <summary>Returns a string length without requiring a null check in generated CIL.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -246,17 +226,7 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool SubtractBoolean(ScriptDatum left, ScriptDatum right)
         {
-            if (left.Kind == ValueKind.Int64 && right.Kind == ValueKind.Int64)
-            {
-                return unchecked(left.Int64 - right.Int64) != 0;
-            }
-            if (left.Kind == ValueKind.UInt64 && right.Kind == ValueKind.UInt64)
-            {
-                return unchecked(left.UInt64 - right.UInt64) != 0;
-            }
-            return TryToArithmeticNumber(left, out var leftNumber) &&
-                TryToArithmeticNumber(right, out var rightNumber) &&
-                IsTruthyNumber(leftNumber - rightNumber);
+            return ScriptDatum.IsTrue(Subtract(left, right));
         }
 
         /// <summary>Implements dynamic multiplication.</summary>
@@ -282,17 +252,7 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool MultiplyBoolean(ScriptDatum left, ScriptDatum right)
         {
-            if (left.Kind == ValueKind.Int64 && right.Kind == ValueKind.Int64)
-            {
-                return unchecked(left.Int64 * right.Int64) != 0;
-            }
-            if (left.Kind == ValueKind.UInt64 && right.Kind == ValueKind.UInt64)
-            {
-                return unchecked(left.UInt64 * right.UInt64) != 0;
-            }
-            return TryToArithmeticNumber(left, out var leftNumber) &&
-                TryToArithmeticNumber(right, out var rightNumber) &&
-                IsTruthyNumber(leftNumber * rightNumber);
+            return ScriptDatum.IsTrue(Multiply(left, right));
         }
 
         /// <summary>Implements dynamic division.</summary>
@@ -318,17 +278,7 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool DivideBoolean(ScriptDatum left, ScriptDatum right)
         {
-            if (left.Kind == ValueKind.Int64 && right.Kind == ValueKind.Int64)
-            {
-                return DivideInt64(left.Int64, right.Int64) != 0;
-            }
-            if (left.Kind == ValueKind.UInt64 && right.Kind == ValueKind.UInt64)
-            {
-                return DivideUInt64(left.UInt64, right.UInt64) != 0;
-            }
-            return TryToArithmeticNumber(left, out var leftNumber) &&
-                TryToArithmeticNumber(right, out var rightNumber) &&
-                IsTruthyNumber(leftNumber / rightNumber);
+            return ScriptDatum.IsTrue(Divide(left, right));
         }
 
         /// <summary>Implements dynamic remainder.</summary>
@@ -423,17 +373,7 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool ModuloBoolean(ScriptDatum left, ScriptDatum right)
         {
-            if (left.Kind == ValueKind.Int64 && right.Kind == ValueKind.Int64)
-            {
-                return ModuloInt64(left.Int64, right.Int64) != 0;
-            }
-            if (left.Kind == ValueKind.UInt64 && right.Kind == ValueKind.UInt64)
-            {
-                return ModuloUInt64(left.UInt64, right.UInt64) != 0;
-            }
-            return TryToArithmeticNumber(left, out var leftNumber) &&
-                TryToArithmeticNumber(right, out var rightNumber) &&
-                IsTruthyNumber(leftNumber % rightNumber);
+            return ScriptDatum.IsTrue(Modulo(left, right));
         }
 
         /// <summary>Implements script equality.</summary>
@@ -644,18 +584,7 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool BitwiseAndBoolean(ScriptDatum left, ScriptDatum right)
         {
-            if (left.Kind == ValueKind.Int64 && right.Kind == ValueKind.Int64)
-            {
-                return (left.Int64 & right.Int64) != 0;
-            }
-            if (left.Kind == ValueKind.UInt64 && right.Kind == ValueKind.UInt64)
-            {
-                return (left.UInt64 & right.UInt64) != 0;
-            }
-            return TryToBitwiseNumber(left, out var leftNumber) &&
-                TryToBitwiseNumber(right, out var rightNumber) &&
-                (unchecked((int)(long)leftNumber) &
-                    unchecked((int)(long)rightNumber)) != 0;
+            return ScriptDatum.IsTrue(BitwiseAnd(left, right));
         }
 
         /// <summary>Implements 32-bit dynamic bitwise OR.</summary>
@@ -685,22 +614,7 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool BitwiseOrBoolean(ScriptDatum left, ScriptDatum right)
         {
-            if (left.Kind == ValueKind.Int64 && right.Kind == ValueKind.Int64)
-            {
-                return (left.Int64 | right.Int64) != 0;
-            }
-            if (left.Kind == ValueKind.UInt64 && right.Kind == ValueKind.UInt64)
-            {
-                return (left.UInt64 | right.UInt64) != 0;
-            }
-            if (TryToBitwiseNumber(left, out var leftNumber) &&
-                TryToBitwiseNumber(right, out var rightNumber))
-            {
-                return (unchecked((int)(long)leftNumber) |
-                    unchecked((int)(long)rightNumber)) != 0;
-            }
-
-            return left.Kind == ValueKind.Null && ToBoolean(right);
+            return ScriptDatum.IsTrue(BitwiseOr(left, right));
         }
 
         /// <summary>Implements 32-bit dynamic bitwise XOR.</summary>
@@ -727,18 +641,7 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool BitwiseXorBoolean(ScriptDatum left, ScriptDatum right)
         {
-            if (left.Kind == ValueKind.Int64 && right.Kind == ValueKind.Int64)
-            {
-                return (left.Int64 ^ right.Int64) != 0;
-            }
-            if (left.Kind == ValueKind.UInt64 && right.Kind == ValueKind.UInt64)
-            {
-                return (left.UInt64 ^ right.UInt64) != 0;
-            }
-            return TryToBitwiseNumber(left, out var leftNumber) &&
-                TryToBitwiseNumber(right, out var rightNumber) &&
-                (unchecked((int)(long)leftNumber) ^
-                    unchecked((int)(long)rightNumber)) != 0;
+            return ScriptDatum.IsTrue(BitwiseXor(left, right));
         }
 
         /// <summary>Implements 32-bit left shift.</summary>
@@ -763,17 +666,7 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool LeftShiftBoolean(ScriptDatum left, ScriptDatum right)
         {
-            if (left.Kind == ValueKind.Int64 && right.Kind == ValueKind.Int64)
-            {
-                return (left.Int64 << (int)right.Int64) != 0;
-            }
-            if (left.Kind == ValueKind.UInt64 && right.Kind == ValueKind.UInt64)
-            {
-                return (left.UInt64 << (int)right.UInt64) != 0;
-            }
-            return TryToBitwiseNumber(left, out var leftNumber) &&
-                TryToBitwiseNumber(right, out var rightNumber) &&
-                ((int)leftNumber << (int)rightNumber) != 0;
+            return ScriptDatum.IsTrue(LeftShift(left, right));
         }
 
         /// <summary>Implements signed 32-bit right shift.</summary>
@@ -798,17 +691,7 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool RightShiftBoolean(ScriptDatum left, ScriptDatum right)
         {
-            if (left.Kind == ValueKind.Int64 && right.Kind == ValueKind.Int64)
-            {
-                return (left.Int64 >> (int)right.Int64) != 0;
-            }
-            if (left.Kind == ValueKind.UInt64 && right.Kind == ValueKind.UInt64)
-            {
-                return (left.UInt64 >> (int)right.UInt64) != 0;
-            }
-            return TryToBitwiseNumber(left, out var leftNumber) &&
-                TryToBitwiseNumber(right, out var rightNumber) &&
-                ((int)leftNumber >> (int)rightNumber) != 0;
+            return ScriptDatum.IsTrue(RightShift(left, right));
         }
 
         /// <summary>Implements unsigned 32-bit right shift.</summary>
@@ -835,17 +718,7 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool UnsignedRightShiftBoolean(ScriptDatum left, ScriptDatum right)
         {
-            if (left.Kind == ValueKind.Int64 && right.Kind == ValueKind.Int64)
-            {
-                return (unchecked((ulong)left.Int64) >> (int)right.Int64) != 0;
-            }
-            if (left.Kind == ValueKind.UInt64 && right.Kind == ValueKind.UInt64)
-            {
-                return (left.UInt64 >> (int)right.UInt64) != 0;
-            }
-            return TryToBitwiseNumber(left, out var leftNumber) &&
-                TryToBitwiseNumber(right, out var rightNumber) &&
-                ((int)leftNumber >>> (int)rightNumber) != 0;
+            return ScriptDatum.IsTrue(UnsignedRightShift(left, right));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

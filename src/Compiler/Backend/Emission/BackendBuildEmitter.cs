@@ -98,7 +98,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             il.Emit(OpCodes.Stloc, moduleLocal);
             il.Emit(OpCodes.Ldarg_0);
             il.Emit(OpCodes.Ldloc, moduleLocal);
-            il.Emit(OpCodes.Call, TypedRuntimeMetadata.EnterModuleFrame);
+            il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.EnterModuleFrame);
             il.Emit(OpCodes.Stloc, frameLocal);
 
             il.BeginExceptionBlock();
@@ -108,7 +108,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             il.BeginFinallyBlock();
             il.Emit(OpCodes.Ldarg_0);
             il.Emit(OpCodes.Ldloc, frameLocal);
-            il.Emit(OpCodes.Call, TypedRuntimeMetadata.LeaveFrame);
+            il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.LeaveFrame);
             il.EndExceptionBlock();
         }
 

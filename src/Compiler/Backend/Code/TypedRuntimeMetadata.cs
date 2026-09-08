@@ -5,6 +5,7 @@ using AuroraScript.Runtime.Pool;
 using AuroraScript.Runtime.Serialization;
 using AuroraScript.Core;
 using System;
+using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text;
 
@@ -74,61 +75,39 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo ToBooleanObject = Method(typeof(ValueOps), nameof(ValueOps.ToBoolean), typeof(ScriptObject));
         public static readonly MethodInfo ToArithmeticNumber = Method(typeof(ValueOps), nameof(ValueOps.ToArithmeticNumber), typeof(ScriptDatum));
         public static readonly MethodInfo TryToNumber = Method(typeof(ValueOps), nameof(ValueOps.TryToNumber), typeof(ScriptDatum), typeof(double).MakeByRefType());
-        public static readonly MethodInfo TryToInteger = Method(typeof(ScriptDatum), nameof(ScriptDatum.TryToInteger), typeof(ScriptDatum).MakeByRefType(), typeof(long).MakeByRefType());
         public static readonly MethodInfo Add = Method(typeof(ValueOps), nameof(ValueOps.Add), typeof(ScriptDatum), typeof(ScriptDatum));
-        public static readonly MethodInfo AddBoolean = Method(typeof(ValueOps), nameof(ValueOps.AddBoolean), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo AddToNumberLeft = Method(typeof(ValueOps), nameof(ValueOps.AddToNumberLeft), typeof(double), typeof(ScriptDatum));
         public static readonly MethodInfo AddToNumberRight = Method(typeof(ValueOps), nameof(ValueOps.AddToNumberRight), typeof(ScriptDatum), typeof(double));
-        public static readonly MethodInfo StringConcat = Method(typeof(string), nameof(string.Concat), typeof(string), typeof(string));
-        public static readonly MethodInfo AddStringRight = Method(typeof(ValueOps), nameof(ValueOps.AddStringRight), typeof(ScriptDatum), typeof(string));
-        public static readonly MethodInfo AddStringLeft = Method(typeof(ValueOps), nameof(ValueOps.AddStringLeft), typeof(string), typeof(ScriptDatum));
-        public static readonly MethodInfo AddStringMiddle = Method(typeof(ValueOps), nameof(ValueOps.AddStringMiddle), typeof(ScriptDatum), typeof(string), typeof(ScriptDatum));
-        public static readonly MethodInfo StringConcatThree = Method(typeof(string), nameof(string.Concat), typeof(string), typeof(string), typeof(string));
         public static readonly MethodInfo ConcatStringLeft = Method(typeof(ValueOps), nameof(ValueOps.ConcatStringLeft), typeof(string), typeof(ScriptDatum));
         public static readonly MethodInfo ConcatStringRight = Method(typeof(ValueOps), nameof(ValueOps.ConcatStringRight), typeof(ScriptDatum), typeof(string));
+        public static readonly MethodInfo ConcatStringMiddle = Method(typeof(ValueOps), nameof(ValueOps.ConcatStringMiddle), typeof(ScriptDatum), typeof(string), typeof(ScriptDatum));
         public static readonly MethodInfo Subtract = Method(typeof(ValueOps), nameof(ValueOps.Subtract), typeof(ScriptDatum), typeof(ScriptDatum));
-        public static readonly MethodInfo SubtractBoolean = Method(typeof(ValueOps), nameof(ValueOps.SubtractBoolean), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo Multiply = Method(typeof(ValueOps), nameof(ValueOps.Multiply), typeof(ScriptDatum), typeof(ScriptDatum));
-        public static readonly MethodInfo MultiplyBoolean = Method(typeof(ValueOps), nameof(ValueOps.MultiplyBoolean), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo Divide = Method(typeof(ValueOps), nameof(ValueOps.Divide), typeof(ScriptDatum), typeof(ScriptDatum));
-        public static readonly MethodInfo DivideBoolean = Method(typeof(ValueOps), nameof(ValueOps.DivideBoolean), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo Modulo = Method(typeof(ValueOps), nameof(ValueOps.Modulo), typeof(ScriptDatum), typeof(ScriptDatum));
-        public static readonly MethodInfo ModuloBoolean = Method(typeof(ValueOps), nameof(ValueOps.ModuloBoolean), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo ModuloInt32 = Method(typeof(ValueOps), nameof(ValueOps.ModuloInt32), typeof(int), typeof(int));
         public static readonly MethodInfo ModuloUInt32 = Method(typeof(ValueOps), nameof(ValueOps.ModuloUInt32), typeof(uint), typeof(uint));
         public static readonly MethodInfo DivideInt64 = Method(typeof(ValueOps), nameof(ValueOps.DivideInt64), typeof(long), typeof(long));
         public static readonly MethodInfo DivideUInt64 = Method(typeof(ValueOps), nameof(ValueOps.DivideUInt64), typeof(ulong), typeof(ulong));
         public static readonly MethodInfo ModuloInt64 = Method(typeof(ValueOps), nameof(ValueOps.ModuloInt64), typeof(long), typeof(long));
         public static readonly MethodInfo ModuloUInt64 = Method(typeof(ValueOps), nameof(ValueOps.ModuloUInt64), typeof(ulong), typeof(ulong));
-        public static readonly MethodInfo Equal = Method(typeof(ValueOps), nameof(ValueOps.Equal), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo EqualBoolean = Method(typeof(ValueOps), nameof(ValueOps.EqualBoolean), typeof(ScriptDatum), typeof(ScriptDatum));
-        public static readonly MethodInfo NotEqual = Method(typeof(ValueOps), nameof(ValueOps.NotEqual), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo NotEqualBoolean = Method(typeof(ValueOps), nameof(ValueOps.NotEqualBoolean), typeof(ScriptDatum), typeof(ScriptDatum));
-        public static readonly MethodInfo Less = Method(typeof(ValueOps), nameof(ValueOps.Less), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo LessBoolean = Method(typeof(ValueOps), nameof(ValueOps.LessBoolean), typeof(ScriptDatum), typeof(ScriptDatum));
-        public static readonly MethodInfo LessEqual = Method(typeof(ValueOps), nameof(ValueOps.LessEqual), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo LessEqualBoolean = Method(typeof(ValueOps), nameof(ValueOps.LessEqualBoolean), typeof(ScriptDatum), typeof(ScriptDatum));
-        public static readonly MethodInfo Greater = Method(typeof(ValueOps), nameof(ValueOps.Greater), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo GreaterBoolean = Method(typeof(ValueOps), nameof(ValueOps.GreaterBoolean), typeof(ScriptDatum), typeof(ScriptDatum));
-        public static readonly MethodInfo GreaterEqual = Method(typeof(ValueOps), nameof(ValueOps.GreaterEqual), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo GreaterEqualBoolean = Method(typeof(ValueOps), nameof(ValueOps.GreaterEqualBoolean), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo BitwiseAnd = Method(typeof(ValueOps), nameof(ValueOps.BitwiseAnd), typeof(ScriptDatum), typeof(ScriptDatum));
-        public static readonly MethodInfo BitwiseAndBoolean = Method(typeof(ValueOps), nameof(ValueOps.BitwiseAndBoolean), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo BitwiseOr = Method(typeof(ValueOps), nameof(ValueOps.BitwiseOr), typeof(ScriptDatum), typeof(ScriptDatum));
-        public static readonly MethodInfo BitwiseOrBoolean = Method(typeof(ValueOps), nameof(ValueOps.BitwiseOrBoolean), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo BitwiseXor = Method(typeof(ValueOps), nameof(ValueOps.BitwiseXor), typeof(ScriptDatum), typeof(ScriptDatum));
-        public static readonly MethodInfo BitwiseXorBoolean = Method(typeof(ValueOps), nameof(ValueOps.BitwiseXorBoolean), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo LeftShift = Method(typeof(ValueOps), nameof(ValueOps.LeftShift), typeof(ScriptDatum), typeof(ScriptDatum));
-        public static readonly MethodInfo LeftShiftBoolean = Method(typeof(ValueOps), nameof(ValueOps.LeftShiftBoolean), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo RightShift = Method(typeof(ValueOps), nameof(ValueOps.RightShift), typeof(ScriptDatum), typeof(ScriptDatum));
-        public static readonly MethodInfo RightShiftBoolean = Method(typeof(ValueOps), nameof(ValueOps.RightShiftBoolean), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo UnsignedRightShift = Method(typeof(ValueOps), nameof(ValueOps.UnsignedRightShift), typeof(ScriptDatum), typeof(ScriptDatum));
-        public static readonly MethodInfo UnsignedRightShiftBoolean = Method(typeof(ValueOps), nameof(ValueOps.UnsignedRightShiftBoolean), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo Not = Method(typeof(ValueOps), nameof(ValueOps.Not), typeof(ScriptDatum));
         public static readonly MethodInfo Negate = Method(typeof(ValueOps), nameof(ValueOps.Negate), typeof(ScriptDatum));
         public static readonly MethodInfo BitwiseNot = Method(typeof(ValueOps), nameof(ValueOps.BitwiseNot), typeof(ScriptDatum));
         public static readonly MethodInfo ChangeByOne = Method(typeof(ValueOps), nameof(ValueOps.ChangeByOne), typeof(ScriptDatum), typeof(double));
-        public static readonly MethodInfo TypeOf = Method(typeof(ValueOps), nameof(ValueOps.TypeOf), typeof(ScriptDatum));
+        public static readonly MethodInfo TypeOf = Method(typeof(ScriptDatum), nameof(ScriptDatum.TypeOf), typeof(ScriptDatum));
 
         public static readonly MethodInfo GetProperty = Method(typeof(ObjectOps), nameof(ObjectOps.GetProperty), typeof(ScriptDatum), typeof(ScriptContext), typeof(string));
         public static readonly MethodInfo GetPropertyDirect = Method(typeof(ObjectOps), nameof(ObjectOps.GetProperty), typeof(ScriptDatum), typeof(string));
@@ -141,13 +120,9 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo SetElement = Method(typeof(ObjectOps), nameof(ObjectOps.SetElement), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum));
         public static readonly MethodInfo SetElementNumber = Method(typeof(ObjectOps), nameof(ObjectOps.SetElementNumber), typeof(ScriptDatum), typeof(double), typeof(ScriptDatum));
         public static readonly MethodInfo CompoundAddElement = Method(typeof(ObjectOps), nameof(ObjectOps.CompoundAddElement), typeof(ScriptDatum), typeof(ScriptDatum), typeof(ScriptDatum));
-        public static readonly MethodInfo CompoundAddElementNumber = Method(typeof(ObjectOps), nameof(ObjectOps.CompoundAddElementNumber), typeof(ScriptDatum), typeof(double), typeof(ScriptDatum));
         public static readonly MethodInfo ChangeElement = Method(typeof(ObjectOps), nameof(ObjectOps.ChangeElement), typeof(ScriptDatum), typeof(ScriptDatum), typeof(double), typeof(bool));
-        public static readonly MethodInfo ChangeElementNumber = Method(typeof(ObjectOps), nameof(ObjectOps.ChangeElementNumber), typeof(ScriptDatum), typeof(double), typeof(double), typeof(bool));
         public static readonly MethodInfo GetElementIndex = Method(typeof(ObjectOps), nameof(ObjectOps.GetElementIndex), typeof(ScriptDatum), typeof(int));
         public static readonly MethodInfo SetElementIndex = Method(typeof(ObjectOps), nameof(ObjectOps.SetElementIndex), typeof(ScriptDatum), typeof(int), typeof(ScriptDatum));
-        public static readonly MethodInfo CompoundAddElementIndex = Method(typeof(ObjectOps), nameof(ObjectOps.CompoundAddElementIndex), typeof(ScriptDatum), typeof(int), typeof(ScriptDatum));
-        public static readonly MethodInfo ChangeElementIndex = Method(typeof(ObjectOps), nameof(ObjectOps.ChangeElementIndex), typeof(ScriptDatum), typeof(int), typeof(double), typeof(bool));
         public static readonly MethodInfo ChangeDatumProperty = Method(typeof(ObjectOps), nameof(ObjectOps.ChangeProperty), typeof(ScriptDatum), typeof(ScriptContext), typeof(string), typeof(double), typeof(bool));
         public static readonly MethodInfo ChangeObjectProperty = Method(typeof(ObjectOps), nameof(ObjectOps.ChangeProperty), typeof(ScriptObject), typeof(ScriptContext), typeof(string), typeof(double), typeof(bool));
         public static readonly MethodInfo CreateObject3 = Method(typeof(ObjectOps), nameof(ObjectOps.CreateObject3), typeof(string), typeof(ScriptDatum), typeof(string), typeof(ScriptDatum), typeof(string), typeof(ScriptDatum));
@@ -175,7 +150,6 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo GetGlobal = Method(typeof(ScopeOps), nameof(ScopeOps.GetGlobal), typeof(ScriptContext), typeof(string));
         public static readonly MethodInfo SetGlobal = Method(typeof(ScopeOps), nameof(ScopeOps.SetGlobal), typeof(ScriptContext), typeof(string), typeof(ScriptDatum));
         public static readonly MethodInfo GetGlobalObject = Method(typeof(ScopeOps), nameof(ScopeOps.GetGlobalObject), typeof(ScriptContext));
-        public static readonly MethodInfo GetUserState = Method(typeof(ScopeOps), nameof(ScopeOps.GetUserState), typeof(ScriptContext));
         public static readonly MethodInfo GetUserStateObject = Method(typeof(ScopeOps), nameof(ScopeOps.GetUserStateObject), typeof(ScriptContext));
         public static readonly MethodInfo GetEnumerator = Method(typeof(IterationOps), nameof(IterationOps.GetEnumerator), typeof(ScriptDatum));
         public static readonly MethodInfo MoveNext = Method(typeof(IterationOps), nameof(IterationOps.MoveNext), typeof(ScriptEnumerator), typeof(ScriptDatum).MakeByRefType());
@@ -192,7 +166,6 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo IsContinue = Method(typeof(ExceptionOps), nameof(ExceptionOps.IsContinue), typeof(ScriptLoopTransferSignal));
         public static readonly MethodInfo DeleteProperty = Method(typeof(ObjectOps), nameof(ObjectOps.DeleteProperty), typeof(ScriptContext), typeof(ScriptDatum), typeof(string));
         public static readonly MethodInfo DeleteElement = Method(typeof(ObjectOps), nameof(ObjectOps.DeleteElement), typeof(ScriptContext), typeof(ScriptDatum), typeof(ScriptDatum));
-        public static readonly MethodInfo BindTypedDocument = Method(typeof(TypedDocumentBinder), nameof(TypedDocumentBinder.BindInterpolation), typeof(ScriptContext), typeof(string), typeof(ScriptDatum));
         public static readonly MethodInfo BindTypedDocumentAtPath = Method(typeof(TypedDocumentBinder), nameof(TypedDocumentBinder.BindInterpolationAtPath), typeof(ScriptContext), typeof(string), typeof(ScriptDatum), typeof(string));
         public static readonly MethodInfo SetTypedDocumentPackedElement = Method(typeof(TypedDocumentBinder), nameof(TypedDocumentBinder.SetPackedElement), typeof(ScriptPackedArray), typeof(int), typeof(ScriptDatum), typeof(string));
         public static readonly MethodInfo CreateTypedDocumentClrObject = Method(typeof(TypedDocumentBinder), nameof(TypedDocumentBinder.CreateClrObject), typeof(ScriptContext), typeof(string), typeof(string));
@@ -207,9 +180,7 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo ScriptArrayPush = InstanceMethod(typeof(ScriptArray), nameof(ScriptArray.Push), typeof(ScriptDatum));
         public static readonly ConstructorInfo ScriptObjectConstructor = Constructor(typeof(ScriptObject));
         public static readonly MethodInfo ScriptObjectSetProperty = InstanceMethod(typeof(ScriptObject), nameof(ScriptObject.SetPropertyDatum), typeof(ScriptContext), typeof(string), typeof(ScriptDatum));
-        public static readonly MethodInfo ScriptObjectGetProperty = InstanceMethod(typeof(ScriptObject), nameof(ScriptObject.GetPropertyDatum), typeof(ScriptContext), typeof(string));
         public static readonly MethodInfo ScriptObjectDefineDatum = InstanceMethod(typeof(ScriptObject), nameof(ScriptObject.Define), typeof(string), typeof(ScriptDatum), typeof(bool), typeof(bool));
-        public static readonly MethodInfo ScriptObjectCopyProperties = InstanceMethod(typeof(ScriptObject), nameof(ScriptObject.CopyPropertysFrom), typeof(ScriptObject), typeof(bool));
         public static readonly MethodInfo ScriptObjectCopyModuleExports = InstanceMethod(typeof(ScriptObject), nameof(ScriptObject.CopyModuleExportsFrom), typeof(ScriptObject), typeof(bool));
         public static readonly MethodInfo ScriptGlobalGetModuleByPath = InstanceMethod(typeof(ScriptGlobal), nameof(ScriptGlobal.GetModuleByPath), typeof(string));
         public static readonly MethodInfo ScriptGlobalEnsureModule = InstanceMethod(typeof(ScriptGlobal), nameof(ScriptGlobal.EnsureModule), typeof(string), typeof(ScriptSourceReference));
@@ -237,8 +208,6 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo ScriptObjectClearProperties = InstanceMethod(typeof(ScriptObject), nameof(ScriptObject.ClearProperties));
 
         public static readonly MethodInfo ValidatePackedArrayLength = Method(typeof(ScriptPackedArray), nameof(ScriptPackedArray.ValidateLength), typeof(double));
-        public static readonly MethodInfo ToExactInt64Number = Method(typeof(ScriptPackedArray), nameof(ScriptPackedArray.ToExactInt64Number), typeof(long), typeof(int));
-        public static readonly MethodInfo ToExactUInt64Number = Method(typeof(ScriptPackedArray), nameof(ScriptPackedArray.ToExactUInt64Number), typeof(ulong), typeof(int));
         public static readonly ConstructorInfo ScriptInt32ArrayConstructor = Constructor(typeof(ScriptInt32Array), typeof(int));
         public static readonly ConstructorInfo ScriptInt8ArrayConstructor = Constructor(typeof(ScriptInt8Array), typeof(int));
         public static readonly ConstructorInfo ScriptFloat32ArrayConstructor = Constructor(typeof(ScriptFloat32Array), typeof(int));
@@ -265,16 +234,52 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly FieldInfo ScriptInt64ArrayItems = Field(typeof(ScriptInt64Array), "_items");
         public static readonly FieldInfo ScriptUInt64ArrayItems = Field(typeof(ScriptUInt64Array), "_items");
 
-        public static MethodInfo PackedArrayBoundary(
-            string methodName,
-            Type parameterType) =>
-            Method(
-                typeof(PackedArrayBoundaryOps),
-                methodName,
-                parameterType);
+        internal enum PackedBoundaryConversion
+        {
+            ToStorage,
+            ToWrapper,
+            FromStorage
+        }
 
-        public static readonly MethodInfo EnterModuleFrame = Method(typeof(CallFrameOps), nameof(CallFrameOps.EnterModule), typeof(ScriptContext), typeof(ScriptModule));
-        public static readonly MethodInfo LeaveFrame = Method(typeof(CallFrameOps), nameof(CallFrameOps.Leave), typeof(ScriptContext), typeof(int));
+        public static MethodInfo PackedArrayBoundary(
+            FlowValueType type,
+            Type parameterType,
+            PackedBoundaryConversion conversion) =>
+            PackedBoundaryCache.Methods.GetOrAdd((type, parameterType, conversion), static key =>
+            {
+                var name = key.Type switch
+                {
+                    FlowValueType.Int32Array => "Int32",
+                    FlowValueType.Int8Array => "Int8",
+                    FlowValueType.Float32Array => "Float32",
+                    FlowValueType.Float64Array => "Float64",
+                    FlowValueType.BooleanArray => "Boolean",
+                    FlowValueType.UInt8Array => "UInt8",
+                    FlowValueType.Int16Array => "Int16",
+                    FlowValueType.UInt16Array => "UInt16",
+                    FlowValueType.UInt32Array => "UInt32",
+                    FlowValueType.Int64Array => "Int64",
+                    FlowValueType.UInt64Array => "UInt64",
+                    _ => throw new ArgumentOutOfRangeException(nameof(type))
+                };
+                var methodName = key.Conversion switch
+                {
+                    PackedBoundaryConversion.ToStorage => "To" + name + "Storage",
+                    PackedBoundaryConversion.ToWrapper => "To" + name + "Array",
+                    PackedBoundaryConversion.FromStorage => "From" + name + "Storage",
+                    _ => throw new ArgumentOutOfRangeException(nameof(conversion))
+                };
+                return Method(typeof(PackedArrayBoundaryOps), methodName, key.ParameterType);
+            });
+
+        private static class PackedBoundaryCache
+        {
+            internal static readonly ConcurrentDictionary<
+                (FlowValueType Type, Type ParameterType, PackedBoundaryConversion Conversion), MethodInfo> Methods = new();
+        }
+
+        public static readonly MethodInfo EnterModuleFrame = InstanceMethod(typeof(ScriptContext), nameof(ScriptContext.EnterModule), typeof(ScriptModule));
+        public static readonly MethodInfo LeaveFrame = InstanceMethod(typeof(ScriptContext), nameof(ScriptContext.LeaveFrame), typeof(int));
         public static readonly MethodInfo GetArgument = Method(typeof(CallFrameOps), nameof(CallFrameOps.GetArgument), typeof(Span<ScriptDatum>), typeof(int));
         public static readonly MethodInfo GetArgumentOrDefault = Method(typeof(CallFrameOps), nameof(CallFrameOps.GetArgumentOrDefault), typeof(Span<ScriptDatum>), typeof(int), typeof(ScriptDatum));
         public static readonly MethodInfo IsNullOrEmpty = Method(typeof(string), nameof(string.IsNullOrEmpty), typeof(string));
@@ -327,17 +332,6 @@ namespace AuroraScript.Compiler.Backend.Code
                 ?? throw new MissingMethodException(type.FullName, name);
         }
 
-        private static MethodInfo StaticMethod(Type type, string name, params Type[] parameterTypes)
-        {
-            return type.GetMethod(
-                    name,
-                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static,
-                    null,
-                    parameterTypes,
-                    null)
-                ?? throw new MissingMethodException(type.FullName, name);
-        }
-
         private static MethodInfo InstanceMethod(Type type, string name, params Type[] parameterTypes)
         {
             return type.GetMethod(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, parameterTypes, null)
@@ -378,12 +372,12 @@ namespace AuroraScript.Compiler.Backend.Code
         private static MethodInfo[] ResolveClosureDelegates()
         {
             var result = new MethodInfo[9];
-            result[0] = Method(typeof(ClosureOps), nameof(ClosureOps.Resolve), typeof(int));
+            result[0] = Method(typeof(DynamicMethodRegistry), nameof(DynamicMethodRegistry.Resolve), typeof(int));
             for (var arity = 0; arity <= 7; arity++)
             {
                 result[arity + 1] = Method(
-                    typeof(ClosureOps),
-                    nameof(ClosureOps.Resolve) + arity,
+                    typeof(DynamicMethodRegistry),
+                    nameof(DynamicMethodRegistry.Resolve) + arity,
                     typeof(int));
             }
             return result;

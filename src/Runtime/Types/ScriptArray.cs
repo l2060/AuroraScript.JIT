@@ -386,9 +386,10 @@ namespace AuroraScript.Runtime.Types
                 return _count;
             }
 
-            EnsureCapacity(_count + items.Length);
+            var count = checked(_count + items.Length);
+            EnsureCapacity(count);
             items.CopyTo(_items.AsSpan(_count));
-            _count += items.Length;
+            _count = count;
             return _count;
         }
 
