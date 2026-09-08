@@ -2767,7 +2767,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 {
                     EmitInt32(i);
                     EmitDatumOrNullAtTDocIndex(expression.Elements[i], i);
-                    _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptArraySetElement);
+                    _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptArrayInitializeElement);
                 }
             }
             return StackValueKind.Object;
@@ -6755,7 +6755,8 @@ namespace AuroraScript.Compiler.Backend.Emission
                 }
                 else if (constant >= -9_007_199_254_740_991d &&
                     constant <= 9_007_199_254_740_991d &&
-                    Math.Truncate(constant) == constant)
+                    Math.Truncate(constant) == constant &&
+                    (constant != 0d || BitConverter.DoubleToInt64Bits(constant) >= 0))
                 {
                     _il.Emit(OpCodes.Ldc_I8, (long)constant);
                     _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromNumberInt64);

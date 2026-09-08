@@ -194,12 +194,18 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool TryToNumber(in ScriptDatum d, out double value)
         {
+            if (d.reference == null && d.payload > TruePayload)
+            {
+                value = d.Number;
+                return true;
+            }
+            return TryToNumberSlow(in d, out value);
+        }
+
+        private static bool TryToNumberSlow(in ScriptDatum d, out double value)
+        {
             switch (d.Kind)
             {
-                case ValueKind.Number:
-                    value = d.Number;
-                    return true;
-
                 case ValueKind.Int64:
                     value = d.Int64;
                     return true;
@@ -231,12 +237,18 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool TryToInteger(in ScriptDatum d, out long value)
         {
+            if (d.reference == null && d.payload > TruePayload)
+            {
+                value = (long)d.Number;
+                return true;
+            }
+            return TryToIntegerSlow(in d, out value);
+        }
+
+        private static bool TryToIntegerSlow(in ScriptDatum d, out long value)
+        {
             switch (d.Kind)
             {
-                case ValueKind.Number:
-                    value = (long)d.Number;
-                    return true;
-
                 case ValueKind.Int64:
                     value = d.Int64;
                     return true;

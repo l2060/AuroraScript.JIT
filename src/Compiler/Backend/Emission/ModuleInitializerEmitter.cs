@@ -1166,7 +1166,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 {
                     _il.Emit(OpCodes.Ldc_I4, i);
                     EmitExpressionOrNullAtTDocIndex(element, i);
-                    _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptArraySetElement);
+                    _il.Emit(OpCodes.Callvirt, TypedRuntimeMetadata.ScriptArrayInitializeElement);
                 }
             }
             _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);

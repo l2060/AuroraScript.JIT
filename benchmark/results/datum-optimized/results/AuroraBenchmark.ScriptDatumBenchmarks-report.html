@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>AuroraBenchmark.ScriptDatumBenchmarks-20260908-201929</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.15.8, Windows 11 (10.0.28000.2704/26H1/2026Update)
+13th Gen Intel Core i7-13700KF 3.40GHz, 1 CPU, 24 logical and 16 physical cores
+.NET SDK 10.0.400
+  [Host]     : .NET 10.0.11 (10.0.11, 10.0.1126.37416), X64 RyuJIT x86-64-v3
+  Job-BZNPUE : .NET 10.0.11 (10.0.11, 10.0.1126.37416), X64 RyuJIT x86-64-v3
+</code></pre>
+<pre><code>IterationCount=5  IterationTime=200ms  LaunchCount=1  
+WarmupCount=3  
+</code></pre>
+
+<table>
+<thead><tr><th>Method        </th><th>Mean</th><th>Error</th><th>StdDev</th><th>Code Size</th><th>Allocated</th>
+</tr>
+</thead><tbody><tr><td>CreateInt32</td><td>0.6234 ns</td><td>0.0060 ns</td><td>0.0016 ns</td><td>105 B</td><td>-</td>
+</tr><tr><td>CreateUInt32</td><td>0.6523 ns</td><td>0.0104 ns</td><td>0.0027 ns</td><td>108 B</td><td>-</td>
+</tr><tr><td>CreateNumberInt64</td><td>0.5819 ns</td><td>0.0012 ns</td><td>0.0002 ns</td><td>105 B</td><td>-</td>
+</tr><tr><td>CreateDouble</td><td>0.8931 ns</td><td>0.0169 ns</td><td>0.0044 ns</td><td>122 B</td><td>-</td>
+</tr><tr><td>ReadNumber</td><td>0.5346 ns</td><td>0.0026 ns</td><td>0.0007 ns</td><td>113 B</td><td>-</td>
+</tr><tr><td>Truthiness</td><td>1.0885 ns</td><td>0.0102 ns</td><td>0.0027 ns</td><td>661 B</td><td>-</td>
+</tr><tr><td>ConvertNumber</td><td>0.6142 ns</td><td>0.0187 ns</td><td>0.0049 ns</td><td>165 B</td><td>-</td>
+</tr><tr><td>ExactIntegerEquality</td><td>2.3605 ns</td><td>0.0453 ns</td><td>0.0118 ns</td><td>1,265 B</td><td>-</td>
+</tr></tbody></table>
+</body>
+</html>

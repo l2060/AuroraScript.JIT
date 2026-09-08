@@ -2,6 +2,7 @@ using AuroraScript.Hosting;
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace AuroraScript.Runtime.Types
 {
@@ -303,6 +304,15 @@ namespace AuroraScript.Runtime.Types
         internal void SetElementValue(int index, ScriptDatum datum)
         {
             SetElement(index, in datum);
+        }
+
+        // Compiler-only: a fresh, unexposed literal has its final length allocated,
+        // and the emitter guarantees 0 <= index < Length. Never use for general writes.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void InitializeElementUnchecked(int index, ScriptDatum datum)
+        {
+            System.Diagnostics.Debug.Assert((uint)index < (uint)_count && _count <= _items.Length);
+            Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_items), index) = datum;
         }
 
         /// <summary> Determines whether the array contains a specific element. </summary>

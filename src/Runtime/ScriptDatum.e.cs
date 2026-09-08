@@ -517,8 +517,9 @@ namespace AuroraScript.Runtime
                 case ValueKind.Boolean:
                     return d.Boolean;
                 case ValueKind.Number:
-                    var num = d.Number;
-                    return num != 0 && !double.IsNaN(num);
+                    // All numeric writers canonicalize NaN, so decoding is unnecessary.
+                    return d.payload != EncodedPositiveZero &&
+                        d.payload != NegativeZeroPayload && d.payload != EncodedNaN;
                 case ValueKind.Int64:
                     return d.Int64 != 0;
                 case ValueKind.UInt64:
@@ -543,8 +544,8 @@ namespace AuroraScript.Runtime
                 case ValueKind.Boolean:
                     return !d.Boolean;
                 case ValueKind.Number:
-                    var num = d.Number;
-                    return num == 0 || double.IsNaN(num);
+                    return d.payload == EncodedPositiveZero ||
+                        d.payload == NegativeZeroPayload || d.payload == EncodedNaN;
                 case ValueKind.Int64:
                     return d.Int64 == 0;
                 case ValueKind.UInt64:

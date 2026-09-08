@@ -203,7 +203,7 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo ReadTypedDocumentNativeValue = Method(typeof(TypedDocumentBinder), nameof(TypedDocumentBinder.ReadNativeTypedDocument), typeof(INativeTypedDocument), typeof(ScriptDatum), typeof(string));
 
         public static readonly ConstructorInfo ScriptArrayCapacity = Constructor(typeof(ScriptArray), typeof(int));
-        public static readonly MethodInfo ScriptArraySetElement = InstanceMethod(typeof(ScriptArray), nameof(ScriptArray.SetElementValue), typeof(int), typeof(ScriptDatum));
+        public static readonly MethodInfo ScriptArrayInitializeElement = InstanceMethod(typeof(ScriptArray), nameof(ScriptArray.InitializeElementUnchecked), typeof(int), typeof(ScriptDatum));
         public static readonly MethodInfo ScriptArrayPush = InstanceMethod(typeof(ScriptArray), nameof(ScriptArray.Push), typeof(ScriptDatum));
         public static readonly ConstructorInfo ScriptObjectConstructor = Constructor(typeof(ScriptObject));
         public static readonly MethodInfo ScriptObjectSetProperty = InstanceMethod(typeof(ScriptObject), nameof(ScriptObject.SetPropertyDatum), typeof(ScriptContext), typeof(string), typeof(ScriptDatum));

@@ -97,7 +97,7 @@ namespace AuroraScript
             Global = new ScriptGlobal(this);
 
             // register standard types
-            ScriptArray.Register(Global);
+
             Global.Define("Int32Array", PackedArrayConstructor.Int32, writeable: false, enumerable: false);
             Global.Define("Int8Array", PackedArrayConstructor.Int8, writeable: false, enumerable: false);
             Global.Define("Float32Array", PackedArrayConstructor.Float32, writeable: false, enumerable: false);
@@ -109,20 +109,19 @@ namespace AuroraScript
             Global.Define("UInt32Array", PackedArrayConstructor.UInt32, writeable: false, enumerable: false);
             Global.Define("Int64Array", PackedArrayConstructor.Int64, writeable: false, enumerable: false);
             Global.Define("UInt64Array", PackedArrayConstructor.UInt64, writeable: false, enumerable: false);
+            Global.Define("Object", ScriptObjectConstructor.INSTANCE, writeable: false, enumerable: false);
+            Global.Define("Proxy", ScriptProxyConstructor.INSTANCE, writeable: false, enumerable: false);
+            ScriptArray.Register(Global);
             StringValue.Register(Global);
             BooleanValue.Register(Global);
-            Global.Define("Object", ScriptObjectConstructor.INSTANCE, writeable: false, enumerable: false);
             NumberValue.Register(Global);
             ScriptDate.Register(Global);
-
             // register advanced type
             ScriptError.Register(Global);
             ScriptHashMap.Register(Global);
             ScriptRegex.Register(Global);
-            Global.Define("Proxy", ScriptProxyConstructor.INSTANCE, writeable: false, enumerable: false);
             StringBuffer.Register(Global);
             ScriptPathValue.Register(Global);
-
             // Built-in infrastructure
             ConsoleSupport.Register(Global);
             JsonSupport.Register(Global);

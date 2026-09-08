@@ -19,9 +19,8 @@ namespace AuroraScript.Runtime
         private const ulong NullPayload = 0;
         private const ulong FalsePayload = 1;
         private const ulong TruePayload = 2;
+        private const ulong NegativeZeroPayload = 0x8000_0000_0000_0000UL;
         private const ulong EncodedPositiveZero = 0x7ff8_0000_0000_0001UL;
-        private const ulong EncodedSubnormalOne = 0x7ff8_0000_0000_0002UL;
-        private const ulong EncodedSubnormalTwo = 0x7ff8_0000_0000_0003UL;
         private const ulong EncodedNaN = 0x7ff8_0000_0000_0004UL;
         private static readonly object s_kindMarker = new();
         private static readonly object s_int64Marker = new();
@@ -311,9 +310,11 @@ namespace AuroraScript.Runtime
         {
             var a = other;
             var b = this;
-            if (a.Kind == b.Kind)
+            var aKind = a.Kind;
+            var bKind = b.Kind;
+            if (aKind == bKind)
             {
-                return a.Kind switch
+                return aKind switch
                 {
                     ValueKind.Null => true,
                     ValueKind.Boolean => a.Boolean == b.Boolean,
@@ -325,19 +326,15 @@ namespace AuroraScript.Runtime
                 };
             }
 
-            if (TryToNumber(a, out var na) && TryToNumber(b, out var nb))
+            if (aKind == ValueKind.Int64 && bKind == ValueKind.UInt64)
             {
-                if (a.Kind == ValueKind.Int64 && b.Kind == ValueKind.UInt64)
-                {
-                    return a.Int64 >= 0 && (ulong)a.Int64 == b.UInt64;
-                }
-                if (a.Kind == ValueKind.UInt64 && b.Kind == ValueKind.Int64)
-                {
-                    return b.Int64 >= 0 && a.UInt64 == (ulong)b.Int64;
-                }
-                return na == nb;
+                return a.Int64 >= 0 && (ulong)a.Int64 == b.UInt64;
             }
-            return false;
+            if (aKind == ValueKind.UInt64 && bKind == ValueKind.Int64)
+            {
+                return b.Int64 >= 0 && a.UInt64 == (ulong)b.Int64;
+            }
+            return TryToNumber(a, out var na) && TryToNumber(b, out var nb) && na == nb;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -349,45 +346,37 @@ namespace AuroraScript.Runtime
             }
 
             var bits = BitConverter.DoubleToUInt64Bits(value);
-            return bits switch
-            {
-                NullPayload => EncodedPositiveZero,
-                FalsePayload => EncodedSubnormalOne,
-                TruePayload => EncodedSubnormalTwo,
-                _ => bits,
-            };
+            // Escape the three raw patterns reserved for null and booleans.
+            return bits <= TruePayload ? EncodedPositiveZero + bits : bits;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong EncodeNumber(int value)
         {
-            return EncodeNumber((double)value);
+            // Integer-to-double conversion cannot produce NaN or subnormals.
+            return value == 0 ? EncodedPositiveZero : BitConverter.DoubleToUInt64Bits((double)value);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong EncodeNumber(uint value)
         {
-            return EncodeNumber((double)value);
+            return value == 0 ? EncodedPositiveZero : BitConverter.DoubleToUInt64Bits((double)value);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong EncodeNumber(long value)
         {
-            return EncodeNumber((double)value);
+            return value == 0 ? EncodedPositiveZero : BitConverter.DoubleToUInt64Bits((double)value);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static double DecodeNumber(ulong encoded)
         {
-            var bits = encoded switch
-            {
-                EncodedPositiveZero => NullPayload,
-                EncodedSubnormalOne => FalsePayload,
-                EncodedSubnormalTwo => TruePayload,
-                EncodedNaN => BitConverter.DoubleToUInt64Bits(double.NaN),
-                _ => encoded,
-            };
-            return BitConverter.UInt64BitsToDouble(bits);
+            // The four escape encodings are contiguous; ordinary doubles pass through.
+            var offset = unchecked(encoded - EncodedPositiveZero);
+            if (offset > EncodedNaN - EncodedPositiveZero)
+                return BitConverter.UInt64BitsToDouble(encoded);
+            return offset <= TruePayload ? BitConverter.UInt64BitsToDouble(offset) : double.NaN;
         }
     }
 }

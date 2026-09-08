@@ -1,9 +1,10 @@
 ﻿
 
-export native func arrayWork(Array array) void {
+export func arrayWork(Array array) {
 	for (var i = 0; i <= 10;i++) array.push(i,1,2);
 	var len = array.length;
 	for (var n = 0 ; n < len; n++) {
+		array[n] = n;
 		var item = array[n];
 		console.log(item);
 	}
@@ -13,7 +14,7 @@ export native func arrayWork(Array array) void {
 
 
 
-export native func testArray() void {
+export func testArray()  {
 	var array = [1, 2, 3, 4];
 	arrayWork(array);
 }

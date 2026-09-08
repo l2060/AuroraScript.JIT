@@ -372,17 +372,13 @@ namespace AuroraScript.Runtime.Types
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void SetElement(int index, int value) => _items[index] = value;
 
-        internal override ScriptDatum GetElementDatumUnchecked(int index) =>
-            ScriptDatum.FromNumber(_items[index]);
+        internal override ScriptDatum GetElementDatumUnchecked(int index) => ScriptDatum.FromNumber(_items[index]);
 
-        internal override void SetElementDatumUnchecked(int index, ScriptDatum value) =>
-            _items[index] = unchecked((int)ValueOps.ToArithmeticNumber(value));
+        internal override void SetElementDatumUnchecked(int index, ScriptDatum value) => _items[index] = unchecked((int)ValueOps.ToArithmeticNumber(value));
 
-        internal override void FillDatum(ScriptDatum value) =>
-            Array.Fill(_items, unchecked((int)ValueOps.ToArithmeticNumber(value)));
+        internal override void FillDatum(ScriptDatum value) => Array.Fill(_items, unchecked((int)ValueOps.ToArithmeticNumber(value)));
 
-        internal override ScriptPackedArray ClonePackedArray() =>
-            new ScriptInt32Array((int[])_items.Clone());
+        internal override ScriptPackedArray ClonePackedArray() => new ScriptInt32Array((int[])_items.Clone());
 
         /// <inheritdoc />
         protected internal override ScriptDatum TypeOfValue => TypeNames.Int32Array;
@@ -415,17 +411,13 @@ namespace AuroraScript.Runtime.Types
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void SetElement(int index, sbyte value) => _items[index] = value;
 
-        internal override ScriptDatum GetElementDatumUnchecked(int index) =>
-            ScriptDatum.FromNumber(_items[index]);
+        internal override ScriptDatum GetElementDatumUnchecked(int index) => ScriptDatum.FromNumber(_items[index]);
 
-        internal override void SetElementDatumUnchecked(int index, ScriptDatum value) =>
-            _items[index] = unchecked((sbyte)(int)ValueOps.ToArithmeticNumber(value));
+        internal override void SetElementDatumUnchecked(int index, ScriptDatum value) => _items[index] = unchecked((sbyte)(int)ValueOps.ToArithmeticNumber(value));
 
-        internal override void FillDatum(ScriptDatum value) =>
-            Array.Fill(_items, unchecked((sbyte)(int)ValueOps.ToArithmeticNumber(value)));
+        internal override void FillDatum(ScriptDatum value) => Array.Fill(_items, unchecked((sbyte)(int)ValueOps.ToArithmeticNumber(value)));
 
-        internal override ScriptPackedArray ClonePackedArray() =>
-            new ScriptInt8Array((sbyte[])_items.Clone());
+        internal override ScriptPackedArray ClonePackedArray() => new ScriptInt8Array((sbyte[])_items.Clone());
 
         /// <inheritdoc />
         protected internal override ScriptDatum TypeOfValue => TypeNames.Int8Array;
@@ -458,17 +450,13 @@ namespace AuroraScript.Runtime.Types
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void SetElement(int index, float value) => _items[index] = value;
 
-        internal override ScriptDatum GetElementDatumUnchecked(int index) =>
-            ScriptDatum.FromNumber(_items[index]);
+        internal override ScriptDatum GetElementDatumUnchecked(int index) => ScriptDatum.FromNumber(_items[index]);
 
-        internal override void SetElementDatumUnchecked(int index, ScriptDatum value) =>
-            _items[index] = (float)ValueOps.ToArithmeticNumber(value);
+        internal override void SetElementDatumUnchecked(int index, ScriptDatum value) => _items[index] = (float)ValueOps.ToArithmeticNumber(value);
 
-        internal override void FillDatum(ScriptDatum value) =>
-            Array.Fill(_items, (float)ValueOps.ToArithmeticNumber(value));
+        internal override void FillDatum(ScriptDatum value) => Array.Fill(_items, (float)ValueOps.ToArithmeticNumber(value));
 
-        internal override ScriptPackedArray ClonePackedArray() =>
-            new ScriptFloat32Array((float[])_items.Clone());
+        internal override ScriptPackedArray ClonePackedArray() => new ScriptFloat32Array((float[])_items.Clone());
 
         /// <inheritdoc />
         protected internal override ScriptDatum TypeOfValue => TypeNames.Float32Array;
@@ -501,17 +489,13 @@ namespace AuroraScript.Runtime.Types
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void SetElement(int index, double value) => _items[index] = value;
 
-        internal override ScriptDatum GetElementDatumUnchecked(int index) =>
-            ScriptDatum.FromNumber(_items[index]);
+        internal override ScriptDatum GetElementDatumUnchecked(int index) => ScriptDatum.FromNumber(_items[index]);
 
-        internal override void SetElementDatumUnchecked(int index, ScriptDatum value) =>
-            _items[index] = ValueOps.ToArithmeticNumber(value);
+        internal override void SetElementDatumUnchecked(int index, ScriptDatum value) => _items[index] = ValueOps.ToArithmeticNumber(value);
 
-        internal override void FillDatum(ScriptDatum value) =>
-            Array.Fill(_items, ValueOps.ToArithmeticNumber(value));
+        internal override void FillDatum(ScriptDatum value) => Array.Fill(_items, ValueOps.ToArithmeticNumber(value));
 
-        internal override ScriptPackedArray ClonePackedArray() =>
-            new ScriptFloat64Array((double[])_items.Clone());
+        internal override ScriptPackedArray ClonePackedArray() => new ScriptFloat64Array((double[])_items.Clone());
 
         /// <inheritdoc />
         protected internal override ScriptDatum TypeOfValue => TypeNames.Float64Array;
@@ -544,17 +528,13 @@ namespace AuroraScript.Runtime.Types
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void SetElement(int index, bool value) => _items[index] = value;
 
-        internal override ScriptDatum GetElementDatumUnchecked(int index) =>
-            ScriptDatum.FromBoolean(_items[index]);
+        internal override ScriptDatum GetElementDatumUnchecked(int index) => ScriptDatum.FromBoolean(_items[index]);
 
-        internal override void SetElementDatumUnchecked(int index, ScriptDatum value) =>
-            _items[index] = ValueOps.ToBoolean(value);
+        internal override void SetElementDatumUnchecked(int index, ScriptDatum value) => _items[index] = ValueOps.ToBoolean(value);
 
-        internal override void FillDatum(ScriptDatum value) =>
-            Array.Fill(_items, ValueOps.ToBoolean(value));
+        internal override void FillDatum(ScriptDatum value) => Array.Fill(_items, ValueOps.ToBoolean(value));
 
-        internal override ScriptPackedArray ClonePackedArray() =>
-            new ScriptBooleanArray((bool[])_items.Clone());
+        internal override ScriptPackedArray ClonePackedArray() => new ScriptBooleanArray((bool[])_items.Clone());
 
         /// <inheritdoc />
         protected internal override ScriptDatum TypeOfValue => TypeNames.BooleanArray;
@@ -581,17 +561,13 @@ namespace AuroraScript.Runtime.Types
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void SetElement(int index, byte value) => _items[index] = value;
 
-        internal override ScriptDatum GetElementDatumUnchecked(int index) =>
-            ScriptDatum.FromNumber(_items[index]);
+        internal override ScriptDatum GetElementDatumUnchecked(int index) => ScriptDatum.FromNumber(_items[index]);
 
-        internal override void SetElementDatumUnchecked(int index, ScriptDatum value) =>
-            _items[index] = unchecked((byte)(int)ValueOps.ToArithmeticNumber(value));
+        internal override void SetElementDatumUnchecked(int index, ScriptDatum value) => _items[index] = unchecked((byte)(int)ValueOps.ToArithmeticNumber(value));
 
-        internal override void FillDatum(ScriptDatum value) =>
-            Array.Fill(_items, unchecked((byte)(int)ValueOps.ToArithmeticNumber(value)));
+        internal override void FillDatum(ScriptDatum value) => Array.Fill(_items, unchecked((byte)(int)ValueOps.ToArithmeticNumber(value)));
 
-        internal override ScriptPackedArray ClonePackedArray() =>
-            new ScriptUInt8Array((byte[])_items.Clone());
+        internal override ScriptPackedArray ClonePackedArray() => new ScriptUInt8Array((byte[])_items.Clone());
 
         /// <inheritdoc />
         protected internal override ScriptDatum TypeOfValue => TypeNames.UInt8Array;
@@ -618,17 +594,13 @@ namespace AuroraScript.Runtime.Types
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void SetElement(int index, short value) => _items[index] = value;
 
-        internal override ScriptDatum GetElementDatumUnchecked(int index) =>
-            ScriptDatum.FromNumber(_items[index]);
+        internal override ScriptDatum GetElementDatumUnchecked(int index) => ScriptDatum.FromNumber(_items[index]);
 
-        internal override void SetElementDatumUnchecked(int index, ScriptDatum value) =>
-            _items[index] = unchecked((short)(int)ValueOps.ToArithmeticNumber(value));
+        internal override void SetElementDatumUnchecked(int index, ScriptDatum value) => _items[index] = unchecked((short)(int)ValueOps.ToArithmeticNumber(value));
 
-        internal override void FillDatum(ScriptDatum value) =>
-            Array.Fill(_items, unchecked((short)(int)ValueOps.ToArithmeticNumber(value)));
+        internal override void FillDatum(ScriptDatum value) => Array.Fill(_items, unchecked((short)(int)ValueOps.ToArithmeticNumber(value)));
 
-        internal override ScriptPackedArray ClonePackedArray() =>
-            new ScriptInt16Array((short[])_items.Clone());
+        internal override ScriptPackedArray ClonePackedArray() => new ScriptInt16Array((short[])_items.Clone());
 
         /// <inheritdoc />
         protected internal override ScriptDatum TypeOfValue => TypeNames.Int16Array;
@@ -655,17 +627,13 @@ namespace AuroraScript.Runtime.Types
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void SetElement(int index, ushort value) => _items[index] = value;
 
-        internal override ScriptDatum GetElementDatumUnchecked(int index) =>
-            ScriptDatum.FromNumber(_items[index]);
+        internal override ScriptDatum GetElementDatumUnchecked(int index) => ScriptDatum.FromNumber(_items[index]);
 
-        internal override void SetElementDatumUnchecked(int index, ScriptDatum value) =>
-            _items[index] = unchecked((ushort)(int)ValueOps.ToArithmeticNumber(value));
+        internal override void SetElementDatumUnchecked(int index, ScriptDatum value) => _items[index] = unchecked((ushort)(int)ValueOps.ToArithmeticNumber(value));
 
-        internal override void FillDatum(ScriptDatum value) =>
-            Array.Fill(_items, unchecked((ushort)(int)ValueOps.ToArithmeticNumber(value)));
+        internal override void FillDatum(ScriptDatum value) => Array.Fill(_items, unchecked((ushort)(int)ValueOps.ToArithmeticNumber(value)));
 
-        internal override ScriptPackedArray ClonePackedArray() =>
-            new ScriptUInt16Array((ushort[])_items.Clone());
+        internal override ScriptPackedArray ClonePackedArray() => new ScriptUInt16Array((ushort[])_items.Clone());
 
         /// <inheritdoc />
         protected internal override ScriptDatum TypeOfValue => TypeNames.UInt16Array;
@@ -692,17 +660,13 @@ namespace AuroraScript.Runtime.Types
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void SetElement(int index, uint value) => _items[index] = value;
 
-        internal override ScriptDatum GetElementDatumUnchecked(int index) =>
-            ScriptDatum.FromNumber(_items[index]);
+        internal override ScriptDatum GetElementDatumUnchecked(int index) => ScriptDatum.FromNumber(_items[index]);
 
-        internal override void SetElementDatumUnchecked(int index, ScriptDatum value) =>
-            _items[index] = unchecked((uint)ValueOps.ToArithmeticNumber(value));
+        internal override void SetElementDatumUnchecked(int index, ScriptDatum value) => _items[index] = unchecked((uint)ValueOps.ToArithmeticNumber(value));
 
-        internal override void FillDatum(ScriptDatum value) =>
-            Array.Fill(_items, unchecked((uint)ValueOps.ToArithmeticNumber(value)));
+        internal override void FillDatum(ScriptDatum value) => Array.Fill(_items, unchecked((uint)ValueOps.ToArithmeticNumber(value)));
 
-        internal override ScriptPackedArray ClonePackedArray() =>
-            new ScriptUInt32Array((uint[])_items.Clone());
+        internal override ScriptPackedArray ClonePackedArray() => new ScriptUInt32Array((uint[])_items.Clone());
 
         /// <inheritdoc />
         protected internal override ScriptDatum TypeOfValue => TypeNames.UInt32Array;
@@ -729,17 +693,13 @@ namespace AuroraScript.Runtime.Types
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void SetElement(int index, long value) => _items[index] = value;
 
-        internal override ScriptDatum GetElementDatumUnchecked(int index) =>
-            ScriptDatum.FromInt64(_items[index]);
+        internal override ScriptDatum GetElementDatumUnchecked(int index) => ScriptDatum.FromInt64(_items[index]);
 
-        internal override void SetElementDatumUnchecked(int index, ScriptDatum value) =>
-            _items[index] = TypeCheckOps.CheckInt64Value(value);
+        internal override void SetElementDatumUnchecked(int index, ScriptDatum value) => _items[index] = TypeCheckOps.CheckInt64Value(value);
 
-        internal override void FillDatum(ScriptDatum value) =>
-            Array.Fill(_items, TypeCheckOps.CheckInt64Value(value));
+        internal override void FillDatum(ScriptDatum value) => Array.Fill(_items, TypeCheckOps.CheckInt64Value(value));
 
-        internal override ScriptPackedArray ClonePackedArray() =>
-            new ScriptInt64Array((long[])_items.Clone());
+        internal override ScriptPackedArray ClonePackedArray() => new ScriptInt64Array((long[])_items.Clone());
 
         /// <inheritdoc />
         protected internal override ScriptDatum TypeOfValue => TypeNames.Int64Array;
@@ -766,17 +726,13 @@ namespace AuroraScript.Runtime.Types
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void SetElement(int index, ulong value) => _items[index] = value;
 
-        internal override ScriptDatum GetElementDatumUnchecked(int index) =>
-            ScriptDatum.FromUInt64(_items[index]);
+        internal override ScriptDatum GetElementDatumUnchecked(int index) => ScriptDatum.FromUInt64(_items[index]);
 
-        internal override void SetElementDatumUnchecked(int index, ScriptDatum value) =>
-            _items[index] = TypeCheckOps.CheckUInt64Value(value);
+        internal override void SetElementDatumUnchecked(int index, ScriptDatum value) => _items[index] = TypeCheckOps.CheckUInt64Value(value);
 
-        internal override void FillDatum(ScriptDatum value) =>
-            Array.Fill(_items, TypeCheckOps.CheckUInt64Value(value));
+        internal override void FillDatum(ScriptDatum value) => Array.Fill(_items, TypeCheckOps.CheckUInt64Value(value));
 
-        internal override ScriptPackedArray ClonePackedArray() =>
-            new ScriptUInt64Array((ulong[])_items.Clone());
+        internal override ScriptPackedArray ClonePackedArray() => new ScriptUInt64Array((ulong[])_items.Clone());
 
         /// <inheritdoc />
         protected internal override ScriptDatum TypeOfValue => TypeNames.UInt64Array;
