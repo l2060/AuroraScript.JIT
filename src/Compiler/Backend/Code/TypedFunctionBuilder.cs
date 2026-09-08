@@ -529,8 +529,6 @@ namespace AuroraScript.Compiler.Backend.Code
             private readonly Dictionary<ForStatement, CountedLoop> _countedLoops;
             private readonly Dictionary<int, Dictionary<string, FlowValueType>> _localFields;
             private readonly HashSet<int> _invalidLocalFields;
-            private readonly Dictionary<int, FlowValueType> _localArrayElements;
-            private readonly HashSet<int> _invalidLocalArrayElements;
             private readonly bool _optimisticDirect;
             private bool _changed;
             private FlowValueType _passReturnType;
@@ -576,8 +574,6 @@ namespace AuroraScript.Compiler.Backend.Code
                     ReferenceEqualityComparer.Instance);
                 _localFields = new Dictionary<int, Dictionary<string, FlowValueType>>();
                 _invalidLocalFields = new HashSet<int>();
-                _localArrayElements = new Dictionary<int, FlowValueType>();
-                _invalidLocalArrayElements = new HashSet<int>();
 
                 var parameterIndex = 0;
                 for (var i = 0; i < function.LocalSlots.Length; i++)
@@ -840,19 +836,7 @@ namespace AuroraScript.Compiler.Backend.Code
                             {
                                 MergeLocalFields(slot, map);
                             }
-                            if (variable.Initializer is ArrayLiteralExpression array)
-                            {
-                                MergeLocalArrayElements(slot, array);
-                            }
-                            else if (variable.Initializer is FunctionCallExpression arrayFactory &&
-                                IsArrayFactoryCall(arrayFactory))
-                            {
-                                MergeEmptyLocalArrayElements(slot);
-                            }
-                            else
-                            {
-                                InvalidateLocalArrayElementsUsedAsValue(variable.Initializer);
-                            }
+
                         }
                         else
                         {
@@ -866,7 +850,6 @@ namespace AuroraScript.Compiler.Backend.Code
                         return;
                     case ReturnStatement @return:
                         _sawReturn = true;
-                        InvalidateLocalArrayElementsUsedAsValue(@return.Expression);
                         if (!_function.IsDirectCallCandidate)
                         {
                             InvalidateLocalFieldsUsedAsValue(@return.Expression);
@@ -989,7 +972,6 @@ namespace AuroraScript.Compiler.Backend.Code
                     case DeleteStatement delete:
                         AnalyzeExpression(delete.Expression);
                         InvalidateLocalFieldsForMutation(delete.Expression);
-                        InvalidateLocalArrayElementsForMutation(delete.Expression);
                         return;
                 }
             }
@@ -1024,11 +1006,6 @@ namespace AuroraScript.Compiler.Backend.Code
                     case BinaryExpression binary:
                         var binaryLeft = AnalyzeExpression(binary.Left);
                         var binaryRight = AnalyzeExpression(binary.Right);
-                        if (binary.Operator == Operator.Add)
-                        {
-                            binaryLeft = ApplyLocalArrayArithmeticDemand(binary.Left, binaryLeft);
-                            binaryRight = ApplyLocalArrayArithmeticDemand(binary.Right, binaryRight);
-                        }
                         var inductionArithmetic = GetInductionArithmeticType(binary);
                         type = inductionArithmetic != FlowValueType.None
                             ? inductionArithmetic
@@ -1055,7 +1032,6 @@ namespace AuroraScript.Compiler.Backend.Code
                         break;
                     case AssignmentExpression assignment:
                         type = AnalyzeExpression(assignment.Right);
-                        InvalidateLocalArrayElementsUsedAsValue(assignment.Right);
                         AnalyzeExpression(assignment.Left);
                         _structuralTypes.TryGetValue(
                             assignment.Right,
@@ -1073,11 +1049,6 @@ namespace AuroraScript.Compiler.Backend.Code
                     case CompoundExpression compound:
                         var left = AnalyzeExpression(compound.Left);
                         var right = AnalyzeExpression(compound.Right);
-                        if (compound.Operator.SimplerOperator == Operator.Add)
-                        {
-                            left = ApplyLocalArrayArithmeticDemand(compound.Left, left);
-                            right = ApplyLocalArrayArithmeticDemand(compound.Right, right);
-                        }
                         var inductionCompound = GetInductionCompoundType(compound);
                         type = inductionCompound != FlowValueType.None
                             ? inductionCompound
@@ -1129,29 +1100,17 @@ namespace AuroraScript.Compiler.Backend.Code
                     case FunctionCallExpression call:
                         AnalyzeExpression(call.Target);
                         var isDirectCall = IsDirectFunctionCall(call);
-                        var isLocalArrayPush = TryGetLocalArrayPush(call, out var pushSlot);
-                        if (!isLocalArrayPush)
-                        {
-                            InvalidateLocalArrayElementsForCallTarget(call.Target);
-                        }
+
                         for (var i = 0; i < call.Arguments.Count; i++)
                         {
                             AnalyzeExpression(call.Arguments[i]);
-                            InvalidateLocalArrayElementsUsedAsValue(call.Arguments[i]);
                             if (!isDirectCall)
                             {
                                 InvalidateLocalFieldsUsedAsValue(call.Arguments[i]);
                             }
                         }
-                        if (isLocalArrayPush)
-                        {
-                            UpdateLocalArrayPush(pushSlot, call.Arguments);
-                        }
-                        if (IsArrayFactoryCall(call))
-                        {
-                            type = FlowValueType.Array;
-                        }
-                        else if (TryGetNativeValueCallType(call, out var stringCallType))
+
+                        if (TryGetNativeValueCallType(call, out var stringCallType))
                         {
                             type = stringCallType;
                         }
@@ -1232,8 +1191,7 @@ namespace AuroraScript.Compiler.Backend.Code
                             ? FromInlineConstant(propertyConstant)
                             : TryGetNativeValuePropertyType(propertyObjectType, property.Property, out var stringPropertyType)
                                 ? stringPropertyType
-                            : (FlowValueTypeFacts.IsPackedArray(propertyObjectType) ||
-                                propertyObjectType == FlowValueType.Array) &&
+                            : FlowValueTypeFacts.IsPackedArray(propertyObjectType) &&
                             IsStaticProperty(property.Property, "length")
                                 ? FlowValueType.Int32
                                 : TryGetNativeMemberType(property, out var nativeMemberType)
@@ -1257,8 +1215,6 @@ namespace AuroraScript.Compiler.Backend.Code
                         AnalyzeExpression(property.Object);
                         type = AnalyzeExpression(property.Value);
                         UpdateLocalField(property.Object, property.Property, type);
-                        InvalidateLocalArrayElementsUsedAsValue(property.Value);
-                        InvalidateLocalArrayElementsUsedAsValue(property.Object);
                         break;
                     case GetElementExpression element:
                         var elementObjectType = AnalyzeExpression(element.Object);
@@ -1273,25 +1229,18 @@ namespace AuroraScript.Compiler.Backend.Code
                         var setIndexType = AnalyzeExpression(element.Index);
                         InvalidateLocalFieldsUsedAsValue(element.Object);
                         type = AnalyzeExpression(element.Value);
-                        UpdateLocalArrayElement(element.Object, setIndexType, type);
-                        InvalidateLocalArrayElementsUsedAsValue(element.Value);
                         break;
                     case ArrayLiteralExpression array:
                         for (var i = 0; i < array.Elements.Count; i++)
                         {
                             AnalyzeExpression(array.Elements[i]);
-                            InvalidateLocalArrayElementsUsedAsValue(array.Elements[i]);
                         }
-                        type = FlowValueType.Array;
+                        type = FlowValueType.Object;
                         break;
                     case MapExpression map:
                         for (var i = 0; i < map.Entries.Count; i++)
                         {
                             AnalyzeExpression(map.Entries[i]);
-                            if (map.Entries[i] is MapKeyValueExpression entry)
-                            {
-                                InvalidateLocalArrayElementsUsedAsValue(entry.Value);
-                            }
                         }
                         type = FlowValueType.Object;
                         break;
@@ -1318,9 +1267,7 @@ namespace AuroraScript.Compiler.Backend.Code
                             ? GetNativeFlowType(newFactory.ReturnKind)
                             : GetPackedArrayConstructionType(@new, out var packedType)
                             ? packedType
-                            : IsArrayConstruction(@new)
-                                ? FlowValueType.Array
-                                : FlowValueType.Object;
+                            : FlowValueType.Object;
                         break;
                     case LambdaExpression:
                         type = FlowValueType.Object;
@@ -1356,6 +1303,10 @@ namespace AuroraScript.Compiler.Backend.Code
 
                 switch (expression)
                 {
+                    case ArrayLiteralExpression:
+                        return _hostExports.TryGetNativeObject(typeof(ScriptArray), out var arrayType) ? arrayType : null;
+                    case TypedDocumentExpression { TypeName: "Array" }:
+                        return _hostExports.TryGetNativeObject(typeof(ScriptArray), out var documentArray) ? documentArray : null;
                     case NewExpression @new:
                         return TryGetNativeConstruction(@new, out var constructed)
                             ? constructed
@@ -1442,8 +1393,8 @@ namespace AuroraScript.Compiler.Backend.Code
             }
 
             /// <summary>
-            /// True when <c>new Name(...)</c> targets a generated native object whose
-            /// constructor the emitter can call directly.
+            /// Identifies the native result of a constructor call, including constructors
+            /// whose argument conversions are handled by a compatibility adapter.
             /// </summary>
             private bool TryGetNativeConstruction(
                 NewExpression expression,
@@ -1459,8 +1410,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     !_hostExports.TryGetNativeObject(
                         target.Identifier?.Value,
                         out var candidate) ||
-                    candidate.Constructor == null ||
-                    !CanBindNativeArguments(
+                    candidate.Constructor != null && !CanBindNativeArguments(
                         call,
                         candidate.ConstructorParameterKinds,
                         candidate.RequiredConstructorParameterCount,
@@ -1494,6 +1444,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 }
 
                 owner = receiver;
+                var bestCost = int.MaxValue;
                 for (; candidate != null; candidate = candidate.NextOverload)
                 {
                     if (CanBindNativeArguments(
@@ -1504,10 +1455,24 @@ namespace AuroraScript.Compiler.Backend.Code
                         prefix: candidate.TakesContext ? 1 : 0,
                         useDynamicForExtraArguments: candidate.UseDynamicForExtraArguments))
                     {
-                        method = candidate;
-                        return true;
+                        // Keep params as a fallback; compare fixed signatures by conversion cost.
+                        if (HostExportArgumentFacts.HasParams(candidate.ParameterKinds))
+                        {
+                            if (bestCost == int.MaxValue) method = candidate;
+                            continue;
+                        }
+                        var cost = 0;
+                        for (var i = 0; i < Math.Min(call.Arguments.Count, candidate.ParameterKinds.Length); i++)
+                            cost += HostExportArgumentFacts.ConversionCost(candidate.ParameterKinds[i], _expressionTypes.TryGetValue(call.Arguments[i], out var type) ? type : FlowValueType.Dynamic);
+                        if (cost < bestCost)
+                        {
+                            method = candidate;
+                            bestCost = cost;
+                        }
+                        if (cost == 0) return true;
                     }
                 }
+                if (method != null) return true;
                 owner = null;
                 return false;
             }
@@ -1520,19 +1485,22 @@ namespace AuroraScript.Compiler.Backend.Code
                 int prefix,
                 bool useDynamicForExtraArguments = false)
             {
+                var hasParams = HostExportArgumentFacts.HasParams(parameterKinds);
                 if (HasSpreadArgument(call) || call.Arguments.Count < requiredCount ||
-                    useDynamicForExtraArguments && call.Arguments.Count > parameterKinds.Length)
+                    !hasParams && useDynamicForExtraArguments && call.Arguments.Count > parameterKinds.Length)
                 {
                     return false;
                 }
 
-                var provided = Math.Min(call.Arguments.Count, parameterKinds.Length);
+                var provided = hasParams ? call.Arguments.Count : Math.Min(call.Arguments.Count, parameterKinds.Length);
                 for (var i = 0; i < provided; i++)
                 {
                     var argument = call.Arguments[i];
+                    HostExportArgumentFacts.GetArgumentParameter(parameterKinds, clrParameters, prefix, i,
+                        out var parameterKind, out var parameterType);
                     if (!HostExportArgumentFacts.CanPass(
-                            parameterKinds[i],
-                            clrParameters[prefix + i].ParameterType,
+                            parameterKind,
+                            parameterType,
                             _expressionTypes.TryGetValue(argument, out var argumentType)
                                 ? argumentType
                                 : FlowValueType.Dynamic,
@@ -1885,7 +1853,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     // element access for the rest of the local hot path.
                     return expression.TypeName switch
                     {
-                        "Array" => FlowValueType.Array,
+                        "Array" => FlowValueType.Object,
                         "Int32Array" => FlowValueType.Int32Array,
                         "Int8Array" => FlowValueType.Int8Array,
                         "Float32Array" => FlowValueType.Float32Array,
@@ -1912,7 +1880,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     "UInt64" => FlowValueType.UInt64,
                     "String" => FlowValueType.String,
                     "Object" or "StringBuffer" or "Date" or "Regex" or "Path" or "HashMap" => FlowValueType.Object,
-                    "Array" => FlowValueType.Array,
+                    "Array" => FlowValueType.Object,
                     "Int32Array" => FlowValueType.Int32Array,
                     "Int8Array" => FlowValueType.Int8Array,
                     "Float32Array" => FlowValueType.Float32Array,
@@ -2059,7 +2027,6 @@ namespace AuroraScript.Compiler.Backend.Code
                 return FlowValueTypeFacts.IsNumeric(type) ||
                     type == FlowValueType.Boolean ||
                     type == FlowValueType.String ||
-                    type == FlowValueType.Array ||
                     FlowValueTypeFacts.IsPackedArray(type);
             }
 
@@ -2125,27 +2092,6 @@ namespace AuroraScript.Compiler.Backend.Code
                 return FlowValueTypeFacts.TryGetPackedArrayType(binding.Name, out type);
             }
 
-            private bool IsArrayConstruction(NewExpression expression)
-            {
-                return expression?.Expression?.Target is NameExpression name &&
-                    _names.TryGetValue(name, out var binding) &&
-                    binding.IsUnshadowedGlobal &&
-                    StringComparer.Ordinal.Equals(binding.Name, "Array");
-            }
-
-            private bool IsArrayFactoryCall(FunctionCallExpression expression)
-            {
-                if (expression?.Target is not GetPropertyExpression property ||
-                    !IsStaticProperty(property.Property, "withCapacity") ||
-                    property.Object is not NameExpression name ||
-                    !_names.TryGetValue(name, out var binding))
-                {
-                    return false;
-                }
-                return binding.IsUnshadowedGlobal &&
-                    StringComparer.Ordinal.Equals(binding.Name, "Array");
-            }
-
             private bool TryGetValueFactory(FunctionCallExpression call, out HostExportDescriptor factory)
             {
                 factory = null;
@@ -2186,6 +2132,8 @@ namespace AuroraScript.Compiler.Backend.Code
                     return false;
                 }
                 HostExportDescriptor match = null;
+                var bestCost = int.MaxValue;
+                var ambiguous = false;
                 for (var candidate = descriptor; candidate != null; candidate = candidate.NextOverload)
                 {
                     if (!CanBindNativeArguments(
@@ -2198,14 +2146,16 @@ namespace AuroraScript.Compiler.Backend.Code
                     {
                         continue;
                     }
-                    if (match != null)
-                    {
-                        descriptor = null;
-                        return false;
-                    }
+                    var cost = 0;
+                    for (var i = 0; i < Math.Min(call.Arguments.Count, candidate.ParameterKinds.Length); i++)
+                        cost += HostExportArgumentFacts.ConversionCost(candidate.ParameterKinds[i], _expressionTypes.TryGetValue(call.Arguments[i], out var type) ? type : FlowValueType.Dynamic);
+                    if (cost > bestCost) continue;
+                    if (cost == bestCost) { ambiguous = true; continue; }
                     match = candidate;
+                    bestCost = cost;
+                    ambiguous = false;
                 }
-                descriptor = match;
+                descriptor = ambiguous ? null : match;
                 return descriptor != null;
             }
 
@@ -2252,7 +2202,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     !_expressionTypes.TryGetValue(property.Object, out var receiver))
                     return false;
                 if (!_hostExports.TryGetNativeValue(receiver, out var owner)) return false;
-                var binding = owner.BindValueMethod(name, call.Arguments, _expressionTypes, receiver);
+                var binding = owner.BindValueMethod(name, call.Arguments, _expressionTypes, receiver, _nativeObjectTypes);
                 if (binding == null) return false;
                 (_nativeValueCalls ??= new Dictionary<FunctionCallExpression, HostNativeMethodDescriptor>())[call] = binding;
                 type = GetNativeFlowType(binding.ReturnKind);
@@ -2285,8 +2235,7 @@ namespace AuroraScript.Compiler.Backend.Code
                         return;
                     }
                     if (_expressionTypes.TryGetValue(entry.Value, out var fieldType) &&
-                        (fieldType == FlowValueType.Array ||
-                            FlowValueTypeFacts.IsPackedArray(fieldType)))
+                        FlowValueTypeFacts.IsPackedArray(fieldType))
                     {
                         fields[entry.Key.Value] = fieldType;
                     }
@@ -2337,150 +2286,6 @@ namespace AuroraScript.Compiler.Backend.Code
                     fields.TryGetValue(fieldName, out type);
             }
 
-            private FlowValueType ApplyLocalArrayArithmeticDemand(
-                Expression expression,
-                FlowValueType type)
-            {
-                if (type != FlowValueType.Dynamic ||
-                    expression is not GetElementExpression element ||
-                    !_expressionTypes.TryGetValue(element.Index, out var indexType) ||
-                    !FlowValueTypeFacts.IsNumeric(indexType) ||
-                    !TryGetLocalArrayElementType(element.Object, out _))
-                {
-                    return type;
-                }
-
-                // Keep the element expression itself dynamic so identity-sensitive
-                // uses still observe ScriptDatum semantics. Only '+' receives the
-                // proof that this value can contain a Number or an array hole.
-                return FlowValueType.Number;
-            }
-
-            private void MergeLocalArrayElements(
-                LocalSlotId slot,
-                ArrayLiteralExpression array)
-            {
-                if (!slot.IsValid ||
-                    _invalidLocalArrayElements.Contains(slot.Value) ||
-                    IsCaptured(slot))
-                {
-                    return;
-                }
-
-                for (var i = 0; i < array.Elements.Count; i++)
-                {
-                    var element = array.Elements[i];
-                    if (element is SpreadExpression ||
-                        (element != null &&
-                            (!_expressionTypes.TryGetValue(element, out var elementType) ||
-                                !IsLocalArrayArithmeticExpressionValue(element, elementType))))
-                    {
-                        InvalidateLocalArrayElements(slot);
-                        return;
-                    }
-                }
-
-                MergeEmptyLocalArrayElements(slot);
-            }
-
-            private void MergeEmptyLocalArrayElements(LocalSlotId slot)
-            {
-                if (!slot.IsValid ||
-                    _invalidLocalArrayElements.Contains(slot.Value) ||
-                    IsCaptured(slot))
-                {
-                    return;
-                }
-                if (!_localArrayElements.ContainsKey(slot.Value))
-                {
-                    // A missing element reads as Null. Null and numeric values use
-                    // the same arithmetic '+' branch, so holes do not invalidate
-                    // this narrowly scoped fact.
-                    _localArrayElements[slot.Value] = FlowValueType.Number;
-                    _changed = true;
-                }
-            }
-
-            private bool TryGetLocalArrayPush(
-                FunctionCallExpression call,
-                out LocalSlotId slot)
-            {
-                slot = LocalSlotId.Invalid;
-                if (call?.Target is not GetPropertyExpression property ||
-                    !IsStaticProperty(property.Property, "push") ||
-                    !TryGetLocalSlot(property.Object, out slot) ||
-                    !_localArrayElements.ContainsKey(slot.Value))
-                {
-                    return false;
-                }
-                for (var i = 0; i < call.Arguments.Count; i++)
-                {
-                    if (call.Arguments[i] is SpreadExpression)
-                    {
-                        return false;
-                    }
-                }
-                return true;
-            }
-
-            private void UpdateLocalArrayPush(
-                LocalSlotId slot,
-                IReadOnlyList<Expression> arguments)
-            {
-                for (var i = 0; i < arguments.Count; i++)
-                {
-                    if (!_expressionTypes.TryGetValue(arguments[i], out var argumentType) ||
-                        !IsLocalArrayArithmeticExpressionValue(arguments[i], argumentType))
-                    {
-                        InvalidateLocalArrayElements(slot);
-                        return;
-                    }
-                }
-            }
-
-            private void UpdateLocalArrayElement(
-                Expression objectExpression,
-                FlowValueType indexType,
-                FlowValueType valueType)
-            {
-                if (!TryGetLocalSlot(objectExpression, out var slot) ||
-                    !_localArrayElements.ContainsKey(slot.Value))
-                {
-                    return;
-                }
-                if (!FlowValueTypeFacts.IsNumeric(indexType) ||
-                    !IsLocalArrayArithmeticValue(valueType))
-                {
-                    InvalidateLocalArrayElements(slot);
-                }
-            }
-
-            private bool TryGetLocalArrayElementType(
-                Expression objectExpression,
-                out FlowValueType type)
-            {
-                type = FlowValueType.Dynamic;
-                return TryGetLocalSlot(objectExpression, out var slot) &&
-                    _localArrayElements.TryGetValue(slot.Value, out type);
-            }
-
-            private static bool IsLocalArrayArithmeticValue(FlowValueType type)
-            {
-                return FlowValueTypeFacts.IsNumeric(type) ||
-                    type == FlowValueType.Null;
-            }
-
-            private bool IsLocalArrayArithmeticExpressionValue(
-                Expression expression,
-                FlowValueType type)
-            {
-                return IsLocalArrayArithmeticValue(type) ||
-                    (expression is GetElementExpression element &&
-                        _expressionTypes.TryGetValue(element.Index, out var indexType) &&
-                        FlowValueTypeFacts.IsNumeric(indexType) &&
-                        TryGetLocalArrayElementType(element.Object, out _));
-            }
-
             private void UpdateLocalField(
                 Expression objectExpression,
                 Expression propertyExpression,
@@ -2519,64 +2324,6 @@ namespace AuroraScript.Compiler.Backend.Code
                 }
             }
 
-            private void InvalidateLocalArrayElementsForMutation(Expression expression)
-            {
-                switch (expression)
-                {
-                    case GetPropertyExpression property:
-                        InvalidateLocalArrayElementsUsedAsValue(property.Object);
-                        break;
-                    case GetElementExpression element:
-                        InvalidateLocalArrayElementsUsedAsValue(element.Object);
-                        break;
-                    default:
-                        InvalidateLocalArrayElementsUsedAsValue(expression);
-                        break;
-                }
-            }
-
-            private void InvalidateLocalArrayElementsForCallTarget(Expression target)
-            {
-                if (target is GetPropertyExpression property)
-                {
-                    InvalidateLocalArrayElementsUsedAsValue(property.Object);
-                }
-                else if (target is GetElementExpression element)
-                {
-                    InvalidateLocalArrayElementsUsedAsValue(element.Object);
-                }
-            }
-
-            private void InvalidateLocalArrayElementsUsedAsValue(Expression expression)
-            {
-                switch (expression)
-                {
-                    case null:
-                        return;
-                    case NameExpression:
-                        if (TryGetLocalSlot(expression, out var slot))
-                        {
-                            InvalidateLocalArrayElements(slot);
-                        }
-                        return;
-                    case TypedDocumentExpression tdoc:
-                        InvalidateLocalArrayElementsUsedAsValue(tdoc.Value);
-                        return;
-                    case CheckExpression check:
-                        InvalidateLocalArrayElementsUsedAsValue(check.Value);
-                        return;
-                    case SpreadExpression spread:
-                        InvalidateLocalArrayElementsUsedAsValue(spread.Expression);
-                        return;
-                    case GroupExpression group:
-                        for (var i = 0; i < group.Expressions.Count; i++)
-                        {
-                            InvalidateLocalArrayElementsUsedAsValue(group.Expressions[i]);
-                        }
-                        return;
-                }
-            }
-
             private void InvalidateLocalFieldsUsedAsValue(Expression expression)
             {
                 if (TryGetLocalSlot(expression, out var slot))
@@ -2605,18 +2352,6 @@ namespace AuroraScript.Compiler.Backend.Code
                     return;
                 }
                 if (_localFields.Remove(slot.Value))
-                {
-                    _changed = true;
-                }
-            }
-
-            private void InvalidateLocalArrayElements(LocalSlotId slot)
-            {
-                if (!slot.IsValid || !_invalidLocalArrayElements.Add(slot.Value))
-                {
-                    return;
-                }
-                if (_localArrayElements.Remove(slot.Value))
                 {
                     _changed = true;
                 }
@@ -2651,7 +2386,6 @@ namespace AuroraScript.Compiler.Backend.Code
                         nativeObjectType = null;
                     }
                     InvalidateLocalFields(binding.Local);
-                    InvalidateLocalArrayElements(binding.Local);
                     _writtenLocals[binding.Local.Value] = true;
                     if (!ReferenceEquals(
                         _localStructuralTypes[binding.Local.Value],
@@ -2678,7 +2412,6 @@ namespace AuroraScript.Compiler.Backend.Code
                     var indexType = _expressionTypes.TryGetValue(element.Index, out var analyzedIndex)
                         ? analyzedIndex
                         : FlowValueType.Dynamic;
-                    UpdateLocalArrayElement(element.Object, indexType, type);
                 }
             }
 
@@ -3103,7 +2836,6 @@ namespace AuroraScript.Compiler.Backend.Code
                     return false;
                 }
                 return ownerType == FlowValueType.String ||
-                    ownerType == FlowValueType.Array ||
                     FlowValueTypeFacts.IsPackedArray(ownerType);
             }
 
@@ -3475,8 +3207,7 @@ namespace AuroraScript.Compiler.Backend.Code
                         FlowValueType.BooleanArray | FlowValueType.Float32Array | FlowValueType.Float64Array |
                         FlowValueType.UInt8Array | FlowValueType.Int16Array |
                         FlowValueType.UInt16Array | FlowValueType.UInt32Array |
-                        FlowValueType.Int64Array | FlowValueType.UInt64Array |
-                        FlowValueType.Array;
+                        FlowValueType.Int64Array | FlowValueType.UInt64Array;
                     if ((left & nonNumeric) != 0 || (right & nonNumeric) != 0)
                     {
                         return FlowValueType.Dynamic;
@@ -5601,8 +5332,7 @@ namespace AuroraScript.Compiler.Backend.Code
                         return false;
                     }
                     var objectType = GetExpressionType(objectExpression);
-                    return objectType == FlowValueType.Array ||
-                        FlowValueTypeFacts.IsPackedArray(objectType);
+                    return FlowValueTypeFacts.IsPackedArray(objectType);
                 }
 
                 private FlowValueType GetExpressionType(Expression expression)
@@ -5670,7 +5400,6 @@ namespace AuroraScript.Compiler.Backend.Code
                         Runtime.Types.ScriptUInt32Array => FlowValueType.UInt32Array,
                         Runtime.Types.ScriptInt64Array => FlowValueType.Int64Array,
                         Runtime.Types.ScriptUInt64Array => FlowValueType.UInt64Array,
-                        Runtime.Types.ScriptArray => FlowValueType.Array,
                         _ => FlowValueType.Object
                     }
                 };

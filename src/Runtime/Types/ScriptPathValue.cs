@@ -258,11 +258,17 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary>Changes this path's extension.</summary>
-        [Export("changeExt")]
-        public ScriptPathValue ChangeExtCore(ScriptDatum extension = default)
+        [Export("changeExt", DynamicAdapter = nameof(CHANGEEXT_DYNAMIC))]
+        public ScriptPathValue ChangeExtCore(string extension = null)
         {
-            ChangeExt(GetPathString(extension));
+            ChangeExt(extension);
             return this;
+        }
+
+        private static void CHANGEEXT_DYNAMIC(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
+        {
+            if (thisObject is ScriptPathValue path)
+                result = ScriptDatum.FromObject(path.ChangeExtCore(GetPathString(args.Length > 0 ? args[0] : default)));
         }
 
         /// <summary>Returns this path's normalized extension.</summary>
@@ -369,38 +375,86 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary>Normalizes path text.</summary>
-        [Export("normalize")]
-        public static string NormalizeCore(ScriptDatum value = default) => ScriptPath.NormalizeText(GetPathString(value));
+        [Export("normalize", DynamicAdapter = nameof(NORMALIZE_DYNAMIC))]
+        public static string NormalizeCore(string value = null) => ScriptPath.NormalizeText(value);
+
+        /// <summary>Accepts a native Path without a datum conversion.</summary>
+        [Export("normalize", DynamicAdapter = nameof(NORMALIZE_DYNAMIC))]
+        public static string NormalizeCore(ScriptPathValue value) => NormalizeCore(value?.Value);
+
+        private static void NORMALIZE_DYNAMIC(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result) =>
+            result = ScriptDatum.FromString(NormalizeCore(GetPathString(args.Length > 0 ? args[0] : default)));
 
         /// <summary>Returns the directory portion of a path.</summary>
-        [Export("directoryName")]
-        public static string DirectoryNameCore(ScriptDatum value = default) => ScriptPath.GetDirectoryNameText(GetPathString(value));
+        [Export("directoryName", DynamicAdapter = nameof(DIRECTORYNAME_DYNAMIC))]
+        public static string DirectoryNameCore(string value = null) => ScriptPath.GetDirectoryNameText(value);
+
+        /// <summary>Accepts a native Path without a datum conversion.</summary>
+        [Export("directoryName", DynamicAdapter = nameof(DIRECTORYNAME_DYNAMIC))]
+        public static string DirectoryNameCore(ScriptPathValue value) => DirectoryNameCore(value?.Value);
+
+        private static void DIRECTORYNAME_DYNAMIC(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result) =>
+            result = ScriptDatum.FromString(DirectoryNameCore(GetPathString(args.Length > 0 ? args[0] : default)));
 
         /// <summary>Returns the file-name portion of a path.</summary>
-        [Export("fileName")]
-        public static string FileNameCore(ScriptDatum value = default) => ScriptPath.GetFileNameText(GetPathString(value));
+        [Export("fileName", DynamicAdapter = nameof(FILENAME_DYNAMIC))]
+        public static string FileNameCore(string value = null) => ScriptPath.GetFileNameText(value);
+
+        /// <summary>Accepts a native Path without a datum conversion.</summary>
+        [Export("fileName", DynamicAdapter = nameof(FILENAME_DYNAMIC))]
+        public static string FileNameCore(ScriptPathValue value) => FileNameCore(value?.Value);
+
+        private static void FILENAME_DYNAMIC(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result) =>
+            result = ScriptDatum.FromString(FileNameCore(GetPathString(args.Length > 0 ? args[0] : default)));
 
         /// <summary>Returns the extension portion of a path.</summary>
-        [Export("extName")]
-        public static string ExtNameCore(ScriptDatum value = default) => ScriptPath.GetExtNameText(GetPathString(value));
+        [Export("extName", DynamicAdapter = nameof(EXTNAME_DYNAMIC))]
+        public static string ExtNameCore(string value = null) => ScriptPath.GetExtNameText(value);
+
+        /// <summary>Accepts a native Path without a datum conversion.</summary>
+        [Export("extName", DynamicAdapter = nameof(EXTNAME_DYNAMIC))]
+        public static string ExtNameCore(ScriptPathValue value) => ExtNameCore(value?.Value);
+
+        private static void EXTNAME_DYNAMIC(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result) =>
+            result = ScriptDatum.FromString(ExtNameCore(GetPathString(args.Length > 0 ? args[0] : default)));
 
         /// <summary>Returns the protocol portion of a path.</summary>
-        [Export("protocol")]
-        public static string ProtocolCore(ScriptDatum value = default) => ScriptPath.GetProtocolText(GetPathString(value));
+        [Export("protocol", DynamicAdapter = nameof(PROTOCOL_DYNAMIC))]
+        public static string ProtocolCore(string value = null) => ScriptPath.GetProtocolText(value);
+
+        /// <summary>Accepts a native Path without a datum conversion.</summary>
+        [Export("protocol", DynamicAdapter = nameof(PROTOCOL_DYNAMIC))]
+        public static string ProtocolCore(ScriptPathValue value) => ProtocolCore(value?.Value);
+
+        private static void PROTOCOL_DYNAMIC(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result) =>
+            result = ScriptDatum.FromString(ProtocolCore(GetPathString(args.Length > 0 ? args[0] : default)));
 
         /// <summary>Changes a path's extension.</summary>
-        [Export("changeExt")]
-        public static string ChangeExtCore(ScriptDatum path = default, ScriptDatum extension = default) =>
-            ScriptPath.EnsureExtensionText(GetPathString(path), GetPathString(extension));
+        [Export("changeExt", DynamicAdapter = nameof(CHANGEEXT_STATIC_DYNAMIC))]
+        public static string ChangeExtCore(string path = null, string extension = null) => ScriptPath.EnsureExtensionText(path, extension);
+
+        private static void CHANGEEXT_STATIC_DYNAMIC(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result) =>
+            result = ScriptDatum.FromString(ChangeExtCore(GetPathString(args.Length > 0 ? args[0] : default),
+                GetPathString(args.Length > 1 ? args[1] : default)));
 
         /// <summary>Returns whether a path is rooted.</summary>
-        [Export("isRooted")]
-        public static bool IsRootedCore(ScriptDatum value = default) => ScriptPath.IsRootedText(GetPathString(value));
+        [Export("isRooted", DynamicAdapter = nameof(ISROOTED_DYNAMIC))]
+        public static bool IsRootedCore(string value = null) => ScriptPath.IsRootedText(value);
+
+        /// <summary>Accepts a native Path without a datum conversion.</summary>
+        [Export("isRooted", DynamicAdapter = nameof(ISROOTED_DYNAMIC))]
+        public static bool IsRootedCore(ScriptPathValue value) => IsRootedCore(value?.Value);
+
+        private static void ISROOTED_DYNAMIC(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result) =>
+            result = ScriptDatum.FromBoolean(IsRootedCore(GetPathString(args.Length > 0 ? args[0] : default)));
 
         /// <summary>Returns whether a path is under the supplied root.</summary>
-        [Export("isUnderRoot")]
-        public static bool IsUnderRootCore(ScriptDatum root = default, ScriptDatum path = default) =>
-            ScriptPath.IsUnderRootText(GetPathString(root), GetPathString(path));
+        [Export("isUnderRoot", DynamicAdapter = nameof(ISUNDERROOT_STATIC_DYNAMIC))]
+        public static bool IsUnderRootCore(string root = null, string path = null) => ScriptPath.IsUnderRootText(root, path);
+
+        private static void ISUNDERROOT_STATIC_DYNAMIC(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result) =>
+            result = ScriptDatum.FromBoolean(IsUnderRootCore(GetPathString(args.Length > 0 ? args[0] : default),
+                GetPathString(args.Length > 1 ? args[1] : default)));
 
         /// <summary>Returns the current module file, or null outside a module.</summary>
         [Export("currentFile")]

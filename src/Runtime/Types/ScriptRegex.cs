@@ -40,6 +40,9 @@ namespace AuroraScript.Runtime.Types
         /// <param name="value">The datum to test.</param>
         /// <returns>True if a match is found; otherwise, false.</returns>
         [Export("test", DynamicAdapter = nameof(TEST))]
+        public bool Test(string value) => _regex.Match(value ?? "null").Success;
+
+        /// <summary>Tests a dynamic input, accepting only strings.</summary>
         public bool Test(ScriptDatum value)
         {
             if (value.Kind == ValueKind.String)

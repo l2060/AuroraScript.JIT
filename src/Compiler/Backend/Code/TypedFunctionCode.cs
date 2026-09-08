@@ -22,7 +22,6 @@ namespace AuroraScript.Compiler.Backend.Code
         Int8Array = 1 << 6,
         BooleanArray = 1 << 7,
         Int32 = 1 << 8,
-        Array = 1 << 9,
         Float32Array = 1 << 11,
         Float64Array = 1 << 10,
         UInt8Array = 1 << 13,
@@ -37,7 +36,7 @@ namespace AuroraScript.Compiler.Backend.Code
         Dynamic = Null | Boolean | Number | String | Object |
             Int32Array | Int8Array | BooleanArray | Float32Array | Float64Array |
             UInt8Array | Int16Array | UInt16Array | UInt32Array | Int64Array | UInt64Array |
-            Int64 | UInt64 | Array
+            Int64 | UInt64
     }
 
     internal enum NativeCoercionKind : byte
@@ -53,12 +52,15 @@ namespace AuroraScript.Compiler.Backend.Code
     {
         public DirectParameterType(
             FlowValueType type,
-            NativeCoercionKind coercion = NativeCoercionKind.None)
+            NativeCoercionKind coercion = NativeCoercionKind.None,
+            HostNativeObjectDescriptor nativeObject = null)
         {
             Type = type;
             Coercion = coercion;
+            NativeObject = nativeObject;
         }
 
+        public HostNativeObjectDescriptor NativeObject { get; }
         public FlowValueType Type { get; }
         public NativeCoercionKind Coercion { get; }
         public bool IsCoercion => Coercion != NativeCoercionKind.None;
@@ -83,7 +85,7 @@ namespace AuroraScript.Compiler.Backend.Code
 
         public bool Equals(DirectParameterType other)
         {
-            return Type == other.Type && Coercion == other.Coercion;
+            return Type == other.Type && Coercion == other.Coercion && ReferenceEquals(NativeObject, other.NativeObject);
         }
 
         public override bool Equals(object obj)
@@ -93,7 +95,7 @@ namespace AuroraScript.Compiler.Backend.Code
 
         public override int GetHashCode()
         {
-            return HashCode.Combine(Type, Coercion);
+            return HashCode.Combine(Type, Coercion, NativeObject);
         }
 
         public static bool operator ==(DirectParameterType left, DirectParameterType right)
@@ -123,7 +125,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     Runtime.CheckedType.UInt64 => FlowValueType.UInt64,
                     Runtime.CheckedType.String => FlowValueType.String,
                     Runtime.CheckedType.Object => FlowValueType.Object,
-                    Runtime.CheckedType.Array => FlowValueType.Array,
+                    Runtime.CheckedType.Array => FlowValueType.Object,
                     Runtime.CheckedType.Int32Array => FlowValueType.Int32Array,
                     Runtime.CheckedType.Int8Array => FlowValueType.Int8Array,
                     Runtime.CheckedType.Float32Array => FlowValueType.Float32Array,
@@ -244,7 +246,7 @@ namespace AuroraScript.Compiler.Backend.Code
             var type = parameter.Type;
             return parameter.IsCoercion ||
                 type == FlowValueType.Boolean || IsNumeric(type) ||
-                IsPackedArray(type) || type == FlowValueType.Array;
+                IsPackedArray(type);
         }
 
         public static FlowValueType GetDirectLocalType(DirectParameterType parameter)

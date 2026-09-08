@@ -98,7 +98,7 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
-    public void TypedFunctionCodeUsesLocalNumericArrayFactsOnlyForAdditionDemand()
+    public void TypedFunctionCodeKeepsArrayElementsDynamic()
     {
         var root = Path.GetTempPath();
         var options = EngineOptions.Default
@@ -120,7 +120,7 @@ public sealed class CompilerBackendPlanTests
 
         var code = TypedFunctionBuilder.Build(modulePlan, function);
 
-        Assert.Equal(FlowValueType.Number, code.GetExpressionType(binary));
+        Assert.Equal(FlowValueType.Dynamic, code.GetExpressionType(binary));
         Assert.Equal(FlowValueType.Dynamic, code.GetExpressionType(binary.Left));
     }
 

@@ -142,6 +142,17 @@ namespace AuroraScript.Hosting.Generators
                 }
 
                 var parameterKind = ResolveParameterKind(parameter);
+                // 64-bit inputs use an explicit adapter for dynamic conversion semantics.
+                if (parameterKind == ParameterKind.Unsupported && !parameter.IsOptional &&
+                    exportAttribute.NamedArguments.Any(pair => pair.Key == "DynamicAdapter" && pair.Value.Value is string))
+                {
+                    parameterKind = parameter.Type.SpecialType switch
+                    {
+                        SpecialType.System_Int64 => ParameterKind.Int64,
+                        SpecialType.System_UInt64 => ParameterKind.UInt64,
+                        _ => parameterKind
+                    };
+                }
                 if (parameterKind == ParameterKind.Unsupported)
                 {
                     return null;
@@ -191,7 +202,7 @@ namespace AuroraScript.Hosting.Generators
                     ParameterKind.NumberParams or ParameterKind.DatumParams;
             var canDirectCall = containingType.DeclaredAccessibility == Accessibility.Public &&
                 methodSymbol.DeclaredAccessibility == Accessibility.Public &&
-                !hasParams;
+                (!hasParams || !methodSymbol.IsStatic);
 
             return new ExportModel(
                 scriptName!,
@@ -248,10 +259,14 @@ namespace AuroraScript.Hosting.Generators
             {
                 ParameterKind.Number => "Number",
                 ParameterKind.Int32 => "Int32",
+                ParameterKind.Int64 => "Int64",
+                ParameterKind.UInt64 => "UInt64",
                 ParameterKind.Boolean => "Boolean",
                 ParameterKind.String => "String",
                 ParameterKind.Object => "Object",
                 ParameterKind.Datum => "Datum",
+                ParameterKind.DatumParams => "DatumParams",
+                ParameterKind.NumberParams => "NumberParams",
                 _ => throw new ArgumentOutOfRangeException(nameof(kind))
             };
         }
@@ -1107,6 +1122,8 @@ namespace AuroraScript.Hosting.Generators
             NumberParams,
             DatumParams,
             Int32,
+            Int64,
+            UInt64,
             Boolean,
             String,
             Object,

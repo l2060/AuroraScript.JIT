@@ -1,10 +1,5 @@
-﻿using AuroraScript.Core;
-using System;
-using System.Collections;
+﻿using System;
 using System.Collections.Generic;
-using System.Globalization;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace AuroraScript.Runtime.Types
 {
@@ -16,38 +11,12 @@ namespace AuroraScript.Runtime.Types
     {
         private static readonly IComparer<ScriptDatum> CompareDatumForSort = new DefaultComparer();
 
-
-
         /// <summary> Native implementation for the 'push' method. Appends one or more items. </summary>
         internal static void PUSH(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
-            if (thisObject is ScriptArray array && args != null)
-            {
-                array.AddRange(args);
-                ScriptDatum.WriteAsNumber(ref result, array._count);
-            }
-        }
-
-        /// <summary> Native implementation for the 'length' property. </summary>
-        internal static void GET_LENGTH(ScriptObject thisObject, ref ScriptDatum result)
-        {
             if (thisObject is ScriptArray array)
-            {
-                ScriptDatum.WriteAsNumber(ref result, array.Length);
-            }
+                ScriptDatum.WriteAsNumber(ref result, array.AddRange(args));
         }
-
-
-        /// <summary> Native implementation for assigning the 'length' property. </summary>
-        internal static void SET_LENGTH(ScriptContext context, ScriptObject thisObject, ScriptDatum value)
-        {
-            if (thisObject is not ScriptArray array || !TryGetLength(value, out var length))
-            {
-                throw new AuroraRuntimeException("Invalid array length.");
-            }
-            array.SetLength(length);
-        }
-
         private static bool TryGetLength(ScriptDatum value, out int length)
         {
             switch (value.Kind)
@@ -80,301 +49,144 @@ namespace AuroraScript.Runtime.Types
             return false;
         }
 
-
         /// <summary> Native implementation for the 'has' method. Checks if the array contains an element. </summary>
         internal static void HAS(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
-            var array = thisObject as ScriptArray;
-            if (args != null && args.Length > 0)
-            {
-                ScriptDatum.WriteAsBoolean(ref result, array.Has(args[0]));
-            }
+            if (thisObject is ScriptArray array && args.Length > 0)
+                ScriptDatum.WriteAsBoolean(ref result, array.HasCore(args[0]));
         }
 
         /// <summary> Native implementation for the 'indexOf' method. Returns the first index of an element. </summary>
         internal static void INDEXOF(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
-            var array = thisObject as ScriptArray;
-            ScriptDatum datum = default;
-            int? fromIndex = null;
-            if (args.TryGetInt32(1, out var fi)) fromIndex = fi;
-            if (args.TryGetRef(0, ref datum))
-            {
-                ScriptDatum.WriteAsNumber(ref result, array.IndexOf(datum, fromIndex));
-            }
+            if (thisObject is ScriptArray array && args.Length > 0)
+                ScriptDatum.WriteAsNumber(ref result, array.IndexOfCore(args[0], args.Length > 1 ? args[1] : default));
         }
 
         /// <summary> Native implementation for the 'lastIndexOf' method. Returns the last index of an element. </summary>
         internal static void LASTINDEXOF(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
-            var array = thisObject as ScriptArray;
-            ScriptDatum datum = default;
-            int? fromIndex = null;
-            if (args.TryGetInt32(1, out var fi)) fromIndex = fi;
-            if (args.TryGetRef(0, ref datum))
-            {
-                ScriptDatum.WriteAsNumber(ref result, array.LastIndexOf(datum, fromIndex));
-            }
+            if (thisObject is ScriptArray array && args.Length > 0)
+                ScriptDatum.WriteAsNumber(ref result, array.LastIndexOfCore(args[0], args.Length > 1 ? args[1] : default));
         }
 
         /// <summary> Native implementation for the 'find' method. Returns the value of the first element in the array that satisfies the provided testing function. </summary>
         internal static void FIND(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
-            var array = thisObject as ScriptArray;
-            if (args.TryGetFunction(0, out var callback))
-            {
-                result = array.FindInternal(ctx, callback);
-            }
+            if (thisObject is ScriptArray array && args.Length > 0)
+                result = array.FindCore(ctx, args[0]);
         }
 
         /// <summary> Native implementation for the 'findIndex' method. Returns the index of the first element in the array that satisfies the provided testing function. </summary>
         internal static void FINDINDEX(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
-            var array = thisObject as ScriptArray;
-            if (args.TryGetFunction(0, out var callback))
-            {
-                var index = array.FindIndexInternal(ctx, callback);
-                ScriptDatum.WriteAsNumber(ref result, index);
-            }
+            if (thisObject is ScriptArray array && args.Length > 0)
+                result = array.FindIndexCore(ctx, args[0]);
         }
 
         /// <summary> Native implementation for the 'findLast' method. Returns the value of the last element in the array that satisfies the provided testing function. </summary>
         internal static void FINDLAST(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
-            var array = thisObject as ScriptArray;
-            if (args.TryGetFunction(0, out var callback))
-            {
-                result = array.FindLastInternal(ctx, callback);
-            }
+            if (thisObject is ScriptArray array && args.Length > 0)
+                result = array.FindLastCore(ctx, args[0]);
         }
 
         /// <summary> Native implementation for the 'findLastIndex' method. Returns the index of the last element in the array that satisfies the provided testing function. </summary>
         internal static void FINDLASTINDEX(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
-            var array = thisObject as ScriptArray;
-            if (args.TryGetFunction(0, out var callback))
-            {
-                var index = array.FindLastIndexInternal(ctx, callback);
-                ScriptDatum.WriteAsNumber(ref result, index);
-            }
+            if (thisObject is ScriptArray array && args.Length > 0)
+                result = array.FindLastIndexCore(ctx, args[0]);
         }
-
-
 
         /// <summary> Native implementation for the 'map' method. Creates a new array with the results of calling a function on every element. </summary>
         internal static void MAP(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
-            var array = thisObject as ScriptArray;
-            if (args.TryGetFunction(0, out var callback))
-            {
-                var newArray = array.MapInternal(ctx, callback);
-                ScriptDatum.WriteAsArray(ref result, newArray);
-            }
+            if (thisObject is ScriptArray array && args.Length > 0)
+                result = ScriptDatum.FromObject(array.MapCore(ctx, args[0]));
         }
 
         /// <summary> Native implementation for the 'filter' method. Creates a new array with all elements that pass the test implemented by the provided function. </summary>
         internal static void FILTER(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
-            var array = thisObject as ScriptArray;
-            if (args.TryGetFunction(0, out var callback))
-            {
-                var newArray = array.FilterInternal(ctx, callback);
-                ScriptDatum.WriteAsArray(ref result, newArray);
-            }
+            if (thisObject is ScriptArray array && args.Length > 0)
+                result = ScriptDatum.FromObject(array.FilterCore(ctx, args[0]));
         }
 
         /// <summary> Native implementation for the 'some' method. Tests whether at least one element in the array passes the test implemented by the provided function. </summary>
         internal static void SOME(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
-            var array = thisObject as ScriptArray;
-            if (args.TryGetFunction(0, out var callback))
-            {
-                var isOk = array.SomeInternal(ctx, callback);
-                ScriptDatum.WriteAsBoolean(ref result, isOk);
-            }
+            if (thisObject is ScriptArray array && args.Length > 0)
+                result = array.SomeCore(ctx, args[0]);
         }
 
         /// <summary> Native implementation for the 'every' method. Tests whether all elements in the array pass the test implemented by the provided function. </summary>
         internal static void EVERY(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
-            var array = thisObject as ScriptArray;
-            if (args.TryGetFunction(0, out var callback))
-            {
-                var isOk = array.EveryInternal(ctx, callback);
-                ScriptDatum.WriteAsBoolean(ref result, isOk);
-            }
+            if (thisObject is ScriptArray array && args.Length > 0)
+                result = array.EveryCore(ctx, args[0]);
         }
 
         /// <summary> Native implementation for the 'flat' method. Creates a new array with all sub-array elements concatenated into it recursively up to the specified depth. </summary>
         internal static void FLAT(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
-            var array = thisObject as ScriptArray;
-            if (!args.TryGetInt32(0, out var maxDeep)) maxDeep = 1;
-            var newArray = array.FlatInternal(maxDeep);
-            ScriptDatum.WriteAsArray(ref result, newArray);
+            if (thisObject is ScriptArray array)
+                ScriptDatum.WriteAsArray(ref result, array.FlatCore(args.Length > 0 ? args[0] : default));
         }
-
 
         /// <summary> Native implementation for the 'reduce' method. Executes a reducer function on each element of the array, resulting in a single output value. </summary>
         internal static void REDUCE(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
-            var array = thisObject as ScriptArray;
-            if (args.TryGetFunction(0, out var callback))
-            {
-                result = array.ReduceInternal(ctx, callback);
-            }
+            if (thisObject is ScriptArray array && args.Length > 0)
+                result = array.ReduceCore(ctx, args[0]);
         }
-
-
 
         /// <summary> Native implementation for the 'pop' method. Removes and returns the last element. </summary>
         internal static void POP(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
-            if (thisObject is ScriptArray array)
-            {
-                if (array._count == 0)
-                {
-                    ScriptDatum.MarkAsNull(ref result);
-                    return;
-                }
-                array.PopTo(ref result);
-                return;
-            }
-            throw new AuroraRuntimeException("Object is not an array.");
+            if (thisObject is not ScriptArray array)
+                throw new AuroraRuntimeException("Object is not an array.");
+            result = array.PopCore();
         }
 
         /// <summary> Native implementation for the 'reverse' method. Reverses the array in-place. </summary>
         internal static void REVERSE(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             if (thisObject is ScriptArray array)
-            {
-                var count = array._count;
-                var items = array._items;
-                if (items != null && count > 1)
-                {
-                    for (int left = 0, right = count - 1; left < right; left++, right--)
-                    {
-                        (items[left], items[right]) = (items[right], items[left]);
-                    }
-                }
-                ScriptDatum.WriteAsArray(ref result, array);
-            }
+                ScriptDatum.WriteAsArray(ref result, array.ReverseCore());
         }
 
         /// <summary> Native implementation for the 'unshift' method. Prepends items to the start of the array. </summary>
         internal static void UNSHIFT(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             if (thisObject is ScriptArray array)
-            {
-                if (args == null || args.Length == 0)
-                {
-                    ScriptDatum.WriteAsNumber(ref result, array._count);
-                    return;
-                }
-
-                var insertCount = args.Length;
-                array.EnsureCapacity(array._count + insertCount);
-                for (int i = array._count - 1; i >= 0; i--)
-                {
-                    array._items[i + insertCount] = array._items[i];
-                }
-                for (int i = 0; i < insertCount; i++)
-                {
-                    array._items[i] = args[i];
-                }
-                array._count += insertCount;
-                ScriptDatum.WriteAsNumber(ref result, array._count);
-                return;
-            }
-            ScriptDatum.WriteAsNumber(ref result, 0);
+                ScriptDatum.WriteAsNumber(ref result, array.UnshiftValues(args));
         }
 
         /// <summary> Native implementation for the 'shift' method. Removes and returns the first element. </summary>
         internal static void SHIFT(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
-            if (thisObject is ScriptArray array)
-            {
-                if (array._count == 0) return;
-                var first = array._items[0];
-                for (int i = 1; i < array._count; i++)
-                {
-                    array._items[i - 1] = array._items[i];
-                }
-                array._count--;
-                ScriptDatum.MarkAsNull(ref array._items[array._count]);
-                result = first;
-            }
+            if (thisObject is ScriptArray array) result = array.ShiftCore();
         }
 
         /// <summary> Native implementation for the 'concat' method. Returns a new array containing concatenated elements. </summary>
         internal static void CONCAT(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             if (thisObject is ScriptArray array)
-            {
-                var newArray = new ScriptArray();
-                AppendArrayContents(newArray, array);
-                if (args != null)
-                {
-                    foreach (var arg in args)
-                    {
-                        if (ScriptDatum.TryGetArray(in arg, out var scriptArray))
-                        {
-                            AppendArrayContents(newArray, scriptArray);
-                        }
-                        else
-                        {
-                            newArray.Push(arg);
-                        }
-                    }
-                }
-                ScriptDatum.WriteAsArray(ref result, newArray);
-            }
+                ScriptDatum.WriteAsArray(ref result, array.ConcatValues(args));
         }
 
         /// <summary> Native implementation for the 'sort' method. Sorts the array in-place. </summary>
         internal static void SORT(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
-            if (thisObject is not ScriptArray array)
-            {
-                ScriptDatum.MarkAsNull(ref result);
-                return;
-            }
-            var count = array._count;
-            if (count > 0)
-            {
-                Array.Sort(array._items, 0, count, CompareDatumForSort);
-            }
-            ScriptDatum.WriteAsArray(ref result, array);
+            if (thisObject is ScriptArray array)
+                ScriptDatum.WriteAsArray(ref result, array.SortCore());
         }
 
         /// <summary> Native implementation for the 'join' method. Concatenates elements into a string using a separator. </summary>
         internal static void JOIN(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
-            if (thisObject is ScriptArray array)
-            {
-                if (array.Length == 0)
-                {
-                    ScriptDatum.WriteAsString(ref result, string.Empty);
-                    return;
-                }
-                var builder = new StringBuilder();
-                args.TryGetString(0, out var separator);
-                for (int i = 0; i < array.Length; i++)
-                {
-                    if (i > 0)
-                    {
-                        builder.Append(separator);
-                    }
-                    var element = array.GetElement(i);
-                    if (element.Kind > ValueKind.Null)
-                    {
-                        builder.Append(ScriptDatum.ToString(element));
-                    }
-                }
-                ScriptDatum.WriteAsString(ref result, builder.ToString());
-                return;
-            }
-            ScriptDatum.WriteAsString(ref result, string.Empty);
+            ScriptDatum.WriteAsString(ref result, thisObject is ScriptArray array
+                ? args.Length == 0 ? array.JoinCore() : array.JoinCore(args[0]) : string.Empty);
         }
 
         /// <summary> Native implementation for the 'slice' method. Returns a shallow copy of a portion of the array. </summary>
@@ -385,34 +197,10 @@ namespace AuroraScript.Runtime.Types
                 ScriptDatum.MarkAsNull(ref result);
                 return;
             }
-
-            if (args == null || args.Length == 0)
-            {
-                ScriptDatum.WriteAsArray(ref result, array);
-                return;
-            }
-            args.TryGetInteger(0, out var start);
-            if (args.TryGetInteger(1, out var end))
-            {
-                array.SliceTo((int)start, (int)end, ref result);
-            }
-            else
-            {
-                array.SliceTo((int)start, ref result);
-            }
+            result = args.Length == 0 ? ScriptDatum.FromArray(array.SliceCore())
+                : array.SliceCore(args[0], args.Length > 1 ? args[1] : default);
         }
 
-        private static void AppendArrayContents(ScriptArray target, ScriptArray source)
-        {
-            if (target == null || source == null || source._count == 0)
-            {
-                return;
-            }
-
-            target.EnsureCapacity(target._count + source._count);
-            Array.Copy(source._items, 0, target._items, target._count, source._count);
-            target._count += source._count;
-        }
     }
 
     /// <summary> Default comparer for sorting script data. </summary>

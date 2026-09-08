@@ -728,7 +728,7 @@ public sealed class PackedArrayTests
     }
 
     [Fact]
-    public async Task PersistenceUsesNativeAdditionForProvenLocalArrayElements()
+    public async Task PersistenceKeepsMixedArrayAdditionOnTheDatumPath()
     {
         using var workspace = new TestWorkspace();
         await workspace.CompileModuleAsync(
@@ -767,8 +767,8 @@ public sealed class PackedArrayTests
                 peReader.GetMethodBody(method.RelativeVirtualAddress).GetILBytes().AsSpan());
         }
 
-        Assert.Contains(OpCodes.Add, GetMethodOpCodes("numericArrayAdd$typed"));
-        Assert.Contains(OpCodes.Add, GetMethodOpCodes("pushedArrayAdd$typed"));
+        Assert.DoesNotContain(OpCodes.Add, GetMethodOpCodes("numericArrayAdd$typed"));
+        Assert.DoesNotContain(OpCodes.Add, GetMethodOpCodes("pushedArrayAdd$typed"));
         Assert.DoesNotContain(OpCodes.Add, GetMethodOpCodes("stringArrayAdd$typed"));
     }
 

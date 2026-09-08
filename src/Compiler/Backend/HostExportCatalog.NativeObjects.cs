@@ -323,12 +323,23 @@ namespace AuroraScript.Compiler.Backend
             _methods = new Dictionary<string, HostNativeMethodDescriptor>(StringComparer.Ordinal);
             _getters = new Dictionary<string, HostNativeMethodDescriptor>(StringComparer.Ordinal);
             _setters = new Dictionary<string, HostNativeMethodDescriptor>(StringComparer.Ordinal);
+            if (typeof(IAuroraNativeIndexer).IsAssignableFrom(ClrType))
+            {
+                var map = ClrType.GetInterfaceMap(typeof(IAuroraNativeIndexer));
+                for (var i = 0; i < map.InterfaceMethods.Length; i++)
+                {
+                    if (map.InterfaceMethods[i].Name == "get_Item") IndexGetter = map.TargetMethods[i].IsPublic ? map.TargetMethods[i] : map.InterfaceMethods[i];
+                    if (map.InterfaceMethods[i].Name == "set_Item") IndexSetter = map.TargetMethods[i].IsPublic ? map.TargetMethods[i] : map.InterfaceMethods[i];
+                }
+            }
         }
 
         public string TypeName { get; }
         public Type ClrType { get; }
         public Type DeclaringType { get; }
         public bool IsValueReceiver { get; }
+        public MethodInfo IndexGetter { get; }
+        public MethodInfo IndexSetter { get; }
         public string FactoryMemberName { get; internal set; }
         public ConstructorInfo Constructor { get; }
         public AuroraExportValueKind[] ConstructorParameterKinds { get; }
@@ -430,7 +441,8 @@ namespace AuroraScript.Compiler.Backend
 
         /// <summary>Bind exact-arity value members; ambiguous or coercive calls retain the dynamic adapter.</summary>
         public HostNativeMethodDescriptor BindValueMethod(string name, IReadOnlyList<Expression> arguments,
-            IReadOnlyDictionary<Expression, FlowValueType> types, FlowValueType receiver)
+            IReadOnlyDictionary<Expression, FlowValueType> types, FlowValueType receiver,
+            IReadOnlyDictionary<Expression, HostNativeObjectDescriptor> nativeTypes)
         {
             if (!IsValueReceiver || !TryGetMethod(name, out var first)) return null;
             HostNativeMethodDescriptor best = null;
@@ -446,7 +458,8 @@ namespace AuroraScript.Compiler.Backend
                 for (var i = 0; i < arguments.Count; i++)
                 {
                     if (arguments[i] is SpreadExpression || !types.TryGetValue(arguments[i], out var type) ||
-                        !HostExportArgumentFacts.CanPass(candidate.ParameterKinds[i], candidate.GetScriptParameterType(i), type))
+                        !HostExportArgumentFacts.CanPass(candidate.ParameterKinds[i], candidate.GetScriptParameterType(i), type,
+                            nativeTypes.TryGetValue(arguments[i], out var nativeType) ? nativeType.ClrType : null))
                     {
                         matches = false;
                         break;
@@ -468,7 +481,7 @@ namespace AuroraScript.Compiler.Backend
             var required = 0;
             for (var i = start; i < parameters.Length; i++)
             {
-                if (parameters[i].HasDefaultValue)
+                if (parameters[i].HasDefaultValue || parameters[i].IsDefined(typeof(ParamArrayAttribute), false))
                 {
                     break;
                 }

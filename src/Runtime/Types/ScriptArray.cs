@@ -1,7 +1,7 @@
-﻿using System;
+using AuroraScript.Hosting;
+using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using AuroraScript.Hosting;
 
 namespace AuroraScript.Runtime.Types
 {
@@ -10,7 +10,7 @@ namespace AuroraScript.Runtime.Types
     /// Manages an internal buffer of <see cref="ScriptDatum"/> and provides methods for manipulation.
     /// </summary>
     [NativeType("Array")]
-    public sealed partial class ScriptArray : ScriptObject
+    public sealed partial class ScriptArray : ScriptObject, IAuroraNativeIndexer
     {
         internal ScriptDatum[] _items;
         private int _count;
@@ -18,11 +18,25 @@ namespace AuroraScript.Runtime.Types
         /// <inheritdoc />
         protected internal override ScriptDatum TypeOfValue => TypeNames.Array;
 
+        /// <summary>Reads or writes an element, supporting negative indices and sparse growth.</summary>
+        public ScriptDatum this[int index]
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get
+            {
+                ScriptDatum value = default;
+                GetElement(index, ref value);
+                return value;
+            }
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            set => SetElement(index, in value);
+        }
+
         /// <summary>
         /// Initializes a new <see cref="ScriptArray"/> by copying another array.
         /// </summary>
         /// <param name="array">The source array to copy from.</param>
-        public ScriptArray(ScriptArray array) : base(Prototypes.ScriptArrayPrototype)
+        public ScriptArray(ScriptArray array) : base(NativePrototype)
         {
             var capacity = array._count;
             _items = new ScriptDatum[Math.Max(4, capacity)];
@@ -33,14 +47,12 @@ namespace AuroraScript.Runtime.Types
             }
         }
 
-
-
         /// <summary>
         /// Initializes a new <see cref="ScriptArray"/> with the specified initial capacity.
         /// </summary>
         /// <param name="capacity">The initial capacity of the array.</param>
         [Export(DynamicAdapter = nameof(CREATE))]
-        public ScriptArray(int capacity) : base(Prototypes.ScriptArrayPrototype)
+        public ScriptArray(int capacity) : base(NativePrototype)
         {
             if (capacity <= 0)
             {
@@ -58,7 +70,7 @@ namespace AuroraScript.Runtime.Types
         /// Initializes a new <see cref="ScriptArray"/> from a list of script objects.
         /// </summary>
         /// <param name="list">The source list.</param>
-        public ScriptArray(List<ScriptObject> list) : base(Prototypes.ScriptArrayPrototype)
+        public ScriptArray(List<ScriptObject> list) : base(NativePrototype)
         {
             if (list == null || list.Count == 0)
             {
@@ -80,7 +92,7 @@ namespace AuroraScript.Runtime.Types
         /// Initializes a new <see cref="ScriptArray"/> from a span of <see cref="ScriptDatum"/>.
         /// </summary>
         /// <param name="array">The source span.</param>
-        public ScriptArray(Span<ScriptDatum> array) : base(Prototypes.ScriptArrayPrototype)
+        public ScriptArray(Span<ScriptDatum> array) : base(NativePrototype)
         {
             if (array.Length == 0)
             {
@@ -98,12 +110,11 @@ namespace AuroraScript.Runtime.Types
             }
         }
 
-
         /// <summary>
         /// Initializes a new <see cref="ScriptArray"/> from an array of <see cref="ScriptDatum"/>.
         /// </summary>
         /// <param name="array">The source array.</param>
-        public ScriptArray(ScriptDatum[] array) : base(Prototypes.ScriptArrayPrototype)
+        public ScriptArray(ScriptDatum[] array) : base(NativePrototype)
         {
             if (array.Length == 0)
             {
@@ -125,7 +136,7 @@ namespace AuroraScript.Runtime.Types
         /// Initializes a new <see cref="ScriptArray"/> from an array of <see cref="ScriptObject"/>.
         /// </summary>
         /// <param name="array">The source array.</param>
-        public ScriptArray(ScriptObject[] array) : base(Prototypes.ScriptArrayPrototype)
+        public ScriptArray(ScriptObject[] array) : base(NativePrototype)
         {
             if (array == null || array.Length == 0)
             {
@@ -146,7 +157,7 @@ namespace AuroraScript.Runtime.Types
         /// <summary>
         /// Initializes an empty <see cref="ScriptArray"/>.
         /// </summary>
-        public ScriptArray() : base(Prototypes.ScriptArrayPrototype)
+        public ScriptArray() : base(NativePrototype)
         {
             this._items = Array.Empty<ScriptDatum>();
             this._count = 0;
@@ -162,28 +173,35 @@ namespace AuroraScript.Runtime.Types
             return array;
         }
 
-        internal static ScriptArray CreateEmptyWithCapacity(int capacity)
+        /// <summary>Creates reserved storage using a native capacity.</summary>
+        [Export("withCapacity", DynamicAdapter = nameof(WITH_CAPACITY))]
+        public static ScriptArray CreateEmptyWithCapacity(int capacity)
         {
             return CreateWithCapacity(capacity);
         }
-
-        internal static ScriptArray CreateWithLength(ScriptDatum length)
-        {
-            var capacity = length.Kind == ValueKind.Number ? (int)length.Number : 0;
-            return new ScriptArray(capacity);
-        }
-
-        internal static ScriptArray CreateEmptyWithCapacity(double value) =>
-            CreateEmptyWithCapacity(ClampCapacity((long)value));
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int ClampCapacity(long requested) =>
             requested <= 0 ? 0 : requested > int.MaxValue ? int.MaxValue : (int)requested;
 
-        /// <summary>Creates reserved array storage with the script's weak capacity conversions.</summary>
+        /// <summary>Creates reserved storage using script numeric truncation.</summary>
         [Export("withCapacity", DynamicAdapter = nameof(WITH_CAPACITY))]
+        public static ScriptArray CreateEmptyWithCapacity(double value)
+        {
+            if (double.IsPositiveInfinity(value)) throw new AuroraRuntimeException("Invalid array capacity.");
+            return CreateEmptyWithCapacity(ClampCapacity((long)value));
+        }
+
+        /// <summary>Creates reserved storage using native 64-bit capacity.</summary>
+        [Export("withCapacity", DynamicAdapter = nameof(WITH_CAPACITY))]
+        public static ScriptArray CreateEmptyWithCapacity(long value) => CreateEmptyWithCapacity(ClampCapacity(value));
+
+        /// <summary>Creates reserved array storage with the script's weak capacity conversions.</summary>
         public static ScriptArray CreateEmptyWithCapacity(ScriptDatum value)
         {
+            // Floating-point casts outside Int64 differ between supported CLR versions.
+            if (value.Kind == ValueKind.Number && double.IsPositiveInfinity(value.Number))
+                throw new AuroraRuntimeException("Invalid array capacity.");
             return CreateEmptyWithCapacity(ScriptDatum.TryToInteger(in value, out var requested)
                 ? ClampCapacity(requested) : 0);
         }
@@ -208,29 +226,12 @@ namespace AuroraScript.Runtime.Types
             GetElementSlow(index, ref scriptDatum);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal ScriptDatum GetElementValue(int index)
-        {
-            if ((uint)index < (uint)_count) return _items[index];
-            return GetElementValueSlow(index);
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private ScriptDatum GetElementValueSlow(int index)
-        {
-            if (index < 0) index += _count;
-            return (uint)index < (uint)_count ? _items[index] : default;
-        }
-
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void GetElementSlow(int index, ref ScriptDatum scriptDatum)
         {
             if (index < 0) index += _count;
             scriptDatum = (uint)index < (uint)_count ? _items[index] : default;
         }
-
-
-
 
         /// <summary>
         /// Slices the array from start to end and writes the resulting <see cref="ScriptArray"/> to the provided datum.
@@ -304,13 +305,6 @@ namespace AuroraScript.Runtime.Types
             SetElement(index, in datum);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal bool HasOwnPushProperty()
-        {
-            return hiddenClass.TryGet("push", out _);
-        }
-
-
         /// <summary> Determines whether the array contains a specific element. </summary>
         /// <param name="element">The element to locate in the array.</param>
         /// <returns>True if the element is found; otherwise, false.</returns>
@@ -322,7 +316,6 @@ namespace AuroraScript.Runtime.Types
             }
             return false;
         }
-
 
         /// <summary> Searches for the specified element and returns the index of the first occurrence within the array. </summary>
         /// <param name="searchElement">The element to locate.</param>
@@ -355,8 +348,6 @@ namespace AuroraScript.Runtime.Types
             return -1;
         }
 
-
-
         /// <summary> Appends a datum to the end of the array. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Push(ScriptDatum datum)
@@ -378,16 +369,17 @@ namespace AuroraScript.Runtime.Types
             _items[_count++] = datum;
         }
 
-        internal void AddRange(Span<ScriptDatum> items)
+        internal int AddRange(Span<ScriptDatum> items)
         {
             if (items.Length == 0)
             {
-                return;
+                return _count;
             }
 
             EnsureCapacity(_count + items.Length);
             items.CopyTo(_items.AsSpan(_count));
             _count += items.Length;
+            return _count;
         }
 
         /// <summary> Removes the reference at the specified index by setting it to default. </summary>
@@ -513,7 +505,6 @@ namespace AuroraScript.Runtime.Types
             return -1;
         }
 
-
         internal ScriptDatum FindLastInternal(ScriptContext ctx, ClosureFunction callback)
         {
             var count = _count;
@@ -551,7 +542,6 @@ namespace AuroraScript.Runtime.Types
             return newArray;
         }
 
-
         internal Boolean SomeInternal(ScriptContext ctx, ClosureFunction callback)
         {
             var count = _count;
@@ -576,7 +566,6 @@ namespace AuroraScript.Runtime.Types
             return true;
         }
 
-
         internal ScriptArray FlatInternal(int maxDeep)
         {
             var newArray = new ScriptArray();
@@ -599,7 +588,6 @@ namespace AuroraScript.Runtime.Types
             return newArray;
         }
 
-
         internal ScriptDatum ReduceInternal(ScriptContext ctx, ClosureFunction callback)
         {
             var count = _count;
@@ -612,9 +600,6 @@ namespace AuroraScript.Runtime.Types
             }
             return accumulator;
         }
-
-
-
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void EnsureCapacity(int min)

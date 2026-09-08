@@ -163,14 +163,21 @@ public sealed class StringMemberCompletionTests
             }
             foreach (var (name, core, argumentType) in new[] {
                 ("split", "SplitCore", typeof(string)), ("match", "MatchCore", typeof(string)),
-                ("all", "MatchAllCore", typeof(string)), ("weakMatch", "MatchCore", typeof(ScriptDatum)),
-                ("weakAll", "MatchAllCore", typeof(ScriptDatum)), ("weakReplace", "ReplaceCore", typeof(ScriptDatum)) })
+                ("all", "MatchAllCore", typeof(string)) })
             {
                 var calls = methods.Where(method => method.Name == name || method.Name.StartsWith(name + "$", StringComparison.Ordinal))
                     .SelectMany(StringOptimizationTests.GetCalls).ToArray();
                 Assert.Contains(calls, call => call.DeclaringType == typeof(StringValue) && call.Name == core && call.GetParameters()[^1].ParameterType == argumentType);
                 Assert.DoesNotContain(calls, call => call.DeclaringType == typeof(CallOps));
             }
+            foreach (var name in new[] { "weakMatch", "weakAll", "weakReplace" })
+            {
+                var calls = methods.Where(method => method.Name == name || method.Name.StartsWith(name + "$", StringComparison.Ordinal))
+                    .SelectMany(StringOptimizationTests.GetCalls).ToArray();
+                Assert.Contains(calls, call => call.DeclaringType == typeof(CallOps) && call.Name.Contains("InvokeProperty"));
+                Assert.DoesNotContain(calls, call => call.DeclaringType == typeof(StringValue));
+            }
+
         }
 #endif
     }

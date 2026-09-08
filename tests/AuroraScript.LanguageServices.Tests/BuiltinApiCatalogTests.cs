@@ -302,6 +302,18 @@ public sealed class BuiltinApiCatalogTests
         Assert.Equal(21, count);
     }
 
+    [Fact]
+    public void RuntimeApiCatalogCoversGeneratedArrayPrototypeMembers()
+    {
+        var catalog = LoadCatalog();
+        var source = File.ReadAllText(Path.Combine(GetRuntimeRoot(), "Types", "ScriptArray.Native.cs"));
+        var names = ExtractExportNames(source).ToArray();
+        foreach (var name in names)
+            Assert.True(catalog.TryGetPrototypeMember("Array", name, out _),
+                $"runtime-api.json is missing generated Array prototype member '{name}'.");
+        Assert.Equal(23, names.Length);
+    }
+
     private static BuiltinApiCatalog LoadCatalog()
     {
         return BuiltinApiLoader.LoadFromFile(GetRuntimeApiPath());

@@ -76,12 +76,10 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum GetElement(ScriptDatum receiver, ScriptDatum index)
         {
-            if (receiver.Kind == ValueKind.Array && receiver.Object is ScriptArray array &&
+            if (receiver.Reference is IAuroraNativeIndexer indexed &&
                 ScriptDatum.TryToInteger(in index, out var numericIndex))
             {
-                var value = default(ScriptDatum);
-                array.GetElement((int)numericIndex, ref value);
-                return value;
+                return indexed[(int)numericIndex];
             }
 
             if (receiver.Reference is ScriptPackedArray packedArray &&
@@ -91,11 +89,9 @@ namespace AuroraScript.Runtime
             }
 
             var instance = ScriptDatum.ToObject(receiver);
-            if (instance is ScriptArray fallbackArray && ScriptDatum.TryToInteger(in index, out numericIndex))
+            if (instance is IAuroraNativeIndexer indexedFallback && ScriptDatum.TryToInteger(in index, out numericIndex))
             {
-                var value = default(ScriptDatum);
-                fallbackArray.GetElement((int)numericIndex, ref value);
-                return value;
+                return indexedFallback[(int)numericIndex];
             }
             return instance.GetPropertyDatum(null, ScriptDatum.ToString(index));
         }
@@ -103,11 +99,9 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum GetElementNumber(ScriptDatum receiver, double index)
         {
-            if (receiver.Kind == ValueKind.Array && receiver.Object is ScriptArray array)
+            if (receiver.Reference is IAuroraNativeIndexer indexed)
             {
-                var value = default(ScriptDatum);
-                array.GetElement((int)index, ref value);
-                return value;
+                return indexed[(int)index];
             }
             if (receiver.Reference is ScriptPackedArray packedArray)
             {
@@ -123,11 +117,9 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum GetElementIndex(ScriptDatum receiver, int index)
         {
-            if (receiver.Kind == ValueKind.Array && receiver.Object is ScriptArray array)
+            if (receiver.Reference is IAuroraNativeIndexer indexed)
             {
-                var value = default(ScriptDatum);
-                array.GetElement(index, ref value);
-                return value;
+                return indexed[index];
             }
             if (receiver.Reference is ScriptPackedArray packedArray)
             {
@@ -140,9 +132,9 @@ namespace AuroraScript.Runtime
         public static ScriptDatum SetElement(ScriptDatum receiver, ScriptDatum index, ScriptDatum value)
         {
             var instance = ScriptDatum.ToObject(receiver);
-            if (instance is ScriptArray array && ScriptDatum.TryToInteger(in index, out var numericIndex))
+            if (instance is IAuroraNativeIndexer indexed && ScriptDatum.TryToInteger(in index, out var numericIndex))
             {
-                array.SetElement((int)numericIndex, in value);
+                indexed[(int)numericIndex] = value;
             }
             else if (instance is ScriptPackedArray packedArray &&
                 ScriptDatum.TryToInteger(in index, out numericIndex))
@@ -159,9 +151,9 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum SetElementNumber(ScriptDatum receiver, double index, ScriptDatum value)
         {
-            if (receiver.Kind == ValueKind.Array && receiver.Object is ScriptArray array)
+            if (receiver.Reference is IAuroraNativeIndexer indexed)
             {
-                array.SetElement((int)index, in value);
+                indexed[(int)index] = value;
                 return value;
             }
             if (receiver.Reference is ScriptPackedArray packedArray)
@@ -179,9 +171,9 @@ namespace AuroraScript.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum SetElementIndex(ScriptDatum receiver, int index, ScriptDatum value)
         {
-            if (receiver.Kind == ValueKind.Array && receiver.Object is ScriptArray array)
+            if (receiver.Reference is IAuroraNativeIndexer indexed)
             {
-                array.SetElement(index, in value);
+                indexed[index] = value;
                 return value;
             }
             if (receiver.Reference is ScriptPackedArray packedArray)

@@ -143,7 +143,6 @@ namespace AuroraScript.Compiler.Backend.Code
         {
             return type == FlowValueType.Boolean ||
                 type == FlowValueType.String ||
-                type == FlowValueType.Array ||
                 FlowValueTypeFacts.IsNumeric(type) ||
                 FlowValueTypeFacts.IsPackedArray(type);
         }

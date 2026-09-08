@@ -14,6 +14,74 @@ namespace AuroraScript.Tests;
 
 public sealed class BuiltinNativeMigrationTests
 {
+    [Theory]
+    [InlineData(CompilationMode.OnlyRun)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
+    public async Task BufferPrimitiveOverloadsMatchDynamicFormatting(CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync("""
+            @module(TEST);
+            export native func text(StringBuffer b, String v) void { b.append(v); b.appendLine(v); }
+            export native func integer(StringBuffer b, int32 v) void { b.append(v); b.appendLine(v); }
+            export native func number(StringBuffer b, Number v) void { b.append(v); b.appendLine(v); }
+            export native func boolean(StringBuffer b, Boolean v) void { b.append(v); b.appendLine(v); }
+            export native func signed(StringBuffer b, int64 v) void { b.append(v); b.appendLine(v); }
+            export native func unsigned(StringBuffer b, uint64 v) void { b.append(v); b.appendLine(v); }
+            export func fallback(b, v) { b.append(v); b.appendLine(v); }
+            export native func mixed(StringBuffer b) void { b.append('x', 2, true); b.appendLine(null, 'z'); }
+            export native func spread(StringBuffer b) void { b.append(...['a', 'b']); }
+            """, mode);
+        var cases = new (string Name, Type Type, ScriptDatum Value)[] {
+            ("text", typeof(string), ScriptDatum.FromString("hello")),
+            ("integer", typeof(int), ScriptDatum.FromNumber(-42)),
+            ("number", typeof(double), ScriptDatum.FromNumber(1.25)),
+            ("boolean", typeof(bool), ScriptDatum.FromBoolean(true)),
+            ("signed", typeof(long), ScriptDatum.FromInt64(long.MinValue)),
+            ("unsigned", typeof(ulong), ScriptDatum.FromUInt64(ulong.MaxValue))
+        };
+        foreach (var (name, _, value) in cases)
+        {
+            var direct = new StringBuffer();
+            var dynamic = new StringBuffer();
+            TestWorkspace.Execute(domain, name, arguments: [ScriptDatum.FromObject(direct), value]);
+            TestWorkspace.Execute(domain, "fallback", arguments: [ScriptDatum.FromObject(dynamic), value]);
+            Assert.Equal(dynamic.ToString(), direct.ToString());
+            Assert.Equal(ScriptDatum.ToString(value) + ScriptDatum.ToString(value) + Environment.NewLine, direct.ToString());
+        }
+        var mixed = new StringBuffer();
+        TestWorkspace.Execute(domain, "mixed", arguments: [ScriptDatum.FromObject(mixed)]);
+        Assert.Equal("x2Truenullz" + Environment.NewLine, mixed.ToString());
+        var spread = new StringBuffer();
+        TestWorkspace.Execute(domain, "spread", arguments: [ScriptDatum.FromObject(spread)]);
+        Assert.Equal("ab", spread.ToString());
+#if NET9_0_OR_GREATER
+        if (mode == CompilationMode.Persistence)
+        {
+            var methods = Assembly.Load(File.ReadAllBytes(Path.Combine(workspace.Root, "test-output.dll")))
+                .GetTypes().SelectMany(type => type.GetMethods()).ToArray();
+            foreach (var (name, type, _) in cases)
+            {
+                var calls = StringOptimizationTests.GetCalls(methods.Single(method => method.Name == name + "$native"));
+                var appends = calls.Where(call => call.DeclaringType == typeof(StringBuffer) &&
+                    call.Name is nameof(StringBuffer.AppendCore) or nameof(StringBuffer.AppendLineCore)).ToArray();
+                Assert.Equal(2, appends.Length);
+                Assert.All(appends, call => Assert.Equal(type, Assert.Single(call.GetParameters()).ParameterType));
+                Assert.DoesNotContain(calls, call => call.Name.Contains("InvokeProperty"));
+            }
+            foreach (var name in new[] { "mixed", "spread" })
+            {
+                var calls = StringOptimizationTests.GetCalls(methods.Single(method => method.Name == name + "$native"));
+                Assert.Contains(calls, call => call.Name.Contains("InvokeProperty"));
+                Assert.DoesNotContain(calls, call => call.DeclaringType == typeof(StringBuffer) &&
+                    call.Name is nameof(StringBuffer.AppendCore) or nameof(StringBuffer.AppendLineCore));
+            }
+        }
+#endif
+    }
+
     [Fact]
     public void BuiltinsUseGeneratedTypesWithoutChangingObjectInfrastructure()
     {

@@ -410,9 +410,13 @@ namespace AuroraScript.Hosting.Generators
             }
 
             var constructor = SelectConstructor(typeSymbol, diagnostics, typeName!);
-            if (preservesRuntimeSurface && (isPackage || fields.Count != 0 || exports.Any(static export => export.IsSetter)))
+            if (preservesRuntimeSurface && (isPackage || fields.Count != 0))
                 diagnostics.Add(Diagnostic.Create(InvalidGlobal, GetLocation(typeSymbol),
-                    "Existing engine objects retain their native storage and support prototype methods/getters, not generated fields, setters or package registration."));
+                    "Existing engine objects retain their native storage and support prototype members, not generated fields or package registration."));
+            if (preservesRuntimeSurface && exports.Any(setter => setter.IsSetter &&
+                !exports.Any(getter => getter.IsGetter && getter.ScriptName == setter.ScriptName)))
+                diagnostics.Add(Diagnostic.Create(InvalidGlobal, GetLocation(typeSymbol),
+                    "An engine object's prototype setter requires a matching exported getter."));
             var requiresNativePrototype = receiverType == null && scriptObjectBase != null &&
                 exports.Any(static export => !export.IsGetter && !export.IsSetter);
             if (requiresNativePrototype && !preservesRuntimeSurface)
@@ -804,7 +808,7 @@ namespace AuroraScript.Hosting.Generators
             {
                 return true;
             }
-            if (export.IsGetter && !allowGetter || export.IsSetter || string.IsNullOrWhiteSpace(export.DynamicAdapter))
+            if (export.IsGetter && !allowGetter || string.IsNullOrWhiteSpace(export.DynamicAdapter))
             {
                 return false;
             }
@@ -949,7 +953,8 @@ namespace AuroraScript.Hosting.Generators
                         builder.Append(", IsSetter = ").Append(export.IsSetter ? "true" : "false");
                         if (model.ReceiverType != null)
                             builder.Append(", ReceiverType = typeof(").Append(export.ReceiverType).Append(')');
-                        if (export.DynamicAdapter != null)
+                        if (export.DynamicAdapter != null && !export.Parameters.Any(static parameter =>
+                            parameter.Kind is ParameterKind.NumberParams or ParameterKind.DatumParams))
                         {
                             builder.Append(", UseDynamicForExtraArguments = true");
                         }
@@ -1159,7 +1164,7 @@ namespace AuroraScript.Hosting.Generators
             var prototypeExports = model.Exports
                 .Where(export => model.PreservesRuntimeSurface || !export.IsGetter && !export.IsSetter)
                 .GroupBy(static export => export.ScriptName)
-                .Select(static group => group.First())
+                .Select(static group => group.OrderBy(static export => export.IsSetter).First())
                 .ToList();
             if (prototypeExports.Count != 0)
             {
@@ -1183,6 +1188,17 @@ namespace AuroraScript.Hosting.Generators
                 builder.AppendLine("        {");
                 foreach (var export in prototypeExports)
                 {
+                    var setter = model.Exports.FirstOrDefault(candidate =>
+                        candidate.ScriptName == export.ScriptName && candidate.IsSetter);
+                    if (export.IsGetter && setter != null)
+                    {
+                        builder.Append("            prototype.Define(\"").Append(EscapeString(export.ScriptName))
+                            .Append("\", ScriptDatum.FromBondingAccessor(")
+                            .Append(export.AdapterMethodName).Append("Prototype, ")
+                            .Append(setter.AdapterMethodName).Append("Prototype), writeable: false, enumerable: ")
+                            .Append(export.Enumerable ? "true" : "false").AppendLine(");");
+                        continue;
+                    }
                     builder.Append("            prototype.Define(\"").Append(EscapeString(export.ScriptName))
                         .Append(export.IsGetter ? "\", ScriptDatum.FromBondingGetter(" : "\", ScriptDatum.FromBonding(")
                         .Append(export.IsGetter ? export.AdapterMethodName + "Prototype" : export.DynamicAdapter ?? export.AdapterMethodName)
@@ -1198,6 +1214,18 @@ namespace AuroraScript.Hosting.Generators
                     builder.AppendLine("        {");
                     builder.Append("            ").Append(getter.DynamicAdapter ?? getter.AdapterMethodName)
                         .AppendLine("(null, self, Span<ScriptDatum>.Empty, ref result);");
+                    builder.AppendLine("        }");
+                }
+                foreach (var setter in model.Exports.Where(export => model.PreservesRuntimeSurface && export.IsSetter))
+                {
+                    builder.Append("        private static void ").Append(setter.AdapterMethodName)
+                        .AppendLine("Prototype(ScriptContext ctx, ScriptObject self, ScriptDatum value)");
+                    builder.AppendLine("        {");
+                    builder.AppendLine("            DatumBuffer1 args = default;");
+                    builder.AppendLine("            args[0] = value;");
+                    builder.AppendLine("            ScriptDatum result = default;");
+                    builder.Append("            ").Append(setter.DynamicAdapter ?? setter.AdapterMethodName)
+                        .AppendLine("(ctx, self, args, ref result);");
                     builder.AppendLine("        }");
                 }
             }
@@ -1354,7 +1382,7 @@ namespace AuroraScript.Hosting.Generators
                     builder.Append("                case \"").Append(EscapeString(setter.ScriptName)).AppendLine("\":");
                     builder.AppendLine("                {");
                     builder.AppendLine("                    var result = default(ScriptDatum);");
-                    builder.Append("                    ").Append(setter.AdapterMethodName)
+                    builder.Append("                    ").Append(setter.DynamicAdapter ?? setter.AdapterMethodName)
                         .AppendLine("(ctx, this, MemoryMarshal.CreateSpan(ref value, 1), ref result);");
                     builder.AppendLine("                    return;");
                     builder.AppendLine("                }");

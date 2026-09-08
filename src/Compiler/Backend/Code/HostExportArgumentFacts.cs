@@ -31,6 +31,10 @@ namespace AuroraScript.Compiler.Backend.Code
                         FlowValueType.UInt32,
                 AuroraExportValueKind.Int32 =>
                     argumentType == FlowValueType.Int32,
+                AuroraExportValueKind.Int64 =>
+                    argumentType == FlowValueType.Int64,
+                AuroraExportValueKind.UInt64 =>
+                    argumentType == FlowValueType.UInt64,
                 AuroraExportValueKind.Boolean =>
                     argumentType == FlowValueType.Boolean,
                 AuroraExportValueKind.String =>
@@ -40,6 +44,30 @@ namespace AuroraScript.Compiler.Backend.Code
                 AuroraExportValueKind.Datum => true,
                 _ => false
             };
+        }
+
+        public static int ConversionCost(AuroraExportValueKind kind, FlowValueType argumentType) =>
+            kind == AuroraExportValueKind.Datum ? 2 :
+            kind == AuroraExportValueKind.Number && argumentType != FlowValueType.Number ? 1 : 0;
+
+        public static bool HasParams(AuroraExportValueKind[] kinds) => kinds.Length > 0 &&
+            kinds[kinds.Length - 1] is AuroraExportValueKind.DatumParams or AuroraExportValueKind.NumberParams;
+
+        public static AuroraExportValueKind ParamsElementKind(AuroraExportValueKind kind) =>
+            kind == AuroraExportValueKind.DatumParams ? AuroraExportValueKind.Datum : AuroraExportValueKind.Number;
+
+        public static void GetArgumentParameter(AuroraExportValueKind[] kinds,
+            System.Reflection.ParameterInfo[] parameters, int prefix, int argumentIndex,
+            out AuroraExportValueKind kind, out Type type)
+        {
+            var index = Math.Min(argumentIndex, kinds.Length - 1);
+            kind = kinds[index];
+            type = parameters[prefix + index].ParameterType;
+            if (kind is AuroraExportValueKind.DatumParams or AuroraExportValueKind.NumberParams)
+            {
+                kind = ParamsElementKind(kind);
+                type = type.GetElementType();
+            }
         }
 
         private static bool CanPassObject(
@@ -55,13 +83,9 @@ namespace AuroraScript.Compiler.Backend.Code
             if (parameterType == typeof(ScriptObject))
             {
                 return argumentType == FlowValueType.Object ||
-                    argumentType == FlowValueType.Array ||
                     FlowValueTypeFacts.IsPackedArray(argumentType);
             }
-            if (parameterType == typeof(ScriptArray))
-            {
-                return argumentType == FlowValueType.Array;
-            }
+
             if (parameterType == typeof(ScriptPackedArray))
             {
                 return FlowValueTypeFacts.IsPackedArray(argumentType);

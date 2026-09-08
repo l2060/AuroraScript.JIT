@@ -69,7 +69,7 @@ public sealed class ArraySpecializationTests
 #if NET9_0_OR_GREATER
     [InlineData(CompilationMode.Persistence)]
 #endif
-    public async Task ExactArrayFastPathsKeepEvaluationOrderAndBuiltinOverrides(CompilationMode mode)
+    public async Task NativeArraysKeepEvaluationOrderAndUseNativeMemberBinding(CompilationMode mode)
     {
         using var workspace = new TestWorkspace();
         var (_, domain) = await workspace.CompileModuleAsync(
@@ -102,7 +102,7 @@ public sealed class ArraySpecializationTests
             mode);
 
         ScriptAssert.Equal(
-            new object?[] { 1, 2, 4, 5, 0, 7, 0, 3, null, 1, 7, 60, 0 },
+            new object?[] { 1, 2, 4, 5, 0, 7, 0, 3, null, 1, 7, 1, 1 },
             TestWorkspace.Execute(domain, "run"));
     }
 
@@ -141,7 +141,7 @@ public sealed class ArraySpecializationTests
 #if NET9_0_OR_GREATER
     [InlineData(CompilationMode.Persistence)]
 #endif
-    public async Task LocalArrayElementFactsPreserveHolesStringsMutationsAndEscapes(
+    public async Task ArrayElementsPreserveHolesStringsMutationsAndEscapes(
         CompilationMode mode)
     {
         using var workspace = new TestWorkspace();

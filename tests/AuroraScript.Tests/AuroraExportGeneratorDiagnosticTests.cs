@@ -586,6 +586,7 @@ public sealed class AuroraExportGeneratorDiagnosticTests
         Assert.Contains("Define(\"create\", ScriptDatum.FromBonding(CREATE)", generated);
         Assert.Equal(1, generated.Split("public static void FORMAT(").Length - 1);
         Assert.Equal(4, generated.Split("UseDynamicForExtraArguments = true").Length - 1);
+        Assert.Contains("AuroraExportValueKind.DatumParams", generated);
     }
 
     [Fact]

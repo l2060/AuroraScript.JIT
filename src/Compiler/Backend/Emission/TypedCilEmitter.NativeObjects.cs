@@ -19,6 +19,68 @@ namespace AuroraScript.Compiler.Backend.Emission
         /// </summary>
         private bool HasContextArgument => !_directMode || _function.IsNativeDeclared;
 
+        private bool TryGetNativeIndexer(Expression receiver, Expression index, out HostNativeObjectDescriptor owner)
+        {
+            owner = _code.GetNativeObjectType(receiver);
+            return owner?.IndexGetter != null && owner.IndexSetter != null &&
+                FlowValueTypeFacts.IsNumeric(_code.GetExpressionType(index));
+        }
+
+        private StackValueKind EmitNativeIndexRead(Expression receiver, Expression index, HostNativeObjectDescriptor owner)
+        {
+            EmitNativeReceiver(receiver, owner);
+            EmitInt32Value(index);
+            _il.Emit(OpCodes.Callvirt, owner.IndexGetter);
+            return StackValueKind.Datum;
+        }
+
+        private void EmitNativeIndexTarget(Expression receiverExpression, Expression indexExpression,
+            HostNativeObjectDescriptor owner, out LocalBuilder receiver, out LocalBuilder index)
+        {
+            receiver = DeclareLocal(owner.ClrType);
+            index = DeclareLocal(typeof(int));
+            EmitNativeReceiver(receiverExpression, owner);
+            _il.Emit(OpCodes.Stloc, receiver);
+            EmitInt32Value(indexExpression);
+            _il.Emit(OpCodes.Stloc, index);
+        }
+
+        private StackValueKind EmitNativeIndexWrite(SetElementExpression expression, HostNativeObjectDescriptor owner)
+        {
+            EmitNativeIndexTarget(expression.Object, expression.Index, owner, out var receiver, out var index);
+            var value = DeclareLocal(typeof(Runtime.ScriptDatum));
+            EmitDatum(expression.Value);
+            _il.Emit(OpCodes.Stloc, value);
+            EmitNativeIndexStore(owner, receiver, index, value);
+            _il.Emit(OpCodes.Ldloc, value);
+            return StackValueKind.Datum;
+        }
+
+        private void EmitNativeIndexStore(HostNativeObjectDescriptor owner,
+            LocalBuilder receiver, LocalBuilder index, LocalBuilder value)
+        {
+            _il.Emit(OpCodes.Ldloc, receiver);
+            _il.Emit(OpCodes.Ldloc, index);
+            _il.Emit(OpCodes.Ldloc, value);
+            _il.Emit(OpCodes.Callvirt, owner.IndexSetter);
+        }
+
+        private StackValueKind EmitNativeIndexCompound(CompoundExpression expression,
+            GetElementExpression element, Operator op, HostNativeObjectDescriptor owner)
+        {
+            EmitNativeIndexTarget(element.Object, element.Index, owner, out var receiver, out var index);
+            _il.Emit(OpCodes.Ldloc, receiver);
+            _il.Emit(OpCodes.Ldloc, index);
+            _il.Emit(OpCodes.Callvirt, owner.IndexGetter);
+            EmitDatum(expression.Right);
+            _il.Emit(OpCodes.Call, GetDynamicBinary(op));
+            var value = DeclareLocal(typeof(Runtime.ScriptDatum));
+            _il.Emit(OpCodes.Stloc, value);
+            EmitNativeIndexStore(owner, receiver, index, value);
+            _il.Emit(OpCodes.Ldloc, value);
+            return StackValueKind.Datum;
+        }
+
         private bool TryGetNativeField(
             Expression receiver,
             string memberName,
@@ -57,6 +119,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return false;
             }
 
+            var bestCost = int.MaxValue;
             for (; candidate != null; candidate = candidate.NextOverload)
             {
                 if ((!candidate.TakesContext || HasContextArgument) &&
@@ -68,11 +131,24 @@ namespace AuroraScript.Compiler.Backend.Emission
                         candidate.TakesContext ? 1 : 0,
                         candidate.UseDynamicForExtraArguments))
                 {
-                    method = candidate;
-                    return true;
+                    // Keep params as a fallback; compare fixed signatures by conversion cost.
+                    if (HostExportArgumentFacts.HasParams(candidate.ParameterKinds))
+                    {
+                        if (bestCost == int.MaxValue) method = candidate;
+                        continue;
+                    }
+                    var cost = 0;
+                    for (var i = 0; i < Math.Min(call.Arguments.Count, candidate.ParameterKinds.Length); i++)
+                        cost += HostExportArgumentFacts.ConversionCost(candidate.ParameterKinds[i], _code.GetExpressionType(call.Arguments[i]));
+                    if (cost < bestCost)
+                    {
+                        method = candidate;
+                        bestCost = cost;
+                    }
+                    if (cost == 0) return true;
                 }
             }
-            return false;
+            return method != null;
         }
 
         private bool TryGetNativeGetter(
@@ -82,8 +158,6 @@ namespace AuroraScript.Compiler.Backend.Emission
             out HostNativeMethodDescriptor getter)
         {
             owner = _code.GetNativeObjectType(receiver);
-            if (owner == null && _code.GetExpressionType(receiver) == FlowValueType.Array)
-                _session.CompileSession.HostExports.TryGetNativeObject(typeof(ScriptArray), out owner);
             if (owner == null || !owner.TryGetGetter(memberName, out getter) ||
                 getter.TakesContext && !HasContextArgument)
             {
@@ -148,19 +222,22 @@ namespace AuroraScript.Compiler.Backend.Emission
             int prefix,
             bool useDynamicForExtraArguments = false)
         {
+            var hasParams = HostExportArgumentFacts.HasParams(parameterKinds);
             if (HasSpread(call.Arguments) || call.Arguments.Count < requiredCount ||
-                useDynamicForExtraArguments && call.Arguments.Count > parameterKinds.Length)
+                !hasParams && useDynamicForExtraArguments && call.Arguments.Count > parameterKinds.Length)
             {
                 return false;
             }
 
-            var provided = Math.Min(call.Arguments.Count, parameterKinds.Length);
+            var provided = hasParams ? call.Arguments.Count : Math.Min(call.Arguments.Count, parameterKinds.Length);
             for (var i = 0; i < provided; i++)
             {
                 var argument = call.Arguments[i];
+                HostExportArgumentFacts.GetArgumentParameter(parameterKinds, clrParameters, prefix, i,
+                    out var parameterKind, out var parameterType);
                 if (!HostExportArgumentFacts.CanPass(
-                        parameterKinds[i],
-                        clrParameters[prefix + i].ParameterType,
+                        parameterKind,
+                        parameterType,
                         _code.GetExpressionType(argument),
                         _code.GetNativeObjectType(argument)?.ClrType))
                 {
@@ -195,7 +272,6 @@ namespace AuroraScript.Compiler.Backend.Emission
             HostNativeObjectDescriptor descriptor)
         {
             var kind = EmitExpression(expression);
-            if (kind == StackValueKind.Array && descriptor.ClrType == typeof(ScriptArray)) return;
             if (kind == StackValueKind.Object &&
                 ReferenceEquals(_code.GetNativeObjectType(expression), descriptor))
             {
@@ -502,7 +578,9 @@ namespace AuroraScript.Compiler.Backend.Emission
             System.Reflection.ParameterInfo[] clrParameters,
             int prefix)
         {
-            for (var i = 0; i < parameterKinds.Length; i++)
+            var hasParams = HostExportArgumentFacts.HasParams(parameterKinds);
+            var fixedCount = parameterKinds.Length - (hasParams ? 1 : 0);
+            for (var i = 0; i < fixedCount; i++)
             {
                 if (i < call.Arguments.Count)
                 {
@@ -515,6 +593,28 @@ namespace AuroraScript.Compiler.Backend.Emission
                 {
                     EmitHostExportDefault(clrParameters[prefix + i]);
                 }
+            }
+
+            if (hasParams)
+            {
+                var elementType = clrParameters[prefix + fixedCount].ParameterType.GetElementType();
+                var elementKind = HostExportArgumentFacts.ParamsElementKind(parameterKinds[fixedCount]);
+                var count = Math.Max(0, call.Arguments.Count - fixedCount);
+                if (count == 0)
+                    _il.Emit(OpCodes.Call, typeof(Array).GetMethod(nameof(Array.Empty)).MakeGenericMethod(elementType));
+                else
+                {
+                    EmitInt32(count);
+                    _il.Emit(OpCodes.Newarr, elementType);
+                    for (var i = 0; i < count; i++)
+                    {
+                        _il.Emit(OpCodes.Dup);
+                        EmitInt32(i);
+                        EmitHostExportArgument(call.Arguments[fixedCount + i], elementKind, elementType);
+                        _il.Emit(OpCodes.Stelem, elementType);
+                    }
+                }
+                return;
             }
 
             // Script calls evaluate surplus arguments before invoking the target.

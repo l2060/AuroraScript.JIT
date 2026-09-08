@@ -13,24 +13,65 @@ namespace AuroraScript.Runtime.Types
                 ? new StringBuffer(initialValue) : new StringBuffer());
         }
 
-        /// <summary>Appends one string with script null conversion.</summary>
+        /// <summary>Appends a native value with the dynamic adapter's formatting.</summary>
+        [Export("append", DynamicAdapter = nameof(APPEND))]
+        public void AppendCore(int value) => GetBuilder().Append(value);
+
+        /// <summary>Appends a native value with the dynamic adapter's formatting.</summary>
         [Export("append", DynamicAdapter = nameof(APPEND))]
         public void AppendCore(string value) => GetBuilder().Append(value ?? "null");
 
-        /// <summary>Appends one string and a platform newline.</summary>
+        /// <summary>Appends a native value with the dynamic adapter's formatting.</summary>
+        [Export("append", DynamicAdapter = nameof(APPEND))]
+        public void AppendCore(double value) => GetBuilder().Append(value);
+
+        /// <summary>Appends a native value with the dynamic adapter's formatting.</summary>
+        [Export("append", DynamicAdapter = nameof(APPEND))]
+        public void AppendCore(bool value) => GetBuilder().Append(value);
+
+        /// <summary>Appends a native value with the dynamic adapter's formatting.</summary>
+        [Export("append", DynamicAdapter = nameof(APPEND))]
+        public void AppendCore(long value) => GetBuilder().Append(System.Globalization.CultureInfo.InvariantCulture, $"{value}");
+
+        /// <summary>Appends a native value with the dynamic adapter's formatting.</summary>
+        [Export("append", DynamicAdapter = nameof(APPEND))]
+        public void AppendCore(ulong value) => GetBuilder().Append(System.Globalization.CultureInfo.InvariantCulture, $"{value}");
+
+        /// <summary>Appends a native value with the dynamic adapter's formatting.</summary>
+        [Export("appendLine", DynamicAdapter = nameof(APPEND_LINE))]
+        public void AppendLineCore(int value) => GetBuilder().Append(value).AppendLine();
+
+        /// <summary>Appends a native value with the dynamic adapter's formatting.</summary>
         [Export("appendLine", DynamicAdapter = nameof(APPEND_LINE))]
         public void AppendLineCore(string value) => GetBuilder().Append(value ?? "null").AppendLine();
 
-        /// <summary>Inserts text using the existing index coercion.</summary>
+        /// <summary>Appends a native value with the dynamic adapter's formatting.</summary>
+        [Export("appendLine", DynamicAdapter = nameof(APPEND_LINE))]
+        public void AppendLineCore(double value) => GetBuilder().Append(value).AppendLine();
+
+        /// <summary>Appends a native value with the dynamic adapter's formatting.</summary>
+        [Export("appendLine", DynamicAdapter = nameof(APPEND_LINE))]
+        public void AppendLineCore(bool value) => GetBuilder().Append(value).AppendLine();
+
+        /// <summary>Appends a native value with the dynamic adapter's formatting.</summary>
+        [Export("appendLine", DynamicAdapter = nameof(APPEND_LINE))]
+        public void AppendLineCore(long value) => GetBuilder().Append(System.Globalization.CultureInfo.InvariantCulture, $"{value}").AppendLine();
+
+        /// <summary>Appends a native value with the dynamic adapter's formatting.</summary>
+        [Export("appendLine", DynamicAdapter = nameof(APPEND_LINE))]
+        public void AppendLineCore(ulong value) => GetBuilder().Append(System.Globalization.CultureInfo.InvariantCulture, $"{value}").AppendLine();
+
+        /// <summary>Preserves empty-call behavior.</summary>
+        [Export("append", DynamicAdapter = nameof(APPEND))]
+        public void AppendCore() { }
+
+        /// <summary>Preserves empty-call behavior.</summary>
+        [Export("appendLine", DynamicAdapter = nameof(APPEND_LINE))]
+        public void AppendLineCore() => GetBuilder().AppendLine();
+
+        /// <summary>Inserts native text at a native index.</summary>
         [Export("insert", DynamicAdapter = nameof(INSERT))]
-        public void InsertCore(ScriptDatum index, ScriptDatum value)
-        {
-            DatumBuffer2 args = default;
-            args[0] = index;
-            args[1] = value;
-            var result = default(ScriptDatum);
-            INSERT(null, this, args, ref result);
-        }
+        public void InsertCore(int index, string value) => GetBuilder().Insert(index, value ?? "null");
 
         /// <summary>Clears text and dynamic members.</summary>
         [Export("clear", DynamicAdapter = nameof(CLEAR))]

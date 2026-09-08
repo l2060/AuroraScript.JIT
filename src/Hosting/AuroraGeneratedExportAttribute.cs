@@ -125,6 +125,12 @@ namespace AuroraScript.Hosting
         Int64,
 
         /// <summary>A CLR <see cref="ulong"/> represented as a script uint64.</summary>
-        UInt64
+        UInt64,
+
+        /// <summary>A variadic CLR array of script values.</summary>
+        DatumParams,
+
+        /// <summary>A variadic CLR array of numbers.</summary>
+        NumberParams
     }
 }

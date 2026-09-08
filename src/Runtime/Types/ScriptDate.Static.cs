@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Globalization;
-using System.Runtime.InteropServices;
 using AuroraScript.Hosting;
 
 namespace AuroraScript.Runtime.Types
@@ -19,14 +18,22 @@ namespace AuroraScript.Runtime.Types
         [Export("utcNow", DynamicAdapter = nameof(UTC_NOW))]
         public static ScriptDate UtcNowCore() => new ScriptDate(System.DateTime.UtcNow);
 
-        /// <summary>Parses ticks or text with the existing date conversion rules.</summary>
+        /// <summary>Parses native text using the existing tick and date formats.</summary>
         [Export("parse", DynamicAdapter = nameof(PARSE))]
-        public static ScriptDatum ParseCore(ScriptContext ctx, ScriptDatum value)
+        public static ScriptDate ParseCore(ScriptContext ctx, string value)
         {
-            var result = default(ScriptDatum);
-            PARSE(ctx, null, MemoryMarshal.CreateSpan(ref value, 1), ref result);
-            return result;
+            if (long.TryParse(value, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint,
+                    CultureInfo.InvariantCulture, out var ticks)) return new ScriptDate(ticks);
+            return TryParseDate(ctx, value, out var date) ? new ScriptDate(date) : null;
         }
+
+        /// <summary>Creates a date from native ticks.</summary>
+        [Export("parse", DynamicAdapter = nameof(PARSE))]
+        public static ScriptDate ParseCore(long value) => new ScriptDate(value);
+
+        /// <summary>Creates a date from numeric ticks using script truncation.</summary>
+        [Export("parse", DynamicAdapter = nameof(PARSE))]
+        public static ScriptDate ParseCore(double value) => new ScriptDate((long)value);
 
         /// <summary> Supported date formats for parsing strings. </summary>
         private static string[] formats =

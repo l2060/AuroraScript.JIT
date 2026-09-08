@@ -23,12 +23,65 @@ namespace AuroraScript.Runtime.Builtin
 
         private static readonly ConditionalWeakTable<AuroraEngine, TimerState> TimerStates = new();
 
-        /// <summary>Writes one value to standard output.</summary>
+        /// <summary>Writes a native string using script formatting.</summary>
         [Export("log", MatchFailure.Throw, DynamicAdapter = nameof(LOG))]
-        public static void LogCore(ScriptContext ctx, ScriptDatum value)
-        {
-            ctx.Engine.Options.Runtime.ConsoleStdOut?.WriteLine(DatumToString(ctx, value));
-        }
+        public static void LogCore(ScriptContext ctx, string value) =>
+            ctx.Engine.Options.Runtime.ConsoleStdOut?.WriteLine(value ?? "null");
+
+        /// <summary>Writes a native int using script formatting.</summary>
+        [Export("log", MatchFailure.Throw, DynamicAdapter = nameof(LOG))]
+        public static void LogCore(ScriptContext ctx, int value) =>
+            ctx.Engine.Options.Runtime.ConsoleStdOut?.WriteLine(value.ToString(System.Globalization.CultureInfo.CurrentCulture));
+
+        /// <summary>Writes a native double using script formatting.</summary>
+        [Export("log", MatchFailure.Throw, DynamicAdapter = nameof(LOG))]
+        public static void LogCore(ScriptContext ctx, double value) =>
+            ctx.Engine.Options.Runtime.ConsoleStdOut?.WriteLine(value.ToString(System.Globalization.CultureInfo.CurrentCulture));
+
+        /// <summary>Writes a native bool using script formatting.</summary>
+        [Export("log", MatchFailure.Throw, DynamicAdapter = nameof(LOG))]
+        public static void LogCore(ScriptContext ctx, bool value) =>
+            ctx.Engine.Options.Runtime.ConsoleStdOut?.WriteLine(value.ToString());
+
+        /// <summary>Writes a native long using script formatting.</summary>
+        [Export("log", MatchFailure.Throw, DynamicAdapter = nameof(LOG))]
+        public static void LogCore(ScriptContext ctx, long value) =>
+            ctx.Engine.Options.Runtime.ConsoleStdOut?.WriteLine(value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+        /// <summary>Writes a native ulong using script formatting.</summary>
+        [Export("log", MatchFailure.Throw, DynamicAdapter = nameof(LOG))]
+        public static void LogCore(ScriptContext ctx, ulong value) =>
+            ctx.Engine.Options.Runtime.ConsoleStdOut?.WriteLine(value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+        /// <summary>Writes a native string using script formatting.</summary>
+        [Export("error", MatchFailure.Throw, DynamicAdapter = nameof(ERROR))]
+        public static void ErrorCore(ScriptContext ctx, string value) =>
+            ctx.Engine.Options.Runtime.ConsoleErrorOut?.WriteLine(value ?? "null");
+
+        /// <summary>Writes a native int using script formatting.</summary>
+        [Export("error", MatchFailure.Throw, DynamicAdapter = nameof(ERROR))]
+        public static void ErrorCore(ScriptContext ctx, int value) =>
+            ctx.Engine.Options.Runtime.ConsoleErrorOut?.WriteLine(value.ToString(System.Globalization.CultureInfo.CurrentCulture));
+
+        /// <summary>Writes a native double using script formatting.</summary>
+        [Export("error", MatchFailure.Throw, DynamicAdapter = nameof(ERROR))]
+        public static void ErrorCore(ScriptContext ctx, double value) =>
+            ctx.Engine.Options.Runtime.ConsoleErrorOut?.WriteLine(value.ToString(System.Globalization.CultureInfo.CurrentCulture));
+
+        /// <summary>Writes a native bool using script formatting.</summary>
+        [Export("error", MatchFailure.Throw, DynamicAdapter = nameof(ERROR))]
+        public static void ErrorCore(ScriptContext ctx, bool value) =>
+            ctx.Engine.Options.Runtime.ConsoleErrorOut?.WriteLine(value.ToString());
+
+        /// <summary>Writes a native long using script formatting.</summary>
+        [Export("error", MatchFailure.Throw, DynamicAdapter = nameof(ERROR))]
+        public static void ErrorCore(ScriptContext ctx, long value) =>
+            ctx.Engine.Options.Runtime.ConsoleErrorOut?.WriteLine(value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+        /// <summary>Writes a native ulong using script formatting.</summary>
+        [Export("error", MatchFailure.Throw, DynamicAdapter = nameof(ERROR))]
+        public static void ErrorCore(ScriptContext ctx, ulong value) =>
+            ctx.Engine.Options.Runtime.ConsoleErrorOut?.WriteLine(value.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
         private static void LOG(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
@@ -38,13 +91,6 @@ namespace AuroraScript.Runtime.Builtin
             }
         }
 
-        /// <summary>Writes one value to standard error.</summary>
-        [Export("error", MatchFailure.Throw, DynamicAdapter = nameof(ERROR))]
-        public static void ErrorCore(ScriptContext ctx, ScriptDatum value)
-        {
-            ctx.Engine.Options.Runtime.ConsoleErrorOut?.WriteLine(DatumToString(ctx, value));
-        }
-
         private static void ERROR(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             if (args.Length > 0)
@@ -52,6 +98,14 @@ namespace AuroraScript.Runtime.Builtin
                 ctx.Engine.Options.Runtime.ConsoleErrorOut?.WriteLine(FormatArguments(ctx, args));
             }
         }
+
+        /// <summary>Preserves the empty-call no-op behavior.</summary>
+        [Export("log", MatchFailure.Throw, DynamicAdapter = nameof(LOG))]
+        public static void LogCore(ScriptContext ctx) { }
+
+        /// <summary>Preserves the empty-call no-op behavior.</summary>
+        [Export("error", MatchFailure.Throw, DynamicAdapter = nameof(ERROR))]
+        public static void ErrorCore(ScriptContext ctx) { }
 
         private static string FormatArguments(ScriptContext ctx, ReadOnlySpan<ScriptDatum> args)
         {

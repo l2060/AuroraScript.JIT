@@ -341,6 +341,8 @@ namespace AuroraScript.Compiler.Backend
                 AuroraExportValueKind.String => typeof(string),
                 AuroraExportValueKind.Object => typeof(ScriptObject),
                 AuroraExportValueKind.Datum => typeof(ScriptDatum),
+                AuroraExportValueKind.DatumParams => typeof(ScriptDatum[]),
+                AuroraExportValueKind.NumberParams => typeof(double[]),
                 _ => throw new ArgumentOutOfRangeException(nameof(kind))
             };
         }

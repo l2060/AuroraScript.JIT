@@ -66,6 +66,30 @@ namespace AuroraScript.Runtime.Builtin
             ScriptDatum.WriteAsNumber(ref result, min);
         }
 
+        /// <summary>Returns NaN when no values are supplied.</summary>
+        [Export("max", MatchFailure.ReturnNaN, DynamicAdapter = nameof(MAX))]
+        public static double MaxCore() => double.NaN;
+
+        /// <summary>Reduces 3 values without an argument buffer.</summary>
+        [Export("max", MatchFailure.ReturnNaN, DynamicAdapter = nameof(MAX))]
+        public static double MaxCore(double value0, double value1, double value2) => MaxCore(MaxCore(value0, value1), value2);
+
+        /// <summary>Reduces 4 values without an argument buffer.</summary>
+        [Export("max", MatchFailure.ReturnNaN, DynamicAdapter = nameof(MAX))]
+        public static double MaxCore(double value0, double value1, double value2, double value3) => MaxCore(MaxCore(MaxCore(value0, value1), value2), value3);
+
+        /// <summary>Returns NaN when no values are supplied.</summary>
+        [Export("min", MatchFailure.ReturnNaN, DynamicAdapter = nameof(MIN))]
+        public static double MinCore() => double.NaN;
+
+        /// <summary>Reduces 3 values without an argument buffer.</summary>
+        [Export("min", MatchFailure.ReturnNaN, DynamicAdapter = nameof(MIN))]
+        public static double MinCore(double value0, double value1, double value2) => MinCore(MinCore(value0, value1), value2);
+
+        /// <summary>Reduces 4 values without an argument buffer.</summary>
+        [Export("min", MatchFailure.ReturnNaN, DynamicAdapter = nameof(MIN))]
+        public static double MinCore(double value0, double value1, double value2, double value3) => MinCore(MinCore(MinCore(value0, value1), value2), value3);
+
         /// <summary>Returns a pseudo-random number.</summary>
         [Export("random", MatchFailure.ReturnNaN)]
         public static double RandomCore() => Random.Shared.NextDouble();

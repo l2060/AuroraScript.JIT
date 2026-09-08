@@ -292,13 +292,11 @@ namespace AuroraScript.Runtime.Types
         [ReceiverExport("match", DynamicAdapter = nameof(MATCH))]
         public static ScriptDatum MatchCore(string value, string pattern) => MatchRegex(value, RegexManager.Resolve(pattern, ""));
 
-        /// <summary>Matches a regex or weakly converted pattern without asserting an argument or result type.</summary>
+        /// <summary>Matches a native regex without a datum conversion.</summary>
         [ReceiverExport("match", DynamicAdapter = nameof(MATCH))]
-        public static ScriptDatum MatchCore(string value, ScriptDatum pattern)
+        public static ScriptDatum MatchCore(string value, ScriptRegex pattern)
         {
-            DatumBuffer1 args = default;
-            args[0] = pattern;
-            return MatchRegex(value, ResolveRegexArgument(args, requireGlobal: false));
+            return MatchRegex(value, pattern);
         }
 
         /// <summary>Preserves the missing-pattern behavior.</summary>
@@ -333,13 +331,13 @@ namespace AuroraScript.Runtime.Types
         [ReceiverExport("matchAll", DynamicAdapter = nameof(MATCHALL))]
         public static ScriptDatum MatchAllCore(string value, string pattern) => MatchAllRegex(value, RegexManager.Resolve(pattern, "g"));
 
-        /// <summary>Accepts a global regex or a weakly converted pattern, retaining Datum results.</summary>
+        /// <summary>Matches a native regex without a datum conversion.</summary>
         [ReceiverExport("matchAll", DynamicAdapter = nameof(MATCHALL))]
-        public static ScriptDatum MatchAllCore(string value, ScriptDatum pattern)
+        public static ScriptDatum MatchAllCore(string value, ScriptRegex pattern)
         {
-            DatumBuffer1 args = default;
-            args[0] = pattern;
-            return MatchAllRegex(value, ResolveRegexArgument(args, requireGlobal: true));
+            if (!pattern.HasFlag("g"))
+                throw new AuroraRuntimeException("String.matchAll requires a global regular expression");
+            return MatchAllRegex(value, pattern);
         }
 
         /// <summary>Preserves the missing-pattern behavior of matchAll.</summary>
@@ -371,15 +369,15 @@ namespace AuroraScript.Runtime.Types
         [ReceiverExport("replace", DynamicAdapter = nameof(REPLACE))]
         public static string ReplaceCore(string value, string search, string replacement) => value.Replace(search, replacement);
 
-        /// <summary>Preserves regex, callback and weak-conversion semantics for uncertain argument types.</summary>
+        /// <summary>Replaces matches using native regex and text inputs.</summary>
         [ReceiverExport("replace", DynamicAdapter = nameof(REPLACE))]
-        public static string ReplaceCore(ScriptContext ctx, string value, ScriptDatum search, ScriptDatum replacement)
-        {
-            DatumBuffer2 args = default;
-            args[0] = search;
-            args[1] = replacement;
-            return ReplaceCore(ctx, value, args);
-        }
+        public static string ReplaceCore(string value, ScriptRegex search, string replacement) =>
+            search.Replace(value ?? string.Empty, replacement ?? "null", search.HasFlag("g"));
+
+        /// <summary>Replaces matches using a native regex and callback.</summary>
+        [ReceiverExport("replace", DynamicAdapter = nameof(REPLACE))]
+        public static string ReplaceCore(ScriptContext ctx, string value, ScriptRegex search, ClosureFunction replacement) =>
+            ReplaceCallback(ctx, value ?? string.Empty, search, replacement, search.HasFlag("g"));
 
         private static string ReplaceCore(ScriptContext ctx, string value, Span<ScriptDatum> args)
         {
