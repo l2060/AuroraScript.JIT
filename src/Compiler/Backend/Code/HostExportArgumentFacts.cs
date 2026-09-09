@@ -13,6 +13,58 @@ namespace AuroraScript.Compiler.Backend.Code
     /// </summary>
     internal static class HostExportArgumentFacts
     {
+        public static HostNativeMethodDescriptor SelectNativeOverload(
+            HostNativeMethodDescriptor first, IReadOnlyList<Expression> arguments,
+            Func<Expression, FlowValueType> getType, Func<Expression, Type> getClrType,
+            bool hasContext = true)
+        {
+            foreach (var argument in arguments)
+                if (argument is SpreadExpression) return null;
+            HostNativeMethodDescriptor best = null;
+            var bestCost = int.MaxValue;
+            for (var candidate = first; candidate != null; candidate = candidate.NextOverload)
+            {
+                var kinds = candidate.ParameterKinds;
+                var hasParams = HasParams(kinds);
+                if (candidate.TakesContext && !hasContext || arguments.Count < candidate.RequiredScriptParameterCount ||
+                    !hasParams && candidate.UseDynamicForExtraArguments && arguments.Count > kinds.Length) continue;
+                var count = hasParams ? arguments.Count : Math.Min(arguments.Count, kinds.Length);
+                var cost = 0;
+                var matches = true;
+                for (var i = 0; i < count; i++)
+                {
+                    var index = Math.Min(i, kinds.Length - 1);
+                    var kind = kinds[index];
+                    var parameterType = candidate.GetScriptParameterType(index);
+                    if (hasParams && index == kinds.Length - 1)
+                    {
+                        kind = ParamsElementKind(kind);
+                        parameterType = parameterType.GetElementType();
+                    }
+                    var type = getType(arguments[i]);
+                    if (!CanPass(kind, parameterType, type, getClrType(arguments[i])))
+                    {
+                        matches = false;
+                        break;
+                    }
+                    cost += ConversionCost(kind, type);
+                }
+                if (!matches) continue;
+                // Preserve params fallback and declaration-order ties of native object methods.
+                if (hasParams)
+                {
+                    if (bestCost == int.MaxValue) best = candidate;
+                }
+                else if (cost < bestCost)
+                {
+                    best = candidate;
+                    bestCost = cost;
+                    if (cost == 0) break;
+                }
+            }
+            return best;
+        }
+
         public static bool TrySelectOverload(
             HostExportDescriptor descriptor,
             IReadOnlyList<Expression> arguments,
@@ -20,6 +72,11 @@ namespace AuroraScript.Compiler.Backend.Code
             Func<Expression, Type> getClrType,
             out HostExportDescriptor selected)
         {
+            selected = null;
+            for (var i = 0; i < arguments.Count; i++)
+            {
+                if (arguments[i] is SpreadExpression) return false;
+            }
             HostExportDescriptor match = null;
             var bestCost = int.MaxValue;
             var ambiguous = false;
@@ -33,23 +90,23 @@ namespace AuroraScript.Compiler.Backend.Code
                 }
                 var provided = Math.Min(arguments.Count, candidate.ParameterKinds.Length);
                 var compatible = true;
+                var cost = 0;
                 for (var i = 0; i < provided; i++)
                 {
-                    if (HostExportArgumentFacts.CanPass(
+                    var argumentType = getType(arguments[i]);
+                    if (CanPass(
                             candidate.ParameterKinds[i],
                             candidate.GetScriptParameterType(i),
-                            getType(arguments[i]),
+                            argumentType,
                             getClrType?.Invoke(arguments[i])))
                     {
+                        cost += ConversionCost(candidate.ParameterKinds[i], argumentType);
                         continue;
                     }
                     compatible = false;
                     break;
                 }
                 if (!compatible) continue;
-                var cost = 0;
-                for (var i = 0; i < Math.Min(arguments.Count, candidate.ParameterKinds.Length); i++)
-                    cost += HostExportArgumentFacts.ConversionCost(candidate.ParameterKinds[i], getType(arguments[i]));
                 if (cost > bestCost) continue;
                 if (cost == bestCost) { ambiguous = true; continue; }
                 match = candidate;

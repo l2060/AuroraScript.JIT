@@ -1,0 +1,18 @@
+﻿{
+    "BaselineCommit":  "eed7b28a295c0e274cbcf9bb5629918decee0926",
+    "CandidateCompilerSha256":  "8D5D6F1272F5C721F869A2DA3E87BBC01738347E41B4761BB86F62B8E9D9EC36",
+    "Sdk":  "10.0.400",
+    "Runtime":  "10.0.11",
+    "SourcePhysical":  39037,
+    "SourceNonblank":  35503,
+    "BackendPhysical":  26024,
+    "BackendNonblank":  24161,
+    "Net8Passed":  1121,
+    "Net9Passed":  1280,
+    "Net10Passed":  1280,
+    "PrimarySamples":  [
+                           "W0-verified",
+                           "W10-astar-verified",
+                           "W10-md5-verified"
+                       ]
+}

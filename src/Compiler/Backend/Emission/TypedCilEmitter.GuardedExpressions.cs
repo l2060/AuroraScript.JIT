@@ -28,8 +28,8 @@ namespace AuroraScript.Compiler.Backend.Emission
         private bool TryEmitGuardedExpression(Expression expression, out StackValueKind kind)
         {
             kind = default;
-            var prediction = _code.Prediction;
-            if (prediction == null || _guardedRoots.Contains(expression)) return false;
+            if (_code.Prediction is not { } prediction ||
+                prediction.Types == null && prediction.NativeTypes == null || _guardedRoots.Contains(expression)) return false;
             var operands = GetGuardOperands(expression);
             if (operands == null) return false;
             var guards = new Dictionary<Expression, FlowValueType>(ReferenceEqualityComparer.Instance);
@@ -41,7 +41,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 // back to Number and introduce datum checks into its ABI.
                 var actualType = _code.GetExpressionType(operand);
                 if (IsProvenValueType(actualType) || _code.GetNativeObjectType(operand) != null) continue;
-                var type = prediction.GetExpressionType(operand);
+                var type = prediction.GetExpressionType(operand, actualType);
                 if (prediction.GetNativeObjectType(operand) is { } native)
                 {
                     nativeGuards[operand] = native;
@@ -54,6 +54,30 @@ namespace AuroraScript.Compiler.Backend.Emission
             if (guards.Count == 0) return false;
 
             var original = _code;
+            var guardedCode = original.WithGuardedTypes(guards, nativeGuards);
+            if (expression is SetPropertyExpression writeProperty && guardedCode.GetNativeObjectType(writeProperty.Object) == null ||
+                expression is AssignmentExpression { Left: GetPropertyExpression writeTarget } &&
+                    guardedCode.GetNativeObjectType(writeTarget.Object) == null) return false;
+            if (expression is GetPropertyExpression readProperty &&
+                guardedCode.GetNativeObjectType(readProperty.Object) == null &&
+                TryGetStaticPropertyName(readProperty.Property, out var propertyName) &&
+                !(FlowValueTypeFacts.IsPackedArray(guardedCode.GetExpressionType(readProperty.Object)) && propertyName == "length") &&
+                !(_session.CompileSession.HostExports.TryGetNativeValue(guardedCode.GetExpressionType(readProperty.Object), out var valueOwner) &&
+                    valueOwner.GetValueGetter(propertyName) != null)) return false;
+            if (expression is GetElementExpression get && !CanImproveElementAccess(get.Object, get.Index, guardedCode) ||
+                expression is SetElementExpression set && !CanImproveElementAccess(set.Object, set.Index, guardedCode) ||
+                expression is AssignmentExpression { Left: GetElementExpression target } &&
+                    !CanImproveElementAccess(target.Object, target.Index, guardedCode)) return false;
+            if (expression is FunctionCallExpression { Target: GetPropertyExpression property } call &&
+                TryGetStaticPropertyName(property.Property, out var memberName))
+            {
+                var ordinaryTarget = GetGuardCallTarget(call, property.Object, memberName);
+                object guardedTarget;
+                _code = guardedCode;
+                try { guardedTarget = GetGuardCallTarget(call, property.Object, memberName); }
+                finally { _code = original; }
+                if (ReferenceEquals(ordinaryTarget, guardedTarget)) return false;
+            }
             var saved = new List<(Expression Expression, LocalBuilder Previous)>();
             _guardedRoots.Add(expression);
             try
@@ -87,8 +111,8 @@ namespace AuroraScript.Compiler.Backend.Emission
                     guards[expression] = TypedFunctionBuilder.GetGuardedBinaryType(binary,
                         operand => guards.TryGetValue(operand, out var guarded) ? guarded : original.GetExpressionType(operand));
                 else if (expression is UnaryExpression unary && guards.ContainsKey(unary.Expression))
-                    guards[expression] = prediction.GetExpressionType(expression);
-                _code = original.WithGuardedTypes(guards, nativeGuards);
+                    guards[expression] = prediction.GetExpressionType(expression, original.GetExpressionType(expression));
+                _code = guardedCode;
                 var fastKind = EmitExpression(expression, materializeVoid: true);
                 ConvertToDatum(fastKind);
                 _il.Emit(OpCodes.Br, done);
@@ -112,6 +136,23 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
         }
 
+        private bool CanImproveElementAccess(Expression receiver, Expression index, TypedFunctionCode guardedCode) =>
+            FlowValueTypeFacts.IsNumeric(guardedCode.GetExpressionType(index)) &&
+                (FlowValueTypeFacts.IsPackedArray(guardedCode.GetExpressionType(receiver)) ||
+                    guardedCode.GetNativeObjectType(receiver) is { IndexGetter: not null, IndexSetter: not null }) ||
+            (_code.GetExpressionType(index) == FlowValueType.Int32) !=
+                (guardedCode.GetExpressionType(index) == FlowValueType.Int32) ||
+            FlowValueTypeFacts.IsNumberCompatible(_code.GetExpressionType(index)) !=
+                FlowValueTypeFacts.IsNumberCompatible(guardedCode.GetExpressionType(index));
+
+        private object GetGuardCallTarget(FunctionCallExpression call, Expression receiver, string name)
+        {
+            if (TryGetNativeMethodCall(call, receiver, name, out _, out var native)) return native;
+            if (TryGetHostExportCall(call, receiver, name, out var host)) return host;
+            var value = GetNativeValueCall(call, receiver, name);
+            return value != null && (!value.TakesContext || HasContextArgument) ? value : null;
+        }
+
         private IReadOnlyList<Expression> GetGuardOperands(Expression expression)
         {
             switch (expression)
@@ -120,8 +161,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     binary.Operator != Operator.LogicalOr:
                     return new[] { binary.Left, binary.Right };
                 case UnaryExpression unary when unary.Operator == Operator.Negate ||
-                    unary.Operator == Operator.LogicalNot || unary.Operator == Operator.BitwiseNot ||
-                    unary.Operator == Operator.TypeOf:
+                    unary.Operator == Operator.LogicalNot || unary.Operator == Operator.BitwiseNot:
                     return new[] { unary.Expression };
                 case GetPropertyExpression property:
                     return new[] { property.Object };
@@ -171,7 +211,7 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             if (FlowValueTypeFacts.IsPackedArray(type))
             {
-                EmitObjectTypeGuard(value, GetPackedClrType(type), fallback);
+                EmitObjectTypeGuard(value, TypedRuntimeMetadata.PackedArray(type).Items.DeclaringType, fallback);
                 return;
             }
             var expected = type switch

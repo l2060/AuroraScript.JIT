@@ -53,12 +53,18 @@ namespace AuroraScript.Compiler.Backend.Code
                 ModulePlan module,
                 FunctionPlan function,
                 Dictionary<NameExpression, BoundName> names,
-                Dictionary<VariableDeclaration, LocalSlotId> declarations)
+                Dictionary<VariableDeclaration, LocalSlotId> declarations,
+                IReadOnlyList<ReturnStatement> returns,
+                IReadOnlyList<FunctionCallExpression> calls,
+                int bodyCallStart)
             {
                 Module = module;
                 Function = function;
                 Names = names;
                 Declarations = declarations;
+                Returns = returns;
+                Calls = calls;
+                BodyCallStart = bodyCallStart;
                 foreach (var binding in names.Values)
                 {
                     HasDirectFunctionReference |= binding.DirectFunction.IsValid;
@@ -70,8 +76,13 @@ namespace AuroraScript.Compiler.Backend.Code
             public FunctionPlan Function { get; }
             public Dictionary<NameExpression, BoundName> Names { get; }
             public Dictionary<VariableDeclaration, LocalSlotId> Declarations { get; }
+            public IReadOnlyList<ReturnStatement> Returns { get; }
+            public IReadOnlyList<FunctionCallExpression> Calls { get; }
+            public int BodyCallStart { get; }
             public bool HasDirectFunctionReference { get; }
             public bool HasUpvalueReference { get; }
+            public bool[] UnobservedInitialNulls { get; set; }
+            public sbyte[] LocalWrites { get; set; }
         }
 
         public static TypedFunctionCode Build(
@@ -119,19 +130,9 @@ namespace AuroraScript.Compiler.Backend.Code
                 BuildDirectFunctionMap(module));
         }
 
-        internal static FunctionBinding[] BindModule(ModulePlan module)
+        internal static FunctionBinding BindModule(ModulePlan module, FunctionBinding[] bindings)
         {
             ArgumentNullException.ThrowIfNull(module);
-
-            var maxId = -1;
-            for (var i = 0; i < module.Functions.Count; i++)
-            {
-                maxId = Math.Max(maxId, module.Functions[i].Id.Value);
-            }
-
-            var bindings = maxId < 0
-                ? Array.Empty<FunctionBinding>()
-                : new FunctionBinding[maxId + 1];
             var directFunctions = BuildDirectFunctionMap(module);
             for (var i = 0; i < module.Functions.Count; i++)
             {
@@ -141,7 +142,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     function,
                     directFunctions);
             }
-            return bindings;
+            return Bind(module, module.InitializerFunction, directFunctions);
         }
 
         private static FunctionBinding Bind(
@@ -155,7 +156,10 @@ namespace AuroraScript.Compiler.Backend.Code
                 module,
                 function,
                 binder.Names,
-                binder.Declarations);
+                binder.Declarations,
+                binder.Returns ?? (IReadOnlyList<ReturnStatement>)Array.Empty<ReturnStatement>(),
+                binder.Calls ?? (IReadOnlyList<FunctionCallExpression>)Array.Empty<FunctionCallExpression>(),
+                binder.BodyCallStart);
         }
 
         internal static TypedFunctionCode Analyze(
@@ -172,10 +176,7 @@ namespace AuroraScript.Compiler.Backend.Code
             ArgumentNullException.ThrowIfNull(hostExports);
 
             var analyzer = new TypeAnalyzer(
-                binding.Module,
-                binding.Function,
-                binding.Names,
-                binding.Declarations,
+                binding,
                 hostExports,
                 parameterTypes,
                 directReturnTypes,
@@ -212,6 +213,12 @@ namespace AuroraScript.Compiler.Backend.Code
             private readonly FunctionPlan _function;
             private readonly Stack<int> _scopes = new();
             private readonly Dictionary<SymbolId, FunctionId> _directFunctions;
+            private Statement _loop;
+            private int _loopFinallyDepth;
+            private int _finallyDepth;
+            public List<ReturnStatement> Returns { get; private set; }
+            public List<FunctionCallExpression> Calls { get; private set; }
+            public int BodyCallStart { get; private set; }
 
             public NameBinder(
                 ModulePlan module,
@@ -251,6 +258,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     {
                         BindExpression(declaration.Parameters[i].Initializer);
                     }
+                    BodyCallStart = Calls?.Count ?? 0;
                     BindNode(declaration.Body);
                 }
                 finally
@@ -300,7 +308,13 @@ namespace AuroraScript.Compiler.Backend.Code
                             BindExpression(expression.Expression);
                             break;
                         case ReturnStatement @return:
+                            (Returns ??= new()).Add(@return);
+                            _function.HasReturnInFinally |= _finallyDepth != 0;
                             BindExpression(@return.Expression);
+                            break;
+                        case BreakStatement or ContinueStatement:
+                            if (_loop != null && _finallyDepth > _loopFinallyDepth)
+                                (_function.LoopsWithFinallyTransfer ??= new()).Add(_loop);
                             break;
                         case IfStatement @if:
                             BindExpression(@if.Condition);
@@ -309,23 +323,26 @@ namespace AuroraScript.Compiler.Backend.Code
                             break;
                         case WhileStatement @while:
                             BindExpression(@while.Condition);
-                            BindNode(@while.Body);
+                            BindLoop(@while, @while.Body);
                             break;
                         case ForStatement @for:
                             BindNode(@for.Initializer);
                             BindExpression(@for.Condition);
                             BindExpression(@for.Incrementor);
-                            BindNode(@for.Body);
+                            BindLoop(@for, @for.Body);
                             break;
                         case ForInStatement forIn:
                             BindNode(forIn.Initializer);
                             BindExpression(forIn.Iterator);
-                            BindNode(forIn.Body);
+                            BindLoop(forIn, forIn.Body);
                             break;
                         case TryStatement @try:
+                            _function.HasProtectedRegion = true;
                             BindNode(@try.Body);
                             BindNode(@try.CatchBody);
+                            _finallyDepth++;
                             BindNode(@try.FinallyBody);
+                            _finallyDepth--;
                             break;
                         case ThrowStatement @throw:
                             BindExpression(@throw.Expression);
@@ -339,6 +356,15 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     if (pushed) _scopes.Pop();
                 }
+            }
+
+            private void BindLoop(Statement loop, Statement body)
+            {
+                var previous = (_loop, _loopFinallyDepth);
+                _loop = loop;
+                _loopFinallyDepth = _finallyDepth;
+                BindNode(body);
+                (_loop, _loopFinallyDepth) = previous;
             }
 
             private void BindExpression(Expression expression)
@@ -381,6 +407,7 @@ namespace AuroraScript.Compiler.Backend.Code
                             for (var i = 0; i < group.Expressions.Count; i++) BindExpression(group.Expressions[i]);
                             break;
                         case FunctionCallExpression call:
+                            (Calls ??= new()).Add(call);
                             BindExpression(call.Target);
                             for (var i = 0; i < call.Arguments.Count; i++) BindExpression(call.Arguments[i]);
                             break;
@@ -532,13 +559,21 @@ namespace AuroraScript.Compiler.Backend.Code
 
         private sealed partial class TypeAnalyzer
         {
+            private readonly FunctionBinding _binding;
             private readonly ModulePlan _module;
             private readonly FunctionPlan _function;
             private readonly Dictionary<NameExpression, BoundName> _names;
             private readonly Dictionary<VariableDeclaration, LocalSlotId> _declarations;
             private readonly HostExportCatalog _hostExports;
             private readonly Dictionary<Expression, FlowValueType> _expressionTypes;
-            private Dictionary<FunctionCallExpression, HostNativeMethodDescriptor> _nativeValueCalls;
+            private Dictionary<FunctionCallExpression, HostNativeMethodDescriptor> _nativeCalls;
+            private Dictionary<FunctionCallExpression, HostExportDescriptor> _hostCalls;
+            private Func<Expression, FlowValueType> _hostArgumentType;
+            private Func<Expression, Type> _hostArgumentClrType;
+            private Func<Expression, FlowValueType> HostArgumentType => _hostArgumentType ??=
+                argument => _expressionTypes.TryGetValue(argument, out var type) ? type : FlowValueType.Dynamic;
+            private Func<Expression, Type> HostArgumentClrType => _hostArgumentClrType ??=
+                argument => _nativeObjectTypes.TryGetValue(argument, out var native) ? native.ClrType : null;
             private readonly Dictionary<Expression, TypeDeclaration> _structuralTypes;
             private readonly Dictionary<Expression, HostNativeObjectDescriptor> _nativeObjectTypes;
             private readonly FlowValueType[] _locals;
@@ -546,7 +581,6 @@ namespace AuroraScript.Compiler.Backend.Code
             private readonly HostNativeObjectDescriptor[] _localNativeObjectTypes;
             private List<ShapeSnapshot> _shapeSnapshots;
             private int _shapeSnapshotCount;
-            private sbyte[] _functionLocalWrites;
             private readonly FlowValueType[] _forcedLocalTypes;
             private readonly bool[] _writtenLocals;
             private bool[] _unobservedInitialNulls;
@@ -570,10 +604,7 @@ namespace AuroraScript.Compiler.Backend.Code
             private bool _sawReturn;
 
             public TypeAnalyzer(
-                ModulePlan module,
-                FunctionPlan function,
-                Dictionary<NameExpression, BoundName> names,
-                Dictionary<VariableDeclaration, LocalSlotId> declarations,
+                FunctionBinding binding,
                 HostExportCatalog hostExports,
                 DirectParameterType[] parameterTypes,
                 IReadOnlyDictionary<FunctionId, FlowValueType> directReturnTypes,
@@ -582,12 +613,15 @@ namespace AuroraScript.Compiler.Backend.Code
                 FlowValueType[] upvalueTypes,
                 Func<Expression, CallableReturnPrediction?> callableReturnPrediction)
             {
+                _binding = binding;
+                var module = binding.Module;
+                var function = binding.Function;
                 _module = module;
                 _callableReturnPrediction = callableReturnPrediction;
                 _function = function;
                 _upvalueTypes = upvalueTypes;
-                _names = names;
-                _declarations = declarations;
+                _names = binding.Names;
+                _declarations = binding.Declarations;
                 _hostExports = hostExports;
                 _expressionTypes = new Dictionary<Expression, FlowValueType>(ReferenceEqualityComparer.Instance);
                 _structuralTypes = new Dictionary<Expression, TypeDeclaration>(ReferenceEqualityComparer.Instance);
@@ -718,7 +752,7 @@ namespace AuroraScript.Compiler.Backend.Code
             public TypedFunctionCode Analyze()
             {
                 var body = _function.Declaration?.Body;
-                _unobservedInitialNulls = new InitialNullReadAnalyzer(
+                _unobservedInitialNulls = _binding.UnobservedInitialNulls ??= new InitialNullReadAnalyzer(
                     _function, _names, _declarations, IsCaptured).Analyze(body);
                 var passLimit = Math.Max(4, _locals.Length + 2);
                 var needsFinalAnalysis = AnalyzeToFixedPoint(
@@ -787,7 +821,8 @@ namespace AuroraScript.Compiler.Backend.Code
                     _writtenLocals,
                     returnType,
                     _countedLoops,
-                    _nativeValueCalls);
+                    _nativeCalls,
+                    _hostCalls);
             }
 
             private bool AnalyzeToFixedPoint(
@@ -814,7 +849,8 @@ namespace AuroraScript.Compiler.Backend.Code
                 _moduleValues?.Clear();
                 _moduleValueEpoch = 0;
                 _expressionTypes.Clear();
-                _nativeValueCalls?.Clear();
+                _nativeCalls?.Clear();
+                _hostCalls?.Clear();
                 if (clearObjectFacts)
                 {
                     _structuralTypes.Clear();
@@ -1143,6 +1179,7 @@ namespace AuroraScript.Compiler.Backend.Code
                         for (var i = 0; i < group.Expressions.Count; i++) type = AnalyzeExpression(group.Expressions[i]);
                         break;
                     case FunctionCallExpression call:
+                        _hostCalls?.Remove(call);
                         AnalyzeExpression(call.Target);
                         var isDirectCall = IsDirectFunctionCall(call);
 
@@ -1215,19 +1252,7 @@ namespace AuroraScript.Compiler.Backend.Code
                         }
                         else if (TryGetHostExport(call, out var hostExport))
                         {
-                            type = hostExport.ReturnKind switch
-                            {
-                                AuroraExportValueKind.Void => FlowValueType.Null,
-                                AuroraExportValueKind.Number => FlowValueType.Number,
-                                AuroraExportValueKind.Int32 => FlowValueType.Int32,
-                                AuroraExportValueKind.Int64 => FlowValueType.Int64,
-                                AuroraExportValueKind.UInt64 => FlowValueType.UInt64,
-                                AuroraExportValueKind.Boolean => FlowValueType.Boolean,
-                                AuroraExportValueKind.String => FlowValueType.String,
-                                AuroraExportValueKind.Object => FlowValueType.Object,
-                                AuroraExportValueKind.Datum => FlowValueType.Dynamic,
-                                _ => FlowValueType.Dynamic
-                            };
+                            type = GetNativeFlowType(hostExport.ReturnKind);
                         }
                         else
                         {
@@ -1510,33 +1535,11 @@ namespace AuroraScript.Compiler.Backend.Code
                 }
 
                 owner = receiver;
-                var bestCost = int.MaxValue;
-                for (; candidate != null; candidate = candidate.NextOverload)
+                if (_nativeCalls == null || !_nativeCalls.TryGetValue(call, out method))
                 {
-                    if (CanBindNativeArguments(
-                        call,
-                        candidate.ParameterKinds,
-                        candidate.RequiredScriptParameterCount,
-                        candidate.Method.GetParameters(),
-                        prefix: candidate.TakesContext ? 1 : 0,
-                        useDynamicForExtraArguments: candidate.UseDynamicForExtraArguments))
-                    {
-                        // Keep params as a fallback; compare fixed signatures by conversion cost.
-                        if (HostExportArgumentFacts.HasParams(candidate.ParameterKinds))
-                        {
-                            if (bestCost == int.MaxValue) method = candidate;
-                            continue;
-                        }
-                        var cost = 0;
-                        for (var i = 0; i < Math.Min(call.Arguments.Count, candidate.ParameterKinds.Length); i++)
-                            cost += HostExportArgumentFacts.ConversionCost(candidate.ParameterKinds[i], _expressionTypes.TryGetValue(call.Arguments[i], out var type) ? type : FlowValueType.Dynamic);
-                        if (cost < bestCost)
-                        {
-                            method = candidate;
-                            bestCost = cost;
-                        }
-                        if (cost == 0) return true;
-                    }
+                    method = HostExportArgumentFacts.SelectNativeOverload(
+                        candidate, call.Arguments, HostArgumentType, HostArgumentClrType);
+                    (_nativeCalls ??= new())[call] = method;
                 }
                 if (method != null) return true;
                 owner = null;
@@ -1997,14 +2000,14 @@ namespace AuroraScript.Compiler.Backend.Code
 
             private bool CanUseDirectReturn(FunctionCallExpression call, FunctionId function)
             {
+                var index = _module.GetFunctionIndex(function);
                 if (_directParameterTypes == null ||
-                    !function.IsValid ||
-                    (uint)function.Value >= (uint)_directParameterTypes.Length)
+                    (uint)index >= (uint)_directParameterTypes.Length)
                 {
                     return false;
                 }
 
-                var parameters = _directParameterTypes[function.Value];
+                var parameters = _directParameterTypes[index];
                 if (parameters == null)
                 {
                     return false;
@@ -2030,7 +2033,7 @@ namespace AuroraScript.Compiler.Backend.Code
                         !FlowValueTypeFacts.CanPassNativeArgument(parameters[i], argumentType))
                     {
                         if (i >= call.Arguments.Count &&
-                            HasDefaultParameter(function, i))
+                            _module.HasDefaultParameter(function, i))
                         {
                             continue;
                         }
@@ -2041,23 +2044,6 @@ namespace AuroraScript.Compiler.Backend.Code
                 return true;
             }
 
-            private bool HasDefaultParameter(
-                FunctionId function,
-                int parameterIndex)
-            {
-                for (var i = 0; i < _module.Functions.Count; i++)
-                {
-                    var candidate = _module.Functions[i];
-                    if (candidate.Id.Equals(function))
-                    {
-                        return parameterIndex <
-                                candidate.Declaration.Parameters.Count &&
-                            candidate.Declaration.Parameters[parameterIndex]
-                                .Initializer != null;
-                    }
-                }
-                return false;
-            }
 
             private bool CanUseImportedNativeCall(
                 FunctionCallExpression call,
@@ -2191,6 +2177,8 @@ namespace AuroraScript.Compiler.Backend.Code
                 FunctionCallExpression call,
                 out HostExportDescriptor descriptor)
             {
+                if (_hostCalls != null && _hostCalls.TryGetValue(call, out descriptor))
+                    return descriptor != null;
                 descriptor = null;
                 if (call?.Target is not GetPropertyExpression property ||
                     !TryGetStaticPropertyName(property.Property, out var memberName) ||
@@ -2209,31 +2197,11 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     return false;
                 }
-                HostExportDescriptor match = null;
-                var bestCost = int.MaxValue;
-                var ambiguous = false;
-                for (var candidate = descriptor; candidate != null; candidate = candidate.NextOverload)
-                {
-                    if (!CanBindNativeArguments(
-                            call,
-                            candidate.ParameterKinds,
-                            candidate.RequiredScriptParameterCount,
-                            candidate.Method.GetParameters(),
-                            (candidate.TakesContext ? 1 : 0) + (candidate.TakesThisObject ? 1 : 0),
-                            candidate.UseDynamicForExtraArguments))
-                    {
-                        continue;
-                    }
-                    var cost = 0;
-                    for (var i = 0; i < Math.Min(call.Arguments.Count, candidate.ParameterKinds.Length); i++)
-                        cost += HostExportArgumentFacts.ConversionCost(candidate.ParameterKinds[i], _expressionTypes.TryGetValue(call.Arguments[i], out var type) ? type : FlowValueType.Dynamic);
-                    if (cost > bestCost) continue;
-                    if (cost == bestCost) { ambiguous = true; continue; }
-                    match = candidate;
-                    bestCost = cost;
-                    ambiguous = false;
-                }
-                descriptor = ambiguous ? null : match;
+                HostExportArgumentFacts.TrySelectOverload(
+                    descriptor, call.Arguments,
+                    HostArgumentType, HostArgumentClrType,
+                    out descriptor);
+                (_hostCalls ??= new())[call] = descriptor;
                 return descriptor != null;
             }
 
@@ -2274,15 +2242,15 @@ namespace AuroraScript.Compiler.Backend.Code
             private bool TryGetNativeValueCallType(FunctionCallExpression call, out FlowValueType type)
             {
                 type = FlowValueType.None;
-                _nativeValueCalls?.Remove(call);
+                _nativeCalls?.Remove(call);
                 if (call.Target is not GetPropertyExpression property ||
                     !TryGetStaticPropertyName(property.Property, out var name) ||
                     !_expressionTypes.TryGetValue(property.Object, out var receiver))
                     return false;
                 if (!_hostExports.TryGetNativeValue(receiver, out var owner)) return false;
-                var binding = owner.BindValueMethod(name, call.Arguments, _expressionTypes, receiver, _nativeObjectTypes);
+                var binding = owner.BindValueMethod(name, call.Arguments, HostArgumentType, receiver, HostArgumentClrType);
+                (_nativeCalls ??= new Dictionary<FunctionCallExpression, HostNativeMethodDescriptor>())[call] = binding;
                 if (binding == null) return false;
-                (_nativeValueCalls ??= new Dictionary<FunctionCallExpression, HostNativeMethodDescriptor>())[call] = binding;
                 type = GetNativeFlowType(binding.ReturnKind);
                 return true;
             }
@@ -2526,6 +2494,7 @@ namespace AuroraScript.Compiler.Backend.Code
             private bool ApplyLocalCoercionStorage(AstNode body)
             {
                 var demands = new LocalCoercionAnalyzer(
+                    _module,
                     _function,
                     _names,
                     _expressionTypes,
@@ -3201,7 +3170,7 @@ namespace AuroraScript.Compiler.Backend.Code
             private bool FunctionWritesLocal(LocalSlotId slot)
             {
                 // Syntactic writes do not change between fixed-point iterations.
-                var writes = _functionLocalWrites ??= new sbyte[_locals.Length];
+                var writes = _binding.LocalWrites ??= new sbyte[_locals.Length];
                 if (writes[slot.Value] == 0)
                 {
                     writes[slot.Value] = WritesLocal(_function.Declaration?.Body, slot)
@@ -4998,6 +4967,7 @@ namespace AuroraScript.Compiler.Backend.Code
 
             private sealed class LocalCoercionAnalyzer
             {
+                private readonly ModulePlan _module;
                 private readonly FunctionPlan _function;
                 private readonly IReadOnlyDictionary<NameExpression, BoundName> _names;
                 private readonly IReadOnlyDictionary<Expression, FlowValueType> _expressionTypes;
@@ -5010,12 +4980,14 @@ namespace AuroraScript.Compiler.Backend.Code
                 private readonly List<(int Source, int Target)> _copies;
 
                 public LocalCoercionAnalyzer(
+                    ModulePlan module,
                     FunctionPlan function,
                     IReadOnlyDictionary<NameExpression, BoundName> names,
                     IReadOnlyDictionary<Expression, FlowValueType> expressionTypes,
                     DirectParameterType[][] directParameters,
                     Func<LocalSlotId, bool> isCaptured)
                 {
+                    _module = module;
                     _function = function;
                     _names = names;
                     _expressionTypes = expressionTypes;
@@ -5284,10 +5256,10 @@ namespace AuroraScript.Compiler.Backend.Code
                             _names.TryGetValue(target, out var targetBinding) &&
                             targetBinding.DirectFunction.IsValid &&
                             _directParameters != null &&
-                            (uint)targetBinding.DirectFunction.Value <
-                                (uint)_directParameters.Length)
+                            _module.GetFunctionIndex(targetBinding.DirectFunction) is var targetIndex &&
+                            (uint)targetIndex < (uint)_directParameters.Length)
                         {
-                            var parameters = _directParameters[targetBinding.DirectFunction.Value];
+                            var parameters = _directParameters[targetIndex];
                             if (parameters != null && argumentIndex < parameters.Length)
                             {
                                 var parameter = parameters[argumentIndex];

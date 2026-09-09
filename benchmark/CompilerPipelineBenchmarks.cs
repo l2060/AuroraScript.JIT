@@ -136,6 +136,7 @@ namespace AuroraBenchmark
             return Parse("strings_templates_regex.as", stringsTemplatesRegexSource);
         }
 
+        // Excludes parsing, but includes planning, binding, type analysis and IL emission.
         [BenchmarkCategory("emitter")]
         [Benchmark]
         public void EmitOnly_ParsedLargeModule()
@@ -278,6 +279,91 @@ export func run(value = 10) {
     return total;
 }
 """;
+        }
+
+        public static async Task RunSlimmingProbe(string scenario, int size)
+        {
+            if (size <= 0 || scenario is not ("W1" or "W2" or "W2-native" or "W3" or "W3-native" or
+                "W4" or "W5" or "W6" or "W9" or "W10-astar" or "W10-md5")) throw new ArgumentException("Invalid slimming sample.");
+            if (scenario == "W4" && size is not (1 or 10 or 100)) throw new ArgumentException("W4 uses 1, 10 or 100 modules.");
+            var benchmark = new CompilerPipelineBenchmarks();
+            benchmark.Setup();
+            Func<Task> compile;
+            if (scenario == "W10-astar") compile = benchmark.FullCompile_RealAstar;
+            else if (scenario == "W10-md5") compile = benchmark.FullCompile_RealMd5;
+            else if (scenario == "W9")
+            {
+                var root = Path.Combine(benchmark.baseDirectory, "shared-import");
+                Directory.CreateDirectory(root);
+                File.WriteAllText(Path.Combine(root, "shared.as"), "@module(SHARED); export const value = 7;", Encoding.UTF8);
+                var sources = new ScriptSource[size];
+                for (var index = 0; index < size; index++)
+                {
+                    var path = Path.Combine(root, $"importer{index}.as");
+                    File.WriteAllText(path, $"@module(IMPORTER{index}); import shared from './shared'; export func run() {{ return shared.value; }}", Encoding.UTF8);
+                    sources[index] = new FileSource(root, path, Encoding.UTF8);
+                }
+                var options = benchmark.CreateOptions().WithCompiler(c => c.SourceResolver = ScriptSources.FileSystem(root, Encoding.UTF8));
+                compile = () => new AuroraEngine(options).BuildAsync(sources);
+            }
+            else
+            {
+                var moduleCount = scenario == "W4" ? size : 1;
+                var functionCount = scenario == "W4" ? 1000 / moduleCount : size;
+                var sources = new ScriptSource[moduleCount];
+                for (var module = 0; module < moduleCount; module++)
+                {
+                    var source = new StringBuilder($"@module(PROBE{module});\n");
+                    if (scenario == "W6")
+                    {
+                        source.Append("export func run(Number x) { var s = 'abc'; return [Math.abs(x), Math.pow(x, 2), s.substring(0), s.substring(0, 1, 2), Math.abs(...[x])]; }\n");
+                        functionCount = 0;
+                    }
+                    var native = scenario.EndsWith("-native", StringComparison.Ordinal);
+                    if (scenario.StartsWith("W3", StringComparison.Ordinal))
+                    {
+                        for (var function = 0; function < size; function++)
+                            source.Append($"{(native ? "native " : "")}func r{function}(Number n){(native ? " Number" : "")} {{ if (n <= 0) return 1; return r{(function + 1) % size}(n - 1); }}\n");
+                        functionCount = 500;
+                    }
+                    for (var function = 0; function < functionCount; function++)
+                    {
+                        if (scenario == "W5")
+                        {
+                            var body = (function % 4) switch
+                            {
+                                0 => "const value = 7; return () => value;",
+                                1 => "var value = 7; var get = () => value; value++; return get;",
+                                2 => "var get = () => value; var value = 7; return get;",
+                                _ => "const value = 7; return () => () => value;"
+                            };
+                            source.Append($"func f{function}() {{ {body} }}\n");
+                            continue;
+                        }
+                        var chain = scenario.StartsWith("W2", StringComparison.Ordinal);
+                        source.Append($"{(native && chain ? "native " : "")}func f{function}(){(native && chain ? " Number" : "")} {{ return ");
+                        source.Append(chain && function + 1 < functionCount ? $"f{function + 1}()" : "7");
+                        source.Append("; }\n");
+                    }
+                    sources[module] = new MemorySource(benchmark.baseDirectory,
+                        Path.Combine(benchmark.baseDirectory, $"probe{module}.as"), source.ToString());
+                }
+                compile = () => new AuroraEngine(benchmark.CreateOptions()).BuildAsync(sources);
+            }
+            Console.WriteLine("Run,ElapsedMs,AllocatedBytes,Gen0,Gen1,Gen2");
+            for (var run = 0; run < 16; run++)
+            {
+                var gen0 = GC.CollectionCount(0);
+                var gen1 = GC.CollectionCount(1);
+                var gen2 = GC.CollectionCount(2);
+                var allocated = GC.GetTotalAllocatedBytes(true);
+                var start = System.Diagnostics.Stopwatch.GetTimestamp();
+                await compile();
+                var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(start);
+                allocated = GC.GetTotalAllocatedBytes(true) - allocated;
+                Console.WriteLine(FormattableString.Invariant(
+                    $"{run},{elapsed.TotalMilliseconds:F3},{allocated},{GC.CollectionCount(0) - gen0},{GC.CollectionCount(1) - gen1},{GC.CollectionCount(2) - gen2}"));
+            }
         }
 
         private static string CreateLargeSource(int functions)

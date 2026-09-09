@@ -30,6 +30,32 @@ namespace AuroraScript.Tests;
 
 public sealed class CompilerBackendPlanTests
 {
+    [Theory]
+    [InlineData(1)]
+    [InlineData(20)]
+    public void NestedFunctionIdsAndScopesRemainUniqueAcrossParallelModules(int moduleCount)
+    {
+        var options = EngineOptions.Default.WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var modules = Enumerable.Range(0, moduleCount).Select(index => Parse(
+            $"@module(M{index}); func outer() {{ func inner() {{ return () => 42; }} return inner; }}",
+            Path.GetTempPath())).ToArray();
+        for (var iteration = 0; iteration < 10; iteration++)
+        {
+            var session = new BackendCompiler(new DynamicBuilder(options), options).CreateModulePlans(modules);
+            var functions = session.Modules.SelectMany(module => module.Functions).ToArray();
+            Assert.Equal(moduleCount * 3, functions.Length);
+            Assert.Equal(functions.Length, functions.Select(function => function.Id).Distinct().Count());
+            Assert.Equal(functions.Length, functions.Select(function => function.Scope).Distinct().Count());
+            var byId = functions.ToDictionary(function => function.Id);
+            foreach (var function in functions)
+            {
+                Assert.Equal(function.Id, session.Scopes[function.Scope].Function);
+                foreach (var nested in function.NestedFunctions)
+                    Assert.Equal(function.Scope, session.Scopes[byId[nested].Scope].Parent);
+            }
+        }
+    }
+
     [Fact]
     public void OrdinaryReturnSummariesPropagateThroughLongChainsAndCapturedResults()
     {
@@ -42,9 +68,9 @@ public sealed class CompilerBackendPlanTests
         var plan = Assert.Single(session.Modules);
         var code = TypedModuleCode.Build(plan);
         Assert.Equal(FlowValueType.Number,
-            code.GetGeneric(plan.Functions.Single(function => function.Name == "f0").Id).Prediction.ReturnType);
+            code.GetGeneric(plan.Functions.Single(function => function.Name == "f0").Id).Prediction?.ReturnType);
         var closure = Assert.Single(plan.Functions, function => function.UpvalueSlots.Length != 0);
-        Assert.Equal(FlowValueType.Number, code.GetGeneric(closure.Id).Prediction.ReturnType);
+        Assert.Equal(FlowValueType.Number, code.GetGeneric(closure.Id).Prediction?.ReturnType);
         Assert.Equal(FlowValueType.Dynamic, code.GetGeneric(closure.Id).ReturnType);
     }
 
@@ -69,8 +95,8 @@ public sealed class CompilerBackendPlanTests
         Assert.Equal(FlowValueType.Dynamic, code.GetLocalType(value.Id));
         Assert.Equal(FlowValueType.Dynamic, code.GetExpressionType(addition));
         Assert.NotNull(code.Prediction);
-        Assert.Equal(FlowValueType.Number, code.Prediction.GetLocalType(value.Id));
-        Assert.Equal(FlowValueType.Number, code.Prediction.GetExpressionType(addition));
+        Assert.Equal(FlowValueType.Number, code.Prediction.Value.GetExpressionType(addition.Left));
+        Assert.Equal(FlowValueType.Number, code.Prediction.Value.GetExpressionType(addition));
         Assert.All(plan.Functions, candidate => Assert.False(candidate.IsDirectCallCandidate));
     }
 

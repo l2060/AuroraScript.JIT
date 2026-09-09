@@ -10,16 +10,19 @@ namespace AuroraScript.Compiler.Backend.Code
 {
     internal sealed class TypedModuleCode
     {
+        private readonly ModulePlan _module;
         private readonly TypedFunctionCode[] _generic;
         private readonly TypedFunctionCode[] _direct;
         private readonly DirectParameterType[][] _directParameters;
 
         private TypedModuleCode(
+            ModulePlan module,
             TypedFunctionCode[] generic,
             TypedFunctionCode[] direct,
             DirectParameterType[][] directParameters,
             TypedFunctionCode initializer)
         {
+            _module = module;
             Initializer = initializer;
             _generic = generic;
             _direct = direct;
@@ -42,21 +45,30 @@ namespace AuroraScript.Compiler.Backend.Code
         {
             ArgumentNullException.ThrowIfNull(module);
             ArgumentNullException.ThrowIfNull(hostExports);
-            var maxId = -1;
+            return (callableReturns ?? CallableReturnPredictions.Build(new[] { module }, hostExports)).GetModuleCode(module);
+        }
+
+        internal void ApplyPredictions(CallableReturnPredictions predictions) =>
+            predictions.Apply(_module, _generic, _direct, Initializer);
+
+        internal static TypedModuleCode Analyze(
+            ModulePlan module, HostExportCatalog hostExports, CallableReturnPredictions callableReturns)
+        {
+            ArgumentNullException.ThrowIfNull(module);
+            ArgumentNullException.ThrowIfNull(hostExports);
             var functions = new Dictionary<FunctionId, FunctionPlan>();
             for (var i = 0; i < module.Functions.Count; i++)
             {
                 var function = module.Functions[i];
-                maxId = Math.Max(maxId, function.Id.Value);
-                functions[function.Id] = function;
+                if (function.IsDirectCallCandidate) functions[function.Id] = function;
             }
 
-            var size = maxId + 1;
+            var size = module.Functions.Count;
             var generic = new TypedFunctionCode[size];
             var direct = new TypedFunctionCode[size];
             var directParameters = new DirectParameterType[size][];
-            var bindings = TypedFunctionBuilder.BindModule(module);
-            var initializerBinding = TypedFunctionBuilder.Bind(module, module.InitializerFunction);
+            var bindings = callableReturns.Bindings;
+            var initializerBinding = callableReturns.GetInitializerBinding(module);
             var returns = new Dictionary<FunctionId, FlowValueType>();
             for (var i = 0; i < module.Functions.Count; i++)
             {
@@ -66,8 +78,8 @@ namespace AuroraScript.Compiler.Backend.Code
                 // Starting at Dynamic would permanently poison recursive return
                 // inference (Number | Dynamic == Dynamic), preventing an otherwise
                 // pure numeric recursive graph from ever reaching the double ABI.
-                returns[function.Id] = FlowValueType.None;
-                generic[function.Id.Value] = TypedFunctionBuilder.Analyze(
+                if (function.IsDirectCallCandidate) returns[function.Id] = FlowValueType.None;
+                generic[function.ModuleIndex] = TypedFunctionBuilder.Analyze(
                     binding,
                     hostExports,
                     directReturnTypes: returns,
@@ -77,10 +89,11 @@ namespace AuroraScript.Compiler.Backend.Code
             for (var i = 0; i < module.Functions.Count; i++)
             {
                 var function = module.Functions[i];
-                universalReturns[function.Id] = generic[function.Id.Value].ReturnType;
+                universalReturns[function.Id] = generic[function.ModuleIndex].ReturnType;
             }
 
-            var upvalueTypes = CapturedCellTypes.Analyze(module, generic);
+            var capturedCells = callableReturns.GetCapturedCells(module);
+            var upvalueTypes = capturedCells.Analyze(generic, module);
             var initializer = TypedFunctionBuilder.Analyze(
                 initializerBinding, hostExports, directReturnTypes: returns,
                 directParameterTypes: directParameters, universalReturnTypes: universalReturns);
@@ -95,26 +108,39 @@ namespace AuroraScript.Compiler.Backend.Code
                     directParameters,
                     universalReturns,
                     upvalueTypes);
-                (callableReturns ?? CallableReturnPredictions.Build(new[] { module }, hostExports))
-                    .Apply(module, generic, direct, initializer);
-                return new TypedModuleCode(generic, direct, directParameters, initializer);
+                return new TypedModuleCode(module, generic, direct, directParameters, initializer);
             }
 
             var converged = false;
             var passLimit = Math.Min(64, Math.Max(6, module.Functions.Count + 2));
             var evidence = new Dictionary<FunctionId, ParameterEvidence>();
+            var callers = new List<int>[size];
+            var genericDirty = new bool[size + 1];
+            var directDirty = new bool[size + 1];
+            for (var index = 0; index <= size; index++)
+            {
+                var binding = index == size ? initializerBinding : bindings[module.Functions[index].Id.Value];
+                genericDirty[index] = binding.HasDirectFunctionReference || binding.HasUpvalueReference;
+                foreach (var name in binding.Names.Values)
+                {
+                    if (!name.DirectFunction.IsValid) continue;
+                    var callee = module.GetFunctionIndex(name.DirectFunction);
+                    if (callee < 0) continue;
+                    var dependents = callers[callee] ??= new();
+                    if (dependents.Count == 0 || dependents[^1] != index) dependents.Add(index);
+                }
+            }
             for (var pass = 0; pass < passLimit; pass++)
             {
-                // Exact call-site evidence is monotonic and bootstraps recursive
-                // native graphs. Dynamic observations are transient because an
-                // early imprecise pass must not permanently poison later facts.
+                // Rebuild from the current call sites, including the previous
+                // direct graph. Superseded observations must not poison later facts.
                 foreach (var item in evidence)
                 {
-                    item.Value.ResetTransientEvidence();
+                    item.Value.Reset();
                 }
-                CollectParameterEvidence(module, functions, generic, direct, evidence);
-                new DirectCallCollector(initializer, functions, evidence)
-                    .Visit(module.InitializerFunction.Declaration.Body);
+                CollectParameterEvidence(module, bindings, functions, generic, direct, evidence);
+                if (functions.Count != 0)
+                    CollectParameterEvidence(initializerBinding, initializer, functions, evidence);
                 var parameterDemands = CollectNativeParameterDemands(
                     module,
                     generic,
@@ -123,39 +149,28 @@ namespace AuroraScript.Compiler.Backend.Code
                 var nextReturns = new Dictionary<FunctionId, FlowValueType>(returns.Count);
                 var changed = false;
 
-                for (var i = 0; i < module.Functions.Count; i++)
+                foreach (var function in functions.Values)
                 {
-                    var function = module.Functions[i];
                     var parameterTypes = NormalizeParameterTypes(
                         module,
                         function,
                         evidence,
-                        parameterDemands[function.Id.Value]);
-                    var oldParameterTypes = directParameters[function.Id.Value];
-                    directParameters[function.Id.Value] = parameterTypes;
-                    var code = TypedFunctionBuilder.Analyze(
-                        bindings[function.Id.Value],
-                        hostExports,
-                        parameterTypes,
-                        returns,
-                        directParameters,
-                        universalReturns,
-                        upvalueTypes);
-                    var validatedParameterTypes = ValidateParameterTypes(function, code, parameterTypes);
-                    if (!SameTypes(parameterTypes, validatedParameterTypes))
+                        parameterDemands[function.ModuleIndex]);
+                    var oldParameterTypes = directParameters[function.ModuleIndex];
+                    directParameters[function.ModuleIndex] = parameterTypes;
+                    if (!SameTypes(oldParameterTypes, parameterTypes))
+                        InvalidateCallers(function.ModuleIndex, callers, genericDirty, directDirty);
+                    var code = direct[function.ModuleIndex];
+                    if (code == null || directDirty[function.ModuleIndex] || !SameTypes(oldParameterTypes, parameterTypes))
                     {
-                        parameterTypes = validatedParameterTypes;
-                        directParameters[function.Id.Value] = parameterTypes;
-                        code = TypedFunctionBuilder.Analyze(
-                            bindings[function.Id.Value],
-                            hostExports,
-                            parameterTypes,
-                            returns,
-                            directParameters,
-                            universalReturns,
-                            upvalueTypes);
+                        code = AnalyzeDirect(bindings[function.Id.Value], hostExports,
+                            directParameters, returns, universalReturns, upvalueTypes);
+                        if (!SameTypes(parameterTypes, directParameters[function.ModuleIndex]))
+                            InvalidateCallers(function.ModuleIndex, callers, genericDirty, directDirty);
+                        parameterTypes = directParameters[function.ModuleIndex];
                     }
-                    direct[function.Id.Value] = code;
+                    direct[function.ModuleIndex] = code;
+                    directDirty[function.ModuleIndex] = false;
                     nextReturns[function.Id] = code.ReturnType;
                     if (!returns.TryGetValue(function.Id, out var oldReturn) || oldReturn != code.ReturnType)
                     {
@@ -167,20 +182,27 @@ namespace AuroraScript.Compiler.Backend.Code
                     }
                 }
 
+                foreach (var pair in nextReturns)
+                    if (!returns.TryGetValue(pair.Key, out var previous) || previous != pair.Value)
+                        InvalidateCallers(module.GetFunctionIndex(pair.Key), callers, genericDirty, directDirty);
                 returns = nextReturns;
                 var nextUniversalReturns =
                     new Dictionary<FunctionId, FlowValueType>(universalReturns.Count);
                 for (var i = 0; i < module.Functions.Count; i++)
                 {
                     var function = module.Functions[i];
-                    generic[function.Id.Value] = TypedFunctionBuilder.Analyze(
-                        bindings[function.Id.Value],
-                        hostExports,
-                        directReturnTypes: returns,
-                        directParameterTypes: directParameters,
-                        universalReturnTypes: universalReturns,
-                        upvalueTypes: upvalueTypes);
-                    var universalReturn = generic[function.Id.Value].ReturnType;
+                    if (genericDirty[function.ModuleIndex])
+                    {
+                        generic[function.ModuleIndex] = TypedFunctionBuilder.Analyze(
+                            bindings[function.Id.Value],
+                            hostExports,
+                            directReturnTypes: returns,
+                            directParameterTypes: directParameters,
+                            universalReturnTypes: universalReturns,
+                            upvalueTypes: upvalueTypes);
+                        genericDirty[function.ModuleIndex] = false;
+                    }
+                    var universalReturn = generic[function.ModuleIndex].ReturnType;
                     nextUniversalReturns[function.Id] = universalReturn;
                     if (!universalReturns.TryGetValue(function.Id, out var oldUniversal) ||
                         oldUniversal != universalReturn)
@@ -188,18 +210,34 @@ namespace AuroraScript.Compiler.Backend.Code
                         changed = true;
                     }
                 }
+                foreach (var pair in nextUniversalReturns)
+                    if (!universalReturns.TryGetValue(pair.Key, out var previous) || previous != pair.Value)
+                        InvalidateCallers(module.GetFunctionIndex(pair.Key), callers, genericDirty, directDirty);
                 universalReturns = nextUniversalReturns;
-                initializer = TypedFunctionBuilder.Analyze(
-                    initializerBinding, hostExports, directReturnTypes: returns,
-                    directParameterTypes: directParameters, universalReturnTypes: universalReturns);
+                if (genericDirty[size])
+                {
+                    initializer = TypedFunctionBuilder.Analyze(
+                        initializerBinding, hostExports, directReturnTypes: returns,
+                        directParameterTypes: directParameters, universalReturnTypes: universalReturns);
+                    genericDirty[size] = false;
+                }
 
                 // A closure cell is typed from the declaring function's freshly
                 // rebuilt code, so the fact only reaches the closure body on the
                 // next pass.
-                var nextUpvalueTypes = CapturedCellTypes.Analyze(module, generic);
+                var nextUpvalueTypes = capturedCells.Analyze(generic, module);
                 if (!CapturedCellTypes.SameTypes(upvalueTypes, nextUpvalueTypes))
                 {
                     changed = true;
+                    foreach (var pair in nextUpvalueTypes)
+                    {
+                        upvalueTypes.TryGetValue(pair.Key, out var previous);
+                        if (!CapturedCellTypes.SameTypes(previous, pair.Value))
+                        {
+                            var index = module.GetFunctionIndex(pair.Key);
+                            genericDirty[index] = directDirty[index] = true;
+                        }
+                    }
                 }
                 upvalueTypes = nextUpvalueTypes;
 
@@ -227,15 +265,15 @@ namespace AuroraScript.Compiler.Backend.Code
                 for (var i = 0; i < module.Functions.Count; i++)
                 {
                     var function = module.Functions[i];
-                    direct[function.Id.Value] = TypedFunctionBuilder.Analyze(
+                    direct[function.ModuleIndex] = function.IsDirectCallCandidate ? TypedFunctionBuilder.Analyze(
                         bindings[function.Id.Value],
                         hostExports,
-                        directParameters[function.Id.Value],
+                        directParameters[function.ModuleIndex],
                         conservativeReturns,
                         directParameters,
                         universalReturns,
-                        upvalueTypes);
-                    generic[function.Id.Value] = TypedFunctionBuilder.Analyze(
+                        upvalueTypes) : null;
+                    generic[function.ModuleIndex] = TypedFunctionBuilder.Analyze(
                         bindings[function.Id.Value],
                         hostExports,
                         directReturnTypes: conservativeReturns,
@@ -245,9 +283,13 @@ namespace AuroraScript.Compiler.Backend.Code
                 }
             }
 
-            (callableReturns ?? CallableReturnPredictions.Build(new[] { module }, hostExports))
-                .Apply(module, generic, direct, initializer);
-            return new TypedModuleCode(generic, direct, directParameters, initializer);
+            return new TypedModuleCode(module, generic, direct, directParameters, initializer);
+        }
+
+        private static void InvalidateCallers(int callee, List<int>[] callers, bool[] genericDirty, bool[] directDirty)
+        {
+            if (callers[callee] == null) return;
+            foreach (var caller in callers[callee]) genericDirty[caller] = directDirty[caller] = true;
         }
 
         private static bool CanAnalyzeIndependently(
@@ -285,39 +327,33 @@ namespace AuroraScript.Compiler.Backend.Code
             for (var i = 0; i < module.Functions.Count; i++)
             {
                 var function = module.Functions[i];
+                if (!function.IsDirectCallCandidate) continue;
                 var parameterTypes = NormalizeParameterTypes(
                     module,
                     function,
                     noEvidence,
-                    demands[function.Id.Value]);
-                directParameters[function.Id.Value] = parameterTypes;
-                var code = TypedFunctionBuilder.Analyze(
-                    bindings[function.Id.Value],
-                    hostExports,
-                    parameterTypes,
-                    universalReturns,
-                    directParameters,
-                    universalReturns,
-                    upvalueTypes);
-                var validatedParameterTypes = ValidateParameterTypes(
-                    function,
-                    code,
-                    parameterTypes);
-                if (!SameTypes(parameterTypes, validatedParameterTypes))
-                {
-                    directParameters[function.Id.Value] =
-                        validatedParameterTypes;
-                    code = TypedFunctionBuilder.Analyze(
-                        bindings[function.Id.Value],
-                        hostExports,
-                        validatedParameterTypes,
-                        universalReturns,
-                        directParameters,
-                        universalReturns,
-                        upvalueTypes);
-                }
-                direct[function.Id.Value] = code;
+                    demands[function.ModuleIndex]);
+                directParameters[function.ModuleIndex] = parameterTypes;
+                direct[function.ModuleIndex] = AnalyzeDirect(bindings[function.Id.Value], hostExports,
+                    directParameters, universalReturns, universalReturns, upvalueTypes);
             }
+        }
+
+        private static TypedFunctionCode AnalyzeDirect(TypedFunctionBuilder.FunctionBinding binding,
+            HostExportCatalog hostExports, DirectParameterType[][] directParameters,
+            IReadOnlyDictionary<FunctionId, FlowValueType> returns,
+            IReadOnlyDictionary<FunctionId, FlowValueType> universalReturns,
+            IReadOnlyDictionary<FunctionId, FlowValueType[]> upvalueTypes)
+        {
+            var index = binding.Function.ModuleIndex;
+            var parameters = directParameters[index];
+            var code = TypedFunctionBuilder.Analyze(binding, hostExports, parameters,
+                returns, directParameters, universalReturns, upvalueTypes);
+            var validated = ValidateParameterTypes(binding.Function, code, parameters);
+            if (SameTypes(parameters, validated)) return code;
+            directParameters[index] = validated;
+            return TypedFunctionBuilder.Analyze(binding, hostExports, validated,
+                returns, directParameters, universalReturns, upvalueTypes);
         }
 
         private static bool SameTypes(
@@ -333,34 +369,24 @@ namespace AuroraScript.Compiler.Backend.Code
             return true;
         }
 
-        public TypedFunctionCode GetGeneric(FunctionId function)
-        {
-            return function.IsValid && (uint)function.Value < (uint)_generic.Length
-                ? _generic[function.Value]
-                : null;
-        }
+        public TypedFunctionCode GetGeneric(FunctionId function) =>
+            _module.GetFunctionIndex(function) is var index && index >= 0 ? _generic[index] : null;
 
-        public TypedFunctionCode GetDirect(FunctionId function)
-        {
-            return function.IsValid && (uint)function.Value < (uint)_direct.Length
-                ? _direct[function.Value]
-                : null;
-        }
+        public TypedFunctionCode GetDirect(FunctionId function) =>
+            _module.GetFunctionIndex(function) is var index && index >= 0 ? _direct[index] : null;
 
-        public DirectParameterType[] GetDirectParameters(FunctionId function)
-        {
-            return function.IsValid && (uint)function.Value < (uint)_directParameters.Length
-                ? _directParameters[function.Value]
-                : null;
-        }
+        public DirectParameterType[] GetDirectParameters(FunctionId function) =>
+            _module.GetFunctionIndex(function) is var index && index >= 0 ? _directParameters[index] : null;
 
         private static void CollectParameterEvidence(
             ModulePlan module,
+            TypedFunctionBuilder.FunctionBinding[] bindings,
             IReadOnlyDictionary<FunctionId, FunctionPlan> functions,
             TypedFunctionCode[] generic,
             TypedFunctionCode[] direct,
             Dictionary<FunctionId, ParameterEvidence> evidence)
         {
+            if (functions.Count == 0) return;
             for (var i = 0; i < module.Functions.Count; i++)
             {
                 var function = module.Functions[i];
@@ -371,24 +397,16 @@ namespace AuroraScript.Compiler.Backend.Code
                 // a specialized call graph. Both views are required: selecting
                 // only the direct graph can incorrectly classify a coercion-only
                 // callee as exact and force generic callers through an adapter.
-                var genericCode = generic[function.Id.Value];
+                var genericCode = generic[function.ModuleIndex];
                 if (genericCode != null)
                 {
-                    var genericCollector = new DirectCallCollector(
-                        genericCode,
-                        functions,
-                        evidence);
-                    genericCollector.Visit(function.Declaration.Body);
+                    CollectParameterEvidence(bindings[function.Id.Value], genericCode, functions, evidence);
                 }
 
-                var directCode = direct[function.Id.Value];
+                var directCode = direct[function.ModuleIndex];
                 if (directCode != null && !ReferenceEquals(directCode, genericCode))
                 {
-                    var directCollector = new DirectCallCollector(
-                        directCode,
-                        functions,
-                        evidence);
-                    directCollector.Visit(function.Declaration.Body);
+                    CollectParameterEvidence(bindings[function.Id.Value], directCode, functions, evidence);
                 }
             }
         }
@@ -500,10 +518,12 @@ namespace AuroraScript.Compiler.Backend.Code
             for (var i = 0; i < module.Functions.Count; i++)
             {
                 var function = module.Functions[i];
-                var code = direct[function.Id.Value] ?? generic[function.Id.Value];
-                result[function.Id.Value] = code == null
+                if (!function.IsDirectCallCandidate) continue;
+                var code = direct[function.ModuleIndex] ?? generic[function.ModuleIndex];
+                result[function.ModuleIndex] = code == null
                     ? Array.Empty<NativeCoercionKind>()
                     : new NativeParameterDemandAnalyzer(
+                        module,
                         function,
                         code,
                         directParameters).Analyze();
@@ -513,6 +533,7 @@ namespace AuroraScript.Compiler.Backend.Code
 
         private sealed class NativeParameterDemandAnalyzer
         {
+            private readonly ModulePlan _module;
             private readonly FunctionPlan _function;
             private readonly TypedFunctionCode _code;
             private readonly DirectParameterType[][] _directParameters;
@@ -521,10 +542,12 @@ namespace AuroraScript.Compiler.Backend.Code
             private readonly bool[] _invalid;
 
             public NativeParameterDemandAnalyzer(
+                ModulePlan module,
                 FunctionPlan function,
                 TypedFunctionCode code,
                 DirectParameterType[][] directParameters)
             {
+                _module = module;
                 _function = function;
                 _code = code;
                 _directParameters = directParameters;
@@ -699,12 +722,12 @@ namespace AuroraScript.Compiler.Backend.Code
                     }
 
                     var targetFunction = _code.GetName(target).DirectFunction;
-                    if (!targetFunction.IsValid ||
-                        (uint)targetFunction.Value >= (uint)_directParameters.Length)
+                    var targetIndex = _module.GetFunctionIndex(targetFunction);
+                    if ((uint)targetIndex >= (uint)_directParameters.Length)
                     {
                         return NativeCoercionKind.None;
                     }
-                    var parameters = _directParameters[targetFunction.Value];
+                    var parameters = _directParameters[targetIndex];
                     if (parameters == null || argumentIndex >= parameters.Length)
                     {
                         return NativeCoercionKind.None;
@@ -764,114 +787,85 @@ namespace AuroraScript.Compiler.Backend.Code
             }
         }
 
-        private sealed class DirectCallCollector
+        private static void CollectParameterEvidence(TypedFunctionBuilder.FunctionBinding functionBinding,
+            TypedFunctionCode code, IReadOnlyDictionary<FunctionId, FunctionPlan> functions,
+            Dictionary<FunctionId, ParameterEvidence> evidence)
         {
-            private readonly TypedFunctionCode _code;
-            private readonly IReadOnlyDictionary<FunctionId, FunctionPlan> _functions;
-            private readonly Dictionary<FunctionId, ParameterEvidence> _evidence;
-
-            public DirectCallCollector(
-                TypedFunctionCode code,
-                IReadOnlyDictionary<FunctionId, FunctionPlan> functions,
-                Dictionary<FunctionId, ParameterEvidence> evidence)
+            for (var i = functionBinding.BodyCallStart; i < functionBinding.Calls.Count; i++)
             {
-                _code = code;
-                _functions = functions;
-                _evidence = evidence;
+                var call = functionBinding.Calls[i];
+                if (call.Target is not NameExpression name) continue;
+                var binding = code.GetName(name);
+                if (binding.DirectFunction.IsValid &&
+                    functions.TryGetValue(binding.DirectFunction, out var target) &&
+                    target.IsDirectCallCandidate)
+                {
+                    AddEvidence(call, target, code, evidence);
+                }
             }
 
-            public void Visit(AstNode node)
-            {
-                if (node == null || node is FunctionDeclaration || node is LambdaExpression) return;
-                if (node is FunctionCallExpression call && call.Target is NameExpression name)
-                {
-                    var binding = _code.GetName(name);
-                    if (binding.DirectFunction.IsValid &&
-                        _functions.TryGetValue(binding.DirectFunction, out var target) &&
-                        target.IsDirectCallCandidate)
-                    {
-                        AddEvidence(call, target);
-                    }
-                }
+        }
 
-                var visitor = new ChildVisitor(this);
-                AstTraversal.VisitChildren(node, ref visitor);
+        private static void AddEvidence(FunctionCallExpression call, FunctionPlan target,
+            TypedFunctionCode code, Dictionary<FunctionId, ParameterEvidence> evidenceByFunction)
+        {
+            if (!evidenceByFunction.TryGetValue(target.Id, out var evidence))
+            {
+                evidence = new ParameterEvidence(target.Declaration.Parameters.Count);
+                evidenceByFunction[target.Id] = evidence;
             }
-
-            private void AddEvidence(FunctionCallExpression call, FunctionPlan target)
+            for (var i = 0; i < evidence.Types.Length; i++)
             {
-                if (!_evidence.TryGetValue(target.Id, out var evidence))
+                var argumentType = i < call.Arguments.Count
+                    ? code.GetExpressionType(call.Arguments[i])
+                    : FlowValueType.Null;
+                // Native parameters are optional specializations; incompatible
+                // call sites continue through the generic adapter. Exact evidence
+                // is therefore allowed to replace an earlier dynamic graph pass.
+                // Two different exact native kinds, however, disable specialization
+                // deterministically instead of depending on visitation order.
+                if (FlowValueTypeFacts.IsNativeDirectParameter(
+                    new DirectParameterType(argumentType)))
                 {
-                    evidence = new ParameterEvidence(target.Declaration.Parameters.Count);
-                    _evidence[target.Id] = evidence;
-                }
-                for (var i = 0; i < evidence.Types.Length; i++)
-                {
-                    var argumentType = i < call.Arguments.Count
-                        ? _code.GetExpressionType(call.Arguments[i])
-                        : FlowValueType.Null;
-                    // Native parameters are optional specializations; incompatible
-                    // call sites continue through the generic adapter. Exact evidence
-                    // is therefore allowed to replace an earlier dynamic graph pass.
-                    // Two different exact native kinds, however, disable specialization
-                    // deterministically instead of depending on visitation order.
+                    if (evidence.NativeConflict[i]) continue;
+                    var current = evidence.Types[i];
                     if (FlowValueTypeFacts.IsNativeDirectParameter(
-                        new DirectParameterType(argumentType)))
+                            new DirectParameterType(current)) &&
+                        current != argumentType)
                     {
-                        if (evidence.NativeConflict[i]) continue;
-                        var current = evidence.Types[i];
-                        if (FlowValueTypeFacts.IsNativeDirectParameter(
-                                new DirectParameterType(current)) &&
-                            current != argumentType)
+                        if (FlowValueTypeFacts.IsNumberCompatible(current) &&
+                            FlowValueTypeFacts.IsNumberCompatible(argumentType))
                         {
-                            if (FlowValueTypeFacts.IsNumberCompatible(current) &&
-                                FlowValueTypeFacts.IsNumberCompatible(argumentType))
-                            {
-                                evidence.Types[i] = FlowValueTypeFacts.Merge(
-                                    current,
-                                    argumentType);
-                            }
-                            else
-                            {
-                                evidence.NativeConflict[i] = true;
-                                evidence.Types[i] = FlowValueType.Dynamic;
-                            }
+                            evidence.Types[i] = FlowValueTypeFacts.Merge(
+                                current,
+                                argumentType);
                         }
                         else
                         {
-                            evidence.Types[i] = argumentType;
+                            evidence.NativeConflict[i] = true;
+                            evidence.Types[i] = FlowValueType.Dynamic;
                         }
                     }
-                    else if (!FlowValueTypeFacts.IsNativeDirectParameter(
-                            new DirectParameterType(evidence.Types[i])) &&
-                        !evidence.NativeConflict[i])
+                    else
                     {
-                        evidence.SawNonNative[i] = true;
-                        evidence.Types[i] |= argumentType;
-                    }
-                    else if (!FlowValueTypeFacts.IsNativeDirectParameter(
-                        new DirectParameterType(argumentType)))
-                    {
-                        evidence.SawNonNative[i] = true;
+                        evidence.Types[i] = argumentType;
                     }
                 }
-            }
-
-            private readonly struct ChildVisitor : IAstChildVisitor
-            {
-                private readonly DirectCallCollector _owner;
-
-                public ChildVisitor(DirectCallCollector owner)
+                else if (!FlowValueTypeFacts.IsNativeDirectParameter(
+                        new DirectParameterType(evidence.Types[i])) &&
+                    !evidence.NativeConflict[i])
                 {
-                    _owner = owner;
+                    evidence.SawNonNative[i] = true;
+                    evidence.Types[i] |= argumentType;
                 }
-
-                public void Visit(AstNode node)
+                else if (!FlowValueTypeFacts.IsNativeDirectParameter(
+                    new DirectParameterType(argumentType)))
                 {
-                    _owner.Visit(node);
+                    evidence.SawNonNative[i] = true;
                 }
             }
         }
+
 
         private sealed class ParameterEvidence
         {
@@ -886,17 +880,11 @@ namespace AuroraScript.Compiler.Backend.Code
             public bool[] NativeConflict { get; }
             public bool[] SawNonNative { get; }
 
-            public void ResetTransientEvidence()
+            public void Reset()
             {
-                for (var i = 0; i < Types.Length; i++)
-                {
-                    if (!FlowValueTypeFacts.IsNativeDirectParameter(
-                        new DirectParameterType(Types[i])))
-                    {
-                        Types[i] = FlowValueType.None;
-                    }
-                    SawNonNative[i] = false;
-                }
+                Array.Clear(Types);
+                Array.Clear(NativeConflict);
+                Array.Clear(SawNonNative);
             }
         }
     }

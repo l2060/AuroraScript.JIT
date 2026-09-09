@@ -209,31 +209,40 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo ScriptObjectClearProperties = InstanceMethod(typeof(ScriptObject), nameof(ScriptObject.ClearProperties));
 
         public static readonly MethodInfo ValidatePackedArrayLength = Method(typeof(ScriptPackedArray), nameof(ScriptPackedArray.ValidateLength), typeof(double));
-        public static readonly ConstructorInfo ScriptInt32ArrayConstructor = Constructor(typeof(ScriptInt32Array), typeof(int));
-        public static readonly ConstructorInfo ScriptInt8ArrayConstructor = Constructor(typeof(ScriptInt8Array), typeof(int));
-        public static readonly ConstructorInfo ScriptFloat32ArrayConstructor = Constructor(typeof(ScriptFloat32Array), typeof(int));
-        public static readonly ConstructorInfo ScriptFloat64ArrayConstructor = Constructor(typeof(ScriptFloat64Array), typeof(int));
-        public static readonly ConstructorInfo ScriptBooleanArrayConstructor = Constructor(typeof(ScriptBooleanArray), typeof(int));
-        public static readonly ConstructorInfo ScriptUInt8ArrayConstructor = Constructor(typeof(ScriptUInt8Array), typeof(int));
-        public static readonly ConstructorInfo ScriptInt16ArrayConstructor = Constructor(typeof(ScriptInt16Array), typeof(int));
-        public static readonly ConstructorInfo ScriptUInt16ArrayConstructor = Constructor(typeof(ScriptUInt16Array), typeof(int));
-        public static readonly ConstructorInfo ScriptUInt32ArrayConstructor = Constructor(typeof(ScriptUInt32Array), typeof(int));
-        public static readonly ConstructorInfo ScriptInt64ArrayConstructor = Constructor(typeof(ScriptInt64Array), typeof(int));
-        public static readonly ConstructorInfo ScriptUInt64ArrayConstructor = Constructor(typeof(ScriptUInt64Array), typeof(int));
+        private static readonly (FieldInfo Items, ConstructorInfo Constructor) Int32Array = ArrayMetadata(typeof(ScriptInt32Array));
+        private static readonly (FieldInfo Items, ConstructorInfo Constructor) Int8Array = ArrayMetadata(typeof(ScriptInt8Array));
+        private static readonly (FieldInfo Items, ConstructorInfo Constructor) Float32Array = ArrayMetadata(typeof(ScriptFloat32Array));
+        private static readonly (FieldInfo Items, ConstructorInfo Constructor) Float64Array = ArrayMetadata(typeof(ScriptFloat64Array));
+        private static readonly (FieldInfo Items, ConstructorInfo Constructor) BooleanArray = ArrayMetadata(typeof(ScriptBooleanArray));
+        private static readonly (FieldInfo Items, ConstructorInfo Constructor) UInt8Array = ArrayMetadata(typeof(ScriptUInt8Array));
+        private static readonly (FieldInfo Items, ConstructorInfo Constructor) Int16Array = ArrayMetadata(typeof(ScriptInt16Array));
+        private static readonly (FieldInfo Items, ConstructorInfo Constructor) UInt16Array = ArrayMetadata(typeof(ScriptUInt16Array));
+        private static readonly (FieldInfo Items, ConstructorInfo Constructor) UInt32Array = ArrayMetadata(typeof(ScriptUInt32Array));
+        private static readonly (FieldInfo Items, ConstructorInfo Constructor) Int64Array = ArrayMetadata(typeof(ScriptInt64Array));
+        private static readonly (FieldInfo Items, ConstructorInfo Constructor) UInt64Array = ArrayMetadata(typeof(ScriptUInt64Array));
         public static readonly ConstructorInfo ScriptDateTicksConstructor = Constructor(typeof(ScriptDate), typeof(long));
         public static readonly ConstructorInfo ScriptHashMapConstructor = Constructor(typeof(ScriptHashMap), typeof(int));
         public static readonly MethodInfo ScriptHashMapPut = InstanceMethod(typeof(ScriptHashMap), nameof(ScriptHashMap.Put), typeof(ScriptDatum), typeof(ScriptDatum));
-        public static readonly FieldInfo ScriptInt32ArrayItems = Field(typeof(ScriptInt32Array), "_items");
-        public static readonly FieldInfo ScriptInt8ArrayItems = Field(typeof(ScriptInt8Array), "_items");
-        public static readonly FieldInfo ScriptFloat32ArrayItems = Field(typeof(ScriptFloat32Array), "_items");
-        public static readonly FieldInfo ScriptFloat64ArrayItems = Field(typeof(ScriptFloat64Array), "_items");
-        public static readonly FieldInfo ScriptBooleanArrayItems = Field(typeof(ScriptBooleanArray), "_items");
-        public static readonly FieldInfo ScriptUInt8ArrayItems = Field(typeof(ScriptUInt8Array), "_items");
-        public static readonly FieldInfo ScriptInt16ArrayItems = Field(typeof(ScriptInt16Array), "_items");
-        public static readonly FieldInfo ScriptUInt16ArrayItems = Field(typeof(ScriptUInt16Array), "_items");
-        public static readonly FieldInfo ScriptUInt32ArrayItems = Field(typeof(ScriptUInt32Array), "_items");
-        public static readonly FieldInfo ScriptInt64ArrayItems = Field(typeof(ScriptInt64Array), "_items");
-        public static readonly FieldInfo ScriptUInt64ArrayItems = Field(typeof(ScriptUInt64Array), "_items");
+
+        public static (FieldInfo Items, ConstructorInfo Constructor) PackedArray(FlowValueType type) =>
+            type switch
+            {
+                FlowValueType.Int32Array => Int32Array,
+                FlowValueType.Int8Array => Int8Array,
+                FlowValueType.Float32Array => Float32Array,
+                FlowValueType.Float64Array => Float64Array,
+                FlowValueType.BooleanArray => BooleanArray,
+                FlowValueType.UInt8Array => UInt8Array,
+                FlowValueType.Int16Array => Int16Array,
+                FlowValueType.UInt16Array => UInt16Array,
+                FlowValueType.UInt32Array => UInt32Array,
+                FlowValueType.Int64Array => Int64Array,
+                FlowValueType.UInt64Array => UInt64Array,
+                _ => throw new ArgumentOutOfRangeException(nameof(type))
+            };
+
+        private static (FieldInfo Items, ConstructorInfo Constructor) ArrayMetadata(Type wrapper) =>
+            (Field(wrapper, "_items"), Constructor(wrapper, typeof(int)));
 
         internal enum PackedBoundaryConversion
         {

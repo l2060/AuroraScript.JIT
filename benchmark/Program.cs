@@ -13,6 +13,22 @@ namespace AuroraBenchmark
     {
         private static async Task Main(string[] args)
         {
+            if (args.Length is 3 or 4 && args[0] == "--slimming-il")
+            {
+                if (args.Length == 4) Assembly.LoadFrom(System.IO.Path.GetFullPath(args[3]));
+                GeneratedBoundaryBenchmarks.DumpSlimmingIl(args[1], args[2]);
+                return;
+            }
+            if (args.Length == 3 && args[0] == "--slimming-runtime")
+            {
+                await GeneratedBoundaryBenchmarks.RunSlimmingRuntimeProbe(args[1], int.Parse(args[2]));
+                return;
+            }
+            if (args.Length == 3 && args[0] == "--slimming-probe")
+            {
+                await CompilerPipelineBenchmarks.RunSlimmingProbe(args[1], int.Parse(args[2]));
+                return;
+            }
             if (args.Length == 3 && args[0] == "--array-ab")
             {
                 ArrayBenchmarkComparison.CompareCompiled(args[1], args[2]);

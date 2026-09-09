@@ -155,6 +155,7 @@ namespace AuroraScript.Compiler.Backend.Plans
         }
 
         public FunctionId Id { get; }
+        public int ModuleIndex { get; internal set; } = -1;
         public ModuleId Module { get; }
         public ScopeId Scope { get; }
         public FunctionDeclaration Declaration { get; }
@@ -173,6 +174,9 @@ namespace AuroraScript.Compiler.Backend.Plans
         public FunctionId[] NestedFunctions { get; set; }
         public bool IsDirectCallCandidate { get; set; }
         public bool HasDefaultParameters { get; set; }
+        public bool HasProtectedRegion { get; set; }
+        public bool HasReturnInFinally { get; set; }
+        public HashSet<Statement> LoopsWithFinallyTransfer { get; set; }
         public bool RequiresClosureObject { get; set; } = true;
         public bool CanCacheClosureObject { get; set; }
         public int ParentLocalScopeId { get; set; }
@@ -189,6 +193,7 @@ namespace AuroraScript.Compiler.Backend.Plans
     internal sealed class ModulePlan
     {
         private readonly List<FunctionPlan> _functions;
+        private readonly Dictionary<FunctionId, int> _functionIndices = new();
         private readonly Dictionary<string, SymbolId> _symbolsByName;
         private Dictionary<SymbolId, InlineConstant> _inlineConstants;
         private HashSet<string> _declaredOnlyNames;
@@ -228,6 +233,15 @@ namespace AuroraScript.Compiler.Backend.Plans
         public MethodInfo Initializer { get; set; }
         public FunctionPlan InitializerFunction { get; }
         public List<FunctionPlan> Functions => _functions;
+        public int GetFunctionIndex(FunctionId function) =>
+            _functionIndices.TryGetValue(function, out var index) ? index : -1;
+
+        public bool HasDefaultParameter(FunctionId function, int parameterIndex)
+        {
+            var index = GetFunctionIndex(function);
+            return index >= 0 && (uint)parameterIndex < (uint)_functions[index].Declaration.Parameters.Count &&
+                _functions[index].Declaration.Parameters[parameterIndex].Initializer != null;
+        }
         public bool HasInlineConstants => _inlineConstants != null && _inlineConstants.Count != 0;
 
         public bool TryDeclareSymbol(string name, SymbolId symbol)
@@ -293,6 +307,8 @@ namespace AuroraScript.Compiler.Backend.Plans
             {
                 throw new ArgumentException("Function belongs to a different module.", nameof(function));
             }
+            _functionIndices.Add(function.Id, _functions.Count);
+            function.ModuleIndex = _functions.Count;
             _functions.Add(function);
         }
     }

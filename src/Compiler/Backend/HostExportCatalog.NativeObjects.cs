@@ -441,8 +441,8 @@ namespace AuroraScript.Compiler.Backend
 
         /// <summary>Bind exact-arity value members; ambiguous or coercive calls retain the dynamic adapter.</summary>
         public HostNativeMethodDescriptor BindValueMethod(string name, IReadOnlyList<Expression> arguments,
-            IReadOnlyDictionary<Expression, FlowValueType> types, FlowValueType receiver,
-            IReadOnlyDictionary<Expression, HostNativeObjectDescriptor> nativeTypes)
+            Func<Expression, FlowValueType> getType, FlowValueType receiver,
+            Func<Expression, Type> getClrType)
         {
             if (!IsValueReceiver || !TryGetMethod(name, out var first)) return null;
             HostNativeMethodDescriptor best = null;
@@ -457,15 +457,15 @@ namespace AuroraScript.Compiler.Backend
                 var matches = true;
                 for (var i = 0; i < arguments.Count; i++)
                 {
-                    if (arguments[i] is SpreadExpression || !types.TryGetValue(arguments[i], out var type) ||
+                    var type = getType(arguments[i]);
+                    if (arguments[i] is SpreadExpression ||
                         !HostExportArgumentFacts.CanPass(candidate.ParameterKinds[i], candidate.GetScriptParameterType(i), type,
-                            nativeTypes.TryGetValue(arguments[i], out var nativeType) ? nativeType.ClrType : null))
+                            getClrType(arguments[i])))
                     {
                         matches = false;
                         break;
                     }
-                    if (candidate.ParameterKinds[i] == AuroraExportValueKind.Datum) cost += 2;
-                    else if (candidate.ParameterKinds[i] == AuroraExportValueKind.Number && type != FlowValueType.Number) cost++;
+                    cost += HostExportArgumentFacts.ConversionCost(candidate.ParameterKinds[i], type);
                 }
                 if (!matches || cost > bestCost) continue;
                 if (cost == bestCost) { ambiguous = true; continue; }

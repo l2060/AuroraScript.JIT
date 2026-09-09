@@ -353,6 +353,7 @@ namespace AuroraScript.Compiler.Backend
 
     internal sealed class HostExportDescriptor
     {
+        private readonly ParameterInfo[] _parameters;
         public HostExportDescriptor(
             MethodInfo method,
             AuroraExportValueKind returnKind,
@@ -367,8 +368,9 @@ namespace AuroraScript.Compiler.Backend
             TakesContext = takesContext;
             TakesThisObject = takesThisObject;
             UseDynamicForExtraArguments = useDynamicForExtraArguments;
+            _parameters = method.GetParameters();
             RequiredScriptParameterCount = CountRequiredScriptParameters(
-                method,
+                _parameters,
                 takesContext,
                 takesThisObject);
         }
@@ -386,15 +388,14 @@ namespace AuroraScript.Compiler.Backend
         {
             var prefix = (TakesContext ? 1 : 0) +
                 (TakesThisObject ? 1 : 0);
-            return Method.GetParameters()[prefix + index].ParameterType;
+            return _parameters[prefix + index].ParameterType;
         }
 
         private static int CountRequiredScriptParameters(
-            MethodInfo method,
+            ParameterInfo[] parameters,
             bool takesContext,
             bool takesThisObject)
         {
-            var parameters = method.GetParameters();
             var start = 0;
             if (takesContext)
             {

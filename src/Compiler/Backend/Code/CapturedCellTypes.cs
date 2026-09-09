@@ -23,11 +23,13 @@ namespace AuroraScript.Compiler.Backend.Code
     /// after that declaration runs. Anything else keeps the dynamic type.
     /// </para>
     /// </summary>
-    internal static class CapturedCellTypes
+    internal sealed class CapturedCellTypes
     {
-        public static Dictionary<FunctionId, FlowValueType[]> Analyze(
+        private readonly Dictionary<FunctionId, (FunctionId Owner, Expression Initializer)[]> _cells = new();
+
+        public CapturedCellTypes(
             ModulePlan module,
-            TypedFunctionCode[] functions)
+            TypedFunctionBuilder.FunctionBinding[] bindings)
         {
             var plans = new Dictionary<int, FunctionPlan>();
             var plansByDeclaration =
@@ -43,33 +45,59 @@ namespace AuroraScript.Compiler.Backend.Code
                 }
             }
 
+            var roots = new Dictionary<FunctionId, (FunctionId Owner, LocalSlotId Local)[]>();
+            foreach (var function in module.Functions)
+            {
+                if (function.UpvalueSlots.Length == 0) continue;
+                var slots = new (FunctionId Owner, LocalSlotId Local)[function.UpvalueSlots.Length];
+                for (var slot = 0; slot < slots.Length; slot++)
+                    TryResolveRoot(function.UpvalueSlots[slot], plans, out slots[slot].Owner, out slots[slot].Local);
+                roots[function.Id] = slots;
+            }
+            if (roots.Count == 0) return;
             var unstable = new HashSet<long>();
             for (var i = 0; i < module.Functions.Count; i++)
             {
                 var function = module.Functions[i];
-                var code = GetCode(functions, function.Id);
-                if (code == null) continue;
-                new CellScanner(function, code, plans, plansByDeclaration, unstable)
+                if (function.CapturedLocalSlots.Length == 0 && function.UpvalueSlots.Length == 0) continue;
+                new CellScanner(function, bindings[function.Id.Value], roots, plansByDeclaration, unstable)
                     .Scan(function.Declaration?.Body);
             }
 
-            var result = new Dictionary<FunctionId, FlowValueType[]>();
-            for (var i = 0; i < module.Functions.Count; i++)
+            foreach (var pair in roots)
             {
-                var function = module.Functions[i];
-                if (function.UpvalueSlots.Length == 0) continue;
-                var types = new FlowValueType[function.UpvalueSlots.Length];
+                var cells = new (FunctionId Owner, Expression Initializer)[pair.Value.Length];
+                for (var slot = 0; slot < cells.Length; slot++)
+                {
+                    var (owner, local) = pair.Value[slot];
+                    if (!local.IsValid || unstable.Contains(GetKey(owner, local)) ||
+                        !plans.TryGetValue(owner.Value, out var plan) ||
+                        (uint)local.Value >= (uint)plan.LocalSlots.Length) continue;
+                    var source = plan.LocalSlots[local.Value];
+                    if (!source.IsParameter && source.Declaration is VariableDeclaration declaration &&
+                        declaration.Pattern == null)
+                        cells[slot] = (owner, declaration.Initializer);
+                }
+                _cells[pair.Key] = cells;
+            }
+        }
+
+        public Dictionary<FunctionId, FlowValueType[]> Analyze(TypedFunctionCode[] functions, ModulePlan module = null)
+        {
+            var result = new Dictionary<FunctionId, FlowValueType[]>(_cells.Count);
+            foreach (var pair in _cells)
+            {
+                var types = new FlowValueType[pair.Value.Length];
                 for (var slot = 0; slot < types.Length; slot++)
                 {
-                    types[slot] = TryResolveRoot(
-                        function.UpvalueSlots[slot],
-                        plans,
-                        out var owner,
-                        out var local)
-                        ? GetCellType(owner, local, plans, functions, unstable)
-                        : FlowValueType.Dynamic;
+                    var (owner, initializer) = pair.Value[slot];
+                    var index = module == null ? owner.Value : module.GetFunctionIndex(owner);
+                    var type = initializer != null && (uint)index < (uint)functions.Length &&
+                        functions[index] is { } code
+                        ? code.GetExpressionType(initializer) : FlowValueType.Dynamic;
+                    types[slot] = IsStableCellType(type) ? type : FlowValueType.Dynamic;
                 }
-                result[function.Id] = types;
+                result[pair.Key] = types;
             }
             return result;
         }
@@ -82,55 +110,21 @@ namespace AuroraScript.Compiler.Backend.Code
             if (left.Count != right.Count) return false;
             foreach (var item in left)
             {
-                if (!right.TryGetValue(item.Key, out var other) ||
-                    other.Length != item.Value.Length)
+                if (!right.TryGetValue(item.Key, out var other) || !SameTypes(item.Value, other))
                 {
                     return false;
-                }
-                for (var i = 0; i < other.Length; i++)
-                {
-                    if (other[i] != item.Value[i]) return false;
                 }
             }
             return true;
         }
 
-        private static TypedFunctionCode GetCode(
-            TypedFunctionCode[] functions,
-            FunctionId id)
+        internal static bool SameTypes(FlowValueType[] left, FlowValueType[] right)
         {
-            return functions != null && (uint)id.Value < (uint)functions.Length
-                ? functions[id.Value]
-                : null;
-        }
-
-        private static FlowValueType GetCellType(
-            FunctionId owner,
-            LocalSlotId local,
-            IReadOnlyDictionary<int, FunctionPlan> plans,
-            TypedFunctionCode[] functions,
-            HashSet<long> unstable)
-        {
-            if (unstable.Contains(GetKey(owner, local)) ||
-                !plans.TryGetValue(owner.Value, out var plan) ||
-                (uint)local.Value >= (uint)plan.LocalSlots.Length)
-            {
-                return FlowValueType.Dynamic;
-            }
-
-            var code = GetCode(functions, owner);
-            var slot = plan.LocalSlots[local.Value];
-            if (code == null ||
-                slot.IsParameter ||
-                slot.Declaration is not VariableDeclaration declaration ||
-                declaration.Pattern != null ||
-                declaration.Initializer == null)
-            {
-                return FlowValueType.Dynamic;
-            }
-
-            var type = code.GetExpressionType(declaration.Initializer);
-            return IsStableCellType(type) ? type : FlowValueType.Dynamic;
+            if (ReferenceEquals(left, right)) return true;
+            if (left == null || right == null || left.Length != right.Length) return false;
+            for (var i = 0; i < left.Length; i++)
+                if (left[i] != right[i]) return false;
+            return true;
         }
 
         /// <summary>
@@ -182,8 +176,8 @@ namespace AuroraScript.Compiler.Backend.Code
         private sealed class CellScanner
         {
             private readonly FunctionPlan _function;
-            private readonly TypedFunctionCode _code;
-            private readonly IReadOnlyDictionary<int, FunctionPlan> _plans;
+            private readonly TypedFunctionBuilder.FunctionBinding _binding;
+            private readonly IReadOnlyDictionary<FunctionId, (FunctionId Owner, LocalSlotId Local)[]> _roots;
             private readonly IReadOnlyDictionary<FunctionDeclaration, FunctionPlan>
                 _plansByDeclaration;
             private readonly HashSet<long> _unstable;
@@ -191,14 +185,14 @@ namespace AuroraScript.Compiler.Backend.Code
 
             public CellScanner(
                 FunctionPlan function,
-                TypedFunctionCode code,
-                IReadOnlyDictionary<int, FunctionPlan> plans,
+                TypedFunctionBuilder.FunctionBinding binding,
+                IReadOnlyDictionary<FunctionId, (FunctionId Owner, LocalSlotId Local)[]> roots,
                 IReadOnlyDictionary<FunctionDeclaration, FunctionPlan> plansByDeclaration,
                 HashSet<long> unstable)
             {
                 _function = function;
-                _code = code;
-                _plans = plans;
+                _binding = binding;
+                _roots = roots;
                 _plansByDeclaration = plansByDeclaration;
                 _unstable = unstable;
             }
@@ -260,14 +254,14 @@ namespace AuroraScript.Compiler.Backend.Code
 
             private void MarkDeclared(VariableDeclaration declaration)
             {
-                var slot = _code.GetDeclarationSlot(declaration);
-                if (slot.IsValid) _declared.Add(slot.Value);
+                if (_binding.Declarations.TryGetValue(declaration, out var slot) && slot.IsValid)
+                    _declared.Add(slot.Value);
             }
 
             private void MarkWrite(Expression target)
             {
                 if (target is not NameExpression name) return;
-                var binding = _code.GetName(name);
+                if (!_binding.Names.TryGetValue(name, out var binding)) return;
                 if (TryResolveBinding(binding, out var owner, out var local))
                 {
                     _unstable.Add(GetKey(owner, local));
@@ -281,13 +275,10 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     return;
                 }
-                for (var i = 0; i < nested.UpvalueSlots.Length; i++)
+                if (!_roots.TryGetValue(nested.Id, out var slots)) return;
+                foreach (var (owner, local) in slots)
                 {
-                    if (!TryResolveRoot(
-                            nested.UpvalueSlots[i],
-                            _plans,
-                            out var owner,
-                            out var local) ||
+                    if (!local.IsValid ||
                         owner.Value != _function.Id.Value ||
                         _declared.Contains(local.Value))
                     {
@@ -311,11 +302,8 @@ namespace AuroraScript.Compiler.Backend.Code
                 if (binding.Upvalue.IsValid &&
                     (uint)binding.Upvalue.Value < (uint)_function.UpvalueSlots.Length)
                 {
-                    return TryResolveRoot(
-                        _function.UpvalueSlots[binding.Upvalue.Value],
-                        _plans,
-                        out owner,
-                        out local);
+                    (owner, local) = _roots[_function.Id][binding.Upvalue.Value];
+                    return local.IsValid;
                 }
                 owner = default;
                 local = LocalSlotId.Invalid;

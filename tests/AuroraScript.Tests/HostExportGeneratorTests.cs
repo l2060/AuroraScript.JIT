@@ -2,6 +2,7 @@ using AuroraScript.Tests.Host;
 using AuroraScript.Tests.Infrastructure;
 using AuroraScript.Compiler.Backend;
 using AuroraScript.Compiler.Backend.Code;
+using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Hosting;
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Types;
@@ -19,6 +20,37 @@ namespace AuroraScript.Tests;
 
 public sealed class HostExportGeneratorTests
 {
+    [Fact]
+    public void HostOverloadSelectionReadsArgumentFactsOnceAndRejectsSpreadAndAmbiguity()
+    {
+        var catalog = new HostExportCatalog([]);
+        Assert.True(catalog.TryGetGlobal("Math", "abs", out var descriptor));
+        var argument = new NameExpression(null);
+        var reads = 0;
+        FlowValueType GetType(Expression expression)
+        {
+            reads++;
+            return FlowValueType.Number;
+        }
+
+        Assert.True(HostExportArgumentFacts.TrySelectOverload(
+            descriptor, [argument], GetType, null, out var selected));
+        Assert.Same(descriptor, selected);
+        Assert.Equal(1, reads);
+
+        reads = 0;
+        Assert.False(HostExportArgumentFacts.TrySelectOverload(
+            descriptor, [new SpreadExpression(argument)], GetType, null, out selected));
+        Assert.Null(selected);
+        Assert.Equal(0, reads);
+
+        descriptor.NextOverload = new HostExportDescriptor(
+            descriptor.Method, descriptor.ReturnKind, descriptor.ParameterKinds);
+        Assert.False(HostExportArgumentFacts.TrySelectOverload(
+            descriptor, [argument], GetType, null, out selected));
+        Assert.Null(selected);
+    }
+
     [Fact]
     public void StringMembersShareNativeTypeCatalogWithoutBecomingNativeObjects()
     {

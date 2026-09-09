@@ -1,0 +1,36 @@
+diff --git a/src/Compiler/ScriptCompiler.cs b/src/Compiler/ScriptCompiler.cs
+index 4f02268..3c11472 100644
+--- a/src/Compiler/ScriptCompiler.cs
++++ b/src/Compiler/ScriptCompiler.cs
+@@ -22,6 +22,7 @@ namespace AuroraScript.Compiler
+             : StringComparer.Ordinal;
+ 
+         private readonly ConcurrentDictionary<string, ScriptSource> _sourcesByPath = new(PathComparer);
++        private readonly ConcurrentDictionary<string, Lazy<string>> _sourceTexts = new(PathComparer);
+         private readonly ConcurrentDictionary<string, ModuleDeclaration> _modulesByPath = new(PathComparer);
+         private readonly Channel<ScriptSource> _compileQueue = Channel.CreateUnbounded<ScriptSource>(
+             new UnboundedChannelOptions
+@@ -244,10 +245,13 @@ namespace AuroraScript.Compiler
+             }
+         }
+ 
++        private string ReadSourceText(ScriptSource source) =>
++            _sourceTexts.GetOrAdd(NormalizePath(source.FullPath),
++                static (_, value) => new Lazy<string>(value.ReadSource), source).Value;
+         private async Task BuildSyntaxTreeAsync(ScriptSource source)
+         {
+             var fullPath = NormalizePath(source.FullPath);
+-            var sourceText = source.ReadSource();
++            var sourceText = ReadSourceText(source);
+             AddGlobalDeclarationFile(source.BaseDirectory, fullPath, sourceText);
+             if (GlobalDeclarationScanner.IsGlobalFile(sourceText))
+             {
+@@ -313,7 +317,7 @@ namespace AuroraScript.Compiler
+                 var resolvedSource = await _options.Compiler.SourceResolver
+                     .GetSourceAsync(resolved.Value, _compilationCancellationToken)
+                     .ConfigureAwait(false);
+-                var resolvedText = resolvedSource.ReadSource();
++                var resolvedText = ReadSourceText(resolvedSource);
+                 AddGlobalDeclarationFile(resolved.Value.BaseDirectory, resolved.Value.FullPath, resolvedText);
+                 if (GlobalDeclarationScanner.IsGlobalFile(resolvedText))
+                 {

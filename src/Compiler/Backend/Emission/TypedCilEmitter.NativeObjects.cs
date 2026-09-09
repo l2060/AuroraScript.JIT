@@ -113,42 +113,16 @@ namespace AuroraScript.Compiler.Backend.Emission
         {
             method = null;
             owner = _code.GetNativeObjectType(receiver);
-            if (owner == null ||
-                !owner.TryGetMethod(memberName, out var candidate))
+            if (owner == null) return false;
+            if (!_code.TryGetNativeCall(call, out method))
             {
-                return false;
+                if (owner.TryGetMethod(memberName, out var candidate))
+                    method = HostExportArgumentFacts.SelectNativeOverload(
+                        candidate, call.Arguments, _code.GetExpressionType,
+                        argument => _code.GetNativeObjectType(argument)?.ClrType, HasContextArgument);
+                _code.SetNativeCall(call, method);
             }
-
-            var bestCost = int.MaxValue;
-            for (; candidate != null; candidate = candidate.NextOverload)
-            {
-                if ((!candidate.TakesContext || HasContextArgument) &&
-                    CanBindNativeArguments(
-                        call,
-                        candidate.ParameterKinds,
-                        candidate.RequiredScriptParameterCount,
-                        candidate.Method.GetParameters(),
-                        candidate.TakesContext ? 1 : 0,
-                        candidate.UseDynamicForExtraArguments))
-                {
-                    // Keep params as a fallback; compare fixed signatures by conversion cost.
-                    if (HostExportArgumentFacts.HasParams(candidate.ParameterKinds))
-                    {
-                        if (bestCost == int.MaxValue) method = candidate;
-                        continue;
-                    }
-                    var cost = 0;
-                    for (var i = 0; i < Math.Min(call.Arguments.Count, candidate.ParameterKinds.Length); i++)
-                        cost += HostExportArgumentFacts.ConversionCost(candidate.ParameterKinds[i], _code.GetExpressionType(call.Arguments[i]));
-                    if (cost < bestCost)
-                    {
-                        method = candidate;
-                        bestCost = cost;
-                    }
-                    if (cost == 0) return true;
-                }
-            }
-            return method != null;
+            return method != null && (!method.TakesContext || HasContextArgument);
         }
 
         private bool TryGetNativeGetter(

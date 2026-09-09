@@ -44,12 +44,8 @@ internal static class ExampleCompilationProfile
             var backend = new BackendCompiler(new PersistedBuilder(options), options, compiler.GlobalDeclarations);
             var session = backend.CreateModulePlans(modules);
             Report(run, "bind-plan", ref start, ref allocated);
-            foreach (var module in session.Modules)
-            {
-                TypedModuleCode.Build(module, session.HostExports);
-                Report(run, "types:" + (string.IsNullOrEmpty(module.Name)
-                    ? module.Source.ModulePath : module.Name), ref start, ref allocated);
-            }
+            CallableReturnPredictions.Build(session.Modules, session.HostExports);
+            Report(run, "types-and-return-prediction", ref start, ref allocated);
         }
     }
 

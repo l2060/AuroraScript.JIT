@@ -570,7 +570,7 @@ public sealed class StringOptimizationTests
             .Select(field => (OpCode)field.GetValue(null)!)
             .ToDictionary(opcode => unchecked((ushort)opcode.Value));
         var result = new List<MethodBase>();
-        var il = method.GetMethodBody()!.GetILAsByteArray()!;
+        var il = method.GetMethodBody()?.GetILAsByteArray() ?? Array.Empty<byte>();
         for (var offset = 0; offset < il.Length;)
         {
             ushort code = il[offset++];

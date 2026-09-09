@@ -453,7 +453,8 @@ namespace AuroraScript.Compiler.Backend.Code
         private readonly Dictionary<Expression, TypeDeclaration> _structuralTypes;
         private readonly Dictionary<Expression, HostNativeObjectDescriptor> _nativeObjectTypes;
         private readonly Dictionary<ForStatement, CountedLoop> _countedLoops;
-        private readonly Dictionary<FunctionCallExpression, HostNativeMethodDescriptor> _nativeValueCalls;
+        private Dictionary<FunctionCallExpression, HostNativeMethodDescriptor> _nativeCalls;
+        private Dictionary<FunctionCallExpression, HostExportDescriptor> _hostCalls;
         private readonly IReadOnlyDictionary<Expression, FlowValueType> _guardedTypes;
         private readonly IReadOnlyDictionary<Expression, HostNativeObjectDescriptor> _guardedNativeTypes;
 
@@ -469,7 +470,8 @@ namespace AuroraScript.Compiler.Backend.Code
             bool[] writtenLocals,
             FlowValueType returnType,
             Dictionary<ForStatement, CountedLoop> countedLoops = null,
-            Dictionary<FunctionCallExpression, HostNativeMethodDescriptor> nativeValueCalls = null)
+            Dictionary<FunctionCallExpression, HostNativeMethodDescriptor> nativeCalls = null,
+            Dictionary<FunctionCallExpression, HostExportDescriptor> hostCalls = null)
         {
             Function = function ?? throw new ArgumentNullException(nameof(function));
             _names = names ?? throw new ArgumentNullException(nameof(names));
@@ -483,11 +485,27 @@ namespace AuroraScript.Compiler.Backend.Code
             WrittenLocals = writtenLocals ?? throw new ArgumentNullException(nameof(writtenLocals));
             ReturnType = returnType;
             _countedLoops = countedLoops;
-            _nativeValueCalls = nativeValueCalls;
+            _nativeCalls = nativeCalls;
+            _hostCalls = hostCalls;
         }
 
-        public HostNativeMethodDescriptor GetNativeValueCall(FunctionCallExpression call)
-            => _nativeValueCalls != null && _nativeValueCalls.TryGetValue(call, out var method) ? method : null;
+        public bool TryGetHostCall(FunctionCallExpression call, out HostExportDescriptor descriptor)
+        {
+            descriptor = null;
+            return _hostCalls != null && _hostCalls.TryGetValue(call, out descriptor) || _guardedTypes == null;
+        }
+
+        public void SetHostCall(FunctionCallExpression call, HostExportDescriptor descriptor) =>
+            (_hostCalls ??= new())[call] = descriptor;
+
+        public bool TryGetNativeCall(FunctionCallExpression call, out HostNativeMethodDescriptor method)
+        {
+            method = null;
+            return _nativeCalls != null && _nativeCalls.TryGetValue(call, out method) || _guardedTypes == null;
+        }
+
+        public void SetNativeCall(FunctionCallExpression call, HostNativeMethodDescriptor method) =>
+            (_nativeCalls ??= new())[call] = method;
 
         public bool TryGetCountedLoop(ForStatement statement, out CountedLoop loop)
         {
@@ -507,7 +525,32 @@ namespace AuroraScript.Compiler.Backend.Code
 
         // Speculative facts are deliberately separate from the proven graph and
         // local storage types. Emission may use them only behind value guards.
-        public TypedFunctionCode Prediction { get; internal set; }
+        internal readonly record struct PredictionFacts(FlowValueType ReturnType,
+            Dictionary<Expression, FlowValueType> Types,
+            Dictionary<Expression, HostNativeObjectDescriptor> NativeTypes)
+        {
+            public FlowValueType GetExpressionType(Expression expression, FlowValueType fallback = FlowValueType.Null) =>
+                expression != null && Types != null && Types.TryGetValue(expression, out var type) ? type : fallback;
+            public HostNativeObjectDescriptor GetNativeObjectType(Expression expression) =>
+                expression != null && NativeTypes != null && NativeTypes.TryGetValue(expression, out var native) ? native : null;
+
+            internal PredictionFacts KeepDifferences(TypedFunctionCode generic, TypedFunctionCode direct)
+            {
+                if (Types != null)
+                    foreach (var pair in Types)
+                        if (generic.GetExpressionType(pair.Key) == pair.Value &&
+                            (direct == null || direct.GetExpressionType(pair.Key) == pair.Value)) Types.Remove(pair.Key);
+                if (NativeTypes != null)
+                    foreach (var pair in NativeTypes)
+                        if (ReferenceEquals(generic.GetNativeObjectType(pair.Key), pair.Value) &&
+                            (direct == null || ReferenceEquals(direct.GetNativeObjectType(pair.Key), pair.Value)))
+                            NativeTypes.Remove(pair.Key);
+                return new(ReturnType, Types?.Count > 0 ? Types : null, NativeTypes?.Count > 0 ? NativeTypes : null);
+            }
+        }
+
+        public PredictionFacts? Prediction { get; internal set; }
+        internal PredictionFacts GetPredictionFacts() => new(ReturnType, _expressionTypes, _nativeObjectTypes);
 
         public TypedFunctionCode WithGuardedTypes(
             IReadOnlyDictionary<Expression, FlowValueType> guardedTypes,
@@ -522,10 +565,12 @@ namespace AuroraScript.Compiler.Backend.Code
             : this(original.Function, original._names, original._declarations,
                 original._expressionTypes, original._structuralTypes, original._nativeObjectTypes,
                 original.LocalTypes, original.LocalNativeObjectTypes, original.WrittenLocals,
-                original.ReturnType, original._countedLoops, original._nativeValueCalls)
+                original.ReturnType, original._countedLoops)
         {
             // A bounded overlay avoids copying the entire expression graph at
             // every guarded operation in a large function.
+            // Call selections belong to the operand types that selected them.
+            // Resolve guarded calls afresh instead of inheriting the ordinary target.
             _guardedTypes = guardedTypes;
             _guardedNativeTypes = guardedNativeTypes;
         }

@@ -19,6 +19,53 @@ public sealed class DynamicFunctionReturnInferenceTests
 #if NET9_0_OR_GREATER
     [InlineData(CompilationMode.Persistence)]
 #endif
+    public async Task NonNumericElementAccessDoesNotGuardUnchangedDynamicHelpers(CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync("""
+            @module(TEST);
+            var valueCalls = 0;
+            var keyCalls = 0;
+            func values() { valueCalls++; return new Int32Array(3); }
+            func key() { keyCalls++; return 'length'; }
+            export func read() { return values()['length']; }
+            export func missingProperty() { return key().missing; }
+            export func readKey(object) { return object[key()]; }
+            export func write(object) { object[key()] = 3; return object[key()]; }
+            export func writeProperty(object) { object.length = key(); return object.length; }
+            export func counts() { return [valueCalls, keyCalls]; }
+            """, mode);
+        using (domain)
+        {
+            var value = new ScriptObject();
+            value.Define("length", ScriptDatum.FromNumber(7));
+            ScriptAssert.Equal(3, TestWorkspace.Execute(domain, "read"));
+            ScriptAssert.Equal(7, TestWorkspace.Execute(domain, "readKey", arguments: [ScriptDatum.FromObject(value)]));
+            ScriptAssert.Equal(3, TestWorkspace.Execute(domain, "write", arguments: [ScriptDatum.FromObject(value)]));
+            ScriptAssert.Equal(null, TestWorkspace.Execute(domain, "missingProperty"));
+            ScriptAssert.Equal("length", TestWorkspace.Execute(domain, "writeProperty", arguments: [ScriptDatum.FromObject(value)]));
+            ScriptAssert.Equal(new object[] { 1, 5 }, TestWorkspace.Execute(domain, "counts"));
+        }
+#if NET9_0_OR_GREATER
+        if (mode == CompilationMode.Persistence)
+        {
+            var methods = Assembly.Load(File.ReadAllBytes(Path.Combine(workspace.Root, "test-output.dll")))
+                .GetTypes().SelectMany(type => type.GetMethods());
+            foreach (var method in methods.Where(method => method.Name is "read$typed" or "readKey$typed" or "write$typed" or "missingProperty$typed" or "writeProperty$typed"))
+            {
+                var calls = StringOptimizationTests.GetCalls(method);
+                Assert.DoesNotContain(calls, call => call.DeclaringType == typeof(ScriptDatum) && call.Name == "get_Kind");
+                Assert.DoesNotContain(calls, call => call.DeclaringType?.Name == "PackedArrayBoundaryOps");
+            }
+        }
+#endif
+    }
+
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
     public async Task GuardedOperationsAgreeWithDynamicOperationsForReplacementValues(CompilationMode mode)
     {
         using var workspace = new TestWorkspace();

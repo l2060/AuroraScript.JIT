@@ -50,6 +50,9 @@ namespace AuroraScript.Compiler.Backend.Binding
             {
                 collector.Visit(modulePlan.Declaration.Statements[i]);
             }
+            // Allocate global IDs and scopes before parallel body binding starts.
+            for (var i = 0; i < modulePlan.Functions.Count; i++)
+                collector.VisitFunction(modulePlan.Functions[i]);
         }
 
         private static void BindFunction(
@@ -119,6 +122,7 @@ namespace AuroraScript.Compiler.Backend.Binding
 
         private sealed class ModuleInitializerFunctionCollector
         {
+            private ScopeId _parentScope;
             private readonly CompileSession _session;
             private readonly ModulePlan _modulePlan;
             private readonly FunctionPlanRegistry _functions;
@@ -131,6 +135,14 @@ namespace AuroraScript.Compiler.Backend.Binding
                 _session = session;
                 _modulePlan = modulePlan;
                 _functions = functions;
+                _parentScope = modulePlan.ModuleScope;
+            }
+
+            public void VisitFunction(FunctionPlan function)
+            {
+                _parentScope = function.Scope;
+                foreach (var parameter in function.Declaration.Parameters) Visit(parameter.Initializer);
+                Visit(function.Declaration.Body);
             }
 
             public void Visit(AstNode node)
@@ -165,7 +177,7 @@ namespace AuroraScript.Compiler.Backend.Binding
 
                 var functionId = _session.AllocateFunctionId();
                 var functionScope = _session.Scopes.Add(new ScopeInfo(
-                    _modulePlan.ModuleScope,
+                    _parentScope,
                     _modulePlan.Id,
                     functionId,
                     BackendScopeKind.Function));
@@ -768,28 +780,10 @@ namespace AuroraScript.Compiler.Backend.Binding
                     DeclareLocal(declaration.Name.Value, BackendSymbolKind.Local, declaration.Access, declaration, false);
                 }
 
-                var nestedPlan = EnsureNestedFunction(declaration);
+                if (!_functions.TryGetValue(declaration, out var nestedPlan))
+                    throw new InvalidOperationException("Nested function was not registered before body binding.");
                 nestedPlan.ParentLocalScopeId = CurrentScopeId;
                 (_nestedFunctions ??= new List<FunctionId>()).Add(nestedPlan.Id);
-            }
-
-            private FunctionPlan EnsureNestedFunction(FunctionDeclaration declaration)
-            {
-                if (_functions.TryGetValue(declaration, out var existing))
-                {
-                    return existing;
-                }
-
-                var functionId = _session.AllocateFunctionId();
-                var functionScope = _session.Scopes.Add(new ScopeInfo(
-                    _function.Scope,
-                    _modulePlan.Id,
-                    functionId,
-                    BackendScopeKind.Function));
-                var plan = new FunctionPlan(functionId, _modulePlan.Id, functionScope, declaration, FunctionVisibility.InternalOnly, isModuleFunction: false);
-                _modulePlan.AddFunction(plan);
-                _functions.Add(declaration, plan);
-                return plan;
             }
 
             private void DeclarePattern(VariableDeclaration variable)
