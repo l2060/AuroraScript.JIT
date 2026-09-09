@@ -55,6 +55,7 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo CheckInt64Array = TypeCheck(nameof(TypeCheckOps.CheckInt64Array));
         public static readonly MethodInfo CheckUInt64Array = TypeCheck(nameof(TypeCheckOps.CheckUInt64Array));
         public static readonly MethodInfo DatumNumber = typeof(ScriptDatum).GetProperty(nameof(ScriptDatum.Number)).GetMethod;
+        public static readonly MethodInfo DatumKind = typeof(ScriptDatum).GetProperty(nameof(ScriptDatum.Kind)).GetMethod;
         public static readonly MethodInfo DatumInt64 = typeof(ScriptDatum).GetProperty(nameof(ScriptDatum.Int64)).GetMethod;
         public static readonly MethodInfo DatumUInt64 = typeof(ScriptDatum).GetProperty(nameof(ScriptDatum.UInt64)).GetMethod;
         public static readonly MethodInfo DatumBoolean = typeof(ScriptDatum).GetProperty(nameof(ScriptDatum.Boolean)).GetMethod;

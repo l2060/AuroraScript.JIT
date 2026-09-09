@@ -251,7 +251,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             Expression expression,
             HostNativeObjectDescriptor descriptor)
         {
-            if (expression is NameExpression name)
+            if (expression is NameExpression name && !_savedOperands.ContainsKey(expression))
             {
                 var binding = _code.GetName(name);
                 if (binding.IsLocal &&

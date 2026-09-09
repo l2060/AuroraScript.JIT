@@ -37,7 +37,8 @@ namespace AuroraScript.Compiler.Backend.Code
 
         public static TypedModuleCode Build(
             ModulePlan module,
-            HostExportCatalog hostExports)
+            HostExportCatalog hostExports,
+            CallableReturnPredictions callableReturns = null)
         {
             ArgumentNullException.ThrowIfNull(module);
             ArgumentNullException.ThrowIfNull(hostExports);
@@ -94,6 +95,8 @@ namespace AuroraScript.Compiler.Backend.Code
                     directParameters,
                     universalReturns,
                     upvalueTypes);
+                (callableReturns ?? CallableReturnPredictions.Build(new[] { module }, hostExports))
+                    .Apply(module, generic, direct, initializer);
                 return new TypedModuleCode(generic, direct, directParameters, initializer);
             }
 
@@ -242,6 +245,8 @@ namespace AuroraScript.Compiler.Backend.Code
                 }
             }
 
+            (callableReturns ?? CallableReturnPredictions.Build(new[] { module }, hostExports))
+                .Apply(module, generic, direct, initializer);
             return new TypedModuleCode(generic, direct, directParameters, initializer);
         }
 

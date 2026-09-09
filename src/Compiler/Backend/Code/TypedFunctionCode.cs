@@ -454,6 +454,8 @@ namespace AuroraScript.Compiler.Backend.Code
         private readonly Dictionary<Expression, HostNativeObjectDescriptor> _nativeObjectTypes;
         private readonly Dictionary<ForStatement, CountedLoop> _countedLoops;
         private readonly Dictionary<FunctionCallExpression, HostNativeMethodDescriptor> _nativeValueCalls;
+        private readonly IReadOnlyDictionary<Expression, FlowValueType> _guardedTypes;
+        private readonly IReadOnlyDictionary<Expression, HostNativeObjectDescriptor> _guardedNativeTypes;
 
         public TypedFunctionCode(
             FunctionPlan function,
@@ -503,6 +505,31 @@ namespace AuroraScript.Compiler.Backend.Code
         public bool[] WrittenLocals { get; }
         public FlowValueType ReturnType { get; }
 
+        // Speculative facts are deliberately separate from the proven graph and
+        // local storage types. Emission may use them only behind value guards.
+        public TypedFunctionCode Prediction { get; internal set; }
+
+        public TypedFunctionCode WithGuardedTypes(
+            IReadOnlyDictionary<Expression, FlowValueType> guardedTypes,
+            IReadOnlyDictionary<Expression, HostNativeObjectDescriptor> guardedNativeTypes)
+        {
+            return new TypedFunctionCode(this, guardedTypes, guardedNativeTypes);
+        }
+
+        private TypedFunctionCode(TypedFunctionCode original,
+            IReadOnlyDictionary<Expression, FlowValueType> guardedTypes,
+            IReadOnlyDictionary<Expression, HostNativeObjectDescriptor> guardedNativeTypes)
+            : this(original.Function, original._names, original._declarations,
+                original._expressionTypes, original._structuralTypes, original._nativeObjectTypes,
+                original.LocalTypes, original.LocalNativeObjectTypes, original.WrittenLocals,
+                original.ReturnType, original._countedLoops, original._nativeValueCalls)
+        {
+            // A bounded overlay avoids copying the entire expression graph at
+            // every guarded operation in a large function.
+            _guardedTypes = guardedTypes;
+            _guardedNativeTypes = guardedNativeTypes;
+        }
+
         public BoundName GetName(NameExpression expression)
         {
             return expression != null && _names.TryGetValue(expression, out var binding)
@@ -519,6 +546,8 @@ namespace AuroraScript.Compiler.Backend.Code
 
         public FlowValueType GetExpressionType(Expression expression)
         {
+            if (expression != null && _guardedTypes != null && _guardedTypes.TryGetValue(expression, out var guarded))
+                return guarded;
             return expression != null && _expressionTypes.TryGetValue(expression, out var type)
                 ? type
                 : FlowValueType.Null;
@@ -557,6 +586,8 @@ namespace AuroraScript.Compiler.Backend.Code
         /// </summary>
         public HostNativeObjectDescriptor GetNativeObjectType(Expression expression)
         {
+            if (expression != null && _guardedNativeTypes != null && _guardedNativeTypes.TryGetValue(expression, out var guarded))
+                return guarded;
             return expression != null &&
                 _nativeObjectTypes.TryGetValue(expression, out var descriptor)
                     ? descriptor

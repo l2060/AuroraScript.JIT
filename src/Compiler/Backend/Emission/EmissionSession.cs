@@ -1,4 +1,5 @@
 using AuroraScript.Compiler.Backend.Builders;
+using AuroraScript.Compiler.Backend.Code;
 using AuroraScript.Compiler.Backend.Plans;
 using AuroraScript.Runtime;
 using System;
@@ -10,6 +11,10 @@ namespace AuroraScript.Compiler.Backend.Emission
     internal sealed class EmissionSession
     {
         private readonly int _dynamicDelegateCapacity;
+        private CallableReturnPredictions _callableReturns;
+
+        internal CallableReturnPredictions CallableReturns => _callableReturns ??=
+            CallableReturnPredictions.Build(CompileSession.Modules, CompileSession.HostExports);
         private PendingDynamicDelegate[] _pendingDynamicDelegates;
         private int _pendingDynamicDelegateCount;
         private int[] _registeredDynamicDelegateIds = Array.Empty<int>();

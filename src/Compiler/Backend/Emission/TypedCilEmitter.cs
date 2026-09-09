@@ -106,7 +106,8 @@ namespace AuroraScript.Compiler.Backend.Emission
 
             _moduleCode = TypedModuleCode.Build(
                 _module,
-                _session.CompileSession.HostExports);
+                _session.CompileSession.HostExports,
+                _session.CallableReturns);
             PrepareDirectMethods();
             var genericCandidates = BuildGenericCandidates();
             for (var i = 0; i < _module.Functions.Count; i++)
@@ -726,7 +727,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                 }
                 InitializeContextLocals();
                 EmitStatement(body);
-                if (returnKind is StackValueKind.Int32 or StackValueKind.UInt32 or
+                if (function.Declaration.ReturnType != null && TypedFunctionBuilder.CanCompleteNormally(body))
+                    EmitReturnValue(null);
+                else if (returnKind is StackValueKind.Int32 or StackValueKind.UInt32 or
                     StackValueKind.Boolean) _il.Emit(OpCodes.Ldc_I4_0);
                 else if (returnKind is StackValueKind.Int64 or StackValueKind.UInt64)
                     _il.Emit(OpCodes.Ldc_I8, 0L);
@@ -2047,6 +2050,9 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private StackValueKind EmitExpression(Expression expression, bool materializeVoid = true)
         {
+            if (TryEmitSavedOperand(expression, out var savedKind)) return savedKind;
+            if (expression != null && TryEmitGuardedExpression(expression, out var guardedKind))
+                return guardedKind;
             switch (expression)
             {
                 case CheckExpression check:
@@ -3990,6 +3996,21 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
 
             var valueBinding = _code.GetNativeValueCall(call);
+            if (valueBinding == null && _session.CompileSession.HostExports.TryGetNativeValue(
+                _code.GetExpressionType(receiver), out var valueOwner))
+            {
+                // A guarded receiver/argument can select a value method even
+                // though the original, unguarded graph could not bind it.
+                var argumentTypes = new Dictionary<Expression, FlowValueType>(ReferenceEqualityComparer.Instance);
+                var nativeTypes = new Dictionary<Expression, HostNativeObjectDescriptor>(ReferenceEqualityComparer.Instance);
+                foreach (var argument in call.Arguments)
+                {
+                    argumentTypes[argument] = _code.GetExpressionType(argument);
+                    if (_code.GetNativeObjectType(argument) is { } nativeType) nativeTypes[argument] = nativeType;
+                }
+                valueBinding = valueOwner.BindValueMethod(name, call.Arguments, argumentTypes,
+                    _code.GetExpressionType(receiver), nativeTypes);
+            }
             if (valueBinding != null && (!valueBinding.TakesContext || HasContextArgument))
             {
                 if (valueBinding.TakesContext) _il.Emit(OpCodes.Ldarg_0);
@@ -4693,7 +4714,8 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private bool TryEmitStringAddition(BinaryExpression expression)
         {
-            if (expression.Left is BinaryExpression left && left.Operator == Operator.Add &&
+            if (!_savedOperands.ContainsKey(expression.Left) &&
+                expression.Left is BinaryExpression left && left.Operator == Operator.Add &&
                 _code.GetExpressionType(left.Left) == FlowValueType.String &&
                 _code.GetExpressionType(left.Right) == FlowValueType.String &&
                 _code.GetExpressionType(expression.Right) == FlowValueType.String)
@@ -5010,7 +5032,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             out LocalBuilder value,
             out LocalBuilder valid)
         {
-            if (expression is NameExpression name)
+            if (expression is NameExpression name && !_savedOperands.ContainsKey(expression))
             {
                 var binding = _code.GetName(name);
                 if (binding.IsLocal &&
@@ -5040,7 +5062,7 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private bool TryGetCachedBoolean(Expression expression, out LocalBuilder value)
         {
-            if (expression is NameExpression name)
+            if (expression is NameExpression name && !_savedOperands.ContainsKey(expression))
             {
                 var binding = _code.GetName(name);
                 if (binding.IsLocal &&
@@ -5280,6 +5302,11 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitInt32Operand(Expression expression, bool truncateThroughInt64)
         {
+            if (TryEmitSavedOperand(expression, out var savedKind))
+            {
+                ConvertStackToInt32(savedKind, truncateThroughInt64);
+                return;
+            }
             if (TryEmitInt32AdditiveCoercion(expression))
             {
                 return;
@@ -6706,6 +6733,11 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitDatum(Expression expression)
         {
+            if (TryEmitSavedOperand(expression, out var savedKind))
+            {
+                ConvertToDatum(savedKind);
+                return;
+            }
             var expressionType = _code.GetExpressionType(expression);
             if (expressionType is FlowValueType.Int64 or FlowValueType.UInt64)
             {
@@ -6912,6 +6944,11 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitNumber(Expression expression)
         {
+            if (TryEmitSavedOperand(expression, out var savedKind))
+            {
+                ConvertStackToNumber(savedKind);
+                return;
+            }
             if (TryEmitCachedNumber(expression)) return;
             if (TryGetNumericConstant(expression, out var constant))
             {
@@ -7028,6 +7065,11 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitInt32Value(Expression expression)
         {
+            if (TryEmitSavedOperand(expression, out var savedKind))
+            {
+                ConvertStackToInt32(savedKind, truncateThroughInt64: false);
+                return;
+            }
             if (TryEmitInt32AdditiveCoercion(expression))
             {
                 return;
@@ -7230,6 +7272,11 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitCondition(Expression expression)
         {
+            if (TryEmitSavedOperand(expression, out var savedKind))
+            {
+                ConvertStackToBoolean(savedKind);
+                return;
+            }
             if (TryGetCachedBoolean(expression, out var value))
             {
                 _il.Emit(OpCodes.Ldloc, value);

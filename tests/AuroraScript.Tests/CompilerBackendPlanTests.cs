@@ -31,6 +31,50 @@ namespace AuroraScript.Tests;
 public sealed class CompilerBackendPlanTests
 {
     [Fact]
+    public void OrdinaryReturnSummariesPropagateThroughLongChainsAndCapturedResults()
+    {
+        var options = EngineOptions.Default.WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var script = new System.Text.StringBuilder("@module(TEST); ");
+        for (var i = 0; i < 80; i++) script.Append($"func f{i}() {{ return f{i + 1}(); }} ");
+        script.Append("func f80() { return 7; } export func run() { const value = f0(); return () => value + 1; }");
+        var module = Parse(script.ToString(), Path.GetTempPath());
+        var session = new BackendCompiler(new DynamicBuilder(options), options).CreateModulePlans([module]);
+        var plan = Assert.Single(session.Modules);
+        var code = TypedModuleCode.Build(plan);
+        Assert.Equal(FlowValueType.Number,
+            code.GetGeneric(plan.Functions.Single(function => function.Name == "f0").Id).Prediction.ReturnType);
+        var closure = Assert.Single(plan.Functions, function => function.UpvalueSlots.Length != 0);
+        Assert.Equal(FlowValueType.Number, code.GetGeneric(closure.Id).Prediction.ReturnType);
+        Assert.Equal(FlowValueType.Dynamic, code.GetGeneric(closure.Id).ReturnType);
+    }
+
+    [Fact]
+    public void OrdinaryCallablePredictionsDoNotBecomeStorageOrDirectCallProofs()
+    {
+        var options = EngineOptions.Default.WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic);
+        var module = Parse("""
+            @module(TEST);
+            func source() Number { return 7; }
+            export func run() { const alias = source; const value = alias(); return value + 1; }
+            """, Path.GetTempPath());
+        var session = new BackendCompiler(new DynamicBuilder(options), options).CreateModulePlans([module]);
+        var plan = Assert.Single(session.Modules);
+        var function = plan.Functions.Single(function => function.Name == "run");
+        var code = TypedModuleCode.Build(plan).GetGeneric(function.Id);
+        var value = function.LocalSlots.Single(slot => slot.Name == "value");
+        var body = Assert.IsType<BlockStatement>(function.Declaration.Body);
+        var returned = Assert.IsType<ReturnStatement>(body.Statements[^1]);
+        var addition = Assert.IsType<BinaryExpression>(returned.Expression);
+
+        Assert.Equal(FlowValueType.Dynamic, code.GetLocalType(value.Id));
+        Assert.Equal(FlowValueType.Dynamic, code.GetExpressionType(addition));
+        Assert.NotNull(code.Prediction);
+        Assert.Equal(FlowValueType.Number, code.Prediction.GetLocalType(value.Id));
+        Assert.Equal(FlowValueType.Number, code.Prediction.GetExpressionType(addition));
+        Assert.All(plan.Functions, candidate => Assert.False(candidate.IsDirectCallCandidate));
+    }
+
+    [Fact]
     public void TypedModuleCodeCarriesNumericEvidenceThroughRecursion()
     {
         var root = Path.GetTempPath();

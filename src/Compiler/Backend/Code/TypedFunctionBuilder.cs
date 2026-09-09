@@ -16,6 +16,37 @@ namespace AuroraScript.Compiler.Backend.Code
 {
     internal static partial class TypedFunctionBuilder
     {
+        internal static FlowValueType GetGuardedBinaryType(BinaryExpression expression,
+            Func<Expression, FlowValueType> getType)
+        {
+            return TypeAnalyzer.AnalyzeBinary(null, expression.Operator,
+                expression.Left, expression.Right, getType(expression.Left), getType(expression.Right));
+        }
+
+        internal static bool CanCompleteNormally(Statement statement)
+        {
+            // Conservatively account for an implicit return. Nested functions
+            // do not return from their enclosing function; loops may complete.
+            switch (statement)
+            {
+                case ReturnStatement or ThrowStatement:
+                    return false;
+                case BlockStatement block:
+                    foreach (var child in block.Statements)
+                        if (!CanCompleteNormally(child)) return false;
+                    return true;
+                case IfStatement conditional:
+                    return conditional.Else == null || CanCompleteNormally(conditional.Body) ||
+                        CanCompleteNormally(conditional.Else);
+                case TryStatement guarded:
+                    return (guarded.FinallyBody == null || CanCompleteNormally(guarded.FinallyBody)) &&
+                        (CanCompleteNormally(guarded.Body) ||
+                            guarded.CatchBody != null && CanCompleteNormally(guarded.CatchBody));
+                default:
+                    return true;
+            }
+        }
+
         internal sealed class FunctionBinding
         {
             public FunctionBinding(
@@ -134,7 +165,8 @@ namespace AuroraScript.Compiler.Backend.Code
             IReadOnlyDictionary<FunctionId, FlowValueType> directReturnTypes = null,
             DirectParameterType[][] directParameterTypes = null,
             IReadOnlyDictionary<FunctionId, FlowValueType> universalReturnTypes = null,
-            IReadOnlyDictionary<FunctionId, FlowValueType[]> upvalueTypes = null)
+            IReadOnlyDictionary<FunctionId, FlowValueType[]> upvalueTypes = null,
+            Func<Expression, CallableReturnPrediction?> callableReturnPrediction = null)
         {
             ArgumentNullException.ThrowIfNull(binding);
             ArgumentNullException.ThrowIfNull(hostExports);
@@ -152,7 +184,8 @@ namespace AuroraScript.Compiler.Backend.Code
                 upvalueTypes != null &&
                     upvalueTypes.TryGetValue(binding.Function.Id, out var functionUpvalues)
                         ? functionUpvalues
-                        : null);
+                        : null,
+                callableReturnPrediction);
             return analyzer.Analyze();
         }
 
@@ -531,6 +564,7 @@ namespace AuroraScript.Compiler.Backend.Code
             private readonly Dictionary<int, Dictionary<string, FlowValueType>> _localFields;
             private readonly HashSet<int> _invalidLocalFields;
             private readonly bool _optimisticDirect;
+            private readonly Func<Expression, CallableReturnPrediction?> _callableReturnPrediction;
             private bool _changed;
             private FlowValueType _passReturnType;
             private bool _sawReturn;
@@ -545,9 +579,11 @@ namespace AuroraScript.Compiler.Backend.Code
                 IReadOnlyDictionary<FunctionId, FlowValueType> directReturnTypes,
                 DirectParameterType[][] directParameterTypes,
                 IReadOnlyDictionary<FunctionId, FlowValueType> universalReturnTypes,
-                FlowValueType[] upvalueTypes)
+                FlowValueType[] upvalueTypes,
+                Func<Expression, CallableReturnPrediction?> callableReturnPrediction)
             {
                 _module = module;
+                _callableReturnPrediction = callableReturnPrediction;
                 _function = function;
                 _upvalueTypes = upvalueTypes;
                 _names = names;
@@ -721,6 +757,8 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     returnType = sequentialReturn;
                 }
+                if (CanCompleteNormally(body as Statement))
+                    returnType = FlowValueTypeFacts.Merge(returnType, FlowValueType.Null);
                 var declaredReturnType = FlowValueTypeFacts.FromCheckedTypeName(
                     _function.Declaration?.ReturnType?.Name);
                 if (declaredReturnType == FlowValueType.None)
@@ -1149,6 +1187,12 @@ namespace AuroraScript.Compiler.Backend.Code
                         {
                             type = universalReturn;
                         }
+                        else if (_callableReturnPrediction?.Invoke(call.Target) is CallableReturnPrediction predictedReturn)
+                        {
+                            // A prediction is analyzed in a separate graph. It must
+                            // never become a proof or select a direct-call ABI.
+                            type = predictedReturn.Type;
+                        }
                         else if (_function.ImportedNativeCalls.TryGetValue(
                                 call,
                                 out var importedNative) &&
@@ -1309,6 +1353,9 @@ namespace AuroraScript.Compiler.Backend.Code
 
             private HostNativeObjectDescriptor InferNativeObjectType(Expression expression)
             {
+                if (expression is FunctionCallExpression predictedCall &&
+                    _callableReturnPrediction?.Invoke(predictedCall.Target)?.NativeObject is { } predictedNative)
+                    return predictedNative;
                 if (_hostExports == null)
                 {
                     return null;
@@ -1614,6 +1661,10 @@ namespace AuroraScript.Compiler.Backend.Code
                 }
                 if (expression is NameExpression moduleName && TryGetModuleValue(moduleName, out var moduleValue))
                     return moduleValue.StructuralType;
+
+                if (expression is FunctionCallExpression predictedCall &&
+                    _callableReturnPrediction?.Invoke(predictedCall.Target)?.StructuralType is { } predictedStructural)
+                    return predictedStructural;
 
                 if (expression is FunctionCallExpression call &&
                     call.Target is NameExpression target &&
@@ -3209,7 +3260,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 }
             }
 
-            private static FlowValueType AnalyzeBinary(
+            public static FlowValueType AnalyzeBinary(
                 TypeAnalyzer analyzer,
                 Operator op,
                 Expression leftExpression,
