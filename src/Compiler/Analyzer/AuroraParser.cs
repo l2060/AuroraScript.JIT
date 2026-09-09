@@ -3255,13 +3255,7 @@ namespace AuroraScript.Compiler.Analyzer
 
             protected override void VisitFunction(FunctionDeclaration node)
             {
-                if (!(node.IsNative &&
-                    node.ReturnType != null &&
-                    node.ReturnType.Qualifier == null &&
-                    string.Equals(
-                        node.ReturnType.Name,
-                        "void",
-                        StringComparison.Ordinal)))
+                if (!TypeReferenceFacts.IsVoid(node.ReturnType))
                 {
                     Validate(node.ReturnType);
                 }

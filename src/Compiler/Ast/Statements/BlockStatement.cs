@@ -18,6 +18,12 @@ namespace AuroraScript.Compiler.Ast.Statements
         {
         }
 
+        // Analysis-only view: module statements retain their lexical module parent.
+        internal static BlockStatement CreateView(IReadOnlyList<Statement> statements)
+        {
+            return new BlockStatement { _statements = new List<Statement>(statements) };
+        }
+
         public override void Accept(IAstVisitor visitor)
         {
             visitor.AcceptBlock(this);

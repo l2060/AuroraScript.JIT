@@ -102,6 +102,7 @@ namespace AuroraScript.Compiler.Backend
             ownerName = null;
             if (string.IsNullOrEmpty(alias) ||
                 binding.IsLocal ||
+                binding.IsContext ||
                 binding.Upvalue.IsValid)
             {
                 return false;

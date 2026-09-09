@@ -1,4 +1,6 @@
 using AuroraScript.Hosting;
+using AuroraScript.Compiler.Ast.Expressions;
+using System.Collections.Generic;
 using AuroraScript.Runtime.Types;
 using System;
 
@@ -11,6 +13,53 @@ namespace AuroraScript.Compiler.Backend.Code
     /// </summary>
     internal static class HostExportArgumentFacts
     {
+        public static bool TrySelectOverload(
+            HostExportDescriptor descriptor,
+            IReadOnlyList<Expression> arguments,
+            Func<Expression, FlowValueType> getType,
+            Func<Expression, Type> getClrType,
+            out HostExportDescriptor selected)
+        {
+            HostExportDescriptor match = null;
+            var bestCost = int.MaxValue;
+            var ambiguous = false;
+            for (var candidate = descriptor; candidate != null; candidate = candidate.NextOverload)
+            {
+                if (arguments.Count < candidate.RequiredScriptParameterCount ||
+                    candidate.UseDynamicForExtraArguments &&
+                        arguments.Count > candidate.ParameterKinds.Length)
+                {
+                    continue;
+                }
+                var provided = Math.Min(arguments.Count, candidate.ParameterKinds.Length);
+                var compatible = true;
+                for (var i = 0; i < provided; i++)
+                {
+                    if (HostExportArgumentFacts.CanPass(
+                            candidate.ParameterKinds[i],
+                            candidate.GetScriptParameterType(i),
+                            getType(arguments[i]),
+                            getClrType?.Invoke(arguments[i])))
+                    {
+                        continue;
+                    }
+                    compatible = false;
+                    break;
+                }
+                if (!compatible) continue;
+                var cost = 0;
+                for (var i = 0; i < Math.Min(arguments.Count, candidate.ParameterKinds.Length); i++)
+                    cost += HostExportArgumentFacts.ConversionCost(candidate.ParameterKinds[i], getType(arguments[i]));
+                if (cost > bestCost) continue;
+                if (cost == bestCost) { ambiguous = true; continue; }
+                match = candidate;
+                bestCost = cost;
+                ambiguous = false;
+            }
+            selected = ambiguous ? null : match;
+            return selected != null;
+        }
+
         /// <param name="parameterKind">Declared host representation of the parameter.</param>
         /// <param name="parameterType">CLR type of the parameter.</param>
         /// <param name="argumentType">Proven flow type of the argument.</param>

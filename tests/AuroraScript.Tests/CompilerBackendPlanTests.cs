@@ -16,6 +16,8 @@ using AuroraScript.Runtime.Types;
 using AuroraScript.Source;
 using AuroraScript.Tokens;
 using System;
+using System.Threading.Tasks;
+using AuroraScript.Tests.Infrastructure;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
@@ -1432,11 +1434,15 @@ public sealed class CompilerBackendPlanTests
     }
 
     [Fact]
-    public void ModuleConstInliningEmitsFoldedValuesInModuleInitializer()
+    public async Task ModuleConstInliningEmitsFoldedValuesInModuleInitializer()
     {
-        var root = Path.GetTempPath();
-        var module = Parse(
-            """
+        using var workspace = new TestWorkspace();
+#if NET9_0_OR_GREATER
+        var mode = CompilationMode.Persistence;
+#else
+        var mode = CompilationMode.Dynamic;
+#endif
+        var (_, domain) = await workspace.CompileModuleAsync("""
             @module(TEST);
             export const NUM = 3.141592678987654321;
             export const STR = 'this is string';
@@ -1445,22 +1451,18 @@ public sealed class CompilerBackendPlanTests
             export const COMPLEX = BASE * NUM + 5;
             export const TAG = BASE + '_' + 1;
             export const TEMPLATE = STR + BASE + '_' + TAG;
-            """,
-            root);
-        var options = EngineOptions.Default
-            .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(root))
-            .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
-            .WithOptimization(optimization => optimization.ModuleConstInlining = true);
-        var builder = new RecordingBuilder(options);
-        var backend = new BackendCompiler(builder, options);
-        var expectedNum = 3.141592678987654321d;
-
-        var session = backend.CreateModulePlans([module]);
-        new EmissionSession(session, builder, emitExecutableCode: true).Emit();
-
-        Assert.Contains(builder.NumberLoads, number => Math.Abs(number - (10 * expectedNum + 5)) < 1e-12);
-        Assert.Contains("10_1", builder.StringLoads);
-        Assert.Contains("this is string10_10_1", builder.StringLoads);
+            export func values() { return [COMPLEX, TAG, TEMPLATE, BOOL]; }
+            """, mode, enableModuleConstInlining: true);
+        using (domain)
+            ScriptAssert.Equal(new object[] { 10 * 3.141592678987654321d + 5,
+                "10_1", "this is string10_10_1", true }, TestWorkspace.Execute(domain, "values"));
+#if NET9_0_OR_GREATER
+        var initializer = Assembly.Load(File.ReadAllBytes(Path.Combine(workspace.Root, "test-output.dll")))
+            .GetTypes().SelectMany(type => type.GetMethods()).Single(method => method.Name == "Initialize");
+        var calls = StringOptimizationTests.GetCalls(initializer);
+        Assert.DoesNotContain(calls, call => call.DeclaringType == typeof(ValueOps) ||
+            call.DeclaringType == typeof(string) && call.Name == nameof(string.Concat));
+#endif
     }
 
     [Fact]

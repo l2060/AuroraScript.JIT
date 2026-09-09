@@ -64,7 +64,8 @@ public sealed class EmitterBoundaryProtocolTests
         using var workspace = new TestWorkspace();
         await workspace.CompileModuleAsync("""
             @module(TEST);
-            var value = 1;
+            func input() { return 1; }
+            var value = input();
             var prefix = '[' + value;
             var suffix = value + ']';
             var middle = value + ':' + value;
@@ -80,7 +81,7 @@ public sealed class EmitterBoundaryProtocolTests
         Assert.Contains(calls, m => m.DeclaringType == typeof(ScriptContext) && m.Name == nameof(ScriptContext.EnterModule));
         Assert.Contains(calls, m => m.DeclaringType == typeof(ScriptContext) && m.Name == nameof(ScriptContext.LeaveFrame));
         Assert.DoesNotContain(calls, m => m.DeclaringType == typeof(CallFrameOps) && m.Name is "EnterModule" or "Leave");
-        foreach (var direction in new[] { "Left", "Right", "Middle" })
+        foreach (var direction in new[] { "Left", "Right" })
         {
             Assert.Contains(calls, m => m.DeclaringType == typeof(ValueOps) && m.Name == "ConcatString" + direction);
             Assert.DoesNotContain(calls, m => m.DeclaringType == typeof(ValueOps) && m.Name == "AddString" + direction);

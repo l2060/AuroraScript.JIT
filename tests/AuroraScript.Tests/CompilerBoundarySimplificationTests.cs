@@ -45,8 +45,10 @@ public sealed class CompilerBoundarySimplificationTests
         using var workspace = new TestWorkspace();
         var (_, domain) = await workspace.CompileModuleAsync("""
             @module(TEST);
-            var a = 2;
-            var b = 3;
+            func input() { return 2; }
+            var a = input();
+            func other() { return 3; }
+            var b = other();
             var comparisons = [a == b, a != b, a < b, a <= b, a > b, a >= b];
             var kind = typeof a;
             var condition = (a < b) && (a != b);

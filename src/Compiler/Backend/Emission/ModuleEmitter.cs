@@ -55,9 +55,9 @@ namespace AuroraScript.Compiler.Backend.Emission
             ModuleInitializerEmitter initializerEmitter = null;
             if (_session.EmitExecutableCode)
             {
-                initializerEmitter = new ModuleInitializerEmitter(_session, module);
-                initializerEmitter.Define();
                 typed = new TypedCilEmitter(_session, module);
+                initializerEmitter = new ModuleInitializerEmitter(_session, module, typed);
+                initializerEmitter.Define();
                 typed.Prepare();
             }
 

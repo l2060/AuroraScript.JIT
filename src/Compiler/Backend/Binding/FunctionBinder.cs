@@ -36,6 +36,8 @@ namespace AuroraScript.Compiler.Backend.Binding
             {
                 BindFunction(session, modulePlan, modulePlan.Functions[i], functions);
             }
+            new FunctionBodyBinder(session, modulePlan, modulePlan.InitializerFunction, functions)
+                .BindInitializerMembers();
         }
 
         private static void RegisterModuleInitializerFunctions(
@@ -201,6 +203,11 @@ namespace AuroraScript.Compiler.Backend.Binding
                 _scopeStack = new Stack<int>();
             }
 
+            public void BindInitializerMembers()
+            {
+                BindImportedNativeCalls(_function.Declaration.Body);
+            }
+
             public void Bind()
             {
                 var declaration = _function.Declaration;
@@ -228,6 +235,10 @@ namespace AuroraScript.Compiler.Backend.Binding
 
                     CollectDeclarations(declaration.Body);
                     DeclareUsedContexts(declaration.Body);
+                    if (TypeReferenceFacts.IsVoid(declaration.ReturnType))
+                    {
+                        VoidReturnValidator.Validate(declaration);
+                    }
                     ValidateNativeContract(declaration);
                 }
                 finally
@@ -415,10 +426,6 @@ namespace AuroraScript.Compiler.Backend.Binding
                         declaration,
                         $"Native function '{declaration.Name.Value}' requires a declared return type.");
                 }
-                if (TypeReferenceFacts.IsVoid(declaration.ReturnType))
-                {
-                    NativeVoidReturnValidator.Validate(declaration);
-                }
                 ValidateNativeDefaults(declaration);
                 for (var i = 0; i < declaration.Parameters.Count; i++)
                 {
@@ -433,18 +440,18 @@ namespace AuroraScript.Compiler.Backend.Binding
                 }
             }
 
-            private sealed class NativeVoidReturnValidator
+            private sealed class VoidReturnValidator
             {
                 private readonly FunctionDeclaration _function;
 
-                private NativeVoidReturnValidator(FunctionDeclaration function)
+                private VoidReturnValidator(FunctionDeclaration function)
                 {
                     _function = function;
                 }
 
                 public static void Validate(FunctionDeclaration function)
                 {
-                    new NativeVoidReturnValidator(function).Visit(function.Body);
+                    new VoidReturnValidator(function).Visit(function.Body);
                 }
 
                 private void Visit(AstNode node)
@@ -461,7 +468,7 @@ namespace AuroraScript.Compiler.Backend.Binding
                         throw new AuroraCompilationException(
                             AuroraCompilationStage.Binding,
                             statement,
-                            $"Native void function '{_function.Name.Value}' cannot return a value.");
+                            $"{(_function.IsNative ? "Native void" : "Void")} function '{_function.Name?.Value ?? "<lambda>"}' cannot return a value.");
                     }
                     var visitor = new ChildVisitor(this);
                     AstTraversal.VisitChildren(node, ref visitor);
@@ -469,9 +476,9 @@ namespace AuroraScript.Compiler.Backend.Binding
 
                 private readonly struct ChildVisitor : IAstChildVisitor
                 {
-                    private readonly NativeVoidReturnValidator _owner;
+                    private readonly VoidReturnValidator _owner;
 
-                    public ChildVisitor(NativeVoidReturnValidator owner)
+                    public ChildVisitor(VoidReturnValidator owner)
                     {
                         _owner = owner;
                     }

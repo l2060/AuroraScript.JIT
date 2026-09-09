@@ -17,12 +17,16 @@ namespace AuroraScript.Compiler.Backend.Code
         private TypedModuleCode(
             TypedFunctionCode[] generic,
             TypedFunctionCode[] direct,
-            DirectParameterType[][] directParameters)
+            DirectParameterType[][] directParameters,
+            TypedFunctionCode initializer)
         {
+            Initializer = initializer;
             _generic = generic;
             _direct = direct;
             _directParameters = directParameters;
         }
+
+        public TypedFunctionCode Initializer { get; }
 
         public static TypedModuleCode Build(ModulePlan module)
         {
@@ -51,6 +55,7 @@ namespace AuroraScript.Compiler.Backend.Code
             var direct = new TypedFunctionCode[size];
             var directParameters = new DirectParameterType[size][];
             var bindings = TypedFunctionBuilder.BindModule(module);
+            var initializerBinding = TypedFunctionBuilder.Bind(module, module.InitializerFunction);
             var returns = new Dictionary<FunctionId, FlowValueType>();
             for (var i = 0; i < module.Functions.Count; i++)
             {
@@ -75,7 +80,10 @@ namespace AuroraScript.Compiler.Backend.Code
             }
 
             var upvalueTypes = CapturedCellTypes.Analyze(module, generic);
-            if (CanAnalyzeIndependently(module, bindings))
+            var initializer = TypedFunctionBuilder.Analyze(
+                initializerBinding, hostExports, directReturnTypes: returns,
+                directParameterTypes: directParameters, universalReturnTypes: universalReturns);
+            if (!initializerBinding.HasDirectFunctionReference && CanAnalyzeIndependently(module, bindings))
             {
                 AnalyzeIndependentFunctions(
                     module,
@@ -86,7 +94,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     directParameters,
                     universalReturns,
                     upvalueTypes);
-                return new TypedModuleCode(generic, direct, directParameters);
+                return new TypedModuleCode(generic, direct, directParameters, initializer);
             }
 
             var converged = false;
@@ -102,6 +110,8 @@ namespace AuroraScript.Compiler.Backend.Code
                     item.Value.ResetTransientEvidence();
                 }
                 CollectParameterEvidence(module, functions, generic, direct, evidence);
+                new DirectCallCollector(initializer, functions, evidence)
+                    .Visit(module.InitializerFunction.Declaration.Body);
                 var parameterDemands = CollectNativeParameterDemands(
                     module,
                     generic,
@@ -176,6 +186,9 @@ namespace AuroraScript.Compiler.Backend.Code
                     }
                 }
                 universalReturns = nextUniversalReturns;
+                initializer = TypedFunctionBuilder.Analyze(
+                    initializerBinding, hostExports, directReturnTypes: returns,
+                    directParameterTypes: directParameters, universalReturnTypes: universalReturns);
 
                 // A closure cell is typed from the declaring function's freshly
                 // rebuilt code, so the fact only reaches the closure body on the
@@ -205,6 +218,9 @@ namespace AuroraScript.Compiler.Backend.Code
                     conservativeReturns[module.Functions[i].Id] = FlowValueType.Dynamic;
                 }
 
+                initializer = TypedFunctionBuilder.Analyze(
+                    initializerBinding, hostExports, directReturnTypes: conservativeReturns,
+                    directParameterTypes: directParameters, universalReturnTypes: universalReturns);
                 for (var i = 0; i < module.Functions.Count; i++)
                 {
                     var function = module.Functions[i];
@@ -226,7 +242,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 }
             }
 
-            return new TypedModuleCode(generic, direct, directParameters);
+            return new TypedModuleCode(generic, direct, directParameters, initializer);
         }
 
         private static bool CanAnalyzeIndependently(

@@ -14,7 +14,7 @@ using System.Reflection;
 
 namespace AuroraScript.Compiler.Backend.Code
 {
-    internal static class TypedFunctionBuilder
+    internal static partial class TypedFunctionBuilder
     {
         internal sealed class FunctionBinding
         {
@@ -433,7 +433,8 @@ namespace AuroraScript.Compiler.Backend.Code
                     constant.Value,
                     constant.NumericHint,
                     hasConstant,
-                    isDeclaredOnly);
+                    isDeclaredOnly,
+                    isContext: _function.IsModuleInitializer && _module.Declaration.TryGetContext(name, out _));
             }
 
             private LocalSlotId ResolveLocal(string name)
@@ -496,7 +497,7 @@ namespace AuroraScript.Compiler.Backend.Code
 
         }
 
-        private sealed class TypeAnalyzer
+        private sealed partial class TypeAnalyzer
         {
             private readonly ModulePlan _module;
             private readonly FunctionPlan _function;
@@ -772,6 +773,8 @@ namespace AuroraScript.Compiler.Backend.Code
                 _changed = false;
                 _passReturnType = FlowValueType.None;
                 _sawReturn = false;
+                _moduleValues?.Clear();
+                _moduleValueEpoch = 0;
                 _expressionTypes.Clear();
                 _nativeValueCalls?.Clear();
                 if (clearObjectFacts)
@@ -792,6 +795,11 @@ namespace AuroraScript.Compiler.Backend.Code
                         for (var i = 0; i < block.Statements.Count; i++) AnalyzeStatement(block.Statements[i]);
                         return;
                     case VariableDeclaration variable:
+                        if (_function.IsModuleInitializer)
+                        {
+                            AnalyzeModuleVariable(variable);
+                            return;
+                        }
                         if (variable.Pattern != null)
                         {
                             AnalyzeExpression(variable.Initializer);
@@ -997,7 +1005,7 @@ namespace AuroraScript.Compiler.Backend.Code
                         type = GetTypedDocumentFlowType(tdoc, inferredTDocType);
                         break;
                     case LiteralExpression literal:
-                        type = GetLiteralType(literal);
+                        type = LiteralTypeFacts.GetType(literal);
                         break;
                     case NameExpression name:
                         type = AnalyzeName(name);
@@ -1247,7 +1255,12 @@ namespace AuroraScript.Compiler.Backend.Code
                         type = AnalyzeExpression(entry.Value);
                         break;
                     case TemplateStringExpression template:
-                        for (var i = 0; i < template.Parts.Count; i++) AnalyzeExpression(template.Parts[i].Expression);
+                        for (var i = 0; i < template.Parts.Count; i++)
+                        {
+                            if (template.Parts[i].IsLiteral) continue;
+                            AnalyzeExpression(template.Parts[i].Expression);
+                            InvalidateModuleCoercion(template.Parts[i].Expression);
+                        }
                         type = FlowValueType.String;
                         break;
                     case IncludedExpression included:
@@ -1290,6 +1303,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     _nativeObjectTypes[expression] = nativeObjectType;
                 }
+                InvalidateModuleValuesAfter(expression);
                 return type;
             }
 
@@ -1321,6 +1335,12 @@ namespace AuroraScript.Compiler.Backend.Code
                             check.AssertedType,
                             out var asserted):
                         return asserted;
+                    case NameExpression name when _function.IsModuleInitializer &&
+                        _module.Declaration.TryGetContext(name.Identifier?.Value, out var context) &&
+                        TypeReferenceFacts.TryGetNativeObject(_hostExports, context.DeclaredType, out var contextType):
+                        return contextType;
+                    case NameExpression name when TryGetModuleValue(name, out var moduleValue):
+                        return moduleValue.NativeType;
                     case NameExpression name
                         when _names.TryGetValue(name, out var binding) && binding.IsLocal:
                         return _localNativeObjectTypes[binding.Local.Value];
@@ -1592,6 +1612,8 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     return _localStructuralTypes[binding.Local.Value];
                 }
+                if (expression is NameExpression moduleName && TryGetModuleValue(moduleName, out var moduleValue))
+                    return moduleValue.StructuralType;
 
                 if (expression is FunctionCallExpression call &&
                     call.Target is NameExpression target &&
@@ -2047,6 +2069,11 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     return FlowValueType.Dynamic;
                 }
+                if (binding.IsContext && _module.Declaration.TryGetContext(binding.Name, out var context))
+                {
+                    var contextType = TypeReferenceFacts.GetFlowType(_module.Declaration, context.DeclaredType, _hostExports);
+                    return contextType == FlowValueType.None ? FlowValueType.Object : contextType;
+                }
                 if (binding.HasConstant)
                 {
                     return FromDatum(
@@ -2062,7 +2089,8 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     return GetUpvalueType(binding.Upvalue);
                 }
-                return FlowValueType.Dynamic;
+                return TryGetModuleValue(name, out var moduleValue)
+                    ? moduleValue.Type : FlowValueType.Dynamic;
             }
 
             private FlowValueType GetUpvalueType(UpvalueSlotId slot)
@@ -2376,6 +2404,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 TypeDeclaration structuralType,
                 HostNativeObjectDescriptor nativeObjectType = null)
             {
+                WriteModuleTarget(target, type, structuralType, nativeObjectType);
                 if (target is NameExpression name &&
                     _names.TryGetValue(name, out var binding) &&
                     binding.IsLocal)
@@ -2574,7 +2603,7 @@ namespace AuroraScript.Compiler.Backend.Code
                             check.AssertedType,
                             _hostExports) == FlowValueType.Int32;
                     case LiteralExpression literal:
-                        return GetLiteralType(literal) == FlowValueType.Int32;
+                        return LiteralTypeFacts.GetType(literal) == FlowValueType.Int32;
                     case NameExpression name:
                         return IsIntegerName(name, integral);
                     case GetPropertyExpression property:
@@ -4245,35 +4274,6 @@ namespace AuroraScript.Compiler.Backend.Code
             {
                 return op == Operator.PreIncrement || op == Operator.PostIncrement ||
                     op == Operator.PreDecrement || op == Operator.PostDecrement;
-            }
-
-            private static FlowValueType GetNumberLiteralType(NumberToken number)
-            {
-                return number.Suffix switch
-                {
-                    NumericLiteralSuffix.Number => FlowValueType.Number,
-                    NumericLiteralSuffix.Int32 => FlowValueType.Int32,
-                    NumericLiteralSuffix.UInt32 => FlowValueType.UInt32,
-                    NumericLiteralSuffix.Int64 => FlowValueType.Int64,
-                    NumericLiteralSuffix.UInt64 => FlowValueType.UInt64,
-                    _ when number.HasFractionOrExponent => FlowValueType.Number,
-                    _ => IsExactInt32(number.NumberValue)
-                        ? FlowValueType.Int32
-                        : FlowValueType.Number
-                };
-            }
-
-            private static FlowValueType GetLiteralType(LiteralExpression literal)
-            {
-                return literal.Token switch
-                {
-                    NullToken => FlowValueType.Null,
-                    BooleanToken => FlowValueType.Boolean,
-                    NumberToken number => GetNumberLiteralType(number),
-                    StringToken => FlowValueType.String,
-                    RegexToken => FlowValueType.Object,
-                    _ => FlowValueType.Dynamic
-                };
             }
 
             private sealed class SequentialReturnTypeAnalyzer

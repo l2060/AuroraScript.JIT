@@ -1,6 +1,6 @@
 ﻿
 
-export func arrayWork(Array array) {
+export func arrayWork(Array array) void {
 	for (var i = 0; i <= 10;i++) array.push(i,1,2);
 	var len = array.length;
 	for (var n = 0 ; n < len; n++) {

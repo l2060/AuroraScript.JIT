@@ -506,14 +506,6 @@ public sealed class NativeFunctionTests
             returnedValue.Message,
             StringComparison.Ordinal);
 
-        var ordinaryVoid = await Assert.ThrowsAsync<AuroraCompilationException>(
-            () => workspace.CompileModuleAsync(
-                "func value() void { return; }"));
-        Assert.Contains(
-            "Unknown type 'void'",
-            ordinaryVoid.Message,
-            StringComparison.Ordinal);
-
         var voidParameter = await Assert.ThrowsAsync<AuroraCompilationException>(
             () => workspace.CompileModuleAsync(
                 "native func value(void input) Number { return 1; }"));

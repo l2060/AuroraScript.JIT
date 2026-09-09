@@ -395,7 +395,8 @@ namespace AuroraScript.Compiler.Backend.Code
             ScriptDatum constant,
             NumericLiteralSuffix constantNumericHint,
             bool hasConstant,
-            bool isDeclaredOnly = false)
+            bool isDeclaredOnly = false,
+            bool isContext = false)
         {
             Name = name;
             Local = local;
@@ -406,6 +407,7 @@ namespace AuroraScript.Compiler.Backend.Code
             ConstantNumericHint = constantNumericHint;
             HasConstant = hasConstant;
             IsDeclaredOnly = isDeclaredOnly;
+            IsContext = isContext;
         }
 
         public string Name { get; }
@@ -417,8 +419,10 @@ namespace AuroraScript.Compiler.Backend.Code
         public NumericLiteralSuffix ConstantNumericHint { get; }
         public bool HasConstant { get; }
         public bool IsDeclaredOnly { get; }
+        public bool IsContext { get; }
         public bool IsLocal => Local.IsValid && !ModuleSymbol.IsValid;
         public bool IsUnshadowedGlobal =>
+            !IsContext &&
             !Local.IsValid &&
             !Upvalue.IsValid &&
             !HasConstant &&

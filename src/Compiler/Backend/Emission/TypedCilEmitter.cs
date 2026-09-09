@@ -4113,44 +4113,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return false;
             }
 
-            HostExportDescriptor match = null;
-            var bestCost = int.MaxValue;
-            var ambiguous = false;
-            for (var candidate = descriptor; candidate != null; candidate = candidate.NextOverload)
-            {
-                if (call.Arguments.Count < candidate.RequiredScriptParameterCount ||
-                    candidate.UseDynamicForExtraArguments &&
-                        call.Arguments.Count > candidate.ParameterKinds.Length)
-                {
-                    continue;
-                }
-                var provided = Math.Min(call.Arguments.Count, candidate.ParameterKinds.Length);
-                var compatible = true;
-                for (var i = 0; i < provided; i++)
-                {
-                    if (HostExportArgumentFacts.CanPass(
-                            candidate.ParameterKinds[i],
-                            candidate.GetScriptParameterType(i),
-                            _code.GetExpressionType(call.Arguments[i]),
-                            _code.GetNativeObjectType(call.Arguments[i])?.ClrType))
-                    {
-                        continue;
-                    }
-                    compatible = false;
-                    break;
-                }
-                if (!compatible) continue;
-                var cost = 0;
-                for (var i = 0; i < Math.Min(call.Arguments.Count, candidate.ParameterKinds.Length); i++)
-                    cost += HostExportArgumentFacts.ConversionCost(candidate.ParameterKinds[i], _code.GetExpressionType(call.Arguments[i]));
-                if (cost > bestCost) continue;
-                if (cost == bestCost) { ambiguous = true; continue; }
-                match = candidate;
-                bestCost = cost;
-                ambiguous = false;
-            }
-            descriptor = ambiguous ? null : match;
-            return descriptor != null;
+            return HostExportArgumentFacts.TrySelectOverload(
+                descriptor, call.Arguments, _code.GetExpressionType,
+                argument => _code.GetNativeObjectType(argument)?.ClrType, out descriptor);
         }
 
         private StackValueKind EmitHostExportCall(
@@ -4533,6 +4498,13 @@ namespace AuroraScript.Compiler.Backend.Emission
         private StackValueKind EmitName(NameExpression expression)
         {
             var binding = _code.GetName(expression);
+            if (binding.IsContext)
+            {
+                _il.Emit(OpCodes.Ldarg_0);
+                _il.Emit(OpCodes.Ldfld, TypedRuntimeMetadata.ContextUserState);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
+                return StackValueKind.Datum;
+            }
             if (binding.HasConstant)
             {
                 return EmitConstant(binding.Constant, _code.GetExpressionType(expression));

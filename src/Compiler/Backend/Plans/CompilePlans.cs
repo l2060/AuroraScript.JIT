@@ -160,6 +160,7 @@ namespace AuroraScript.Compiler.Backend.Plans
         public FunctionDeclaration Declaration { get; }
         public string Name { get; }
         public bool IsModuleFunction { get; }
+        public bool IsModuleInitializer { get; init; }
         public FunctionVisibility Visibility { get; set; }
         public FunctionCallConvention CallConvention { get; set; }
         public MethodInfo Method { get; set; }
@@ -204,6 +205,18 @@ namespace AuroraScript.Compiler.Backend.Plans
             Source = declaration.Source;
             PathHash = Source.FullPath.GetHashCode();
             ModuleScope = ScopeId.Invalid;
+            var initializer = new FunctionDeclaration(
+                MemberAccess.Internal, null, null,
+                BlockStatement.CreateView(declaration.Statements), FunctionFlags.General)
+            {
+                Parent = declaration
+            };
+            InitializerFunction = new FunctionPlan(
+                FunctionId.Invalid, id, ScopeId.Invalid, initializer,
+                FunctionVisibility.InternalOnly, isModuleFunction: false)
+            {
+                IsModuleInitializer = true
+            };
         }
 
         public ModuleId Id { get; }
@@ -213,6 +226,7 @@ namespace AuroraScript.Compiler.Backend.Plans
         public int PathHash { get; }
         public ScopeId ModuleScope { get; set; }
         public MethodInfo Initializer { get; set; }
+        public FunctionPlan InitializerFunction { get; }
         public List<FunctionPlan> Functions => _functions;
         public bool HasInlineConstants => _inlineConstants != null && _inlineConstants.Count != 0;
 

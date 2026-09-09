@@ -167,6 +167,7 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
         "uint32",
         "int64",
         "uint64",
+        "void",
         "JSON",
         "Conv8",
         "Math",

@@ -40,7 +40,7 @@ namespace AuroraScript.Compiler.Analyzer
 
         protected override void VisitFunction(FunctionDeclaration node)
         {
-            if (!node.IsNative || !TypeReferenceFacts.IsVoid(node.ReturnType))
+            if (!TypeReferenceFacts.IsVoid(node.ReturnType))
             {
                 ValidateReference(node.ReturnType);
             }

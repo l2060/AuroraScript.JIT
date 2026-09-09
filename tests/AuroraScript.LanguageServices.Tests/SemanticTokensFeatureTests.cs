@@ -119,6 +119,19 @@ public sealed class SemanticTokensFeatureTests : IDisposable
         Assert.True(result.Tokens.SequenceEqual(result.Tokens.OrderBy(token => token.Line).ThenBy(token => token.Character)));
     }
 
+    [Theory]
+    [InlineData("export func notify(String message) void { return; }")]
+    [InlineData("export native func notify(String message) void { return; }")]
+    public void VoidReturnTypesAreHighlightedWithoutDiagnostics(string source)
+    {
+        var service = CreateService(_root);
+        Assert.Empty(service.GetDiagnostics("void-return.as", source));
+        var result = service.GetSemanticTokens("void-return.as", source);
+        AssertToken(source, result, "void", AuroraSemanticTokenTypes.Type);
+        AssertToken(source, result, "String", AuroraSemanticTokenTypes.Type);
+        AssertToken(source, result, "notify", AuroraSemanticTokenTypes.Function);
+    }
+
     [Fact]
     public void HighlightsContextualNativeFunctionModifier()
     {

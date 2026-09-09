@@ -3,6 +3,7 @@
 var _testCases = [];
 
 func main() {
+	var cases = _testCases as Array;
 	var modules = global.modules;
 	var moduleNames = Object.keys(modules);
 	console.log('===============================================================');
@@ -13,13 +14,13 @@ func main() {
 			var module = modules[moduleName];
 			for (var propName in Object.keys(module)) {
 				if (typeof module[propName] == 'function' && propName.startsWith('test')) {
-					_testCases.push({ name: propName, method: module[propName] });
+					cases.push({ name: propName, method: module[propName] });
 				}
 			}
 		}
 	}
-	console.log(_testCases);
-	for (var _case in _testCases) {
+	console.log(cases);
+	for (var _case in cases) {
 		console.log("start Test Case", _case.name);
 		_case.method();
 	}
