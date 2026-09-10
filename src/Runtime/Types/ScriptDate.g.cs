@@ -98,12 +98,12 @@ namespace AuroraScript.Runtime.Types
             }
         }
 
-        /// <summary> Native implementation for the 'ticks' property. </summary>
+        /// <summary>Reads ticks as an exact script Int64, matching the native getter.</summary>
         internal static void TICKS(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
         {
             if (thisObject is ScriptDate date)
             {
-                ScriptDatum.WriteAsNumber(ref result, date.Ticks);
+                ScriptDatum.WriteAsInt64(ref result, date.Ticks);
             }
         }
 

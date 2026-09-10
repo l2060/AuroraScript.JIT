@@ -13,10 +13,12 @@ namespace AuroraScript.Compiler.Backend.Code
         {
             private Dictionary<SymbolId, ModuleValue> _moduleValues;
             private long _moduleValueEpoch;
+            private Dictionary<NameExpression, VariableDeclaration> _moduleCachedReads;
 
             private readonly record struct ModuleValue(
                 FlowValueType Type, TypeDeclaration StructuralType,
-                HostNativeObjectDescriptor NativeType, bool IsConst, long Epoch);
+                HostNativeObjectDescriptor NativeType, bool IsConst, long Epoch,
+                VariableDeclaration CacheDeclaration = null);
 
             private bool TryGetModuleValue(NameExpression name, out ModuleValue value)
             {
@@ -26,14 +28,14 @@ namespace AuroraScript.Compiler.Backend.Code
                     return false;
                 if (value.Epoch == _moduleValueEpoch) return true;
                 if (!value.IsConst) return false;
-                value = value with { StructuralType = null };
+                value = value with { StructuralType = null, CacheDeclaration = null };
                 return true;
             }
 
-            private void AnalyzeModuleVariable(VariableDeclaration variable)
+            private void RecordModuleVariable(VariableDeclaration variable)
             {
                 if (variable.IsDeclare) return;
-                var type = variable.Initializer == null ? FlowValueType.Null : AnalyzeExpression(variable.Initializer);
+                var type = variable.Initializer == null ? FlowValueType.Null : _expressionTypes[variable.Initializer];
                 if (variable.Name == null || !_module.TryGetSymbol(variable.Name.Value, out var symbol)) return;
                 TypeDeclaration structural = null;
                 HostNativeObjectDescriptor native = null;
@@ -43,7 +45,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     _nativeObjectTypes.TryGetValue(variable.Initializer, out native);
                 }
                 _moduleValues ??= new Dictionary<SymbolId, ModuleValue>();
-                _moduleValues[symbol] = new ModuleValue(type, structural, native, variable.IsConst, _moduleValueEpoch);
+                _moduleValues[symbol] = new ModuleValue(type, structural, native, variable.IsConst, _moduleValueEpoch, variable);
             }
 
             private void WriteModuleTarget(Expression target, FlowValueType type,
@@ -59,7 +61,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     FlowValueTypeFacts.Merge(previous.Type, type),
                     ReferenceEquals(previous.StructuralType, structural) ? structural : null,
                     ReferenceEquals(previous.NativeType, native) ? native : null,
-                    previous.IsConst, _moduleValueEpoch);
+                    previous.IsConst, _moduleValueEpoch, previous.CacheDeclaration);
             }
 
             private void InvalidateModuleValuesAfter(Expression expression)
@@ -81,23 +83,36 @@ namespace AuroraScript.Compiler.Backend.Code
 
             private bool IsModulePrimitive(Expression expression)
             {
-                return _expressionTypes.TryGetValue(expression, out var type) && type is
-                    FlowValueType.Null or FlowValueType.String or FlowValueType.Boolean or
-                    FlowValueType.Int32 or FlowValueType.UInt32 or FlowValueType.Number or
-                    FlowValueType.Int64 or FlowValueType.UInt64;
+                return _expressionTypes.TryGetValue(expression, out var type) && OperationEffects.IsPrimitive(type);
             }
 
             private bool ModuleExpressionMayInvoke(Expression expression)
             {
+                if (expression is GetElementExpression read)
+                    return !IsNonInvokingIndex(read.Object, read.Index);
+                if (expression is SetElementExpression write)
+                    return !IsNonInvokingIndex(write.Object, write.Index);
                 if (expression is FunctionCallExpression or NewExpression or SpreadExpression or
-                    SetPropertyExpression or SetElementExpression or GetElementExpression) return true;
+                    SetPropertyExpression) return true;
                 // Implicit coercion may run host code just like an explicit call.
                 if (expression is BinaryExpression binary)
                     return !IsModulePrimitive(binary.Left) || !IsModulePrimitive(binary.Right);
                 if (expression is CompoundExpression compound)
                     return !IsModulePrimitive(compound.Left) || !IsModulePrimitive(compound.Right);
                 if (expression is UnaryExpression unary)
+                {
+                    // ChangeByOne only converts datum primitives; it never calls user
+                    // conversion hooks. Only the target getter/setter can invoke code.
+                    if (IsMutation(unary.Operator))
+                        return unary.Expression switch
+                        {
+                            GetElementExpression element => !IsNonInvokingIndex(element.Object, element.Index),
+                            NameExpression name => !(_names.TryGetValue(name, out var targetBinding) &&
+                                (targetBinding.IsLocal || TryGetModuleValue(name, out _))),
+                            _ => true
+                        };
                     return unary.Operator != Operator.TypeOf && !IsModulePrimitive(unary.Expression);
+                }
                 if (expression is TemplateStringExpression template)
                 {
                     foreach (var part in template.Parts)
@@ -107,6 +122,9 @@ namespace AuroraScript.Compiler.Backend.Code
                     return expression is not (LiteralExpression or NameExpression or GroupExpression or
                         AssignmentExpression or ArrayLiteralExpression or MapExpression or
                         MapKeyValueExpression or LambdaExpression);
+                if (_nativeObjectTypes.TryGetValue(property.Object, out var receiver) &&
+                    TryGetStaticPropertyName(property.Property, out var propertyName) &&
+                    receiver.TryGetField(propertyName, out _)) return false;
                 // Resolving a generated export member does not execute a script getter.
                 if (property.Object is NameExpression owner &&
                     _names.TryGetValue(owner, out var binding) &&
@@ -115,6 +133,14 @@ namespace AuroraScript.Compiler.Backend.Code
                         _module.Declaration.Imports, out var ownerName) &&
                     _hostExports.TryGetGlobal(ownerName, member, out _)) return false;
                 return true;
+            }
+
+            private bool IsNonInvokingIndex(Expression receiver, Expression index)
+            {
+                _expressionTypes.TryGetValue(index, out var indexType);
+                _expressionTypes.TryGetValue(receiver, out var receiverType);
+                _nativeObjectTypes.TryGetValue(receiver, out var native);
+                return OperationEffects.IsIntrinsicIndex(receiverType, native, indexType);
             }
         }
     }

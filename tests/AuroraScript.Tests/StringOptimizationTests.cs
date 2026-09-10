@@ -563,7 +563,9 @@ public sealed class StringOptimizationTests
         public override string ToString() => Text;
     }
 
-    internal static List<MethodBase> GetCalls(MethodInfo method)
+    internal static List<MethodBase> GetCalls(MethodInfo method) => GetCalls(method, null);
+
+    internal static List<MethodBase> GetCalls(MethodInfo method, Action<OpCode>? inspect)
     {
         var opcodes = typeof(OpCodes).GetFields(BindingFlags.Public | BindingFlags.Static)
             .Where(field => field.FieldType == typeof(OpCode))
@@ -576,6 +578,7 @@ public sealed class StringOptimizationTests
             ushort code = il[offset++];
             if (code == 0xfe) code = (ushort)(0xfe00 | il[offset++]);
             var opcode = opcodes[code];
+            inspect?.Invoke(opcode);
             if (opcode.OperandType == OperandType.InlineMethod)
                 result.Add(method.Module.ResolveMethod(BitConverter.ToInt32(il, offset))!);
             offset += opcode.OperandType switch

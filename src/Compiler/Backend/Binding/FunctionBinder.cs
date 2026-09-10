@@ -217,6 +217,16 @@ namespace AuroraScript.Compiler.Backend.Binding
 
             public void BindInitializerMembers()
             {
+                // Reuse function-local declaration storage while keeping imports
+                // and module functions bound through the module symbol table.
+                var body = _function.Declaration.Body;
+                _scopeStack.Push(AddLocalScope(-1, body));
+                foreach (var statement in _modulePlan.Declaration.Statements)
+                    if (statement is VariableDeclaration variable) DeclarePattern(variable);
+                _scopeStack.Pop();
+                _function.LocalScopes = _localScopes.ToArray();
+                _function.LocalScopeByNode = _localScopeByNode;
+                _function.LocalSlots = _localSlots.ToArray();
                 BindImportedNativeCalls(_function.Declaration.Body);
             }
 

@@ -20,6 +20,39 @@ public sealed class BuiltinNativeMigrationTests
 #if NET9_0_OR_GREATER
     [InlineData(CompilationMode.Persistence)]
 #endif
+    public async Task DateTicksPreservesInt64TypeAndPrecisionAcrossAccessPaths(CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync("""
+            @module(TEST);
+            export native func nativeTicks(Date date) int64 { return date.ticks; }
+            export func typedTicks(Date date) { return date.ticks; }
+            export func dynamicTicks(date) { return date.ticks; }
+            export func dynamicKind(date) { return typeof date.ticks; }
+            """, mode);
+        using (domain)
+        {
+            // The odd large value loses precision if either path passes through double.
+            foreach (var ticks in new[] { 0L, 638679147930000001L, DateTimeOffset.MaxValue.Ticks })
+            {
+                var date = ScriptDatum.FromDate(new ScriptDate(new DateTimeOffset(ticks, TimeSpan.Zero)));
+                foreach (var method in new[] { "nativeTicks", "typedTicks", "dynamicTicks" })
+                {
+                    var result = TestWorkspace.Execute(domain, method, arguments: [date]);
+                    Assert.Equal(ValueKind.Int64, result.Kind);
+                    Assert.Equal(ticks, result.Int64);
+                }
+                ScriptAssert.Equal("int64", TestWorkspace.Execute(domain, "dynamicKind", arguments: [date]));
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+    [InlineData(CompilationMode.OnlyRun)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
     public async Task DateDefaultFormatUsesTheInvokingEngineForNativeAndDynamicCalls(CompilationMode mode)
     {
         using var workspace = new TestWorkspace();
@@ -221,7 +254,7 @@ public sealed class BuiltinNativeMigrationTests
         ScriptAssert.Equal(new object?[] { "StringBuffer", null, "4-2anull2", "4-2anull2", "z" + Environment.NewLine }, TestWorkspace.Execute(domain, "buffer"));
         ScriptAssert.Equal(new object?[] { "HashMap", null, 1, 2, 1, new object[] { "a", "b" }, new object[] { 1, 2 }, new object[] { "a", "b" }, null, 1, 0, false }, TestWorkspace.Execute(domain, "map"));
         ScriptAssert.Equal(new object[] { "regex", true, true, false, false, true }, TestWorkspace.Execute(domain, "regex"));
-        ScriptAssert.Equal(new object?[] { "date", 2024, 2, 3, true, "2024-02-03", "2024/02/03", "number", null, null, null, "date", "date", 0 }, TestWorkspace.Execute(domain, "date"));
+        ScriptAssert.Equal(new object?[] { "date", 2024, 2, 3, true, "2024-02-03", "2024/02/03", "int64", null, null, null, "date", "date", 0 }, TestWorkspace.Execute(domain, "date"));
         ScriptAssert.Equal(new object?[] { "error", "message", new object[] { "message" }, null, "1" }, TestWorkspace.Execute(domain, "error"));
         Assert.NotEmpty(Assert.IsType<ScriptError>(TestWorkspace.Execute(domain, "errorObject").Object).StackTrace);
         ScriptAssert.Equal(4, TestWorkspace.Execute(domain, "cannotCall"));

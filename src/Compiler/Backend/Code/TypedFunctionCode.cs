@@ -523,6 +523,9 @@ namespace AuroraScript.Compiler.Backend.Code
         public bool[] WrittenLocals { get; }
         public FlowValueType ReturnType { get; }
 
+        // Reads dominated by a module declaration with no intervening callback.
+        internal Dictionary<NameExpression, VariableDeclaration> ModuleCachedReads { get; init; }
+
         // Speculative facts are deliberately separate from the proven graph and
         // local storage types. Emission may use them only behind value guards.
         internal readonly record struct PredictionFacts(FlowValueType ReturnType,
@@ -573,6 +576,7 @@ namespace AuroraScript.Compiler.Backend.Code
             // Resolve guarded calls afresh instead of inheriting the ordinary target.
             _guardedTypes = guardedTypes;
             _guardedNativeTypes = guardedNativeTypes;
+            ModuleCachedReads = original.ModuleCachedReads;
         }
 
         public BoundName GetName(NameExpression expression)

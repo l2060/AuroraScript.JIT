@@ -475,7 +475,9 @@ namespace AuroraScript.Compiler.Backend.Code
 
                 var local = ResolveLocal(name);
                 var upvalue = local.IsValid ? UpvalueSlotId.Invalid : ResolveUpvalue(name);
-                var moduleSymbol = local.IsValid || upvalue.IsValid || !_module.TryGetSymbol(name, out var symbol)
+                // Initializer variables have local storage and an observable module
+                // binding. A local slot alone does not prove that a read can use it.
+                var moduleSymbol = (local.IsValid && !_function.IsModuleInitializer) || upvalue.IsValid || !_module.TryGetSymbol(name, out var symbol)
                     ? SymbolId.Invalid
                     : symbol;
                 var directFunction = moduleSymbol.IsValid && _directFunctions.TryGetValue(moduleSymbol, out var direct)
@@ -821,7 +823,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     returnType,
                     _countedLoops,
                     _nativeCalls,
-                    _hostCalls);
+                    _hostCalls) { ModuleCachedReads = _moduleCachedReads };
             }
 
             private bool AnalyzeToFixedPoint(
@@ -846,6 +848,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 _passReturnType = FlowValueType.None;
                 _sawReturn = false;
                 _moduleValues?.Clear();
+                _moduleCachedReads?.Clear();
                 _moduleValueEpoch = 0;
                 _expressionTypes.Clear();
                 _nativeCalls?.Clear();
@@ -868,11 +871,6 @@ namespace AuroraScript.Compiler.Backend.Code
                         for (var i = 0; i < block.Statements.Count; i++) AnalyzeStatement(block.Statements[i]);
                         return;
                     case VariableDeclaration variable:
-                        if (_function.IsModuleInitializer)
-                        {
-                            AnalyzeModuleVariable(variable);
-                            return;
-                        }
                         if (variable.Pattern != null)
                         {
                             AnalyzeExpression(variable.Initializer);
@@ -887,7 +885,7 @@ namespace AuroraScript.Compiler.Backend.Code
                         }
                         if (_declarations.TryGetValue(variable, out var slot))
                         {
-                            if (variable.Initializer == null && _unobservedInitialNulls[slot.Value])
+                            if (!_function.IsModuleInitializer && variable.Initializer == null && _unobservedInitialNulls[slot.Value])
                                 return;
                             var initializerType = variable.Initializer == null
                                 ? FlowValueType.Null
@@ -922,6 +920,7 @@ namespace AuroraScript.Compiler.Backend.Code
                         {
                             AnalyzeExpression(variable.Initializer);
                         }
+                        if (_function.IsModuleInitializer) RecordModuleVariable(variable);
                         return;
                     case FunctionDeclaration:
                         return;
@@ -2126,8 +2125,10 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     return GetUpvalueType(binding.Upvalue);
                 }
-                return TryGetModuleValue(name, out var moduleValue)
-                    ? moduleValue.Type : FlowValueType.Dynamic;
+                if (!TryGetModuleValue(name, out var moduleValue)) return FlowValueType.Dynamic;
+                if (moduleValue.CacheDeclaration != null)
+                    (_moduleCachedReads ??= new())[name] = moduleValue.CacheDeclaration;
+                return moduleValue.Type;
             }
 
             private FlowValueType GetUpvalueType(UpvalueSlotId slot)
@@ -2429,7 +2430,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 WriteModuleTarget(target, type, structuralType, nativeObjectType);
                 if (target is NameExpression name &&
                     _names.TryGetValue(name, out var binding) &&
-                    binding.IsLocal)
+                    (binding.IsLocal || _function.IsModuleInitializer && binding.Local.IsValid))
                 {
                     if (IsCaptured(binding.Local))
                     {
@@ -4809,7 +4810,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     if (expression is NameExpression name &&
                         _names.TryGetValue(name, out var binding) &&
-                        binding.IsLocal)
+                        binding.Local.IsValid)
                     {
                         slot = binding.Local;
                         return true;
@@ -4943,7 +4944,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     if (expression is NameExpression name &&
                         _names.TryGetValue(name, out var binding) &&
-                        binding.IsLocal)
+                        binding.Local.IsValid)
                     {
                         slot = binding.Local;
                         return true;

@@ -567,7 +567,8 @@ namespace AuroraScript.Compiler.Backend.Emission
             DirectParameterType[] directParameterTypes,
             StackValueKind returnKind,
             HostNativeObjectDescriptor nativeReturn,
-            out int localCount)
+            out int localCount,
+            Action emitBody = null)
         {
             _function = function;
             _code = code;
@@ -581,6 +582,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             _capturedLocalBySlot = BuildCapturedLocalMap(function);
             FindParameterCaches(code, out _numericCacheNeeded, out _booleanCacheNeeded);
             _locals = DeclareLocals();
+            PrepareModuleReadRegions();
             try
             {
                 var body = function.Declaration.Body as Statement;
@@ -639,7 +641,8 @@ namespace AuroraScript.Compiler.Backend.Emission
                     InitializeParameters(convention);
                 }
                 InitializeContextLocals();
-                EmitStatement(body);
+                if (emitBody != null) emitBody();
+                else EmitStatement(body);
                 if (function.Declaration.ReturnType != null && TypedFunctionBuilder.CanCompleteNormally(body))
                     EmitReturnValue(null);
                 else if (returnKind is StackValueKind.Int32 or StackValueKind.UInt32 or
@@ -706,6 +709,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 _code = null;
                 _il = null;
                 _locals = null;
+                _hasRepeatedModuleReads = false;
                 _parameterNumbers = null;
                 _parameterNumberValid = null;
                 _parameterBooleans = null;
@@ -1214,7 +1218,8 @@ namespace AuroraScript.Compiler.Backend.Emission
                 case BlockStatement block:
                     InitializeBlockCapturedLocals(block);
                     for (var i = 0; i < block.Functions.Count; i++) EmitFunctionDeclaration(block.Functions[i]);
-                    for (var i = 0; i < block.Statements.Count; i++) EmitStatement(block.Statements[i]);
+                    for (var i = 0; i < block.Statements.Count; i++)
+                        if (!TryEmitModuleReadRegion(block.Statements, ref i)) EmitStatement(block.Statements[i]);
                     return;
                 case FunctionDeclaration function:
                     EmitFunctionDeclaration(function);
@@ -4542,6 +4547,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                     return StackValueKind.Datum;
                 }
 
+                if (TryEmitModuleCachedRead(expression, out var cachedKind)) return cachedKind;
+                if (TryEmitSharedModuleRead(expression)) return StackValueKind.Datum;
+
                 _il.Emit(OpCodes.Ldarg_0);
                 _session.Builder.LoadStringConstant(_il, binding.Name);
                 _il.Emit(OpCodes.Call, IsModuleBinding(binding)
@@ -4550,13 +4558,18 @@ namespace AuroraScript.Compiler.Backend.Emission
                 return StackValueKind.Datum;
             }
 
-            EmitLoadLocal(binding.Local);
-            if (_code.GetLocalNativeObjectType(binding.Local) != null ||
-                IsUntypedContextObjectLocal(binding.Local.Value))
+            return EmitLocalValue(binding.Local);
+        }
+
+        private StackValueKind EmitLocalValue(LocalSlotId slot)
+        {
+            EmitLoadLocal(slot);
+            if (_code.GetLocalNativeObjectType(slot) != null ||
+                IsUntypedContextObjectLocal(slot.Value))
             {
                 return StackValueKind.Object;
             }
-            return _code.GetLocalType(binding.Local) switch
+            return _code.GetLocalType(slot) switch
             {
                 FlowValueType.Int32 => StackValueKind.Int32,
                 FlowValueType.UInt32 => StackValueKind.UInt32,
@@ -5356,6 +5369,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 _il.Emit(OpCodes.Call, IsModuleBinding(binding)
                     ? TypedRuntimeMetadata.SetModule
                     : TypedRuntimeMetadata.SetGlobal);
+                EmitModuleCacheWrite(binding);
                 return StackValueKind.Datum;
             }
 
@@ -6066,6 +6080,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             _il.Emit(OpCodes.Call, IsModuleBinding(binding)
                 ? TypedRuntimeMetadata.SetModule
                 : TypedRuntimeMetadata.SetGlobal);
+            EmitModuleCacheWrite(binding);
             _il.Emit(OpCodes.Pop);
         }
 

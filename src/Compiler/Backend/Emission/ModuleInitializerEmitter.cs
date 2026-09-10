@@ -39,6 +39,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             _initializer = method.Method;
             _il = method.IL;
             _module.Initializer = _initializer;
+            _module.InitializerFunction.Method = _initializer;
             _defined = true;
         }
 
@@ -53,7 +54,6 @@ namespace AuroraScript.Compiler.Backend.Emission
 
             Define();
             _typed.EmitInitializerBody(_il, EmitBody);
-            _il.Emit(OpCodes.Ret);
             _emitted = true;
             initializer = _initializer;
             return true;
@@ -203,7 +203,6 @@ namespace AuroraScript.Compiler.Backend.Emission
                 EmitDefineDatum(
                     variable,
                     variable.Name.Value,
-                    variable.Initializer,
                     exported: variable.Access == MemberAccess.Export,
                     writable: !variable.IsConst);
                 return;
@@ -215,7 +214,6 @@ namespace AuroraScript.Compiler.Backend.Emission
         private void EmitDefineDatum(
             VariableDeclaration declaration,
             string name,
-            Expression initializer,
             bool exported,
             bool writable)
         {
@@ -230,7 +228,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
             else
             {
-                EmitExpressionOrNull(initializer);
+                _typed.EmitInitializerVariable(declaration);
             }
             _il.Emit(writable ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
             _il.Emit(OpCodes.Ldc_I4_0);
@@ -283,18 +281,6 @@ namespace AuroraScript.Compiler.Backend.Emission
                 : TypedRuntimeMetadata.ScriptModuleDefineInternal;
         }
 
-        private void EmitExpressionOrNull(Expression expression)
-        {
-            if (expression == null)
-            {
-                _session.Builder.LoadNull(_il);
-                return;
-            }
-
-            EmitExpression(expression);
-        }
-
-        private void EmitExpression(Expression expression) => _typed.EmitInitializerDatum(expression);
         private void EmitLiteral(LiteralExpression expression) => _typed.EmitInitializerDatum(expression);
         private void EmitExpressionDiscarded(Expression expression) => _typed.EmitInitializerDiscarded(expression);
     }

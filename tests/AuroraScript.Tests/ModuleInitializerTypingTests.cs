@@ -20,6 +20,140 @@ public sealed class ModuleInitializerTypingTests
 #if NET9_0_OR_GREATER
     [InlineData(CompilationMode.Persistence)]
 #endif
+    public async Task ModuleDeclarationsShareTypedLocalStorageForScalarsAndNativeMembers(CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync("""
+            @module(TEST);
+            var map = new HashMap();
+            var number = 2;
+            var text = 'hello';
+            var flag = true;
+            var empty;
+            number += 3;
+            text = text + '!';
+            var numericCopy = number;
+            var textCopy = text;
+            var boolCopy = flag;
+            var nullCopy = empty;
+            var size = map.size;
+            export func result() { return [size, numericCopy, textCopy, boolCopy, nullCopy]; }
+            """, mode);
+        using (domain)
+            ScriptAssert.Equal(new object?[] { 0, 5, "hello!", true, null }, TestWorkspace.Execute(domain, "result"));
+#if NET9_0_OR_GREATER
+        if (mode == CompilationMode.Persistence)
+        {
+            var initialize = Assembly.Load(File.ReadAllBytes(Path.Combine(workspace.Root, "test-output.dll")))
+                .GetTypes().SelectMany(type => type.GetMethods()).Single(method => method.Name == "Initialize");
+            var locals = initialize.GetMethodBody()!.LocalVariables;
+            foreach (var type in new[] { typeof(int), typeof(string), typeof(bool), typeof(ScriptHashMap) })
+                Assert.Contains(locals, local => local.LocalType == type);
+            Assert.DoesNotContain(StringOptimizationTests.GetCalls(initialize),
+                call => call.DeclaringType == typeof(ScopeOps) && call.Name == nameof(ScopeOps.GetModule));
+        }
+#endif
+    }
+
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+    [InlineData(CompilationMode.OnlyRun)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
+    public async Task ModulePackedStoragePreservesWritesAndEvaluationOrder(CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync("""
+            @module(TEST);
+            var values = new Int32Array(2);
+            values[0] = 4;
+            var before = values[0]++;
+            values[1] = values[0] + 1;
+            var after = values[1];
+            func replace() { values = new Int32Array(2); values[0] = 20; return 0; }
+            var original = values[replace()]++;
+            var replaced = values[0];
+            export func result() { return [before, after, original, replaced]; }
+            """, mode);
+        using (domain)
+            ScriptAssert.Equal(new object[] { 4, 6, 5, 20 }, TestWorkspace.Execute(domain, "result"));
+    }
+
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+    [InlineData(CompilationMode.OnlyRun)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
+    public async Task ArrayMutationPreservesModuleTypeAndUsesLocalStorage(CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync("""
+            @module(TEST);
+            var a = [0, 1, 2, 3];
+            a[0]++;
+            var b = a[0]++;
+            b++;
+            var c = b++;
+            var d = ++b;
+            b = 8;
+            var e = b;
+            var scalar = 8;
+            scalar += 2;
+            var copied = scalar;
+            export func result() { return [a[0], b, c, d, e, copied]; }
+            """, mode);
+        using (domain)
+            ScriptAssert.Equal(new object[] { 2, 8, 2, 4, 8, 10 }, TestWorkspace.Execute(domain, "result"));
+#if NET9_0_OR_GREATER
+        if (mode == CompilationMode.Persistence)
+        {
+            var initialize = Assembly.Load(File.ReadAllBytes(Path.Combine(workspace.Root, "test-output.dll")))
+                .GetTypes().SelectMany(type => type.GetMethods()).Single(method => method.Name == "Initialize");
+            var calls = StringOptimizationTests.GetCalls(initialize);
+            Assert.Contains(initialize.GetMethodBody()!.LocalVariables, local => local.LocalType == typeof(ScriptArray));
+            Assert.DoesNotContain(calls, call => call.DeclaringType == typeof(ScopeOps) && call.Name == nameof(ScopeOps.GetModule));
+            Assert.DoesNotContain(calls, call => call.DeclaringType == typeof(ObjectOps) && call.Name.Contains("Element"));
+            Assert.Equal(2, calls.Count(call => call.DeclaringType == typeof(ScriptArray) && call.Name == "get_Item"));
+        }
+#endif
+    }
+
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+    [InlineData(CompilationMode.OnlyRun)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
+    public async Task ModuleArrayCacheObservesCallbacksAndLaterFunctionWrites(CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync("""
+            @module(TEST);
+            var a = [0];
+            a[0]++;
+            func replace() { a = [10]; }
+            replace();
+            var b = a[0]++;
+            var after = a[0];
+            export func result() {
+                replace();
+                a[0]++;
+                var c = a[0]++;
+                return [b, after, c, a[0]];
+            }
+            """, mode);
+        using (domain)
+            ScriptAssert.Equal(new object[] { 10, 11, 11, 12 }, TestWorkspace.Execute(domain, "result"));
+    }
+
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+    [InlineData(CompilationMode.OnlyRun)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
     public async Task ImplicitCoercionInvalidatesMutableModuleTypes(CompilationMode mode)
     {
         using var workspace = new TestWorkspace();
