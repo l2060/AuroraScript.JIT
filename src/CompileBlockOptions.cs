@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using AuroraScript.Runtime;
 
 namespace AuroraScript
 {
@@ -17,5 +18,11 @@ namespace AuroraScript
         /// Virtual source name used in diagnostics.
         /// </summary>
         public string SourceName { get; init; }
+
+        /// <summary>The initialized domain whose modules imports bind to. Imported blocks stay in this domain.</summary>
+        public ScriptDomain Domain { get; init; }
+
+        /// <summary>Source root for relative imports. Defaults to the engine source resolver root.</summary>
+        public string BaseDirectory { get; init; }
     }
 }

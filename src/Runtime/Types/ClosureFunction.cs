@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 
 namespace AuroraScript.Runtime.Types
 {
@@ -20,6 +21,17 @@ namespace AuroraScript.Runtime.Types
         /// <summary>The module object this closure belongs to.</summary>
         public readonly ScriptModule Module;
         internal readonly Upvalue[] Upvalues;
+        internal MethodInfo NativeEntry { get; private set; }
+        internal ScriptDatum[] NativeDefaults { get; private set; }
+
+        internal bool NativeSignatureComplete { get; private set; }
+
+        internal void SetNativeEntry(MethodInfo method, ScriptDatum[] defaults, bool signatureComplete)
+        {
+            NativeEntry = method;
+            NativeSignatureComplete = signatureComplete;
+            NativeDefaults = defaults;
+        }
 
         internal ClosureFunction(ScriptDomain domain, ScriptModule module, ScriptFunctionDelegate targetDelegate, Upvalue[] upvalues, string funcName = null)
             : this(domain, module, targetDelegate, 255, upvalues, funcName)

@@ -47,6 +47,10 @@ export func run(value) {
 
 `import Alias from "path";` binds one local name to the dependency's exported module object. `include "path";` instead merges another source file into the current module and exposes its private declarations directly. Both declarations must be at the top of the module, before ordinary declarations, and paths are resolved by the host resolver. The language does not provide named-import braces, default exports, or wildcard imports.
 
+External reads and member calls to unexported module members return `null`. The hidden
+function body is not executed, but call arguments are still evaluated. This also applies
+to computed member names and spread calls. An ordinary `null()` call remains an error.
+
 The host may opt in to NativePackages through `EngineOptions.Packages`. Shipped packages use bare imports such as `import fs from "fs";` and `import http from "http";`; they are not global objects and are unavailable when the host has not enabled them. A relative path such as `./fs` remains a project-source import even when the `fs` package is enabled.
 
 ### 3. Bind execution context
@@ -409,7 +413,7 @@ declare type Vec2 {
 }
 ```
 
-An `@global()` file may contain only `declare` statements and cannot also contain `@module`, imports, includes, or exports. Declarations do not create runtime values; the host must define them on the script domain. `CompileBlock` accepts only a function body with host-supplied parameters and rejects all module-only syntax.
+An `@global()` file may contain only `declare` statements and cannot also contain `@module`, imports, includes, or exports. Declarations do not create runtime values; the host must define them on the script domain. `CompileBlock` accepts a function body with host-supplied parameters and optional leading imports of already loaded modules; other module-only syntax is rejected.
 
 > **Authoring rule of thumb:** use a full module for imports, exports, shared helpers, and host-called entry points; use a `CompileBlock` for a small one-off body; use packed arrays and stable locals for numeric hot paths; use ordinary arrays/objects for flexible application data.
 
@@ -705,6 +709,14 @@ Instance members:
 ## CompileBlock
 
 `CompileBlock` compiles a function body, not a module.
+
+Leading `import Alias from "path";` statements are supported when the host supplies
+`CompileBlockOptions.Domain` from the same engine and the dependencies are already
+loaded. User modules and enabled extension packages use the ordinary resolver. The
+block does not load source files, create a module, or reinitialize dependencies.
+Aliases are read-only. Native/const members can bind directly; mutable members remain
+dynamic. An importing block stays bound to its domain and must be recompiled after a
+dependency or statically bound member is replaced. See [host integration](host-integration.md#compileblock).
 
 Allowed:
 

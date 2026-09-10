@@ -347,12 +347,41 @@ namespace AuroraScript
             options ??= new CompileBlockOptions();
             ValidateCompileBlockParameters(options.Parameters);
             var sourceName = string.IsNullOrWhiteSpace(options.SourceName) ? "__compile_block__.as" : options.SourceName;
-            var scriptSource = new MemorySource("mem://compile-block/", sourceName, source);
+            var resolver = Options.Compiler.SourceResolver ?? FileScriptSourceResolver.Instance;
+            var scriptSource = new MemorySource(options.BaseDirectory ?? resolver.Root, sourceName, source);
             try
             {
                 var lexer = new AuroraLexer(scriptSource.BaseDirectory, scriptSource);
                 var parser = new AuroraParser(lexer, Options);
                 var block = parser.ParseBlockBody();
+                var imports = parser.Root.Imports;
+                if (imports.Count > 0)
+                {
+                    if (options.Domain == null || !ReferenceEquals(options.Domain.Engine, this))
+                        throw new AuroraCompilationException(AuroraCompilationStage.Linking, parser.Root,
+                            "CompileBlock imports require a domain created by this engine.");
+                    var names = new HashSet<string>(options.Parameters ?? Array.Empty<string>(), StringComparer.Ordinal);
+                    foreach (var import in imports)
+                        if (!names.Add(import.Name.Value))
+                            throw new AuroraCompilationException(AuroraCompilationStage.Binding, import,
+                                $"Duplicate CompileBlock import or parameter '{import.Name.Value}'.");
+                    // Resolve on a worker so asynchronous custom resolvers cannot deadlock
+                    // the caller's synchronization context. Dependencies are never read.
+                    Task.Run(async () =>
+                    {
+                        var context = new ScriptResolveContext(Options.Compiler.ExtName, Encoding.UTF8);
+                        foreach (var import in imports)
+                        {
+                            var reference = await resolver.ResolveAsync(parser.Root.Source, import.File.Value, context).ConfigureAwait(false);
+                            var loaded = reference.HasValue ? options.Domain.Global.GetModuleByPath(reference.Value.FullPath) : null;
+                            if (loaded == null)
+                                throw new AuroraCompilationException(AuroraCompilationStage.Linking, import,
+                                    $"CompileBlock imported module '{import.File.Value}' is not loaded in the specified domain.");
+                            import.Reference = reference.Value;
+                            import.LoadedModule = loaded;
+                        }
+                    }).GetAwaiter().GetResult();
+                }
 
                 var builderOptions = Options
                     .WithCompiler(compiler => compiler.Mode = CompilationMode.Dynamic)
@@ -360,7 +389,7 @@ namespace AuroraScript
                     .WithOptimization(optimization => optimization.Level = OptimizeOptions.Release);
                 var builder = new DynamicBuilder(builderOptions);
                 var backend = new BackendCompiler(builder, builderOptions);
-                var blockPlan = backend.CreateCompileBlockPlan(block, options.Parameters, sourceName);
+                var blockPlan = backend.CreateCompileBlockPlan(block, options.Parameters, sourceName, imports: parser.Root);
                 var emissionSession = new EmissionSession(blockPlan.Session, builder, emitExecutableCode: true);
                 var method = new CompileBlockEmitter(
                     emissionSession,
@@ -370,7 +399,12 @@ namespace AuroraScript
                     throw new AuroraException("The compiler did not produce a compiled block entry point.");
                 }
                 var target = method.CreateDelegate<ScriptFunctionDelegate>();
-                return new CompiledBlock(this, target, emissionSession.RegisteredDynamicDelegateIds);
+                var compiled = new CompiledBlock(this, target, emissionSession.RegisteredDynamicDelegateIds);
+                if (imports.Count > 0)
+                    compiled.BindImports(options.Domain, imports.Select(import =>
+                        new CompiledBlock.ImportBinding(import.LoadedModule,
+                            import.StaticMembers?.ToArray() ?? Array.Empty<KeyValuePair<string, ScriptDatum>>())).ToArray());
+                return compiled;
             }
             catch (Exception ex) when (IsCompilationPipelineException(ex))
             {

@@ -2632,7 +2632,7 @@ public sealed class CompilerBackendPlanTests
         Assert.True(helperPlan.IsDirectCallCandidate);
         Assert.True(helperPlan.RequiresClosureObject);
         initialize(ctx, Span<ScriptDatum>.Empty);
-        Assert.IsType<ClosureFunction>(runtimeModule.GetPropertyValue("helper"));
+        Assert.IsType<ClosureFunction>(runtimeModule.GetPropertyValue(ctx, "helper"));
 
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = runDel(ctx, Span<ScriptDatum>.Empty);
@@ -3704,8 +3704,8 @@ public sealed class CompilerBackendPlanTests
         var initialize = (ModuleInitializerDelegate)moduleResult.Initializer.CreateDelegate(typeof(ModuleInitializerDelegate));
         initialize(ctx, Span<ScriptDatum>.Empty);
 
-        Assert.IsType<ClosureFunction>(runtimeModule.GetPropertyValue("helper"));
-        Assert.IsType<ClosureFunction>(runtimeModule.GetPropertyValue("run"));
+        Assert.IsType<ClosureFunction>(runtimeModule.GetPropertyValue(ctx, "helper"));
+        Assert.IsType<ClosureFunction>(runtimeModule.GetPropertyValue(ctx, "run"));
 
         var runDel = (ScriptFunctionDelegate)run.Method.CreateDelegate(typeof(ScriptFunctionDelegate));
         var result = runDel(ctx, new[] { ScriptDatum.FromNumber(41) });

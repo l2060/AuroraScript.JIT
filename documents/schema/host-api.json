@@ -73,8 +73,9 @@
             "CompiledBlock CompileBlock(string source, CompileBlockOptions options = null)"
           ],
           "notes": [
-            "CompileBlock accepts statement bodies only, not module syntax.",
-            "CompileBlock does not support @module, @global(), import, include, export, or declare."
+            "CompileBlock accepts a function body with optional leading imports of already loaded user modules or enabled extension packages. It does not create a runtime module or read dependency sources.",
+            "Imports require CompileBlockOptions.Domain from the same engine; aliases are read-only. Native/const members can bind directly, while mutable members remain dynamic.",
+            "CompileBlock does not support @module, @global(), include, export, or declare."
           ]
         },
         "CreateDomain": {
@@ -502,7 +503,17 @@
         "SourceName": {
           "kind": "property",
           "signature": "string SourceName",
-          "summary": "Virtual source name used in diagnostics."
+          "summary": "Virtual source name used in diagnostics and, together with BaseDirectory, the block location for resolving relative imports."
+        },
+        "Domain": {
+          "kind": "property",
+          "signature": "ScriptDomain Domain",
+          "summary": "Initialized domain from the same engine containing imported dependencies. Importing blocks remain bound to this domain."
+        },
+        "BaseDirectory": {
+          "kind": "property",
+          "signature": "string BaseDirectory",
+          "summary": "Source root for relative imports; defaults to the engine source resolver root."
         }
       }
     },
@@ -962,6 +973,11 @@
       "kind": "class",
       "namespace": "AuroraScript.Runtime",
       "summary": "Disposable compiled function-body block.",
+      "notes": [
+        "A block with imports invokes in its bound domain; passing another domain fails. Blocks without imports retain standalone and explicit-domain invocation.",
+        "Recompile after an imported module is replaced or removed, or a statically bound export changes. Mutable member changes remain visible through dynamic access.",
+        "Dispose releases the block's delegates and import references, not dependency delegates. Keep the block alive while using closures returned from it."
+      ],
       "members": {
         "Invoke": {
           "kind": "method",
@@ -1794,11 +1810,22 @@
             "long Ticks"
           ]
         },
-        "Format": {
+        "FormatCore": {
           "kind": "method",
-          "signature": "string Format(string format = null)"
+          "signature": "string FormatCore(string format = null)",
+          "summary": "Context-free CLR date formatting helper."
+        },
+        "ToStringCore": {
+          "kind": "method",
+          "signature": "string ToStringCore(ScriptContext ctx, string format = null)",
+          "summary": "Script toString export; an omitted format uses ctx.Engine.Options.Runtime.DateTimeFormat."
         }
-      }
+      },
+      "notes": [
+        "Year, Month, Day, Hour, Minute, Second, Millisecond and DayOfYear export their CLR get accessors directly. Their redundant Core wrapper methods have been removed; script properties remain Number values.",
+        "DayOfWeekCore and TicksCore preserve the enum/integer conversions to the existing script Number representation. Dynamic reads retain compatibility adapters and frozen prototype getters.",
+        "Script date.toString() uses the invoking engine format for both direct and dynamic calls. Explicit script null retains its string conversion to the literal format null."
+      ]
     },
     "ScriptRegex": {
       "kind": "class",
@@ -2385,7 +2412,7 @@
     "ExportAttribute": {
       "kind": "class",
       "namespace": "AuroraScript.Hosting",
-      "summary": "Marks a Core method, constructor, native instance field, or public static readonly double field for generated script export.",
+      "summary": "Marks a Core method, CLR instance get accessor, constructor, native instance field, or public static readonly double field for generated script export.",
       "members": {
         "Constructor": {
           "kind": "constructor",
@@ -2410,7 +2437,8 @@
         },
         "IsGetter": {
           "kind": "property",
-          "signature": "bool IsGetter"
+          "signature": "bool IsGetter",
+          "summary": "Exports a zero-argument, context-free instance Core or CLR get accessor as a property getter."
         },
         "IsSetter": {
           "kind": "property",
@@ -2431,7 +2459,8 @@
         "Core methods may prefix ScriptContext ctx and ScriptObject thisObject. Script parameters support double, int, bool, string, ScriptDatum, ScriptObject subclasses, trailing defaults, and params double[] or params ScriptDatum[].",
         "A CLR void return is a procedure. Direct native calls used as statements do not materialize a result; dynamic or exported calls observe script null, matching native func ... void.",
         "params exports generate Datum adapters only; they are not compiler direct-call candidates.",
-        "DynamicAdapter names an existing compatibility callback and suppresses generation of a dynamic wrapper. IsGetter exports a zero-argument instance Core as a property getter. IsSetter exports a one-required-argument void native-instance Core as the matching setter.",
+        "DynamicAdapter names an existing compatibility callback and suppresses generation of a dynamic wrapper. IsGetter exports a zero-argument instance Core or CLR get accessor as a property getter. IsSetter exports a one-required-argument void native-instance Core as the matching setter.",
+        "For a CLR property, put Export with an explicit script name and IsGetter = true on its get accessor, not on the property declaration. Proven reads call get_Property directly; dynamic reads use the usual adapter. Preserve script value kinds and conversion behavior when removing a Core wrapper.",
         "Writable and Enumerable default to false for methods and constants. Mutable native instance fields default to writable and all native instance fields default to enumerable unless explicitly overridden. Writable method and constant slots are omitted from the compiler native-call catalog. Native fields and getter/setter exports are routed by generated instance property overrides."
       ]
     },

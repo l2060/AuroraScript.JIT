@@ -312,17 +312,27 @@ namespace AuroraScript.Compiler.Analyzer
             }
         }
 
+        private bool _parsingBlock;
+
         public BlockStatement ParseBlockBody()
         {
+            _parsingBlock = true;
             using (scopeStack.Scope(ScopeType.FUNCTION))
             {
                 var block = new BlockStatement { IsFunction = true };
+                var sawBody = false;
                 while (true)
                 {
                     if (this.Lexer.TestNext(Symbols.KW_EOF)) break;
+                    if (this.Lexer.PeekSymbol() == Symbols.KW_IMPORT && !sawBody)
+                    {
+                        Root.AddImport((ImportDeclaration)ParseImport());
+                        continue;
+                    }
                     RejectModuleOnlyBlockStatement();
                     var node = ParseStatement();
                     if (node == null) continue;
+                    sawBody = true;
 
                     node.IsIndependent = true;
                     if (node is FunctionDeclaration func)
@@ -364,6 +374,7 @@ namespace AuroraScript.Compiler.Analyzer
 
         private Statement ParseStatement()
         {
+            if (_parsingBlock) RejectModuleOnlyBlockStatement();
             var symbol = this.Lexer.PeekSymbol();
             if (this.Lexer.IsAtEnd) return null;
 

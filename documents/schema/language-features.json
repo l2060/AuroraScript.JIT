@@ -18,8 +18,13 @@
     {
       "id": "module.import",
       "syntax": "import Alias from \"path\";",
-      "scope": "module",
-      "notes": ["Must appear at the top of the module."]
+      "scope": "module-or-compile-block",
+      "notes": [
+        "Must precede ordinary statements.",
+        "CompileBlock imports require CompileBlockOptions.Domain from the same engine and already loaded dependencies; they do not load sources or create a runtime module.",
+        "Importing blocks remain bound to their domain. Native/const members can bind directly; mutable members remain dynamic.",
+        "External reads and member calls to unexported members return null; arguments still evaluate, but hidden function bodies do not run."
+      ]
     },
     {
       "id": "module.include",
@@ -254,4 +259,3 @@
     }
   ]
 }
-

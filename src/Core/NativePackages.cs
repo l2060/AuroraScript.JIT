@@ -74,7 +74,7 @@ namespace AuroraScript.Core
 
         internal ScriptModule CreateModule()
         {
-            var module = new ScriptModule(Name, Reference);
+            var module = new ScriptModule(Name, Reference) { IsNativePackage = true };
             RegisterPackage.Invoke(null, new object[] { module });
             return module;
         }

@@ -14,6 +14,8 @@ namespace AuroraScript.Compiler.Ast.Expressions
             Index = index;
         }
 
+        internal ImportDeclaration LoadedImport { get; init; }
+
         public Byte Index { get; set; }
 
         /// <summary>

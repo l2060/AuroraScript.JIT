@@ -166,7 +166,7 @@ export native func player() UserState {
 
 ## CompileBlock
 
-`CompileBlock` compiles a function body, not a module. Do not pass `@module`, `@global()`, `import`, `include`, `export`, or `declare` syntax.
+`CompileBlock` compiles a lightweight function body. It can start with imports of modules already loaded in a supplied domain. It does not create or initialize a runtime module. Do not pass `@module`, `@global()`, `include`, `export`, or `declare` syntax.
 
 ```csharp
 using var block = engine.CompileBlock(
@@ -189,6 +189,42 @@ using var block = engine.CompileBlock(
         Parameters = ["value"]
     });
 ```
+
+To import an existing user module or an enabled extension package, supply a domain
+created by the same engine. The dependency must already be loaded:
+
+```csharp
+await engine.BuildAsync(["lib.as"]);
+using var domain = engine.CreateDomain();
+using var block = engine.CompileBlock(
+    "import lib from './lib'; return lib.calculate(value);",
+    new CompileBlockOptions
+    {
+        Domain = domain,
+        SourceName = "calculate.as",
+        Parameters = ["value"]
+    });
+var result = block.Invoke(ScriptDatum.FromNumber(42));
+```
+
+Imports must precede ordinary statements. Aliases are read-only; aliases plus explicit
+parameters are limited to 255. `BaseDirectory` defaults to the source resolver root;
+relative imports resolve from the block location formed by `BaseDirectory` and
+`SourceName`. Resolution calls `ResolveAsync`, without rereading dependency sources,
+reparsing their ASTs, rerunning initialization, or retaining a compiler cache.
+
+Exported native functions use their loaded CLR signatures when compatible; const
+values and const closures can bind directly. Mutable members remain dynamic.
+Unproven argument shapes use the existing checked dynamic entry. External reads or
+member calls to unexported members return script `null`; call arguments still run,
+but the hidden function body does not. Calling an ordinary `null` value still fails.
+
+An importing block stays bound to its domain. `Invoke()` uses that domain; supplying
+another domain fails. If an imported module is replaced/removed or a statically bound
+member changes, recompile the block. `Dispose()` releases the block's delegates and
+binding references, not dependency delegates. Keep the block alive while using closures
+returned from it. Blocks without imports retain their existing invocation behavior.
+See [CompileBlock import details](../../doc/CompileBlock-import.md).
 
 ## Source Resolvers
 
@@ -626,6 +662,10 @@ The engine always registers `Math`, `JSON`, `TDoc`, `console`, `Conv8`, and `Hot
 `typeof Math`, `typeof console`, and `typeof Conv8` are `"type"`; `new Math()`, `new console()`, and `new Conv8()`
 fail because those Types have no exported constructor.
 
+`console.log` uses the ordinary export overload rules. One or two unknown values can
+call its `ScriptDatum` overloads directly; primitive arguments can select primitive
+overloads. Spread calls and unsupported argument shapes use the shared dynamic adapter.
+
 `Conv8` reads and writes scalars and UTF-8 text on a `UInt8Array` only. Multi-byte
 values take `littleEndian` (default `true`). There is no script `Encoding` global.
 
@@ -650,6 +690,17 @@ non-sealed CLR class; its message is still a read-only enumerable own data prope
 and its constructor still captures the script call stack. No new Error prototype
 getter or wrapper object is introduced. Existing argument adapters retain missing,
 extra and weak-conversion behavior, including the historical Regex arity branches.
+
+Date exports `Year`, `Month`, `Day`, `Hour`, `Minute`, `Second`, `Millisecond`, and
+`DayOfYear` directly from their CLR getters. Their redundant `*Core()` wrappers have
+been removed. `DayOfWeekCore` and `TicksCore` retain the enum/integer conversions needed
+for the existing script Number representation. Dynamic getters keep their compatibility
+adapters and frozen prototype placement.
+
+Script `date.toString()` uses the invoking engine's `Runtime.DateTimeFormat` on both
+direct and dynamic paths. Its CLR export is `ToStringCore(ScriptContext, string = null)`;
+`FormatCore(string = null)` is the context-free CLR formatting helper. An explicit
+script `null` format retains the existing string conversion to `"null"`.
 
 ### Array exports and specializations
 
@@ -863,6 +914,23 @@ prototype, while `Object.keys(vec)` reports enumerable native fields and dynamic
 properties, not prototype methods. Native fields and getter/setter exports are not
 stored in HiddenClass slots: generated `GetPropertyDatum` / `SetPropertyDatum`
 overrides route their reads and writes directly to CLR storage or Core methods.
+
+An existing public CLR instance property can export its getter without a Core wrapper:
+
+```csharp
+public int Count
+{
+    [Export("count", IsGetter = true)]
+    get => _count;
+}
+```
+
+Place `[Export]` on the `get` accessor, not on the property declaration. The generator
+already supports CLR property getters and records `get_Count` as the native entry;
+proven reads call it directly, while dynamic reads use the generated adapter. Use an
+explicit script name and a supported return type. A getter has no script parameters
+or context prefix. Moving an export must preserve its script value kind and conversion
+behavior; an enum-to-number or long-to-Number conversion still needs an adapter Core.
 
 Native instances can expose a property without a CLR field by pairing one getter and
 one setter under the same script name:

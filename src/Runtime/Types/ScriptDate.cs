@@ -1,6 +1,5 @@
-﻿using System;
-
-using AuroraScript.Hosting;
+﻿using AuroraScript.Hosting;
+using System;
 
 namespace AuroraScript.Runtime.Types
 {
@@ -51,46 +50,68 @@ namespace AuroraScript.Runtime.Types
         }
 
         /// <summary> Gets the year component of the date. </summary>
-        public int Year => DateTime.Year;
+        public int Year
+        {
+            [Export("year", IsGetter = true, DynamicAdapter = nameof(YEAR))]
+            get => DateTime.Year;
+        }
         /// <summary> Gets the month component (1-12) of the date. </summary>
-        public int Month => DateTime.Month;
+        public int Month
+        {
+            [Export("month", IsGetter = true, DynamicAdapter = nameof(MONTH))]
+            get => DateTime.Month;
+        }
         /// <summary> Gets the day component of the date. </summary>
-        public int Day => DateTime.Day;
+        public int Day
+        {
+            [Export("day", IsGetter = true, DynamicAdapter = nameof(DAY))]
+            get => DateTime.Day;
+        }
         /// <summary> Gets the hour component of the date. </summary>
-        public int Hour => DateTime.Hour;
+        public int Hour
+        {
+            [Export("hour", IsGetter = true, DynamicAdapter = nameof(HOUR))]
+            get => DateTime.Hour;
+        }
         /// <summary> Gets the minute component of the date. </summary>
-        public int Minute => DateTime.Minute;
+        public int Minute
+        {
+            [Export("minute", IsGetter = true, DynamicAdapter = nameof(MINUTE))]
+            get => DateTime.Minute;
+        }
         /// <summary> Gets the second component of the date. </summary>
-        public int Second => DateTime.Second;
+        public int Second
+        {
+            [Export("second", IsGetter = true, DynamicAdapter = nameof(SECOND))]
+            get => DateTime.Second;
+        }
         /// <summary> Gets the millisecond component of the date. </summary>
-        public int Millisecond => DateTime.Millisecond;
+        public int Millisecond
+        {
+            [Export("millisecond", IsGetter = true, DynamicAdapter = nameof(MILLISECCOND))]
+            get => DateTime.Millisecond;
+        }
         /// <summary> Gets the day of the week. </summary>
         public DayOfWeek DayOfWeek => DateTime.DayOfWeek;
         /// <summary> Gets the day of the year. </summary>
-        public int DayOfYear => DateTime.DayOfYear;
+        public int DayOfYear
+        {
+            [Export("dayOfYear", IsGetter = true, DynamicAdapter = nameof(DAYOFYEAR))]
+            get => DateTime.DayOfYear;
+        }
+
         /// <summary> Gets the number of ticks representing the date. </summary>
-        public long Ticks => DateTime.Ticks;
+        public long Ticks
+        {
+            [Export("ticks", IsGetter = true, DynamicAdapter = nameof(TICKS))]
+            get => DateTime.Ticks;
+        }
 
 
 
         internal override bool ValueEquals(ScriptObject other)
         {
             return other is ScriptDate date && DateTime.Equals(date.DateTime);
-        }
-
-
-
-
-
-
-        /// <summary>
-        /// Formats the date using the specified format string.
-        /// </summary>
-        /// <param name="format">The format string (e.g., "yyyy-MM-dd"). Defaults to null.</param>
-        /// <returns>A formatted date string.</returns>
-        public string Format(string format = null)
-        {
-            return DateTime.ToString(format);
         }
     }
 }

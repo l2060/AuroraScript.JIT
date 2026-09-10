@@ -4,6 +4,7 @@ using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Compiler.Backend.Code;
 using AuroraScript.Compiler.Backend.Binding;
 using AuroraScript.Compiler.Backend.Plans;
+using AuroraScript.Compiler.Backend.Analysis;
 using AuroraScript.Compiler.Backend.Traversal;
 using AuroraScript.Hosting;
 using AuroraScript.Runtime;
@@ -374,7 +375,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 }
                 else
                 {
-                    EmitNativeDefaultDatum(il, defaultValue);
+                    ClosureMaterializer.EmitNativeDefaultDatum(_session, il, defaultValue);
                     il.Emit(
                         OpCodes.Call,
                         TypedRuntimeMetadata.GetArgumentOrDefault);
@@ -428,64 +429,6 @@ namespace AuroraScript.Compiler.Backend.Emission
                     break;
             }
             il.Emit(OpCodes.Ret);
-        }
-
-        private void EmitNativeDefaultDatum(
-            ILGenerator il,
-            Expression expression)
-        {
-            if (expression is not LiteralExpression literal)
-            {
-                throw new NotSupportedException(
-                    "Native defaults must be folded compiler constants.");
-            }
-
-            switch (literal.Token)
-            {
-                case NullToken:
-                    var datum = il.DeclareLocal(typeof(ScriptDatum));
-                    il.Emit(OpCodes.Ldloca, datum);
-                    il.Emit(OpCodes.Initobj, typeof(ScriptDatum));
-                    il.Emit(OpCodes.Ldloc, datum);
-                    return;
-                case BooleanToken boolean:
-                    il.Emit(
-                        boolean.BoolValue
-                            ? OpCodes.Ldc_I4_1
-                            : OpCodes.Ldc_I4_0);
-                    il.Emit(
-                        OpCodes.Call,
-                        TypedRuntimeMetadata.DatumFromBoolean);
-                    return;
-                case NumberToken number:
-                    if (number.Suffix == NumericLiteralSuffix.Int64 &&
-                        number.TryGetInt64(out var int64))
-                    {
-                        il.Emit(OpCodes.Ldc_I8, int64);
-                        il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromInt64);
-                    }
-                    else if (number.Suffix == NumericLiteralSuffix.UInt64 &&
-                        number.TryGetUInt64(out var uint64))
-                    {
-                        il.Emit(OpCodes.Ldc_I8, unchecked((long)uint64));
-                        il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromUInt64);
-                    }
-                    else
-                    {
-                        il.Emit(OpCodes.Ldc_R8, number.NumberValue);
-                        il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromNumber);
-                    }
-                    return;
-                case StringToken text:
-                    _session.Builder.LoadStringConstant(il, text.Value);
-                    il.Emit(
-                        OpCodes.Call,
-                        TypedRuntimeMetadata.DatumFromString);
-                    return;
-                default:
-                    throw new NotSupportedException(
-                        "Unsupported native default constant.");
-            }
         }
 
         private static void EmitDatumToNativeParameter(
@@ -1137,8 +1080,11 @@ namespace AuroraScript.Compiler.Backend.Emission
                 declaredType,
                 out var nativeParameter))
             {
+                var captured = TryGetCapturedIndex(slot, out _);
+                if (captured) _il.Emit(OpCodes.Dup);
                 _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumToObject);
                 _il.Emit(OpCodes.Castclass, nativeParameter.ClrType);
+                if (captured) _il.Emit(OpCodes.Pop);
                 return;
             }
             if (TypeReferenceFacts.TryGetCustomType(
@@ -2513,7 +2459,8 @@ namespace AuroraScript.Compiler.Backend.Emission
             else
             {
                 EmitDatum(expression.Index);
-                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetElement);
+                _il.Emit(OpCodes.Ldarg_0);
+                _il.Emit(OpCodes.Call, typeof(ObjectOps).GetMethod(nameof(ObjectOps.GetElementContext)));
             }
             return StackValueKind.Datum;
         }
@@ -3872,6 +3819,9 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private bool CallUsesArgumentBuffer(FunctionCallExpression call)
         {
+            var target = call.Target;
+            while (target is GroupExpression group) target = group.Expression;
+            if (target is GetElementExpression) return HasSpread(call.Arguments) || call.Arguments.Count > 7;
             if (TryGetImportedNativeCall(call, out _) ||
                 TryGetDirectCall(call, out _))
             {
@@ -3902,11 +3852,14 @@ namespace AuroraScript.Compiler.Backend.Emission
             return hasSpread || call.Arguments.Count > 2;
         }
 
-        private StackValueKind EmitCall(FunctionCallExpression call, bool materializeVoid = true)
+        private StackValueKind EmitCall(FunctionCallExpression call, bool materializeVoid = true, bool fixedClosure = false)
         {
             if (TryGetValueFactoryCall(call, out var factory)) return EmitHostExportCall(call, null, factory, materializeVoid);
 
-            if (call.Target is GetPropertyExpression property &&
+            var callTarget = call.Target;
+            while (callTarget is GroupExpression group) callTarget = group.Expression;
+            if (!fixedClosure && callTarget is GetElementExpression element) return EmitElementCall(call, element);
+            if (!fixedClosure && callTarget is GetPropertyExpression property &&
                 TryGetStaticPropertyName(property.Property, out var name))
             {
                 return EmitPropertyCall(call, property.Object, name, materializeVoid);
@@ -3916,9 +3869,16 @@ namespace AuroraScript.Compiler.Backend.Emission
             if (!hasSpread && call.Arguments.Count <= 7)
             {
                 EmitDatum(call.Target);
+                if (fixedClosure)
+                {
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumToObject);
+                    _il.Emit(OpCodes.Castclass, typeof(ClosureFunction));
+                }
                 _il.Emit(OpCodes.Ldarg_0);
                 for (var i = 0; i < call.Arguments.Count; i++) EmitDatum(call.Arguments[i]);
-                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.Invoke[call.Arguments.Count]);
+                _il.Emit(OpCodes.Call, fixedClosure
+                    ? typeof(ClosureFunction).GetMethod("Invoke" + call.Arguments.Count, BindingFlags.Instance | BindingFlags.NonPublic)
+                    : TypedRuntimeMetadata.Invoke[call.Arguments.Count]);
                 return StackValueKind.Datum;
             }
 
@@ -3934,7 +3894,55 @@ namespace AuroraScript.Compiler.Backend.Emission
             _il.Emit(OpCodes.Ldarg_0);
             _il.Emit(OpCodes.Ldloc, arguments);
             _il.Emit(OpCodes.Ldloc, count);
-            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.InvokeMany);
+            _il.Emit(OpCodes.Call, fixedClosure ? typeof(CallOps).GetMethod(nameof(CallOps.InvokeClosureMany)) : TypedRuntimeMetadata.InvokeMany);
+            _il.Emit(OpCodes.Stloc, result);
+            ReleaseArgumentBuffer(arguments, count);
+            _il.Emit(OpCodes.Ldloc, result);
+            return StackValueKind.Datum;
+        }
+
+        private StackValueKind EmitElementCall(FunctionCallExpression call, GetElementExpression element)
+        {
+            var target = DeclareLocal(typeof(ScriptObject));
+            EmitDatum(element.Object);
+            _il.Emit(OpCodes.Ldarg_0);
+            EmitDatum(element.Index);
+            _il.Emit(OpCodes.Call, typeof(CallOps).GetMethod(nameof(CallOps.ResolveElementCall)));
+            _il.Emit(OpCodes.Stloc, target);
+            if (!HasSpread(call.Arguments) && call.Arguments.Count <= 7)
+            {
+                var values = new LocalBuilder[call.Arguments.Count];
+                for (var i = 0; i < values.Length; i++)
+                {
+                    values[i] = DeclareLocal(typeof(ScriptDatum));
+                    EmitDatum(call.Arguments[i]);
+                    _il.Emit(OpCodes.Stloc, values[i]);
+                }
+                var invoke = _il.DefineLabel();
+                var done = _il.DefineLabel();
+                _il.Emit(OpCodes.Ldloc, target);
+                _il.Emit(OpCodes.Brtrue, invoke);
+                EmitNull();
+                _il.Emit(OpCodes.Br, done);
+                _il.MarkLabel(invoke);
+                _il.Emit(OpCodes.Ldloc, target);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromObject);
+                _il.Emit(OpCodes.Ldarg_0);
+                foreach (var value in values) _il.Emit(OpCodes.Ldloc, value);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.Invoke[values.Length]);
+                _il.MarkLabel(done);
+                return StackValueKind.Datum;
+            }
+            var arguments = DeclareLocal(typeof(ScriptDatum[]));
+            var count = DeclareLocal(typeof(int));
+            var result = DeclareLocal(typeof(ScriptDatum));
+            InitializeArgumentBuffer(arguments, count);
+            EmitArgumentBuffer(call.Arguments, arguments, count);
+            _il.Emit(OpCodes.Ldloc, target);
+            _il.Emit(OpCodes.Ldarg_0);
+            _il.Emit(OpCodes.Ldloc, arguments);
+            _il.Emit(OpCodes.Ldloc, count);
+            _il.Emit(OpCodes.Call, typeof(CallOps).GetMethod(nameof(CallOps.InvokeElementMany)));
             _il.Emit(OpCodes.Stloc, result);
             ReleaseArgumentBuffer(arguments, count);
             _il.Emit(OpCodes.Ldloc, result);
@@ -3964,6 +3972,16 @@ namespace AuroraScript.Compiler.Backend.Emission
                     out var hostExport))
             {
                 return EmitHostExportCall(call, receiver, hostExport, materializeVoid);
+            }
+
+            if (receiver is NameExpression importedName)
+            {
+                var import = LoadedImportFacts.Resolve(_module, _function, _code.GetName(importedName));
+                if (LoadedImportFacts.TryGetStatic(import, name, out var value) && value.Reference is ClosureFunction)
+                {
+                    LoadedImportFacts.Record(import, name, value);
+                    return EmitCall(call, materializeVoid, fixedClosure: true);
+                }
             }
 
             var valueBinding = GetNativeValueCall(call, receiver, name);
@@ -4127,7 +4145,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
             if (descriptor.TakesThisObject)
             {
-                EmitObjectReference(receiver);
+                EmitObjectReference(descriptor.ImportedNative ? call.Target : receiver);
             }
 
             var methodParameters = descriptor.Method.GetParameters();
@@ -4151,7 +4169,11 @@ namespace AuroraScript.Compiler.Backend.Emission
                 }
                 else
                 {
-                    EmitHostExportDefault(methodParameters[scriptStart + i]);
+                    if (descriptor.RuntimeDefaults != null)
+                        EmitHostExportArgument(ModuleConstInliningAnalyzer.CreateLiteralExpression(
+                            descriptor.RuntimeDefaults[i - descriptor.RequiredScriptParameterCount], call.Range),
+                            descriptor.ParameterKinds[i], methodParameters[scriptStart + i].ParameterType);
+                    else EmitHostExportDefault(methodParameters[scriptStart + i]);
                 }
             }
 

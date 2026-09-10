@@ -2,6 +2,7 @@ using AuroraScript.Runtime.Interop;
 using AuroraScript.Runtime.Types;
 using System;
 using System.Threading;
+using System.Collections.Generic;
 
 namespace AuroraScript.Runtime
 {
@@ -11,7 +12,9 @@ namespace AuroraScript.Runtime
     public sealed class CompiledBlock : IDisposable
     {
         private readonly AuroraEngine _engine;
-        private readonly ScriptFunctionDelegate _target;
+        private ScriptFunctionDelegate _target;
+        private ScriptDomain _boundDomain;
+        private ImportBinding[] _imports = Array.Empty<ImportBinding>();
         private int[] _dynamicDelegateIds;
         private int _disposed;
 
@@ -20,6 +23,39 @@ namespace AuroraScript.Runtime
             _engine = engine;
             _target = target;
             _dynamicDelegateIds = dynamicDelegateIds ?? Array.Empty<int>();
+        }
+
+        internal void BindImports(ScriptDomain domain, ImportBinding[] imports)
+        {
+            _boundDomain = domain;
+            _imports = imports;
+        }
+
+        internal readonly struct ImportBinding
+        {
+            internal readonly ScriptModule Module;
+            internal readonly KeyValuePair<string, ScriptDatum>[] StaticMembers;
+            internal ImportBinding(ScriptModule module, KeyValuePair<string, ScriptDatum>[] members)
+            {
+                Module = module;
+                StaticMembers = members;
+            }
+        }
+
+        private void ValidateImports(ScriptDomain domain)
+        {
+            if (_boundDomain == null) return;
+            if (!ReferenceEquals(domain, _boundDomain))
+                throw new AuroraException("This compiled block is bound to a different domain.");
+            foreach (var import in _imports)
+            {
+                if (!ReferenceEquals(domain.Global.GetModuleByPath(import.Module.Source.FullPath), import.Module))
+                    throw new AuroraException($"Imported module '{import.Module.Source.FullPath}' is no longer loaded. Recompile the block.");
+                foreach (var member in import.StaticMembers)
+                    if (!import.Module.TryGetExport(member.Key, out var value, out var readOnly) ||
+                        (!readOnly && !import.Module.IsNativeFunction(member.Key)) || !value.SameBits(member.Value))
+                        throw new AuroraException($"Static import '{member.Key}' changed. Recompile the block.");
+            }
         }
 
         /// <summary>
@@ -56,7 +92,7 @@ namespace AuroraScript.Runtime
             var ctx = domain.ContextPool.Rent(domain, domain.UserState, null, null);
             try
             {
-                return _target(ctx, arguments);
+                return _imports.Length == 0 ? _target(ctx, arguments) : Invoke(ctx, arguments.AsSpan());
             }
             finally
             {
@@ -73,17 +109,17 @@ namespace AuroraScript.Runtime
         }
 
         /// <summary>
-        /// Invokes the compiled block in a new empty domain with raw script arguments.
+        /// Invokes the compiled block in its bound domain, or a new empty domain when it has no imports.
         /// </summary>
         public ScriptDatum Invoke(params ScriptDatum[] arguments)
         {
             ThrowIfDisposed();
-            var domain = _engine.CreateEmptyDomain(null);
+            var domain = _boundDomain ?? _engine.CreateEmptyDomain(null);
             return Invoke(domain, arguments);
         }
 
         /// <summary>
-        /// Invokes the compiled block in a new empty domain with script object arguments.
+        /// Invokes the compiled block in its bound domain, or a new empty domain when it has no imports.
         /// </summary>
         public ScriptDatum Invoke(params ScriptObject[] arguments)
         {
@@ -96,6 +132,31 @@ namespace AuroraScript.Runtime
         public ScriptDatum Invoke(ScriptContext context, ReadOnlySpan<ScriptDatum> arguments)
         {
             ThrowIfDisposed();
+            ValidateImports(context.Domain);
+            if (_imports.Length == 0) return InvokeCore(context, arguments);
+            var count = _imports.Length + arguments.Length;
+            if (count <= 8)
+            {
+                DatumBuffer8 buffer = default;
+                return InvokeWithImports(context, arguments, ((Span<ScriptDatum>)buffer)[..count]);
+            }
+            var rented = CallOps.RentArguments(count);
+            try { return InvokeWithImports(context, arguments, rented.AsSpan(0, count)); }
+            finally { CallOps.ReturnArguments(rented, count); }
+        }
+
+        private ScriptDatum InvokeWithImports(ScriptContext context, ReadOnlySpan<ScriptDatum> arguments, Span<ScriptDatum> buffer)
+        {
+            for (var i = 0; i < _imports.Length; i++)
+                buffer[i] = ScriptDatum.FromObject(_imports[i].Module);
+            arguments.CopyTo(buffer[_imports.Length..]);
+            var frame = context.EnterModule(null);
+            try { return _target(context, buffer); }
+            finally { context.LeaveFrame(frame); }
+        }
+
+        private ScriptDatum InvokeCore(ScriptContext context, ReadOnlySpan<ScriptDatum> arguments)
+        {
             switch (arguments.Length)
             {
                 case 0:
@@ -192,6 +253,9 @@ namespace AuroraScript.Runtime
             {
                 DynamicMethodRegistry.Unregister(ids[i]);
             }
+            _target = null;
+            _boundDomain = null;
+            _imports = Array.Empty<ImportBinding>();
         }
 
         private void ThrowIfDisposed()

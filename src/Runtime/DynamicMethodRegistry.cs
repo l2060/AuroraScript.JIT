@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Threading;
+using System.Reflection;
 
 namespace AuroraScript.Runtime
 {
@@ -11,18 +12,20 @@ namespace AuroraScript.Runtime
     internal static class DynamicMethodRegistry
     {
         private static int _nextId = 0;
-        private static readonly ConcurrentDictionary<int, Delegate> _registry = new();
+        private static readonly ConcurrentDictionary<int, (Delegate Target, MethodInfo NativeEntry)> _registry = new();
 
         internal static int Count => _registry.Count;
+
+        public static MethodInfo ResolveNativeEntry(int id) => _registry[id].NativeEntry;
 
         public static int Reserve()
         {
             return Interlocked.Increment(ref _nextId);
         }
 
-        public static void RegisterReserved(int id, Delegate del)
+        public static void RegisterReserved(int id, Delegate del, MethodInfo nativeEntry = null)
         {
-            _registry[id] = del;
+            _registry[id] = (del, nativeEntry);
         }
 
         /// <summary>
@@ -32,7 +35,7 @@ namespace AuroraScript.Runtime
         {
             if (_registry.TryGetValue(id, out var del))
             {
-                return (ScriptFunctionDelegate)del;
+                return (ScriptFunctionDelegate)del.Target;
             }
             throw new InvalidOperationException($"Delegate with ID {id} not found in registry.");
         }
@@ -41,7 +44,7 @@ namespace AuroraScript.Runtime
         {
             if (_registry.TryGetValue(id, out var del))
             {
-                return (ScriptFunctionDelegate0)del;
+                return (ScriptFunctionDelegate0)del.Target;
             }
             throw new InvalidOperationException($"Delegate with ID {id} not found in registry.");
         }
@@ -50,7 +53,7 @@ namespace AuroraScript.Runtime
         {
             if (_registry.TryGetValue(id, out var del))
             {
-                return (ScriptFunctionDelegate1)del;
+                return (ScriptFunctionDelegate1)del.Target;
             }
             throw new InvalidOperationException($"Delegate with ID {id} not found in registry.");
         }
@@ -59,7 +62,7 @@ namespace AuroraScript.Runtime
         {
             if (_registry.TryGetValue(id, out var del))
             {
-                return (ScriptFunctionDelegate2)del;
+                return (ScriptFunctionDelegate2)del.Target;
             }
             throw new InvalidOperationException($"Delegate with ID {id} not found in registry.");
         }
@@ -68,7 +71,7 @@ namespace AuroraScript.Runtime
         {
             if (_registry.TryGetValue(id, out var del))
             {
-                return (ScriptFunctionDelegate3)del;
+                return (ScriptFunctionDelegate3)del.Target;
             }
             throw new InvalidOperationException($"Delegate with ID {id} not found in registry.");
         }
@@ -77,7 +80,7 @@ namespace AuroraScript.Runtime
         {
             if (_registry.TryGetValue(id, out var del))
             {
-                return (ScriptFunctionDelegate4)del;
+                return (ScriptFunctionDelegate4)del.Target;
             }
             throw new InvalidOperationException($"Delegate with ID {id} not found in registry.");
         }
@@ -86,7 +89,7 @@ namespace AuroraScript.Runtime
         {
             if (_registry.TryGetValue(id, out var del))
             {
-                return (ScriptFunctionDelegate5)del;
+                return (ScriptFunctionDelegate5)del.Target;
             }
             throw new InvalidOperationException($"Delegate with ID {id} not found in registry.");
         }
@@ -95,7 +98,7 @@ namespace AuroraScript.Runtime
         {
             if (_registry.TryGetValue(id, out var del))
             {
-                return (ScriptFunctionDelegate6)del;
+                return (ScriptFunctionDelegate6)del.Target;
             }
             throw new InvalidOperationException($"Delegate with ID {id} not found in registry.");
         }
@@ -104,7 +107,7 @@ namespace AuroraScript.Runtime
         {
             if (_registry.TryGetValue(id, out var del))
             {
-                return (ScriptFunctionDelegate7)del;
+                return (ScriptFunctionDelegate7)del.Target;
             }
             throw new InvalidOperationException($"Delegate with ID {id} not found in registry.");
         }

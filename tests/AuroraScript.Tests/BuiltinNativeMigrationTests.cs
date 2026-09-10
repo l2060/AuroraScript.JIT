@@ -15,6 +15,40 @@ namespace AuroraScript.Tests;
 public sealed class BuiltinNativeMigrationTests
 {
     [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+    [InlineData(CompilationMode.OnlyRun)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
+    public async Task DateDefaultFormatUsesTheInvokingEngineForNativeAndDynamicCalls(CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        var date = ScriptDatum.FromDate(new ScriptDate(new DateTimeOffset(2024, 2, 3, 4, 5, 6, TimeSpan.FromHours(8))));
+        foreach (var (format, expected) in new[] { ("yyyy-MM-dd", "2024-02-03"), ("yyyy|MM|dd HH:mm", "2024|02|03 04:05") })
+        {
+            var (_, domain) = await workspace.CompileModuleAsync("""
+                @module(TEST);
+                export native func nativeFormat(Date date) String { return date.toString(); }
+                export func typedFormat(Date date) { return date.toString(); }
+                export func dynamicFormat(date) { return date.toString(); }
+                export func spreadFormat(Date date) { return date.toString(...[]); }
+                export func explicitFormat(Date date) { return date.toString('yyyy/MM/dd'); }
+                export func dynamicExplicit(date, format) { return date.toString(format); }
+                export func nullFormat(Date date) { return date.toString(null); }
+                """, mode, dateTimeFormat: format);
+            using (domain)
+            {
+                foreach (var method in new[] { "nativeFormat", "typedFormat", "dynamicFormat", "spreadFormat" })
+                    ScriptAssert.Equal(expected, TestWorkspace.Execute(domain, method, arguments: [date]));
+                ScriptAssert.Equal("2024/02/03", TestWorkspace.Execute(domain, "explicitFormat", arguments: [date]));
+                ScriptAssert.Equal("2024/02/03", TestWorkspace.Execute(domain, "dynamicExplicit", arguments: [date, ScriptDatum.FromString("yyyy/MM/dd")]));
+                ScriptAssert.Equal("null", TestWorkspace.Execute(domain, "nullFormat", arguments: [date]));
+                ScriptAssert.Equal("null", TestWorkspace.Execute(domain, "dynamicExplicit", arguments: [date, ScriptDatum.Null]));
+            }
+        }
+    }
+
+    [Theory]
     [InlineData(CompilationMode.OnlyRun)]
 #if NET9_0_OR_GREATER
     [InlineData(CompilationMode.Persistence)]
@@ -177,7 +211,11 @@ public sealed class BuiltinNativeMigrationTests
             export func derived(StringBuffer b, HashMap m, Date d, Regex r) {
                 b.append('a');
                 m.set('x', 3);
-                return [b.toString(), m.get('x'), m.size, d.year, r.test('a')];
+                return [b.toString(), m.get('x'), m.size,
+                    [d.year, d.month, d.day, d.hour, d.minute, d.second, d.millisecond, d.dayOfYear], r.test('a')];
+            }
+            export func dynamicDateParts(d) {
+                return [d.year, d.month, d.day, d.hour, d.minute, d.second, d.millisecond, d.dayOfYear];
             }
             """, mode, dateTimeFormat: "yyyy-MM-dd");
         ScriptAssert.Equal(new object?[] { "StringBuffer", null, "4-2anull2", "4-2anull2", "z" + Environment.NewLine }, TestWorkspace.Execute(domain, "buffer"));
@@ -189,8 +227,11 @@ public sealed class BuiltinNativeMigrationTests
         ScriptAssert.Equal(4, TestWorkspace.Execute(domain, "cannotCall"));
         Assert.IsType<StringBuffer>(TestWorkspace.Execute(domain, "alias", arguments: [ScriptDatum.FromObject(StringBuffer.Type)]).Object);
         var regex = new ScriptRegex(new System.Text.RegularExpressions.Regex("a"), "");
-        ScriptAssert.Equal(new object[] { "a", 3, 1, 2024, true }, TestWorkspace.Execute(domain, "derived", arguments:
-            [ScriptDatum.FromObject(new StringBuffer()), ScriptDatum.FromObject(new ScriptHashMap()), ScriptDatum.FromDate(new ScriptDate(new DateTime(2024, 1, 1))), ScriptDatum.FromRegex(regex)]));
+        var date = ScriptDatum.FromDate(new ScriptDate(new DateTimeOffset(2024, 2, 29, 12, 34, 56, 789, TimeSpan.FromHours(8))));
+        var dateParts = new object[] { 2024, 2, 29, 12, 34, 56, 789, 60 };
+        ScriptAssert.Equal(new object[] { "a", 3, 1, dateParts, true }, TestWorkspace.Execute(domain, "derived", arguments:
+            [ScriptDatum.FromObject(new StringBuffer()), ScriptDatum.FromObject(new ScriptHashMap()), date, ScriptDatum.FromRegex(regex)]));
+        ScriptAssert.Equal(dateParts, TestWorkspace.Execute(domain, "dynamicDateParts", arguments: [date]));
 #if NET9_0_OR_GREATER
         if (mode == CompilationMode.Persistence)
         {
@@ -200,6 +241,8 @@ public sealed class BuiltinNativeMigrationTests
                 .SelectMany(StringOptimizationTests.GetCalls).ToArray();
             foreach (var type in new[] { typeof(StringBuffer), typeof(ScriptHashMap), typeof(ScriptDate), typeof(ScriptRegex) })
                 Assert.Contains(calls, call => call.DeclaringType == type);
+            foreach (var name in new[] { "Year", "Month", "Day", "Hour", "Minute", "Second", "Millisecond", "DayOfYear" })
+                Assert.Contains(calls, call => call.DeclaringType == typeof(ScriptDate) && call.Name == "get_" + name);
         }
 #endif
     }

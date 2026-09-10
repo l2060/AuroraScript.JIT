@@ -2,6 +2,7 @@ using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Compiler.Backend.Plans;
+using AuroraScript.Compiler.Backend.Analysis;
 using AuroraScript.Compiler.Backend.Traversal;
 using AuroraScript.Hosting;
 using AuroraScript.Runtime;
@@ -670,10 +671,8 @@ namespace AuroraScript.Compiler.Backend.Code
                                 : directParameter.Type != FlowValueType.None
                                     ? FlowValueTypeFacts.GetDirectLocalType(directParameter)
                                     : FlowValueType.Dynamic;
-                        // Closure cells always hold ScriptDatum. Keep exact
-                        // 64-bit parameters boxed when they cross that boundary.
-                        _locals[i] = IsCaptured(function.LocalSlots[i].Id) &&
-                            parameterType is FlowValueType.Int64 or FlowValueType.UInt64
+                        // Every closure cell stores a ScriptDatum, including typed parameters.
+                        _locals[i] = IsCaptured(function.LocalSlots[i].Id)
                                 ? FlowValueType.Dynamic
                                 : parameterType;
                         // Only a declared type that is also the storage pins the
@@ -1261,6 +1260,7 @@ namespace AuroraScript.Compiler.Backend.Code
                         break;
                     case GetPropertyExpression property:
                         var propertyObjectType = AnalyzeExpression(property.Object);
+                        BindLoadedConstant(property);
                         type = _function.CompileTimeProperties.TryGetValue(
                                 property,
                                 out var propertyConstant)
@@ -2173,36 +2173,39 @@ namespace AuroraScript.Compiler.Backend.Code
                 return true;
             }
 
-            private bool TryGetHostExport(
-                FunctionCallExpression call,
-                out HostExportDescriptor descriptor)
+            private bool TryGetHostExport(FunctionCallExpression call, out HostExportDescriptor descriptor)
             {
                 if (_hostCalls != null && _hostCalls.TryGetValue(call, out descriptor))
                     return descriptor != null;
                 descriptor = null;
-                if (call?.Target is not GetPropertyExpression property ||
-                    !TryGetStaticPropertyName(property.Property, out var memberName) ||
-                    property.Object is not NameExpression receiver ||
-                    !_names.TryGetValue(receiver, out var binding) ||
-                    !_hostExports.TryResolveExportOwner(
-                        binding,
-                        receiver.Identifier?.Value,
-                        _module.Declaration.Imports,
-                        out var ownerName))
+                if (call?.Target is GetPropertyExpression property &&
+                    TryGetStaticPropertyName(property.Property, out var memberName) &&
+                    property.Object is NameExpression receiver && _names.TryGetValue(receiver, out var binding))
                 {
-                    return false;
+                    var import = LoadedImportFacts.Resolve(_module, _function, binding);
+                    if (import != null) descriptor = LoadedImportFacts.GetNative(import, memberName, _hostExports);
+                    else if (_hostExports.TryResolveExportOwner(binding, receiver.Identifier?.Value,
+                        _module.Declaration.Imports, out var ownerName))
+                        _hostExports.TryGetGlobal(ownerName, memberName, out descriptor);
+                    if (descriptor != null)
+                        HostExportArgumentFacts.TrySelectOverload(descriptor, call.Arguments,
+                            HostArgumentType, HostArgumentClrType, out descriptor);
                 }
-
-                if (!_hostExports.TryGetGlobal(ownerName, memberName, out descriptor))
-                {
-                    return false;
-                }
-                HostExportArgumentFacts.TrySelectOverload(
-                    descriptor, call.Arguments,
-                    HostArgumentType, HostArgumentClrType,
-                    out descriptor);
                 (_hostCalls ??= new())[call] = descriptor;
                 return descriptor != null;
+            }
+
+            private void BindLoadedConstant(GetPropertyExpression property)
+            {
+                if (property.Object is not NameExpression receiver ||
+                    !TryGetStaticPropertyName(property.Property, out var name) ||
+                    !_names.TryGetValue(receiver, out var binding)) return;
+                var import = LoadedImportFacts.Resolve(_module, _function, binding);
+                if (!LoadedImportFacts.TryGetStatic(import, name, out var value) ||
+                    value.Kind is not (ValueKind.Null or ValueKind.Boolean or ValueKind.Number or
+                        ValueKind.Int64 or ValueKind.UInt64 or ValueKind.String)) return;
+                _function.CompileTimeProperties[property] = new InlineConstant(value);
+                LoadedImportFacts.Record(import, name, value);
             }
 
             private bool TryGetHostExportConstant(GetPropertyExpression property, out FlowValueType type)

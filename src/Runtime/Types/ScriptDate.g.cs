@@ -1,55 +1,21 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Text;
 using AuroraScript.Hosting;
 
 namespace AuroraScript.Runtime.Types
 {
     public partial class ScriptDate
     {
-        /// <summary>Formats a date with the script string conversion for an explicit null.</summary>
+        /// <summary>Formats a script date using the current engine's format when no format is supplied.</summary>
         [Export("toString", DynamicAdapter = nameof(TOSTRING))]
-        public string FormatCore(string format) => Format(format ?? "null");
+        public string ToStringCore(ScriptContext ctx, string format = null) => FormatCore(format ?? ctx.Engine.Options.Runtime.DateTimeFormat);
 
-        /// <summary>Reads year using the script Number representation.</summary>
-        [Export("year", IsGetter = true, DynamicAdapter = nameof(YEAR))]
-        public int YearCore() => Year;
-
-        /// <summary>Reads month using the script Number representation.</summary>
-        [Export("month", IsGetter = true, DynamicAdapter = nameof(MONTH))]
-        public int MonthCore() => Month;
-
-        /// <summary>Reads day using the script Number representation.</summary>
-        [Export("day", IsGetter = true, DynamicAdapter = nameof(DAY))]
-        public int DayCore() => Day;
-
-        /// <summary>Reads hour using the script Number representation.</summary>
-        [Export("hour", IsGetter = true, DynamicAdapter = nameof(HOUR))]
-        public int HourCore() => Hour;
-
-        /// <summary>Reads minute using the script Number representation.</summary>
-        [Export("minute", IsGetter = true, DynamicAdapter = nameof(MINUTE))]
-        public int MinuteCore() => Minute;
-
-        /// <summary>Reads second using the script Number representation.</summary>
-        [Export("second", IsGetter = true, DynamicAdapter = nameof(SECOND))]
-        public int SecondCore() => Second;
-
-        /// <summary>Reads millisecond using the script Number representation.</summary>
-        [Export("millisecond", IsGetter = true, DynamicAdapter = nameof(MILLISECCOND))]
-        public int MillisecondCore() => Millisecond;
+        /// <summary>Formats a date using the supplied CLR format string.</summary>
+        public string FormatCore(string format = null) => DateTime.ToString(format);
 
         /// <summary>Reads dayOfWeek using the script Number representation.</summary>
         [Export("dayOfWeek", IsGetter = true, DynamicAdapter = nameof(DAYOFWEEK))]
-        public int DayOfWeekCore() => (int) DayOfWeek;
+        public int DayOfWeekCore() => (int)DayOfWeek;
 
-        /// <summary>Reads dayOfYear using the script Number representation.</summary>
-        [Export("dayOfYear", IsGetter = true, DynamicAdapter = nameof(DAYOFYEAR))]
-        public int DayOfYearCore() => DayOfYear;
-
-        /// <summary>Reads ticks using the script Number representation.</summary>
-        [Export("ticks", IsGetter = true, DynamicAdapter = nameof(TICKS))]
-        public double TicksCore() => Ticks;
 
 
 

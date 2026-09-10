@@ -9,7 +9,7 @@ For default code generation style, also read `docs/script-authoring-best-practic
 
 - Generate a full module unless the user explicitly asks for a `CompileBlock` body.
 - Use `@module(NAME);` only for modules that need explicit-name lookup through host APIs or script `global.getModule`. Other modules are anonymous and are imported by path.
-- For `CompileBlock`, do not use `@module`, `@global()`, `include`, `import`, `export`, or `declare`.
+- For `CompileBlock`, do not use `@module`, `@global()`, `include`, `export`, or `declare`. Leading imports require `CompileBlockOptions.Domain` and already loaded dependencies.
 - Prefer `const` for values that are never reassigned and `var` for values that change.
 - Return plain data that hosts can serialize: number, string, boolean, null, arrays, and objects.
 - Check `schema/runtime-api.json` before using runtime APIs that look like JavaScript built-ins.
@@ -28,7 +28,8 @@ For default code generation style, also read `docs/script-authoring-best-practic
 - `@global()` files contain only `declare` statements, cannot also use `@module`, cannot be imported/included, and are not compiled as modules.
 - `include "path";` and `import Alias from "path";` must appear at the top of a module before ordinary declarations.
 - `export` is only valid at module scope.
-- `CompileBlock` accepts statement bodies only. It rejects file/module-only syntax such as `@module`, `@global()`, `import`, `include`, `export`, and `declare`.
+- `CompileBlock` accepts a function body with optional leading imports. It remains a lightweight block: imports resolve against an initialized domain without loading dependency sources or creating a module. Other file/module-only syntax remains rejected.
+- External reads and member calls to unexported module members return `null`. Call arguments still evaluate; the hidden function does not run. Ordinary `null()` remains an error.
 - Import/include paths are raw script text until the module graph asks the configured resolver to resolve them.
 - Relative imports are resolved from the importing file's full path, not from a global compiler directory.
 - After resolution, compilation, dependency ordering, module initialization, and runtime import binding use the resolved absolute or virtual `FullPath`. `ModulePath` remains resolver-relative source information, not a module name or registry identity.

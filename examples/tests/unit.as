@@ -16,7 +16,7 @@ mem.go();
 
 
 function defineTest(name, run) {
-	__testCases.push({ name: name, run: run });
+	(__testCases as Array).push({ name: name, run: run });
 }
 
 // console.log(STR);

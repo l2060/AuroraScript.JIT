@@ -133,6 +133,8 @@ namespace AuroraScript.Runtime
                 throw new AuroraException($"The module named {moduleName} was not found");
             }
 
+            if (module.HasOwnProperty(methodName) && !module.CanRead(null, methodName))
+                return ScriptDatum.Null;
             var method = module.GetPropertyValue(methodName);
             if (method == ScriptObject.Null)
             {

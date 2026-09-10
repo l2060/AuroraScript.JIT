@@ -29,12 +29,12 @@ When several valid styles are possible, choose this order:
 Use a full module when the script has any of these:
 
 - Named exported functions.
-- Imports or includes.
+- Dependencies that must be loaded from source, or includes.
 - Shared helpers or constants.
 - Host-visible behavior that should be built once and executed many times.
 - Code that may be hot patched.
 
-Use `CompileBlock` only for a small function body that the host invokes directly with known parameter names.
+Use `CompileBlock` for a small function body that the host invokes directly with known parameter names. Leading imports can reuse modules already loaded in `CompileBlockOptions.Domain`; the block does not load dependencies itself.
 
 Do not transform a module into a block just to make a short answer. If the user asks for a `.as` file, generate a module.
 
@@ -102,7 +102,8 @@ return total;
 
 Rules:
 
-- Do not use `@module`, `@global()`, `import`, `include`, `export`, or `declare`.
+- Do not use `@module`, `@global()`, `include`, `export`, or `declare`.
+- Use leading imports only when the host supplies an initialized `CompileBlockOptions.Domain` containing the dependencies. Importing blocks remain bound to that domain; see [host integration](host-integration.md#compileblock).
 - Treat provided parameter names as local variables.
 - End with `return` unless side effects are the only goal.
 - Validate with the exact parameter names the host will pass.
@@ -482,7 +483,7 @@ When validating loop code, use the recommended cached-bound form:
 - Do not use `let` or `class`.
 - Do not write multi-binding declarations such as `var a = 1, b = 2;`.
 - Do not put `import` or `include` after normal declarations.
-- Do not use file or module syntax inside `CompileBlock`.
+- In `CompileBlock`, only leading imports of already loaded dependencies are allowed from file/module syntax.
 - Do not redeclare same-scope names.
 - Do not mutate `const`.
 - Do not use repeated dynamic property reads such as `items.length` directly in loop conditions; cache the bound first.

@@ -1,4 +1,6 @@
 using AuroraScript.Compiler.Backend.Plans;
+using AuroraScript.Compiler.Ast.Expressions;
+using AuroraScript.Tokens;
 using AuroraScript.Compiler.Backend.Code;
 using AuroraScript.Runtime;
 using AuroraScript.Runtime.Types;
@@ -39,6 +41,107 @@ namespace AuroraScript.Compiler.Backend.Emission
                 session.Builder.LoadStringConstant(il, function.Name);
             }
             il.Emit(OpCodes.Newobj, GetClosureConstructor(function.CallConvention));
+            if (function.NativeEntryMethod != null)
+            {
+                il.Emit(OpCodes.Dup);
+                if (function.Method is DynamicMethod dynamicMethod)
+                {
+                    il.Emit(OpCodes.Ldc_I4, session.GetDynamicDelegateId(function, dynamicMethod));
+                    il.Emit(OpCodes.Call, typeof(DynamicMethodRegistry).GetMethod(nameof(DynamicMethodRegistry.ResolveNativeEntry)));
+                }
+                else
+                {
+                    il.Emit(OpCodes.Ldtoken, function.NativeEntryMethod);
+                    il.Emit(OpCodes.Call, typeof(MethodBase).GetMethod(nameof(MethodBase.GetMethodFromHandle), [typeof(RuntimeMethodHandle)]));
+                    il.Emit(OpCodes.Castclass, typeof(MethodInfo));
+                }
+                var parameters = function.Declaration.Parameters;
+                var required = 0;
+                while (required < parameters.Count && parameters[required].Initializer == null) required++;
+                if (required == parameters.Count)
+                    il.Emit(OpCodes.Call, typeof(Array).GetMethod(nameof(Array.Empty)).MakeGenericMethod(typeof(ScriptDatum)));
+                else
+                {
+                    il.Emit(OpCodes.Ldc_I4, parameters.Count - required);
+                    il.Emit(OpCodes.Newarr, typeof(ScriptDatum));
+                }
+                for (var i = required; i < parameters.Count; i++)
+                {
+                    il.Emit(OpCodes.Dup);
+                    il.Emit(OpCodes.Ldc_I4, i - required);
+                    EmitNativeDefaultDatum(session, il, parameters[i].Initializer);
+                    il.Emit(OpCodes.Stelem, typeof(ScriptDatum));
+                }
+                // CLR-erased checked contracts must keep using the checked datum shell.
+                var complete = true;
+                foreach (var parameter in parameters)
+                {
+                    var type = TypeReferenceFacts.GetFlowType(function.Declaration.Parent as Compiler.Ast.ModuleDeclaration, parameter.DeclaredType);
+                    if (parameter.DeclaredType != null && type is not (FlowValueType.Int32 or FlowValueType.UInt32 or
+                        FlowValueType.Int64 or FlowValueType.UInt64 or FlowValueType.Number or FlowValueType.Boolean or FlowValueType.String))
+                        complete = false;
+                }
+                il.Emit(complete ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
+                il.Emit(OpCodes.Call, typeof(ClosureFunction).GetMethod("SetNativeEntry", BindingFlags.Instance | BindingFlags.NonPublic));
+            }
+        }
+
+        internal static void EmitNativeDefaultDatum(
+            EmissionSession session, ILGenerator il,
+            Expression expression)
+        {
+            if (expression is not LiteralExpression literal)
+            {
+                throw new NotSupportedException(
+                    "Native defaults must be folded compiler constants.");
+            }
+
+            switch (literal.Token)
+            {
+                case NullToken:
+                    var datum = il.DeclareLocal(typeof(ScriptDatum));
+                    il.Emit(OpCodes.Ldloca, datum);
+                    il.Emit(OpCodes.Initobj, typeof(ScriptDatum));
+                    il.Emit(OpCodes.Ldloc, datum);
+                    return;
+                case BooleanToken boolean:
+                    il.Emit(
+                        boolean.BoolValue
+                            ? OpCodes.Ldc_I4_1
+                            : OpCodes.Ldc_I4_0);
+                    il.Emit(
+                        OpCodes.Call,
+                        TypedRuntimeMetadata.DatumFromBoolean);
+                    return;
+                case NumberToken number:
+                    if (number.Suffix == NumericLiteralSuffix.Int64 &&
+                        number.TryGetInt64(out var int64))
+                    {
+                        il.Emit(OpCodes.Ldc_I8, int64);
+                        il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromInt64);
+                    }
+                    else if (number.Suffix == NumericLiteralSuffix.UInt64 &&
+                        number.TryGetUInt64(out var uint64))
+                    {
+                        il.Emit(OpCodes.Ldc_I8, unchecked((long)uint64));
+                        il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromUInt64);
+                    }
+                    else
+                    {
+                        il.Emit(OpCodes.Ldc_R8, number.NumberValue);
+                        il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumFromNumber);
+                    }
+                    return;
+                case StringToken text:
+                    session.Builder.LoadStringConstant(il, text.Value);
+                    il.Emit(
+                        OpCodes.Call,
+                        TypedRuntimeMetadata.DatumFromString);
+                    return;
+                default:
+                    throw new NotSupportedException(
+                        "Unsupported native default constant.");
+            }
         }
 
         private static void EmitUpvalues(ILGenerator il, FunctionPlan function, Action<UpvalueSlot> emitUpvalue)
@@ -80,7 +183,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             il.Emit(OpCodes.Newobj, GetDelegateConstructor(function.CallConvention));
         }
 
-        public static void RegisterDynamicDelegate(int id, DynamicMethod dynamicMethod, FunctionCallConvention convention)
+        public static void RegisterDynamicDelegate(int id, DynamicMethod dynamicMethod, FunctionCallConvention convention, MethodInfo nativeEntry = null)
         {
             var del = convention switch
             {
@@ -94,7 +197,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 FunctionCallConvention.Fast7 => (ScriptFunctionDelegate7)dynamicMethod.CreateDelegate(typeof(ScriptFunctionDelegate7)),
                 _ => (ScriptFunctionDelegate)dynamicMethod.CreateDelegate(typeof(ScriptFunctionDelegate))
             };
-            DynamicMethodRegistry.RegisterReserved(id, del);
+            DynamicMethodRegistry.RegisterReserved(id, del, nativeEntry);
         }
 
         private static MethodInfo GetResolveDelegateMethod(FunctionCallConvention convention)

@@ -64,13 +64,13 @@ namespace AuroraScript.Compiler.Backend
             return session;
         }
 
-        public CompileBlockPlan CreateCompileBlockPlan(BlockStatement body, IReadOnlyList<string> parameters, string sourceName, CancellationToken cancellationToken = default)
+        public CompileBlockPlan CreateCompileBlockPlan(BlockStatement body, IReadOnlyList<string> parameters, string sourceName, CancellationToken cancellationToken = default, ModuleDeclaration imports = null)
         {
             ArgumentNullException.ThrowIfNull(body);
 
             var blockPlan = new CompileBlockPlan(body, parameters, sourceName);
             var session = CreateCompileBlockSession(cancellationToken);
-            var modulePlan = new ModulePlan(new ModuleId(0), CreateCompileBlockModule(body, blockPlan.Parameters, blockPlan.SourceName));
+            var modulePlan = new ModulePlan(new ModuleId(0), CreateCompileBlockModule(body, blockPlan.Parameters, blockPlan.SourceName, imports));
             PredefineCompileBlockModule(session, modulePlan);
             session.Modules = [modulePlan];
 
@@ -396,33 +396,32 @@ namespace AuroraScript.Compiler.Backend
             return variable;
         }
 
-        private static ModuleDeclaration CreateCompileBlockModule(BlockStatement body, IReadOnlyList<string> parameters, string sourceName)
+        private static ModuleDeclaration CreateCompileBlockModule(BlockStatement body, IReadOnlyList<string> parameters, string sourceName, ModuleDeclaration imports = null)
         {
-            var module = new ModuleDeclaration(new ScriptSourceReference("mem://compile-block/", sourceName))
-            {
-                ModuleName = "__compile_block__"
-            };
+            var module = imports ?? new ModuleDeclaration(new ScriptSourceReference("mem://compile-block/", sourceName));
+            module.ModuleName = "__compile_block__";
             var function = new FunctionDeclaration(
                 MemberAccess.Export,
                 CreateIdentifier("__compile_block_entry__", body.Range),
-                CreateParameters(parameters),
+                CreateParameters(parameters, module.Imports),
                 body,
                 FunctionFlags.General);
             module.AddFunction(function);
             return module;
         }
 
-        private static ParameterDeclaration[] CreateParameters(IReadOnlyList<string> parameters)
+        private static ParameterDeclaration[] CreateParameters(IReadOnlyList<string> parameters, IReadOnlyList<ImportDeclaration> imports)
         {
-            if (parameters == null || parameters.Count == 0)
+            var count = (parameters?.Count ?? 0) + imports.Count;
+            if (count == 0) return Array.Empty<ParameterDeclaration>();
+            if (count > byte.MaxValue)
+                throw new ArgumentException("CompileBlock parameters and imports cannot exceed 255.");
+            var result = new ParameterDeclaration[count];
+            for (var i = 0; i < count; i++)
             {
-                return Array.Empty<ParameterDeclaration>();
-            }
-
-            var result = new ParameterDeclaration[parameters.Count];
-            for (var i = 0; i < parameters.Count; i++)
-            {
-                result[i] = new ParameterDeclaration((byte)i, CreateIdentifier(parameters[i], SourceSpan.None), null);
+                result[i] = i < imports.Count
+                    ? new ParameterDeclaration((byte)i, imports[i].Name, null) { IsConst = true, LoadedImport = imports[i] }
+                    : new ParameterDeclaration((byte)i, CreateIdentifier(parameters[i - imports.Count], SourceSpan.None), null);
             }
 
             return result;

@@ -844,7 +844,7 @@ namespace AuroraScript.Compiler.Backend.Binding
                     CurrentScopeId,
                     name,
                     kind,
-                    isParameter ? BackendSymbolFlags.None : GetLocalFlags(declaration),
+                    GetLocalFlags(declaration),
                     access,
                     declaration,
                     typeof(ScriptDatum),

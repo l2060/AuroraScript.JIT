@@ -9,6 +9,8 @@ This project is the executable specification for AuroraScript compiler and runti
 | Lexer | `LexerTests.cs` | Keywords, identifiers, Unicode, every operator, numbers, strings, regex/division disambiguation, comments, CRLF locations, snapshots, long payloads, malformed tokens |
 | Parser | `ParserSyntaxTests.cs` | Module metadata, imports/includes/exports, declarations, expressions, lambdas, destructuring, control flow, exceptions, templates, regex, malformed and truncated syntax, diagnostics |
 | CompileBlock | `CompileBlockTests.cs` | Parameter validation, local functions, domain/no-domain invocation, module-only rejection, source names, null API input, dynamic delegate cleanup |
+| CompileBlock imports | `CompileBlockImportTests.cs` | Loaded user/extension modules, no dependency source reads or repeated initialization, domain binding, native/const calls, mutable members, dependency replacement |
+| Module visibility | `ModuleVisibilityTests.cs` | External reads and calls to unexported members return null, argument evaluation is preserved, ordinary null calls still fail |
 | Expressions | `ExpressionExecutionTests.cs` | Precedence, arithmetic, shifts, bitwise, comparison, equality, logical, unary, `typeof` (including packed arrays, StringBuffer, HashMap, Path), `in`, member/index access, templates, spread, assignment, increment/decrement, delete |
 | Statements | `StatementExecutionTests.cs` | `if/else`, `for`, `for-in`, `while`, break/continue, closures, recursion, defaults, rest parameters, high arity, spread calls, destructuring, try/catch/finally, domain isolation |
 | Language behavior | `LanguageFeatureExecutionTests.cs` | Enums, expression/block lambdas, sparse arrays, object shorthand/spread, short circuit, truthiness, declared host functions, nested templates, right-associative assignment, null returns |
@@ -16,6 +18,7 @@ This project is the executable specification for AuroraScript compiler and runti
 | Compilation modes | `CompilationModeTests.cs` | Release behavior parity for Dynamic/OnlyRun/Persistence, persisted PE output, repeated domain creation, hot-reload on/off paths |
 | Runtime API/errors | `RuntimeApiAndErrorTests.cs` | Pre-build use, missing module/method, non-function execution, script stack traces, invalid operations, const writes, context user state, disposal |
 | Built-ins | `BuiltInLibraryTests.cs` | Math, String, Array, JSON, HashMap, Regex, StringBuffer, Console output and error paths |
+| Native built-ins | `BuiltinNativeMigrationTests.cs`, `NativeApiSignatureTests.cs` | Date getter direct calls and dynamic parity, invoking-engine date format, console primitive/Datum overload selection and output |
 | Packed arrays | `PackedArrayTests.cs` | Primitive storage, native CIL path, `typeof` constructor names with `ValueKind.Object` |
 | Advanced types | `AdvancedRuntimeTypeTests.cs` | Constructors, static helpers, Object operations, freeze, Date, Proxy handlers and invalid proxy configuration |
 | CLR interop | `ClrInteropTests.cs` | Constructor/property/field/method/static binding, global marshalling, delegates, overload/optional/params resolution, access restrictions, registry lifetime |

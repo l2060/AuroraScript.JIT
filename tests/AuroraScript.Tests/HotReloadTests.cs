@@ -266,11 +266,12 @@ public sealed class HotReloadTests
         domain.DynamicPatch(
             workspace.MemorySource(
                 "test.as",
-                "@module(test); import l123 from 'l123'; func hello() { return 'v1'; } var x = 10;"),
+                "@module(test); import l123 from 'l123'; func hello() { return 'v1'; } var x = 10; export func run() { return [hello(), x]; }"),
             HotPatchType.Incremental | HotPatchType.IgnoreDepends);
 
-        ScriptAssert.Equal("v1", domain.Execute("test", "hello"));
-        ScriptAssert.Equal(10, domain.GetModule("test").GetPropertyDatum(null, "x"));
+        ScriptAssert.Equal(null, domain.Execute("test", "hello"));
+        ScriptAssert.Equal(null, domain.GetModule("test").GetPropertyDatum(null, "x"));
+        ScriptAssert.Equal(new object[] { "v1", 10 }, domain.Execute("test", "run"));
     }
 
     [Fact]

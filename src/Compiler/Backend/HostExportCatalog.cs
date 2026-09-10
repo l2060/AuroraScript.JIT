@@ -20,6 +20,16 @@ namespace AuroraScript.Compiler.Backend
         private readonly Dictionary<ExportKey, FieldInfo> _constants;
 
         private readonly Dictionary<string, string> _packageTypeNames;
+        private Dictionary<ClosureFunction, HostExportDescriptor> _loadedNativeExports;
+
+        internal HostExportDescriptor GetLoadedNative(ClosureFunction closure)
+        {
+            _loadedNativeExports ??= new();
+            if (!_loadedNativeExports.TryGetValue(closure, out var descriptor))
+                _loadedNativeExports[closure] = descriptor = LoadedImportFacts.CreateNativeDescriptor(closure);
+            return descriptor;
+        }
+
 
         public HostExportCatalog(IReadOnlyList<Type> nativeTypes)
             : this(nativeTypes, Array.Empty<NativePackageDefinition>())
@@ -360,8 +370,10 @@ namespace AuroraScript.Compiler.Backend
             AuroraExportValueKind[] parameterKinds,
             bool takesContext = false,
             bool takesThisObject = false,
-            bool useDynamicForExtraArguments = false)
+            bool useDynamicForExtraArguments = false,
+            ScriptDatum[] runtimeDefaults = null)
         {
+            RuntimeDefaults = runtimeDefaults;
             Method = method ?? throw new ArgumentNullException(nameof(method));
             ReturnKind = returnKind;
             ParameterKinds = parameterKinds ?? throw new ArgumentNullException(nameof(parameterKinds));
@@ -369,12 +381,14 @@ namespace AuroraScript.Compiler.Backend
             TakesThisObject = takesThisObject;
             UseDynamicForExtraArguments = useDynamicForExtraArguments;
             _parameters = method.GetParameters();
-            RequiredScriptParameterCount = CountRequiredScriptParameters(
+            RequiredScriptParameterCount = runtimeDefaults != null ? parameterKinds.Length - runtimeDefaults.Length : CountRequiredScriptParameters(
                 _parameters,
                 takesContext,
                 takesThisObject);
         }
 
+        internal ScriptDatum[] RuntimeDefaults { get; }
+        internal bool ImportedNative { get; init; }
         public MethodInfo Method { get; }
         public AuroraExportValueKind ReturnKind { get; }
         public AuroraExportValueKind[] ParameterKinds { get; }

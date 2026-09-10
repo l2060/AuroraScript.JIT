@@ -1,6 +1,6 @@
-﻿using System;
+﻿using AuroraScript.Hosting;
+using System;
 using System.Globalization;
-using AuroraScript.Hosting;
 
 namespace AuroraScript.Runtime.Types
 {
@@ -113,11 +113,8 @@ namespace AuroraScript.Runtime.Types
         {
             if (thisObject is ScriptDate date)
             {
-                if (!args.TryGetString(0, out var value))
-                {
-                    value = ctx.Engine.Options.Runtime.DateTimeFormat;
-                }
-                ScriptDatum.WriteAsString(ref result, date.Format(value));
+                var format = args.TryGetString(0, out var value) ? value : null;
+                ScriptDatum.WriteAsString(ref result, date.ToStringCore(ctx, format));
             }
         }
 

@@ -74,6 +74,11 @@ namespace AuroraScript.Runtime
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum GetElementContext(ScriptDatum receiver, ScriptDatum index, ScriptContext context) =>
+            receiver.Reference is ScriptModule module
+                ? module.GetPropertyDatum(context, ScriptDatum.ToString(index)) : GetElement(receiver, index);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum GetElement(ScriptDatum receiver, ScriptDatum index)
         {
             if (receiver.Reference is IAuroraNativeIndexer indexed &&

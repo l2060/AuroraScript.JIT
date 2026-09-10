@@ -147,6 +147,11 @@ namespace AuroraScript.Runtime
             Span<ScriptDatum> arguments,
             out ScriptDatum result)
         {
+            if (receiver is ScriptModule module && !module.CanRead(context, name))
+            {
+                result = ScriptDatum.Null;
+                return true;
+            }
             if (receiver.TryResolveProperty(name, out var property) &&
                 property.Getter == null &&
                 property.Value is BondingFunction { Target: null } native)
@@ -196,6 +201,23 @@ namespace AuroraScript.Runtime
             }
             return AppendArgument(arguments, ref count, value);
         }
+
+        public static ScriptObject ResolveElementCall(ScriptDatum receiver, ScriptContext context, ScriptDatum index)
+        {
+            // CLR null skips a hidden call; script null remains NullValue and still throws when called.
+            if (receiver.Reference is ScriptModule module)
+            {
+                var name = ScriptDatum.ToString(index);
+                return module.CanRead(context, name) ? module.GetPropertyValue(context, name) : null;
+            }
+            return ScriptDatum.ToObject(ObjectOps.GetElementContext(receiver, index, context));
+        }
+
+        public static ScriptDatum InvokeElementMany(ScriptObject target, ScriptContext context, ScriptDatum[] arguments, int count) =>
+            target == null ? ScriptDatum.Null : target.Invoke(context, arguments.AsSpan(0, count));
+
+        public static ScriptDatum InvokeClosureMany(ScriptDatum target, ScriptContext context, ScriptDatum[] arguments, int count) =>
+            ((ClosureFunction)target.Reference).Invoke(context, arguments.AsSpan(0, count));
 
         public static ScriptDatum InvokeMany(ScriptDatum function, ScriptContext context, ScriptDatum[] arguments, int count)
         {

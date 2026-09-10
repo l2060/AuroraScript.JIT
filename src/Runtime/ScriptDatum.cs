@@ -16,6 +16,8 @@ namespace AuroraScript.Runtime
     [StructLayout(LayoutKind.Sequential)]
     public partial struct ScriptDatum : IEquatable<ScriptDatum>
     {
+        internal readonly bool SameBits(ScriptDatum other) =>
+            payload == other.payload && ReferenceEquals(reference, other.reference);
         private const ulong NullPayload = 0;
         private const ulong FalsePayload = 1;
         private const ulong TruePayload = 2;

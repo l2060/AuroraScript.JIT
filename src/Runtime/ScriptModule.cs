@@ -21,6 +21,28 @@ namespace AuroraScript.Runtime
         /// <summary> Gets the resolved source that identifies this module. </summary>
         public readonly ScriptSourceReference Source;
 
+        internal bool IsNativePackage { get; init; }
+
+        internal bool CanRead(ScriptContext context, string name) =>
+            ReferenceEquals(context?.Module, this) ||
+            hiddenClass.TryGet(name, out var meta) && (meta.ModuleExport || IsNativePackage);
+
+        /// <inheritdoc />
+        protected internal override ScriptDatum GetPropertyDatum(ScriptContext context, string name) =>
+            CanRead(context, name) ? base.GetPropertyDatum(context, name) : ScriptDatum.Null;
+
+        internal bool TryGetExport(string name, out ScriptDatum value, out bool readOnly)
+        {
+            value = ScriptDatum.Null;
+            readOnly = false;
+            if (!hiddenClass.TryGet(name, out var meta) || !(meta.ModuleExport || IsNativePackage)) return false;
+            var property = GetOwnProperty(meta.Slot);
+            if (property.IsAccessor || property.Datum.Reference is BondingAccessor) return false;
+            value = property.Datum;
+            readOnly = !meta.Writable;
+            return true;
+        }
+
         /// <summary>
         /// Initializes a new instance of the <see cref="ScriptModule"/> class.
         /// </summary>

@@ -91,7 +91,7 @@ namespace AuroraScript.Compiler.Backend.Emission
 
             var id = DynamicMethodRegistry.Reserve();
             function.DynamicDelegateId = id;
-            AddPendingDynamicDelegate(new PendingDynamicDelegate(id, method, function.CallConvention));
+            AddPendingDynamicDelegate(new PendingDynamicDelegate(id, method, function.CallConvention, function.NativeEntryMethod));
             return id;
         }
 
@@ -129,7 +129,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 ClosureMaterializer.RegisterDynamicDelegate(
                     pending.Id,
                     pending.Method,
-                    pending.Convention);
+                    pending.Convention, pending.NativeEntry);
                 registeredIds[i] = pending.Id;
             }
 
@@ -153,13 +153,15 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private readonly struct PendingDynamicDelegate
         {
-            public PendingDynamicDelegate(int id, DynamicMethod method, FunctionCallConvention convention)
+            public PendingDynamicDelegate(int id, DynamicMethod method, FunctionCallConvention convention, System.Reflection.MethodInfo nativeEntry)
             {
                 Id = id;
                 Method = method;
                 Convention = convention;
+                NativeEntry = nativeEntry;
             }
 
+            public System.Reflection.MethodInfo NativeEntry { get; }
             public int Id { get; }
             public DynamicMethod Method { get; }
             public FunctionCallConvention Convention { get; }

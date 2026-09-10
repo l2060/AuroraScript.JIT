@@ -1,4 +1,5 @@
 using AuroraScript.Runtime;
+using AuroraScript.Runtime.Builtin;
 using AuroraScript.Runtime.Types;
 using AuroraScript.Tests.Infrastructure;
 using System;
@@ -18,7 +19,7 @@ public sealed class NativeApiSignatureTests
 #if NET9_0_OR_GREATER
     [InlineData(CompilationMode.Persistence)]
 #endif
-    public async Task ConstrainedArgumentsUseNativeSignaturesAndUnknownArgumentsUseAdapters(CompilationMode mode)
+    public async Task ConstrainedArgumentsUseNativeSignaturesAndUnknownArgumentsUseDatumOverloadsOrAdapters(CompilationMode mode)
     {
         using var workspace = new TestWorkspace();
         var source = """
@@ -38,6 +39,7 @@ public sealed class NativeApiSignatureTests
             export func weakDate(s) { return Date.parse(s); }
             export native func print(int32 v) void { console.log(v); }
             export func weakPrint(v) { console.log(v); }
+            export func weakPrintPair(left, right) { console.log(left, right); }
             export func resize(Array a, value) {
                 try { a.length = value; return a.length; }
                 catch (error) { return -1; }
@@ -74,7 +76,8 @@ public sealed class NativeApiSignatureTests
         }
         TestWorkspace.Execute(domain, "print", arguments: [ScriptDatum.FromNumber(42)]);
         TestWorkspace.Execute(domain, "weakPrint", arguments: [ScriptDatum.FromNumber(42)]);
-        Assert.Equal("42" + Environment.NewLine + "42" + Environment.NewLine, output.ToString());
+        TestWorkspace.Execute(domain, "weakPrintPair", arguments: [ScriptDatum.FromString("value"), ScriptDatum.Null]);
+        Assert.Equal("42" + Environment.NewLine + "42" + Environment.NewLine + "value, null" + Environment.NewLine, output.ToString());
         ScriptAssert.Equal(2, TestWorkspace.Execute(domain, "resize", arguments: [array, ScriptDatum.FromInt64(2)]));
         foreach (var invalid in new[] { ScriptDatum.FromString("2"), ScriptDatum.FromNumber(1.5), ScriptDatum.FromBoolean(true) })
             ScriptAssert.Equal(-1, TestWorkspace.Execute(domain, "resize", arguments: [array, invalid]));
@@ -95,7 +98,16 @@ public sealed class NativeApiSignatureTests
                 Assert.Contains(calls, call => call.Name == core && call.GetParameters()[^1].ParameterType == type);
                 Assert.DoesNotContain(calls, call => call.Name.Contains("InvokeProperty"));
             }
-            foreach (var name in new[] { "weakJoin", "weakPath", "weakTest", "weakDate", "weakPrint" })
+            foreach (var (name, arity) in new[] { ("weakPrint", 1), ("weakPrintPair", 2) })
+            {
+                var calls = methods.Where(method => method.Name == name || method.Name.StartsWith(name + "$", StringComparison.Ordinal))
+                    .SelectMany(StringOptimizationTests.GetCalls).ToArray();
+                Assert.Contains(calls, call => call.DeclaringType == typeof(ConsoleSupport) &&
+                    call.Name == "LogCore" && call.GetParameters().Length == arity + 1 &&
+                    call.GetParameters().Skip(1).All(parameter => parameter.ParameterType == typeof(ScriptDatum)));
+                Assert.DoesNotContain(calls, call => call.Name.Contains("InvokeProperty"));
+            }
+            foreach (var name in new[] { "weakJoin", "weakPath", "weakTest", "weakDate" })
             {
                 var calls = methods.Where(method => method.Name == name || method.Name.StartsWith(name + "$", StringComparison.Ordinal))
                     .SelectMany(StringOptimizationTests.GetCalls).ToArray();

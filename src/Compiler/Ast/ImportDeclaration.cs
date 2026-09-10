@@ -1,6 +1,8 @@
 using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Core;
 using System;
+using System.Collections.Generic;
+using AuroraScript.Runtime;
 
 
 namespace AuroraScript.Compiler.Ast
@@ -27,6 +29,8 @@ namespace AuroraScript.Compiler.Ast
         public ScriptSourceReference Reference { get; set; }
 
         public ModuleDeclaration Module { get; set; }
+        internal ScriptModule LoadedModule { get; set; }
+        internal Dictionary<string, ScriptDatum> StaticMembers { get; set; }
         public Boolean Include { get; set; }
 
 

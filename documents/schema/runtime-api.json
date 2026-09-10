@@ -2528,16 +2528,6 @@
           }
         }
       ],
-      "notes": {
-        "en": [
-          "Path instance methods are non-enumerable prototype members; Object.keys(path) does not include them.",
-          "String-only Path.of, append, and reset calls with up to three arguments can bind directly; append selects fixed one-, two-, or three-segment Core overloads, while broader variadic shapes retain dynamic behavior."
-        ],
-        "zh-CN": [
-          "Path 实例方法是不可枚举的原型成员；Object.keys(path) 不会返回这些方法。",
-          "纯字符串的 Path.of、append 和 reset 在最多三个参数时可直调；append 会选择固定的一段、两段或三段 Core 重载，更宽泛的可变参数形状仍保留动态行为。"
-        ]
-      },
       "members": {
         "of": {
           "kind": "method",
@@ -2804,11 +2794,15 @@
       "notes": {
         "en": [
           "Path constructor and protocol-aware path manipulation API.",
-          "typeof returns \"Path\". The datum Kind remains Object."
+          "typeof returns \"Path\". The datum Kind remains Object.",
+          "Path instance methods are non-enumerable prototype members; Object.keys(path) does not include them.",
+          "String-only Path.of, append, and reset calls with up to three arguments can bind directly; append selects fixed one-, two-, or three-segment Core overloads, while broader variadic shapes retain dynamic behavior."
         ],
         "zh-CN": [
           "Path 构造器和支持协议路径的路径处理 API。",
-          "typeof 返回 \"Path\"；Datum 的 Kind 仍为 Object。"
+          "typeof 返回 \"Path\"；Datum 的 Kind 仍为 Object。",
+          "Path 实例方法是不可枚举的原型成员；Object.keys(path) 不会返回这些方法。",
+          "纯字符串的 Path.of、append 和 reset 在最多三个参数时可直调；append 会选择固定的一段、两段或三段 Core 重载，更宽泛的可变参数形状仍保留动态行为。"
         ]
       }
     },
@@ -4496,10 +4490,10 @@
         "returns": "string",
         "notes": {
           "en": [
-            "Formats the date as a string."
+            "Formats the date as a string. When format is omitted, direct and dynamic calls use the invoking engine's Runtime.DateTimeFormat. Explicit script null retains its conversion to the format string null."
           ],
           "zh-CN": [
-            "将日期格式化为字符串。"
+            "将日期格式化为字符串。省略格式时，直调和动态调用均使用当前调用引擎的 Runtime.DateTimeFormat。显式脚本 null 保留原有字符串转换，格式字符串为 null。"
           ]
         }
       }
