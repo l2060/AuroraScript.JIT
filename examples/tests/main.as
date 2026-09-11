@@ -2,7 +2,7 @@
 
 var _testCases = [];
 
-func main() {
+export func main() {
 	var cases = _testCases as Array;
 	var modules = global.modules;
 	var moduleNames = Object.keys(modules);

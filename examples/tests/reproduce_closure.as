@@ -40,7 +40,7 @@ function setup() {
 }
 
 
-func testProxy() {
+export func testProxy() {
 	console.log("Testing Proxy");
 
 	var proxy = new Proxy({}, {
@@ -61,13 +61,13 @@ func testProxy() {
 }
 
 
-func testFor() {
+export func testFor() {
 	for (var i = 0; i < 1000000; i++) {
 	}
 }
 
 
-func test() {
+export func test() {
 	func makeCounter() {
 		var count = 0;
 		return() => {

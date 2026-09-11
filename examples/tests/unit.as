@@ -899,7 +899,7 @@ export function testMD5_1000() {
 
 
 
-func testDraw() {
+export func testDraw() {
 	var buffer = new StringBuffer('\n');
 	var i = 0;
 	var j = 0;

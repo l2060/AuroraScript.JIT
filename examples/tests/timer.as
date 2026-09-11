@@ -17,7 +17,7 @@ function time_proc(timer, arrays, clrdata) {
 
 }
 
-function testCallback() {
+export function testCallback() {
 	CREATE_TIMER(time_proc);
 }
 

@@ -12,7 +12,7 @@ func testStr2() {
 
 
 
-func testInput() {
+export func testInput() {
 
 
 	INPUT_NUMBER('购买数量', '输入一个0-99的值', 'number', input_change);
@@ -47,7 +47,7 @@ func throwTest() {
 
 
 
-func testCatch() {
+export func testCatch() {
 	try { throwTest(); } finally {}
 
 
