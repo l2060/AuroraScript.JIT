@@ -1,5 +1,6 @@
 ﻿using AuroraScript.Core;
 using AuroraScript.Hosting;
+using AuroraScript.Runtime.Interop;
 using AuroraScript.Runtime.Serialization;
 using AuroraScript.Runtime.Types;
 using AuroraScript.Source;
@@ -207,6 +208,9 @@ namespace AuroraScript
     /// </summary>
     public sealed record RuntimeOptions
     {
+        internal IReadOnlyList<(Type Type, string Alias, TypeAccess Access)> CLRTypes { get; init; }
+            = Array.Empty<(Type, string, TypeAccess)>();
+
         /// <summary>
         /// Provides default runtime behavior.
         /// </summary>
@@ -248,6 +252,7 @@ namespace AuroraScript
         private string _dateTimeFormat;
         private TextWriter _consoleStdOut;
         private TextWriter _consoleErrorOut;
+        private readonly List<(Type Type, string Alias, TypeAccess Access)> _clrTypes;
 
         /// <summary>
         /// Creates a mutable runtime-options builder from an immutable options snapshot.
@@ -261,6 +266,7 @@ namespace AuroraScript
             _dateTimeFormat = options.DateTimeFormat;
             _consoleStdOut = options.ConsoleStdOut;
             _consoleErrorOut = options.ConsoleErrorOut;
+            _clrTypes = new(options.CLRTypes);
         }
 
         /// <summary>
@@ -349,6 +355,34 @@ namespace AuroraScript
             return this;
         }
 
+        /// <summary>
+        /// Registers a CLR type for engines created with these options.
+        /// If no alias is supplied, the type name is used.
+        /// </summary>
+        public RuntimeOptionsBuilder RegisterCLRType<T>(string alias = null, TypeAccess access = TypeAccess.All)
+        {
+            return RegisterCLRType(typeof(T), alias, access);
+        }
+
+        /// <summary>
+        /// Registers a CLR type for engines created with these options.
+        /// If no alias is supplied, the type name is used.
+        /// </summary>
+        public RuntimeOptionsBuilder RegisterCLRType(Type type, string alias = null, TypeAccess access = TypeAccess.All)
+        {
+            ArgumentNullException.ThrowIfNull(type);
+            alias = string.IsNullOrWhiteSpace(alias) ? type.Name : alias.Trim();
+            foreach (var registration in _clrTypes)
+            {
+                if (registration.Alias == alias)
+                {
+                    throw new ArgumentException($"CLR type alias '{alias}' is already registered.", nameof(alias));
+                }
+            }
+            _clrTypes.Add((type, alias, access));
+            return this;
+        }
+
         internal RuntimeOptions ToOptions()
         {
             return new RuntimeOptions
@@ -357,7 +391,8 @@ namespace AuroraScript
                 JsonSerializer = JsonSerializer,
                 DateTimeFormat = DateTimeFormat,
                 ConsoleStdOut = ConsoleStdOut,
-                ConsoleErrorOut = ConsoleErrorOut
+                ConsoleErrorOut = ConsoleErrorOut,
+                CLRTypes = _clrTypes.ToArray()
             };
         }
     }

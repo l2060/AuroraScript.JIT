@@ -19,7 +19,7 @@
     "AuroraEngine": {
       "kind": "class",
       "namespace": "AuroraScript",
-      "summary": "Primary host entry point for compiling scripts, creating domains, registering CLR types, and compiling lightweight blocks.",
+      "summary": "Primary host entry point for compiling scripts, creating domains, and compiling lightweight blocks.",
       "members": {
         "Constructor": {
           "kind": "constructor",
@@ -35,14 +35,6 @@
           "kind": "field",
           "signature": "ClrTypeRegistry ClrRegistry",
           "summary": "Host-side registry for CLR types exposed to scripts."
-        },
-        "RegisterType": {
-          "kind": "method",
-          "summary": "Registers a CLR type under a script-visible alias.",
-          "overloads": [
-            "void RegisterType<T>(string alias = null, TypeAccess access = TypeAccess.All)",
-            "void RegisterType(Type type, string alias = null, TypeAccess access = TypeAccess.All)"
-          ]
         },
         "BuildAsync": {
           "kind": "method",
@@ -265,6 +257,14 @@
         "Constructor": {
           "kind": "constructor",
           "signature": "RuntimeOptionsBuilder(RuntimeOptions options)"
+        },
+        "RegisterCLRType": {
+          "kind": "method",
+          "summary": "Configures a CLR type under a script-visible alias through EngineOptions.WithRuntime. Registrations are applied to each engine when it is created.",
+          "overloads": [
+            "RuntimeOptionsBuilder RegisterCLRType<T>(string alias = null, TypeAccess access = TypeAccess.All)",
+            "RuntimeOptionsBuilder RegisterCLRType(Type type, string alias = null, TypeAccess access = TypeAccess.All)"
+          ]
         },
         "HotReload": {
           "kind": "property",
@@ -1988,7 +1988,7 @@
         }
       },
       "notes": [
-        "Most host code should expose CLR types through AuroraEngine.RegisterType instead of subclassing ScriptType."
+        "Most host code should expose CLR types through RuntimeOptionsBuilder.RegisterCLRType instead of subclassing ScriptType."
       ]
     },
     "INativeTypedDocument": {
@@ -2288,7 +2288,7 @@
         }
       },
       "notes": [
-        "Hosts normally obtain this through AuroraEngine.RegisterType or ClrTypeRegistry.TryGetClrType."
+        "Configure CLR types through EngineOptions.WithRuntime using RuntimeOptionsBuilder.RegisterCLRType, then obtain their descriptors through ClrTypeRegistry.TryGetClrType."
       ]
     },
     "ClrInstanceObject": {
@@ -2659,8 +2659,8 @@
     },
     {
       "id": "interop.register-clr-type",
-      "summary": "Use AuroraEngine.RegisterType or ClrTypeRegistry.RegisterType to expose public CLR constructors and static members to scripts.",
-      "apis": ["AuroraEngine.RegisterType", "ClrTypeRegistry.RegisterType", "TypeAccess"]
+      "summary": "Use RuntimeOptionsBuilder.RegisterCLRType or ClrTypeRegistry.RegisterType to expose public CLR constructors and static members to scripts.",
+      "apis": ["RuntimeOptionsBuilder.RegisterCLRType", "ClrTypeRegistry.RegisterType", "TypeAccess"]
     },
     {
       "id": "runtime.convert-values",

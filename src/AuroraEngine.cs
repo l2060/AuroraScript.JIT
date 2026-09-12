@@ -94,6 +94,10 @@ namespace AuroraScript
                 : options.WithCompiler(compiler => compiler.SourceResolver =
                     new NativePackageScriptSourceResolver(sourceResolver, PackageRegistry));
             TypedDocuments = new TypedDocumentNativeCatalog(Options.Compiler.NativeTypes);
+            foreach (var registration in Options.Runtime.CLRTypes)
+            {
+                ClrRegistry.RegisterType(registration.Type, registration.Alias, registration.Access);
+            }
             Global = new ScriptGlobal(this);
 
             // register standard types
@@ -147,28 +151,6 @@ namespace AuroraScript
                     modifiers: null);
                 register!.Invoke(null, new object[] { Global, false, false });
             }
-        }
-
-        /// <summary>
-        /// Registers a CLR type into the script environment.
-        /// </summary>
-        /// <typeparam name="T">The type to register.</typeparam>
-        /// <param name="alias">The alias for the type in the script. If null, the type name is used.</param>
-        /// <param name="access">The access level for members of this type. Defaults to <see cref="TypeAccess.All"/>.</param>
-        public void RegisterType<T>(string alias = null, TypeAccess access = TypeAccess.All)
-        {
-            ClrRegistry.RegisterType(typeof(T), alias, access);
-        }
-
-        /// <summary>
-        /// Registers a CLR type into the script environment.
-        /// </summary>
-        /// <param name="type">The type to register.</param>
-        /// <param name="alias">The alias for the type in the script. If null, the type name is used.</param>
-        /// <param name="access">The access level for members of this type. Defaults to <see cref="TypeAccess.All"/>.</param>
-        public void RegisterType(Type type, string alias = null, TypeAccess access = TypeAccess.All)
-        {
-            ClrRegistry.RegisterType(type, alias, access);
         }
 
         /// <summary>

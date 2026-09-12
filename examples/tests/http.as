@@ -5,7 +5,7 @@ export func main(){
 
 }
 
-func test(){
+export func test(){
 
 
 }

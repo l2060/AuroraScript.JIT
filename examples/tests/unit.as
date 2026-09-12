@@ -68,7 +68,7 @@ node = Object.assign(node, { 你好: 'Hello' });
 node.log("Atlas");
 
 
-func testInlude() {
+export func testInlude() {
 	var obj = { a: 1, b: 2, c: '' };
 	console.log('a' in obj);
 	console.log('el' in 'hello');
@@ -160,7 +160,7 @@ function input_change(value) {
 	console.log("输入值=", value);
 }
 
-function testInput() {
+export function testInput() {
 	INPUT_NUMBER('购买数量', '输入一个0-99的值', 'number', input_change);
 
 	INPUT_NUMBER('购买数量', '输入一个0-99的值', 'number', (value) => {
@@ -171,9 +171,9 @@ function testInput() {
 }
 
 
-func testClrType() {
+export func testClrType() {
 	var s = new TestObject();
-	s.fs = "ffff";
+	s.fs = 123456;
 	for (var i = 0; i < 1000000; i++) {
 		s.Name = "aaaa";
 	}
@@ -190,7 +190,7 @@ func testClrType() {
 }
 
 
-func testDatetime() {
+export func testDatetime() {
 	console.log("Current     Time", Date.now().toString());
 	console.log("Current UTC Time", Date.utcNow().toString());
 
@@ -198,7 +198,7 @@ func testDatetime() {
 	console.log("Current UTC Time", Date.utcNow().toString("yyyy-MM-dd HH:mm:ss fff"));
 }
 
-func testProxy() {
+export func testProxy() {
 	console.log("Testing Proxy");
 	var proxy = new Proxy({}, {
 			get: (target, prop) => {
@@ -220,7 +220,7 @@ func testProxy() {
 	console.log(proxy);
 }
 
-func testPeculiarity() {
+export func testPeculiarity() {
 
 	// current UserState through context bag
 	console.log(bag);
@@ -235,7 +235,7 @@ func testPeculiarity() {
 
 
 
-func testJson() {
+export func testJson() {
 	var obj = time.createTimer();
 	var json = JSON.stringify(obj, true);
 	var obj2 = JSON.parse(json);
@@ -250,7 +250,7 @@ func replacer(match, p1, p2, p3, offset, string) {
 }
 
 
-func testDeConstruct() {
+export func testDeConstruct() {
 	var a = [4, 5, 6];
 	var b = [1, 2, 3, ...a, 7, 8, 9];
 	console.log(b);
@@ -265,7 +265,7 @@ func testDeConstruct() {
 
 
 
-func testRegex() {
+export func testRegex() {
 	var regex = /(?<animal>fox|cat) jumps over/;
 	var paragraph = "The quick brown fox jumps over the lazy dog. It barked.";
 	const found = paragraph.match(regex);
@@ -811,7 +811,7 @@ export func testArray(count = 1000000) {
 
 
 
-func testDeconstruction() {
+export func testDeconstruction() {
 	var array = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 	var { k, l, ac, bc } = { ac: 1, bc: 2 };
 	var [...cc1, dd1, ee1] = array;

@@ -51,12 +51,14 @@ namespace Examples
             runtime.JsonSerializer = ScriptJsonSerializer.Default;
             runtime.DateTimeFormat = "yyyy-MM-dd HH:mm:ss";
             runtime.HotReload = true;
+            runtime.RegisterCLRType<TestObject>();
+            runtime.RegisterCLRType(typeof(Math), "Math2");
         })
         .WithOptimization(optimization =>
         {
             optimization.StackTrace = true;
             optimization.ModuleConstInlining = true;
-            optimization.Level = OptimizeOptions.Release;
+            optimization.Level = OptimizeOptions.Debug;
         });
 
 
@@ -83,8 +85,6 @@ namespace Examples
         public static async Task Main(string[] args)
         {
             Thread.CurrentThread.Priority = ThreadPriority.AboveNormal;
-            engine.RegisterType<TestObject>();
-            engine.RegisterType(typeof(Math), "Math2");
             if (Array.IndexOf(args, "--compile-benchmark") >= 0)
             {
                 await MeasureCompilation();

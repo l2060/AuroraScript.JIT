@@ -518,11 +518,18 @@ Performance guidance for custom resolvers:
 
 ## CLR Interop
 
-Expose a CLR type with `RegisterType`:
+Expose CLR types through `EngineOptions.WithRuntime` using `RegisterCLRType`:
 
 ```csharp
-engine.RegisterType<MyService>("Service", TypeAccess.All);
+var options = EngineOptions.Default.WithRuntime(runtime =>
+{
+    runtime.RegisterCLRType<MyService>("Service", TypeAccess.All);
+    runtime.RegisterCLRType(typeof(Math), "HostMath", TypeAccess.Static);
+});
+var engine = new AuroraEngine(options);
 ```
+
+Registrations are applied when an engine is created. Each engine has its own CLR registry, and options can be reused across engines. Omitted or blank aliases use the CLR type name; aliases must be unique within the runtime configuration.
 
 Expose a host object or delegate to one domain:
 

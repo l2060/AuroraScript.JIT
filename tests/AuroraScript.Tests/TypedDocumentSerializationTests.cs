@@ -393,8 +393,8 @@ public sealed class TypedDocumentSerializationTests
     [Fact]
     public void ClrObjectsRequireCurrentHostRegistration()
     {
-        var engine = new AuroraEngine(EngineOptions.Default);
-        engine.RegisterType<HostProfile>("User");
+        var engine = new AuroraEngine(EngineOptions.Default
+            .WithRuntime(runtime => runtime.RegisterCLRType<HostProfile>("User")));
         var profile = new HostProfile { Name = "Hanks", Age = 18 };
         var datum = ClrMarshaller.ToDatum(profile);
 
@@ -763,8 +763,8 @@ public sealed class TypedDocumentSerializationTests
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             TypedDocumentSerializer.Deserialize(engine, "null", new TypedDocumentOptions { MaxDepth = 0 }));
 
-        var staticOnly = new AuroraEngine(EngineOptions.Default);
-        staticOnly.RegisterType<HostProfile>("User", TypeAccess.Static);
+        var staticOnly = new AuroraEngine(EngineOptions.Default
+            .WithRuntime(runtime => runtime.RegisterCLRType<HostProfile>("User", TypeAccess.Static)));
         var profile = ClrMarshaller.ToDatum(new HostProfile());
         Assert.Equal("null", TypedDocumentSerializer.Serialize(staticOnly, profile));
         Assert.Throws<TypedDocumentException>(() =>

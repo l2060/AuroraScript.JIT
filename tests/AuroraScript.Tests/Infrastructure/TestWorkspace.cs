@@ -48,7 +48,8 @@ internal sealed class TestWorkspace : IDisposable
         bool enableModuleConstInlining = false,
         bool stackTrace = true,
         string? dateTimeFormat = null,
-        bool nativeTypes = false)
+        bool nativeTypes = false,
+        Action<RuntimeOptionsBuilder>? configureRuntime = null)
     {
         var options = EngineOptions.Default
             .WithCompiler(compiler => compiler.SourceResolver = AuroraScript.Core.ScriptSources.FileSystem(Root))
@@ -80,6 +81,10 @@ internal sealed class TestWorkspace : IDisposable
                     typeof(Flag),
                     typeof(State),
                     typeof(User)));
+        }
+        if (configureRuntime != null)
+        {
+            options = options.WithRuntime(configureRuntime);
         }
         return new AuroraEngine(options);
     }

@@ -1,5 +1,5 @@
 
-func testStr2() {
+export func testStr2() {
 	const a = "Hello";
 	const h = "Hello";
 	var c = a + " " + "Wrold";

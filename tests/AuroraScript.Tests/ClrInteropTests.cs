@@ -10,11 +10,44 @@ namespace AuroraScript.Tests;
 public sealed class ClrInteropTests
 {
     [Fact]
+    public void RuntimeRegistrationsAreSnapshotsAndEnginesHaveIndependentRegistries()
+    {
+        RuntimeOptionsBuilder captured = null!;
+        var options = EngineOptions.Default.WithRuntime(runtime =>
+        {
+            captured = runtime;
+            runtime.RegisterCLRType<HostCalculator>("Calculator");
+        });
+        captured.RegisterCLRType<HostOverloads>();
+        var extended = options.WithRuntime(runtime => runtime.RegisterCLRType(typeof(HostOverloads)))
+            .WithRuntime(runtime => runtime.HotReload = false);
+        var first = new AuroraEngine(options);
+        var second = new AuroraEngine(options);
+        var third = new AuroraEngine(extended);
+
+        Assert.False(new AuroraEngine(EngineOptions.Default).ClrRegistry.TryGetClrType("Calculator", out _));
+        Assert.False(first.ClrRegistry.TryGetClrType("HostOverloads", out _));
+        Assert.True(third.ClrRegistry.TryGetClrType("Calculator", out _));
+        Assert.True(third.ClrRegistry.TryGetClrType("HostOverloads", out _));
+        Assert.True(first.ClrRegistry.UnregisterType("Calculator"));
+        Assert.True(second.ClrRegistry.TryGetClrType("Calculator", out _));
+    }
+
+    [Fact]
+    public void RuntimeRegistrationRejectsNullTypesAndDuplicateAliases()
+    {
+        Assert.Throws<ArgumentNullException>(() =>
+            EngineOptions.Default.WithRuntime(runtime => runtime.RegisterCLRType(null!)));
+        var options = EngineOptions.Default.WithRuntime(runtime => runtime.RegisterCLRType<HostCalculator>());
+        Assert.Throws<ArgumentException>(() => options.WithRuntime(runtime =>
+            runtime.RegisterCLRType<HostOverloads>(" HostCalculator ")));
+    }
+
+    [Fact]
     public async Task RegisteredTypeSupportsConstructorPropertiesFieldsInstanceAndStaticMethods()
     {
         using var workspace = new TestWorkspace();
-        var engine = workspace.CreateEngine();
-        engine.RegisterType<HostCalculator>("Calculator");
+        var engine = workspace.CreateEngine(configureRuntime: runtime => runtime.RegisterCLRType<HostCalculator>("Calculator"));
         await engine.BuildAsync(workspace.MemorySource(
             "main.as",
             """
@@ -82,8 +115,7 @@ public sealed class ClrInteropTests
     public async Task OverloadResolutionSupportsNumericStringOptionalAndVariadicArguments()
     {
         using var workspace = new TestWorkspace();
-        var engine = workspace.CreateEngine();
-        engine.RegisterType<HostOverloads>();
+        var engine = workspace.CreateEngine(configureRuntime: runtime => runtime.RegisterCLRType<HostOverloads>());
         await engine.BuildAsync(workspace.MemorySource(
             "main.as",
             """
@@ -102,8 +134,7 @@ public sealed class ClrInteropTests
     public async Task StaticClrStringArrayArgumentIsConverted()
     {
         using var workspace = new TestWorkspace();
-        var engine = workspace.CreateEngine();
-        engine.RegisterType<HostOverloads>();
+        var engine = workspace.CreateEngine(configureRuntime: runtime => runtime.RegisterCLRType<HostOverloads>());
         await engine.BuildAsync(workspace.MemorySource(
             "main.as",
             """
@@ -120,8 +151,7 @@ public sealed class ClrInteropTests
     public async Task StaticClrMixedArgumentsAreConverted()
     {
         using var workspace = new TestWorkspace();
-        var engine = workspace.CreateEngine();
-        engine.RegisterType<HostOverloads>();
+        var engine = workspace.CreateEngine(configureRuntime: runtime => runtime.RegisterCLRType<HostOverloads>());
         await engine.BuildAsync(workspace.MemorySource(
             "main.as",
             """
@@ -138,8 +168,7 @@ public sealed class ClrInteropTests
     public async Task InstanceClrMixedArgumentsAreConverted()
     {
         using var workspace = new TestWorkspace();
-        var engine = workspace.CreateEngine();
-        engine.RegisterType<HostOverloads>();
+        var engine = workspace.CreateEngine(configureRuntime: runtime => runtime.RegisterCLRType<HostOverloads>());
         await engine.BuildAsync(workspace.MemorySource(
             "main.as",
             """
@@ -157,15 +186,13 @@ public sealed class ClrInteropTests
     public async Task TypeAccessRestrictionsAreEnforced()
     {
         using var workspace = new TestWorkspace();
-        var constructorOnly = workspace.CreateEngine();
-        constructorOnly.RegisterType<HostCalculator>("ConstructorOnly", TypeAccess.Constructor);
+        var constructorOnly = workspace.CreateEngine(configureRuntime: runtime => runtime.RegisterCLRType<HostCalculator>("ConstructorOnly", TypeAccess.Constructor));
         await constructorOnly.BuildAsync(workspace.MemorySource(
             "constructor.as",
             "@module(TEST); export func run() { return ConstructorOnly.Multiply(2, 3); }"));
         Assert.ThrowsAny<Exception>(() => TestWorkspace.Execute(constructorOnly.CreateDomain(), "run"));
 
-        var staticOnly = workspace.CreateEngine();
-        staticOnly.RegisterType<HostCalculator>("StaticOnly", TypeAccess.Static);
+        var staticOnly = workspace.CreateEngine(configureRuntime: runtime => runtime.RegisterCLRType<HostCalculator>("StaticOnly", TypeAccess.Static));
         await staticOnly.BuildAsync(workspace.MemorySource(
             "static.as",
             "@module(TEST); export func run() { return new StaticOnly(1); }"));

@@ -36,6 +36,7 @@ namespace AuroraBenchmark
         {
             var scriptDirectory = Path.Combine(AppContext.BaseDirectory, "scripts");
             var options = EngineOptions.Default
+                .WithRuntime(runtime => runtime.RegisterCLRType<HostObject>())
                 .WithCompiler(compiler => compiler.SourceResolver = ScriptSources.FileSystem(scriptDirectory, Encoding.UTF8))
                 .WithRuntime(runtime => runtime.ConsoleStdOut = TextWriter.Null)
                 .WithRuntime(runtime => runtime.ConsoleErrorOut = TextWriter.Null)
@@ -49,7 +50,6 @@ namespace AuroraBenchmark
                 });
 
             engine = new AuroraEngine(options);
-            engine.RegisterType<HostObject>();
             await engine.BuildAsync();
             domain = engine.CreateDomain(global => global.SetPropertyValue("host", new HostObject()));
             iterationArguments = [ScriptDatum.FromNumber(Iterations)];
