@@ -12,6 +12,7 @@ namespace AuroraScript.Runtime.Interop
     {
         private readonly Dictionary<string, ClrType> _aliasMap = new(StringComparer.Ordinal);
         private readonly Dictionary<Type, (string Alias, ClrType Descriptor)> _typeMap = new();
+        private readonly HashSet<string> _frozenAliases = new(StringComparer.Ordinal);
 
         private readonly ReaderWriterLockSlim _lock = new(LockRecursionPolicy.SupportsRecursion);
         private bool _disposed;
@@ -58,6 +59,11 @@ namespace AuroraScript.Runtime.Interop
             try
             {
                 EnsureNotDisposed();
+                if (_frozenAliases.Contains(alias))
+                {
+                    throw new InvalidOperationException(
+                        $"CLR type alias '{alias}' is part of the engine's frozen compilation catalog and cannot be unregistered.");
+                }
                 if (!_aliasMap.Remove(alias, out var removed)) return false;
                 var type = removed._descriptor.Type;
                 if (_typeMap.TryGetValue(type, out var reverse) &&
@@ -142,6 +148,41 @@ namespace AuroraScript.Runtime.Interop
             }
         }
 
+        internal bool IsFrozenAlias(string alias)
+        {
+            if (string.IsNullOrWhiteSpace(alias)) return false;
+            _lock.EnterReadLock();
+            try
+            {
+                EnsureNotDisposed();
+                return _frozenAliases.Contains(alias);
+            }
+            finally
+            {
+                _lock.ExitReadLock();
+            }
+        }
+
+        internal void FreezeAlias(string alias)
+        {
+            if (string.IsNullOrWhiteSpace(alias)) return;
+            _lock.EnterWriteLock();
+            try
+            {
+                EnsureNotDisposed();
+                if (!_aliasMap.ContainsKey(alias))
+                {
+                    throw new InvalidOperationException(
+                        $"Cannot freeze unregistered CLR type alias '{alias}'.");
+                }
+                _frozenAliases.Add(alias);
+            }
+            finally
+            {
+                _lock.ExitWriteLock();
+            }
+        }
+
         /// <summary>
         /// Releases all resources used by the <see cref="ClrTypeRegistry"/> and clears the alias map.
         /// </summary>
@@ -153,6 +194,7 @@ namespace AuroraScript.Runtime.Interop
             {
                 _aliasMap.Clear();
                 _typeMap.Clear();
+                _frozenAliases.Clear();
                 _disposed = true;
             }
             finally

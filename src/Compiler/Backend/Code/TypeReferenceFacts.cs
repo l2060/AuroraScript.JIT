@@ -1,5 +1,6 @@
 using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Backend;
+using System;
 
 namespace AuroraScript.Compiler.Backend.Code
 {
@@ -37,6 +38,11 @@ namespace AuroraScript.Compiler.Backend.Code
                 return FlowValueType.Object;
             }
 
+            if (TryGetClrType(hostExports, type, out _))
+            {
+                return FlowValueType.Object;
+            }
+
             return module != null && module.TryResolveType(type, out _)
                 ? FlowValueType.Object
                 : FlowValueType.None;
@@ -63,6 +69,18 @@ namespace AuroraScript.Compiler.Backend.Code
                 type != null &&
                 type.Qualifier == null &&
                 hostExports.TryGetNativeObject(type.Name, out descriptor);
+        }
+
+        public static bool TryGetClrType(
+            HostExportCatalog hostExports,
+            TypeReference type,
+            out Type clrType)
+        {
+            clrType = null;
+            return hostExports != null &&
+                type != null &&
+                type.Qualifier == null &&
+                hostExports.ClrTypes.TryGetType(type.Name, 0, out clrType);
         }
 
         public static bool IsVoid(TypeReference type)

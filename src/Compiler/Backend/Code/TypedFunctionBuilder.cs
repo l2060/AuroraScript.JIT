@@ -6,6 +6,7 @@ using AuroraScript.Compiler.Backend.Analysis;
 using AuroraScript.Compiler.Backend.Traversal;
 using AuroraScript.Hosting;
 using AuroraScript.Runtime;
+using AuroraScript.Runtime.Interop;
 using AuroraScript.Runtime.Serialization;
 using AuroraScript.Runtime.Types;
 using AuroraScript.Tokens;
@@ -568,6 +569,7 @@ namespace AuroraScript.Compiler.Backend.Code
             private readonly Dictionary<NameExpression, BoundName> _names;
             private readonly Dictionary<VariableDeclaration, LocalSlotId> _declarations;
             private readonly HostExportCatalog _hostExports;
+            private readonly ClrTypeCatalog _clrCatalog;
             private readonly Dictionary<Expression, FlowValueType> _expressionTypes;
             private Dictionary<FunctionCallExpression, HostNativeMethodDescriptor> _nativeCalls;
             private Dictionary<FunctionCallExpression, HostExportDescriptor> _hostCalls;
@@ -582,6 +584,10 @@ namespace AuroraScript.Compiler.Backend.Code
             private readonly FlowValueType[] _locals;
             private readonly TypeDeclaration[] _localStructuralTypes;
             private readonly HostNativeObjectDescriptor[] _localNativeObjectTypes;
+            private readonly Dictionary<Expression, Type> _clrTypes;
+            private readonly Type[] _localClrTypes;
+            private Dictionary<FunctionCallExpression, MethodBase> _clrCalls;
+            private Dictionary<Expression, MemberInfo> _clrMembers;
             private List<ShapeSnapshot> _shapeSnapshots;
             private int _shapeSnapshotCount;
             private readonly FlowValueType[] _forcedLocalTypes;
@@ -626,6 +632,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 _names = binding.Names;
                 _declarations = binding.Declarations;
                 _hostExports = hostExports;
+                _clrCatalog = hostExports.ClrTypes;
                 _expressionTypes = new Dictionary<Expression, FlowValueType>(ReferenceEqualityComparer.Instance);
                 _structuralTypes = new Dictionary<Expression, TypeDeclaration>(ReferenceEqualityComparer.Instance);
                 _nativeObjectTypes = new Dictionary<Expression, HostNativeObjectDescriptor>(
@@ -633,6 +640,8 @@ namespace AuroraScript.Compiler.Backend.Code
                 _locals = new FlowValueType[function.LocalSlots.Length];
                 _localStructuralTypes = new TypeDeclaration[function.LocalSlots.Length];
                 _localNativeObjectTypes = new HostNativeObjectDescriptor[function.LocalSlots.Length];
+                _clrTypes = new Dictionary<Expression, Type>(ReferenceEqualityComparer.Instance);
+                _localClrTypes = new Type[function.LocalSlots.Length];
                 _forcedLocalTypes = new FlowValueType[function.LocalSlots.Length];
                 _writtenLocals = new bool[function.LocalSlots.Length];
                 _localIntegerRangeValid = new bool[function.LocalSlots.Length];
@@ -658,7 +667,8 @@ namespace AuroraScript.Compiler.Backend.Code
                             ParameterDeclaration parameter
                                 ? TypeReferenceFacts.GetFlowType(
                                     module.Declaration,
-                                    parameter.DeclaredType)
+                                    parameter.DeclaredType,
+                                    hostExports)
                                 : FlowValueType.None;
                         var directParameter = parameterTypes != null &&
                             parameterIndex < parameterTypes.Length &&
@@ -706,6 +716,16 @@ namespace AuroraScript.Compiler.Backend.Code
                             {
                                 _locals[i] = FlowValueType.Object;
                             }
+                        }
+                        if (function.LocalSlots[i].Declaration is
+                                ParameterDeclaration clrParameter &&
+                            TypeReferenceFacts.TryGetClrType(
+                                hostExports,
+                                clrParameter.DeclaredType,
+                                out var parameterClrType))
+                        {
+                            _localClrTypes[i] = parameterClrType;
+                            _locals[i] = FlowValueType.Object;
                         }
                         parameterIndex++;
                     }
@@ -823,7 +843,11 @@ namespace AuroraScript.Compiler.Backend.Code
                     returnType,
                     _countedLoops,
                     _nativeCalls,
-                    _hostCalls) { ModuleCachedReads = _moduleCachedReads };
+                    _hostCalls,
+                    _clrTypes,
+                    _localClrTypes,
+                    _clrCalls,
+                    _clrMembers) { ModuleCachedReads = _moduleCachedReads };
             }
 
             private bool AnalyzeToFixedPoint(
@@ -853,10 +877,13 @@ namespace AuroraScript.Compiler.Backend.Code
                 _expressionTypes.Clear();
                 _nativeCalls?.Clear();
                 _hostCalls?.Clear();
+                _clrCalls?.Clear();
+                _clrMembers?.Clear();
                 if (clearObjectFacts)
                 {
                     _structuralTypes.Clear();
                     _nativeObjectTypes.Clear();
+                    _clrTypes.Clear();
                 }
             }
 
@@ -909,6 +936,13 @@ namespace AuroraScript.Compiler.Backend.Code
                                     out var initializerNativeType))
                             {
                                 _localNativeObjectTypes[slot.Value] = initializerNativeType;
+                            }
+                            if (!_writtenLocals[slot.Value] &&
+                                !IsCaptured(slot) &&
+                                variable.Initializer != null &&
+                                _clrTypes.TryGetValue(variable.Initializer, out var initializerClrType))
+                            {
+                                _localClrTypes[slot.Value] = initializerClrType;
                             }
                             if (variable.Initializer is MapExpression map)
                             {
@@ -1118,11 +1152,15 @@ namespace AuroraScript.Compiler.Backend.Code
                         _nativeObjectTypes.TryGetValue(
                             assignment.Right,
                             out var assignedNativeType);
+                        _clrTypes.TryGetValue(
+                            assignment.Right,
+                            out var assignedClrType);
                         WriteTarget(
                             assignment.Left,
                             type,
                             assignedStructuralType,
-                            assignedNativeType);
+                            assignedNativeType,
+                            assignedClrType);
                         NoteIntegerWrite(assignment.Left, type, assignment.Right);
                         break;
                     case CompoundExpression compound:
@@ -1190,7 +1228,14 @@ namespace AuroraScript.Compiler.Backend.Code
                             }
                         }
 
-                        if (TryGetNativeValueCallType(call, out var stringCallType))
+                        if (TryBindClrCall(call, out var clrCall))
+                        {
+                            type = ClrTypeCatalog.GetFlowType(
+                                clrCall is MethodInfo clrMethod
+                                    ? clrMethod.ReturnType
+                                    : clrCall.DeclaringType);
+                        }
+                        else if (TryGetNativeValueCallType(call, out var stringCallType))
                         {
                             type = stringCallType;
                         }
@@ -1264,6 +1309,11 @@ namespace AuroraScript.Compiler.Backend.Code
                                 property,
                                 out var propertyConstant)
                             ? FromInlineConstant(propertyConstant)
+                            : TryBindClrMember(property, write: false, out var clrMember)
+                                ? ClrTypeCatalog.GetFlowType(
+                                    clrMember is PropertyInfo clrProperty
+                                        ? clrProperty.PropertyType
+                                        : ((FieldInfo)clrMember).FieldType)
                             : TryGetNativeValuePropertyType(propertyObjectType, property.Property, out var stringPropertyType)
                                 ? stringPropertyType
                             : FlowValueTypeFacts.IsPackedArray(propertyObjectType) &&
@@ -1371,8 +1421,193 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     _nativeObjectTypes[expression] = nativeObjectType;
                 }
+                var clrType = InferClrType(expression);
+                if (clrType != null)
+                {
+                    _clrTypes[expression] = clrType;
+                }
                 InvalidateModuleValuesAfter(expression);
                 return type;
+            }
+
+            private Type InferClrType(Expression expression)
+            {
+                switch (expression)
+                {
+                    case CheckExpression check
+                        when TypeReferenceFacts.TryGetClrType(
+                            _hostExports,
+                            check.AssertedType,
+                            out var assertedClrType):
+                        return assertedClrType;
+                    case NameExpression name:
+                        var binding = _names.TryGetValue(name, out var bound)
+                            ? bound
+                            : BoundName.Unbound;
+                        if (binding.IsUnshadowedGlobal &&
+                            _clrCatalog.TryGetType(
+                                name.Identifier?.Value,
+                                0,
+                                out var staticType))
+                        {
+                            return staticType;
+                        }
+                        return binding.IsLocal
+                            ? _localClrTypes[binding.Local.Value]
+                            : null;
+                    case NewExpression construction
+                        when TryBindClrConstructor(construction, out var constructedType):
+                        return constructedType;
+                    case FunctionCallExpression call
+                        when _clrCalls != null &&
+                            _clrCalls.TryGetValue(call, out var method) &&
+                            method is MethodInfo info &&
+                            _clrCatalog.TryGetType(info.ReturnType, out var returned):
+                        return returned;
+                    case GetPropertyExpression property
+                        when _clrMembers != null &&
+                            _clrMembers.TryGetValue(property, out var member):
+                        var memberType = member is PropertyInfo propertyInfo
+                            ? propertyInfo.PropertyType
+                            : ((FieldInfo)member).FieldType;
+                        return _clrCatalog.TryGetType(memberType, out var memberReturned)
+                            ? memberReturned
+                            : null;
+                    case AssignmentExpression assignment:
+                        return _clrTypes.TryGetValue(assignment.Right, out var assigned)
+                            ? assigned
+                            : null;
+                    case GroupExpression group when group.Expressions.Count != 0:
+                        return _clrTypes.TryGetValue(
+                            group.Expressions[group.Expressions.Count - 1],
+                            out var grouped)
+                                ? grouped
+                                : null;
+                    default:
+                        return null;
+                }
+            }
+
+            private bool TryBindClrConstructor(
+                NewExpression construction,
+                out Type constructedType)
+            {
+                constructedType = null;
+                if (construction?.Expression is not FunctionCallExpression call ||
+                    call.Target is not NameExpression name ||
+                    !_names.TryGetValue(name, out var binding) ||
+                    !binding.IsUnshadowedGlobal ||
+                    !_clrCatalog.TryGetType(
+                        name.Identifier?.Value,
+                        TypeAccess.Constructor,
+                        out constructedType))
+                {
+                    return false;
+                }
+
+                var constructor = _clrCatalog.Bind(
+                    constructedType,
+                    null,
+                    isStatic: true,
+                    call,
+                    GetAnalyzedType,
+                    GetAnalyzedClrType);
+                if (constructor is not ConstructorInfo)
+                {
+                    constructedType = null;
+                    return false;
+                }
+
+                (_clrCalls ??= new Dictionary<FunctionCallExpression, MethodBase>(
+                    ReferenceEqualityComparer.Instance))[call] = constructor;
+                return true;
+            }
+
+            private bool TryBindClrCall(FunctionCallExpression call, out MethodBase method)
+            {
+                method = null;
+                if (call?.Target is not GetPropertyExpression
+                    {
+                        Object: { } receiver,
+                        Property: NameExpression member
+                    } ||
+                    !_clrTypes.TryGetValue(receiver, out var owner))
+                {
+                    return false;
+                }
+
+                var isStatic = IsStaticClrReceiver(receiver, owner);
+                method = _clrCatalog.Bind(
+                    owner,
+                    member.Identifier?.Value,
+                    isStatic,
+                    call,
+                    GetAnalyzedType,
+                    GetAnalyzedClrType);
+                if (method == null)
+                {
+                    return false;
+                }
+
+                (_clrCalls ??= new Dictionary<FunctionCallExpression, MethodBase>(
+                    ReferenceEqualityComparer.Instance))[call] = method;
+                return true;
+            }
+
+            private bool TryBindClrMember(
+                GetPropertyExpression property,
+                bool write,
+                out MemberInfo member)
+            {
+                member = null;
+                if (property?.Object == null ||
+                    property.Property is not NameExpression name ||
+                    !_clrTypes.TryGetValue(property.Object, out var owner))
+                {
+                    return false;
+                }
+
+                member = _clrCatalog.BindMember(
+                    owner,
+                    name.Identifier?.Value,
+                    IsStaticClrReceiver(property.Object, owner),
+                    write);
+                if (member == null)
+                {
+                    return false;
+                }
+
+                (_clrMembers ??= new Dictionary<Expression, MemberInfo>(
+                    ReferenceEqualityComparer.Instance))[property] = member;
+                return true;
+            }
+
+            private bool IsStaticClrReceiver(Expression expression, Type owner)
+            {
+                return expression is NameExpression name &&
+                    _names.TryGetValue(name, out var binding) &&
+                    binding.IsUnshadowedGlobal &&
+                    _clrCatalog.TryGetType(
+                        name.Identifier?.Value,
+                        TypeAccess.Static,
+                        out var registered) &&
+                    registered == owner;
+            }
+
+            private FlowValueType GetAnalyzedType(Expression expression)
+            {
+                return expression != null &&
+                    _expressionTypes.TryGetValue(expression, out var type)
+                        ? type
+                        : FlowValueType.Dynamic;
+            }
+
+            private Type GetAnalyzedClrType(Expression expression)
+            {
+                return expression != null &&
+                    _clrTypes.TryGetValue(expression, out var type)
+                        ? type
+                        : null;
             }
 
             private HostNativeObjectDescriptor InferNativeObjectType(Expression expression)
@@ -1836,14 +2071,17 @@ namespace AuroraScript.Compiler.Backend.Code
             {
                 public ShapeSnapshot(
                     TypeDeclaration[] structural,
-                    HostNativeObjectDescriptor[] nativeObjects)
+                    HostNativeObjectDescriptor[] nativeObjects,
+                    Type[] clrTypes)
                 {
                     Structural = structural;
                     NativeObjects = nativeObjects;
+                    ClrTypes = clrTypes;
                 }
 
                 public TypeDeclaration[] Structural { get; }
                 public HostNativeObjectDescriptor[] NativeObjects { get; }
+                public Type[] ClrTypes { get; }
             }
 
             private ShapeSnapshot SnapshotStructural()
@@ -1854,11 +2092,13 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     snapshots.Add(new ShapeSnapshot(
                         new TypeDeclaration[_localStructuralTypes.Length],
-                        new HostNativeObjectDescriptor[_localNativeObjectTypes.Length]));
+                        new HostNativeObjectDescriptor[_localNativeObjectTypes.Length],
+                        new Type[_localClrTypes.Length]));
                 }
                 var snapshot = snapshots[_shapeSnapshotCount++];
                 Array.Copy(_localStructuralTypes, snapshot.Structural, _localStructuralTypes.Length);
                 Array.Copy(_localNativeObjectTypes, snapshot.NativeObjects, _localNativeObjectTypes.Length);
+                Array.Copy(_localClrTypes, snapshot.ClrTypes, _localClrTypes.Length);
                 return snapshot;
             }
 
@@ -1872,6 +2112,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     snapshot.NativeObjects,
                     _localNativeObjectTypes,
                     snapshot.NativeObjects.Length);
+                Array.Copy(snapshot.ClrTypes, _localClrTypes, snapshot.ClrTypes.Length);
             }
 
             private void IntersectStructural(ShapeSnapshot other)
@@ -1886,6 +2127,11 @@ namespace AuroraScript.Compiler.Backend.Code
                     if (!ReferenceEquals(_localNativeObjectTypes[i], other.NativeObjects[i]))
                     {
                         _localNativeObjectTypes[i] = null;
+                        _changed = true;
+                    }
+                    if (_localClrTypes[i] != other.ClrTypes[i])
+                    {
+                        _localClrTypes[i] = null;
                         _changed = true;
                     }
                 }
@@ -2425,7 +2671,8 @@ namespace AuroraScript.Compiler.Backend.Code
                 Expression target,
                 FlowValueType type,
                 TypeDeclaration structuralType,
-                HostNativeObjectDescriptor nativeObjectType = null)
+                HostNativeObjectDescriptor nativeObjectType = null,
+                Type clrType = null)
             {
                 WriteModuleTarget(target, type, structuralType, nativeObjectType);
                 if (target is NameExpression name &&
@@ -2435,6 +2682,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     if (IsCaptured(binding.Local))
                     {
                         nativeObjectType = null;
+                        clrType = null;
                     }
                     InvalidateLocalFields(binding.Local);
                     _writtenLocals[binding.Local.Value] = true;
@@ -2450,6 +2698,11 @@ namespace AuroraScript.Compiler.Backend.Code
                         nativeObjectType))
                     {
                         _localNativeObjectTypes[binding.Local.Value] = nativeObjectType;
+                        _changed = true;
+                    }
+                    if (_localClrTypes[binding.Local.Value] != clrType)
+                    {
+                        _localClrTypes[binding.Local.Value] = clrType;
                         _changed = true;
                     }
                     MergeLocal(binding.Local, type);

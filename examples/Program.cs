@@ -56,9 +56,9 @@ namespace Examples
         })
         .WithOptimization(optimization =>
         {
-            optimization.StackTrace = true;
+            optimization.StackTrace = false;
             optimization.ModuleConstInlining = true;
-            optimization.Level = OptimizeOptions.Debug;
+            optimization.Level = OptimizeOptions.Release;
         });
 
 
@@ -96,7 +96,18 @@ namespace Examples
                 await engine.BuildAsync();
                 var elapsed = time.ElapsedMilliseconds;
                 Console.WriteLine($"BuildAsync {elapsed}ms");
+
                 Console.WriteLine();
+
+                if (engine.CompilationWarnings.Count > 0)
+                {
+                    foreach (var item in engine.CompilationWarnings)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.WriteLine(item);
+                        Console.ResetColor();
+                    }
+                }
                 Test();
             }
             catch (AuroraCompilationException ex)

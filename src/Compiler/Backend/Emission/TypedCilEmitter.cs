@@ -1061,7 +1061,22 @@ namespace AuroraScript.Compiler.Backend.Emission
                     OpCodes.Ldarg,
                     parameterIndex + (_function.IsNativeDeclared ? 1 : 0));
                 var storageType = _locals[slot.Id.Value].LocalType;
-                if (GetNativeParameterType(_directParameterTypes[parameterIndex]) == typeof(ScriptDatum) &&
+                var argumentType = GetNativeParameterType(
+                    _directParameterTypes[parameterIndex]);
+                var declaredType = slot.Declaration is ParameterDeclaration parameter
+                    ? parameter.DeclaredType
+                    : null;
+                if (argumentType == typeof(ScriptDatum) &&
+                    TypeReferenceFacts.TryGetClrType(
+                        _session.CompileSession.HostExports,
+                        declaredType,
+                        out var clrParameter))
+                {
+                    _il.Emit(OpCodes.Call, typeof(ClrDirectOps)
+                        .GetMethod(nameof(ClrDirectOps.CheckInstance))
+                        .MakeGenericMethod(clrParameter));
+                }
+                if (argumentType == typeof(ScriptDatum) &&
                     typeof(ScriptObject).IsAssignableFrom(storageType))
                 {
                     // The mixed ABI carries object parameters as Datum, even when the local has a proven CLR type.
@@ -1079,6 +1094,16 @@ namespace AuroraScript.Compiler.Backend.Emission
                 ParameterDeclaration parameter
                     ? parameter.DeclaredType
                     : null;
+            if (TypeReferenceFacts.TryGetClrType(
+                    _session.CompileSession.HostExports,
+                    declaredType,
+                    out var clrParameter))
+            {
+                _il.Emit(OpCodes.Call, typeof(ClrDirectOps)
+                    .GetMethod(nameof(ClrDirectOps.CheckInstance))
+                    .MakeGenericMethod(clrParameter));
+                return;
+            }
             if (TypeReferenceFacts.TryGetNativeObject(
                 _session.CompileSession.HostExports,
                 declaredType,
@@ -2040,6 +2065,21 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private StackValueKind EmitCheck(CheckExpression expression)
         {
+            if (TypeReferenceFacts.TryGetClrType(
+                    _session.CompileSession.HostExports,
+                    expression.AssertedType,
+                    out var clrType))
+            {
+                EmitDatum(expression.Value);
+                if (_code.GetClrType(expression.Value) == null ||
+                    !clrType.IsAssignableFrom(_code.GetClrType(expression.Value)))
+                {
+                    _il.Emit(OpCodes.Call, typeof(ClrDirectOps)
+                        .GetMethod(nameof(ClrDirectOps.CheckInstance))
+                        .MakeGenericMethod(clrType));
+                }
+                return StackValueKind.Datum;
+            }
             if (TypeReferenceFacts.TryGetCustomType(
                 _module.Declaration,
                 expression.AssertedType,
@@ -2263,6 +2303,22 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 return constantKind;
             }
+            if (TryGetClrMember(
+                    expression.Object,
+                    name,
+                    false,
+                    out var clrOwner,
+                    out var clrStatic,
+                    out var clrMember,
+                    expression))
+            {
+                return EmitProvenClrMemberRead(
+                    expression.Object,
+                    name,
+                    clrOwner,
+                    clrStatic,
+                    clrMember);
+            }
             if (TryGetNativeField(expression.Object, name, out var nativeOwner, out var nativeField))
             {
                 return EmitNativeFieldRead(expression.Object, nativeOwner, nativeField);
@@ -2397,6 +2453,34 @@ namespace AuroraScript.Compiler.Backend.Emission
             if (!TryGetStaticPropertyName(expression.Property, out var name))
             {
                 throw new NotSupportedException("Dynamic dot-property name.");
+            }
+            if (TryGetClrMember(
+                    expression.Object,
+                    name,
+                    true,
+                    out var clrOwner,
+                    out var clrStatic,
+                    out var clrMember,
+                    expression))
+            {
+                var clrValueType = clrMember is PropertyInfo clrProperty
+                    ? clrProperty.PropertyType
+                    : ((FieldInfo)clrMember).FieldType;
+                if (ClrTypeCatalog.CanPassPrimitive(
+                        _code.GetExpressionType(expression.Value),
+                        clrValueType))
+                {
+                    return EmitProvenClrMemberWrite(
+                        expression.Object,
+                        expression.Value,
+                        clrOwner,
+                        clrStatic,
+                        clrMember);
+                }
+                var clrReceiver = SaveClrOperand(expression.Object);
+                var clrValue = SaveClrOperand(expression.Value);
+                EmitClrMemberWrite(clrReceiver, clrValue, name, clrOwner, clrStatic, clrMember);
+                return StackValueKind.Datum;
             }
             if (TryEmitNativeFieldWrite(expression, name, out var nativeKind))
             {
@@ -3960,6 +4044,9 @@ namespace AuroraScript.Compiler.Backend.Emission
             string name,
             bool materializeVoid = true)
         {
+            if (TryGetClrCall(call, receiver, name, out var clrOwner, out var clrStatic, out var clrMethod))
+                return EmitClrCall(call, receiver, name, clrOwner, clrStatic, clrMethod);
+
             if (TryGetNativeMethodCall(
                     call,
                     receiver,
@@ -4360,6 +4447,8 @@ namespace AuroraScript.Compiler.Backend.Emission
         private StackValueKind EmitNew(NewExpression expression)
         {
             var call = expression.Expression;
+            if (TryGetClrCall(call, call.Target, null, out var clrOwner, out var clrStatic, out var clrConstructor))
+                return EmitClrCall(call, call.Target, null, clrOwner, clrStatic, clrConstructor);
             if (TryGetValueFactoryCall(call, out var factory, constructing: true)) return EmitHostExportCall(call, null, factory);
             var resultType = _code.GetExpressionType(expression);
             if (TryGetNativeConstruction(expression, out var nativeObject))
@@ -5570,6 +5659,32 @@ namespace AuroraScript.Compiler.Backend.Emission
             if (expression.Left is GetPropertyExpression property &&
                 TryGetStaticPropertyName(property.Property, out var propertyName))
             {
+                if (TryGetClrMember(
+                        property.Object,
+                        propertyName,
+                        false,
+                        out var clrOwner,
+                        out var clrStatic,
+                        out var clrRead,
+                        property) &&
+                    TryGetClrMember(
+                        property.Object,
+                        propertyName,
+                        true,
+                        out _,
+                        out _,
+                        out var clrWrite,
+                        property))
+                {
+                    var clrReceiver = SaveClrOperand(property.Object);
+                    ConvertToDatum(EmitClrMemberRead(clrReceiver, propertyName, clrOwner, clrStatic, clrRead));
+                    EmitDatum(expression.Right);
+                    _il.Emit(OpCodes.Call, GetDynamicBinary(op));
+                    var clrValue = DeclareLocal(typeof(ScriptDatum));
+                    _il.Emit(OpCodes.Stloc, clrValue);
+                    EmitClrMemberWrite(clrReceiver, clrValue, propertyName, clrOwner, clrStatic, clrWrite);
+                    return StackValueKind.Datum;
+                }
                 var receiverKind = EmitExpression(property.Object);
                 if (receiverKind == StackValueKind.Object)
                 {
@@ -6429,6 +6544,32 @@ namespace AuroraScript.Compiler.Backend.Emission
             else if (unary.Expression is GetPropertyExpression property &&
                 TryGetStaticPropertyName(property.Property, out var propertyName))
             {
+                if (TryGetClrMember(
+                        property.Object,
+                        propertyName,
+                        false,
+                        out var clrOwner,
+                        out var clrStatic,
+                        out var clrRead,
+                        property) &&
+                    TryGetClrMember(
+                        property.Object,
+                        propertyName,
+                        true,
+                        out _,
+                        out _,
+                        out var clrWrite,
+                        property))
+                {
+                    var clrReceiver = SaveClrOperand(property.Object);
+                    ConvertToDatum(EmitClrMemberRead(clrReceiver, propertyName, clrOwner, clrStatic, clrRead));
+                    _il.Emit(OpCodes.Stloc, oldValue);
+                    EmitChangedValue(oldValue, newValue, delta);
+                    EmitClrMemberWrite(clrReceiver, newValue, propertyName, clrOwner, clrStatic, clrWrite);
+                    _il.Emit(OpCodes.Pop);
+                    _il.Emit(OpCodes.Ldloc, postfix ? oldValue : newValue);
+                    return StackValueKind.Datum;
+                }
                 var receiverKind = EmitExpression(property.Object);
                 if (receiverKind == StackValueKind.Object)
                 {

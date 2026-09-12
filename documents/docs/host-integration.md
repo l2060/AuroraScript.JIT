@@ -531,6 +531,28 @@ var engine = new AuroraEngine(options);
 
 Registrations are applied when an engine is created. Each engine has its own CLR registry, and options can be reused across engines. Omitted or blank aliases use the CLR type name; aliases must be unique within the runtime configuration.
 
+Aliases selected through `RuntimeOptionsBuilder.RegisterCLRType` form the engine's
+frozen compilation catalog. They cannot be unregistered or shadowed on a domain
+global because emitted code may bind their constructors and members directly.
+Types added later through `engine.ClrRegistry.RegisterType` remain runtime-only:
+they use dynamic CLR dispatch and may be unregistered.
+
+Frozen aliases are also valid source type contracts:
+
+```as
+func read(Service service) { return service.Name; }
+var service = value as Service;
+```
+
+Both forms validate that the script value wraps an instance assignable to the
+registered CLR type. A failed check raises a runtime error. Runtime-only
+registrations cannot be used as source type contracts.
+
+When flow analysis proves a frozen CLR receiver, accessing a statically named
+member that does not exist produces a non-fatal compilation warning. Warnings
+are written to `RuntimeOptions.ConsoleErrorOut` and retained in
+`AuroraEngine.CompilationWarnings`. Dynamic receivers remain unrestricted.
+
 Expose a host object or delegate to one domain:
 
 ```csharp

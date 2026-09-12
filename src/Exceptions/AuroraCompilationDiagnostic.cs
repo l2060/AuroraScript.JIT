@@ -12,17 +12,23 @@ namespace AuroraScript
             AuroraCompilationStage stage,
             string message,
             SourceSpan location,
-            Exception exception = null)
+            Exception exception = null,
+            AuroraCompilationDiagnosticSeverity severity =
+                AuroraCompilationDiagnosticSeverity.Error)
         {
             Stage = stage;
             Message = message ?? string.Empty;
             Location = location;
             OriginalException = exception;
+            Severity = severity;
         }
 
         internal AuroraCompilationStage Stage { get; }
 
         internal Exception OriginalException { get; }
+
+        /// <summary>Gets whether this diagnostic is an error or a warning.</summary>
+        public AuroraCompilationDiagnosticSeverity Severity { get; }
 
         /// <summary>Human-readable diagnostic message.</summary>
         public string Message { get; }
@@ -45,7 +51,10 @@ namespace AuroraScript
             var location = Location.StartLine > 0
                 ? $" Location: {Location.FileName} line:{Location.StartLine}, column:{Location.StartColumn}"
                 : string.Empty;
-            return $"{Message}{location}";
+            var prefix = Severity == AuroraCompilationDiagnosticSeverity.Warning
+                ? "warning: "
+                : string.Empty;
+            return $"{prefix}{Message}{location}";
         }
     }
 }

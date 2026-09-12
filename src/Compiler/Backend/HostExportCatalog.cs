@@ -32,16 +32,18 @@ namespace AuroraScript.Compiler.Backend
 
 
         public HostExportCatalog(IReadOnlyList<Type> nativeTypes)
-            : this(nativeTypes, Array.Empty<NativePackageDefinition>())
+            : this(nativeTypes, Array.Empty<NativePackageDefinition>(), RuntimeOptions.Default)
         {
         }
 
         public HostExportCatalog(
             IReadOnlyList<Type> nativeTypes,
-            IReadOnlyList<NativePackageDefinition> packages)
+            IReadOnlyList<NativePackageDefinition> packages,
+            RuntimeOptions runtimeOptions = null)
         {
             ArgumentNullException.ThrowIfNull(nativeTypes);
             ArgumentNullException.ThrowIfNull(packages);
+            ClrTypes = new ClrTypeCatalog(runtimeOptions ?? RuntimeOptions.Default);
             _exports = new Dictionary<ExportKey, HostExportDescriptor>();
             _constants = new Dictionary<ExportKey, FieldInfo>();
             _nativeObjects = new Dictionary<string, HostNativeObjectDescriptor>(StringComparer.Ordinal);
@@ -75,6 +77,8 @@ namespace AuroraScript.Compiler.Backend
                 _packageTypeNames[package.ModulePath] = package.TypeName;
             }
         }
+
+        internal ClrTypeCatalog ClrTypes { get; }
 
         public bool TryGetGlobal(
             string globalName,

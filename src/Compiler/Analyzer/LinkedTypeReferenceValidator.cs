@@ -2,6 +2,7 @@ using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Backend;
 using AuroraScript.Compiler.Backend.Code;
+using AuroraScript.Core;
 using AuroraScript.Runtime;
 using System;
 using System.Collections.Generic;
@@ -23,10 +24,14 @@ namespace AuroraScript.Compiler.Analyzer
 
         public static void Validate(
             IReadOnlyList<ModuleDeclaration> modules,
-            IReadOnlyList<Type> nativeTypes)
+            IReadOnlyList<Type> nativeTypes,
+            RuntimeOptions runtimeOptions = null)
         {
             ArgumentNullException.ThrowIfNull(modules);
-            var hostExports = new HostExportCatalog(nativeTypes ?? Array.Empty<Type>());
+            var hostExports = new HostExportCatalog(
+                nativeTypes ?? Array.Empty<Type>(),
+                Array.Empty<NativePackageDefinition>(),
+                runtimeOptions ?? RuntimeOptions.Default);
             for (var i = 0; i < modules.Count; i++)
             {
                 new LinkedTypeReferenceValidator(modules[i], hostExports).Apply();
@@ -103,6 +108,7 @@ namespace AuroraScript.Compiler.Analyzer
             if (reference == null ||
                 IsBuiltin(reference) ||
                 TypeReferenceFacts.TryGetNativeObject(_hostExports, reference, out _) ||
+                TypeReferenceFacts.TryGetClrType(_hostExports, reference, out _) ||
                 _module.TryResolveType(reference, out _))
             {
                 return;

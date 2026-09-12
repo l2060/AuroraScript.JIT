@@ -85,6 +85,7 @@ namespace AuroraScript.Runtime
         /// <param name="value">The value to set.</param>
         public void SetPropertyValue(string key, object value)
         {
+            ThrowIfFrozenClrAlias(key);
             ScriptDatum datum = default;
             ClrMarshaller.WriteToDatum(ref datum, value);
             base.Define(key, datum, true, true);
@@ -99,6 +100,7 @@ namespace AuroraScript.Runtime
         /// <param name="enumerable">Whether the property shows up in enumeration.</param>
         public void Define(string key, object value, bool writeable = true, bool enumerable = true)
         {
+            ThrowIfFrozenClrAlias(key);
             ScriptDatum datum = default;
             ClrMarshaller.WriteToDatum(ref datum, value);
             base.Define(key, datum, writeable, enumerable);
@@ -113,7 +115,27 @@ namespace AuroraScript.Runtime
         /// <param name="enumerable">Whether the property shows up in enumeration.</param>
         public sealed override void Define(string key, ScriptDatum value, bool writeable = true, bool enumerable = true)
         {
+            ThrowIfFrozenClrAlias(key);
             base.Define(key, value, writeable, enumerable);
+        }
+
+        /// <inheritdoc />
+        protected internal sealed override void SetPropertyDatum(
+            ScriptContext ctx,
+            string key,
+            ScriptDatum value)
+        {
+            ThrowIfFrozenClrAlias(key);
+            base.SetPropertyDatum(ctx, key, value);
+        }
+
+        private void ThrowIfFrozenClrAlias(string key)
+        {
+            if (Engine.ClrRegistry.IsFrozenAlias(key))
+            {
+                throw new AuroraRuntimeException(
+                    $"CLR type alias '{key}' belongs to the frozen compilation catalog and cannot be shadowed.");
+            }
         }
 
         /// <summary>

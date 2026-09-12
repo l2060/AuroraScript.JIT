@@ -10,7 +10,7 @@ namespace AuroraScript.Tests;
 public sealed class ClrInteropTests
 {
     [Fact]
-    public void RuntimeRegistrationsAreSnapshotsAndEnginesHaveIndependentRegistries()
+    public void RuntimeRegistrationOptionsAreSnapshotsAndCompilationAliasesAreFrozen()
     {
         RuntimeOptionsBuilder captured = null!;
         var options = EngineOptions.Default.WithRuntime(runtime =>
@@ -29,7 +29,8 @@ public sealed class ClrInteropTests
         Assert.False(first.ClrRegistry.TryGetClrType("HostOverloads", out _));
         Assert.True(third.ClrRegistry.TryGetClrType("Calculator", out _));
         Assert.True(third.ClrRegistry.TryGetClrType("HostOverloads", out _));
-        Assert.True(first.ClrRegistry.UnregisterType("Calculator"));
+        Assert.Throws<InvalidOperationException>(() =>
+            first.ClrRegistry.UnregisterType("Calculator"));
         Assert.True(second.ClrRegistry.TryGetClrType("Calculator", out _));
     }
 

@@ -68,6 +68,12 @@ namespace AuroraScript
         internal readonly NativePackageRegistry PackageRegistry;
 
         /// <summary>
+        /// Non-fatal diagnostics produced by the most recent successful compilation.
+        /// </summary>
+        public IReadOnlyList<AuroraCompilationDiagnostic> CompilationWarnings { get; private set; }
+            = Array.Empty<AuroraCompilationDiagnostic>();
+
+        /// <summary>
         /// Initializes static members of the <see cref="AuroraEngine"/> class by preloading prototypes.
         /// </summary>
         static AuroraEngine()
@@ -97,6 +103,7 @@ namespace AuroraScript
             foreach (var registration in Options.Runtime.CLRTypes)
             {
                 ClrRegistry.RegisterType(registration.Type, registration.Alias, registration.Access);
+                ClrRegistry.FreezeAlias(registration.Alias);
             }
             Global = new ScriptGlobal(this);
 
@@ -248,6 +255,7 @@ namespace AuroraScript
             await _buildLock.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
+                CompilationWarnings = Array.Empty<AuroraCompilationDiagnostic>();
                 AbstractCILBuilder builder = Options.Compiler.Mode switch
                 {
                     CompilationMode.Persistence => new PersistedBuilder(Options),
@@ -262,7 +270,12 @@ namespace AuroraScript
                 var modules = await compiler.BuildModuleGraphAsync(sources, cancellationToken).ConfigureAwait(false);
                 ValidateNativePackageConflicts(modules);
 
-                EmitProgram(builder, modules, compiler.GlobalDeclarations, cancellationToken);
+                PublishCompilationWarnings(
+                    EmitProgram(
+                        builder,
+                        modules,
+                        compiler.GlobalDeclarations,
+                        cancellationToken));
 
                 Assembly scriptAssembly = null;
                 MethodInfo entryPoint;
@@ -376,6 +389,7 @@ namespace AuroraScript
                 var method = new CompileBlockEmitter(
                     emissionSession,
                     blockPlan).Emit();
+                PublishCompilationWarnings(blockPlan.Session.GetWarnings());
                 if (method == null)
                 {
                     throw new AuroraException("The compiler did not produce a compiled block entry point.");
@@ -415,7 +429,7 @@ namespace AuroraScript
             }
         }
 
-        private void EmitProgram(
+        private AuroraCompilationDiagnostic[] EmitProgram(
             AbstractCILBuilder builder,
             Compiler.Ast.ModuleDeclaration[] modules,
             GlobalDeclarationIndex globalDeclarations,
@@ -426,11 +440,17 @@ namespace AuroraScript
                 var backend = new BackendCompiler(builder, Options, globalDeclarations);
                 var compileSession = backend.CreateModulePlans(modules, cancellationToken);
                 new BackendBuildEmitter(new EmissionSession(compileSession, builder, emitExecutableCode: true)).Emit();
+                return compileSession.GetWarnings();
             }
             catch (Exception ex) when (IsCompilationPipelineException(ex))
             {
                 throw CreateCompilationException(ex, AuroraCompilationStage.Emission);
             }
+        }
+
+        private void PublishCompilationWarnings(AuroraCompilationDiagnostic[] warnings)
+        {
+            CompilationWarnings = warnings ?? Array.Empty<AuroraCompilationDiagnostic>();
         }
 
         private static bool IsProjectSource(ScriptSource source)

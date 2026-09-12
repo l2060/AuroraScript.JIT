@@ -6,6 +6,7 @@ using AuroraScript.Runtime;
 using AuroraScript.Tokens;
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 
 namespace AuroraScript.Compiler.Backend.Code
 {
@@ -452,6 +453,9 @@ namespace AuroraScript.Compiler.Backend.Code
         private readonly Dictionary<Expression, FlowValueType> _expressionTypes;
         private readonly Dictionary<Expression, TypeDeclaration> _structuralTypes;
         private readonly Dictionary<Expression, HostNativeObjectDescriptor> _nativeObjectTypes;
+        private readonly Dictionary<Expression, Type> _clrTypes;
+        private readonly Dictionary<FunctionCallExpression, MethodBase> _clrCalls;
+        private readonly Dictionary<Expression, MemberInfo> _clrMembers;
         private readonly Dictionary<ForStatement, CountedLoop> _countedLoops;
         private Dictionary<FunctionCallExpression, HostNativeMethodDescriptor> _nativeCalls;
         private Dictionary<FunctionCallExpression, HostExportDescriptor> _hostCalls;
@@ -471,7 +475,11 @@ namespace AuroraScript.Compiler.Backend.Code
             FlowValueType returnType,
             Dictionary<ForStatement, CountedLoop> countedLoops = null,
             Dictionary<FunctionCallExpression, HostNativeMethodDescriptor> nativeCalls = null,
-            Dictionary<FunctionCallExpression, HostExportDescriptor> hostCalls = null)
+            Dictionary<FunctionCallExpression, HostExportDescriptor> hostCalls = null,
+            Dictionary<Expression, Type> clrTypes = null,
+            Type[] localClrTypes = null,
+            Dictionary<FunctionCallExpression, MethodBase> clrCalls = null,
+            Dictionary<Expression, MemberInfo> clrMembers = null)
         {
             Function = function ?? throw new ArgumentNullException(nameof(function));
             _names = names ?? throw new ArgumentNullException(nameof(names));
@@ -487,6 +495,10 @@ namespace AuroraScript.Compiler.Backend.Code
             _countedLoops = countedLoops;
             _nativeCalls = nativeCalls;
             _hostCalls = hostCalls;
+            _clrTypes = clrTypes ?? new Dictionary<Expression, Type>(ReferenceEqualityComparer.Instance);
+            LocalClrTypes = localClrTypes ?? new Type[localTypes.Length];
+            _clrCalls = clrCalls;
+            _clrMembers = clrMembers;
         }
 
         public bool TryGetHostCall(FunctionCallExpression call, out HostExportDescriptor descriptor)
@@ -520,6 +532,7 @@ namespace AuroraScript.Compiler.Backend.Code
         public FunctionPlan Function { get; }
         public FlowValueType[] LocalTypes { get; }
         public HostNativeObjectDescriptor[] LocalNativeObjectTypes { get; }
+        public Type[] LocalClrTypes { get; }
         public bool[] WrittenLocals { get; }
         public FlowValueType ReturnType { get; }
 
@@ -568,7 +581,11 @@ namespace AuroraScript.Compiler.Backend.Code
             : this(original.Function, original._names, original._declarations,
                 original._expressionTypes, original._structuralTypes, original._nativeObjectTypes,
                 original.LocalTypes, original.LocalNativeObjectTypes, original.WrittenLocals,
-                original.ReturnType, original._countedLoops)
+                original.ReturnType, original._countedLoops,
+                clrTypes: original._clrTypes,
+                localClrTypes: original.LocalClrTypes,
+                clrCalls: original._clrCalls,
+                clrMembers: original._clrMembers)
         {
             // A bounded overlay avoids copying the entire expression graph at
             // every guarded operation in a large function.
@@ -641,6 +658,32 @@ namespace AuroraScript.Compiler.Backend.Code
                 _nativeObjectTypes.TryGetValue(expression, out var descriptor)
                     ? descriptor
                     : null;
+        }
+
+        public Type GetClrType(Expression expression)
+        {
+            return expression != null && _clrTypes.TryGetValue(expression, out var type)
+                ? type
+                : null;
+        }
+
+        public Type GetLocalClrType(LocalSlotId slot)
+        {
+            return slot.IsValid && (uint)slot.Value < (uint)LocalClrTypes.Length
+                ? LocalClrTypes[slot.Value]
+                : null;
+        }
+
+        public bool TryGetClrCall(FunctionCallExpression call, out MethodBase method)
+        {
+            method = null;
+            return _clrCalls != null && _clrCalls.TryGetValue(call, out method);
+        }
+
+        public bool TryGetClrMember(Expression expression, out MemberInfo member)
+        {
+            member = null;
+            return _clrMembers != null && _clrMembers.TryGetValue(expression, out member);
         }
     }
 }

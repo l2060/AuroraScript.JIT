@@ -4,6 +4,9 @@ using AuroraScript.Compiler.Backend.Plans;
 using AuroraScript.Runtime;
 using System;
 using System.Buffers;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using System.Reflection.Emit;
 
 namespace AuroraScript.Compiler.Backend.Emission
@@ -12,6 +15,28 @@ namespace AuroraScript.Compiler.Backend.Emission
     {
         private readonly int _dynamicDelegateCapacity;
         private CallableReturnPredictions _callableReturns;
+        private readonly Dictionary<(string Module, ConstructorInfo Constructor), MethodInfo> _clrConstructors = new();
+
+        internal MethodInfo GetClrConstructor(string module, ConstructorInfo constructor)
+        {
+            if (_clrConstructors.TryGetValue((module, constructor), out var cached)) return cached;
+            var parameters = constructor.GetParameters().Select(p => p.ParameterType).ToArray();
+            var (method, il) = Builder.DefineMethod(module, "__clr_construct_" + _clrConstructors.Count,
+                constructor.DeclaringType, parameters);
+            var result = il.DeclareLocal(constructor.DeclaringType);
+            il.BeginExceptionBlock();
+            for (var i = 0; i < parameters.Length; i++) il.Emit(OpCodes.Ldarg, i);
+            il.Emit(OpCodes.Newobj, constructor);
+            il.Emit(OpCodes.Stloc, result);
+            il.BeginCatchBlock(typeof(Exception));
+            il.Emit(OpCodes.Newobj, typeof(TargetInvocationException).GetConstructor([typeof(Exception)]));
+            il.Emit(OpCodes.Throw);
+            il.EndExceptionBlock();
+            il.Emit(OpCodes.Ldloc, result);
+            il.Emit(OpCodes.Ret);
+            _clrConstructors.Add((module, constructor), method);
+            return method;
+        }
 
         internal CallableReturnPredictions CallableReturns => _callableReturns ??=
             CallableReturnPredictions.Build(CompileSession.Modules, CompileSession.HostExports);

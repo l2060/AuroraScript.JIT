@@ -357,7 +357,10 @@ namespace AuroraScript.Compiler
         private void ValidateLinkedTypeReferences(
             ModuleDeclaration[] modules)
         {
-            LinkedTypeReferenceValidator.Validate(modules, _options.Compiler.NativeTypes);
+            LinkedTypeReferenceValidator.Validate(
+                modules,
+                _options.Compiler.NativeTypes,
+                _options.Runtime);
         }
 
         private static void ModuleNameConflictCheck(ModuleDeclaration[] modules)
