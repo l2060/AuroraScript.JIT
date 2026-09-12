@@ -41,6 +41,7 @@
               "description": "Explicit @module name, or null when the source is anonymous. No default is derived from its path."
             },
             "imports": { "type": "array", "items": { "$ref": "#/$defs/ImportDeclaration" } },
+            "functionTypes": { "type": "array", "items": { "$ref": "#/$defs/FunctionTypeDeclaration" } },
             "body": { "type": "array", "items": { "$ref": "#/$defs/Statement" } }
           }
         }
@@ -64,6 +65,7 @@
       "oneOf": [
         { "$ref": "#/$defs/BlockStatement" },
         { "$ref": "#/$defs/FunctionDeclaration" },
+        { "$ref": "#/$defs/FunctionTypeDeclaration" },
         { "$ref": "#/$defs/VariableDeclaration" },
         { "$ref": "#/$defs/EnumDeclaration" },
         { "$ref": "#/$defs/IfStatement" },
@@ -85,6 +87,23 @@
       "allOf": [
         { "$ref": "#/$defs/NodeBase" },
         { "type": "object", "properties": { "kind": { "const": "FunctionDeclaration" }, "name": { "type": "string" }, "parameters": { "type": "array" }, "body": { "$ref": "#/$defs/BlockStatement" }, "flags": { "enum": ["General", "Lambda", "Declare"] } } }
+      ]
+    },
+    "FunctionTypeDeclaration": {
+      "allOf": [
+        { "$ref": "#/$defs/NodeBase" },
+        {
+          "type": "object",
+          "required": ["kind", "name", "parameters"],
+          "properties": {
+            "kind": { "const": "FunctionTypeDeclaration" },
+            "name": { "type": "string" },
+            "access": { "enum": ["Internal", "Export"] },
+            "isDeclare": { "type": "boolean" },
+            "parameters": { "type": "array" },
+            "returnType": { "type": ["string", "null"] }
+          }
+        }
       ]
     },
     "VariableDeclaration": {

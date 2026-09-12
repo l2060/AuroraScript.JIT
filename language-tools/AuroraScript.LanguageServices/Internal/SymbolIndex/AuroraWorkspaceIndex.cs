@@ -161,6 +161,18 @@ internal sealed class AuroraWorkspaceIndex
                 type.Access == MemberAccess.Export));
         }
 
+        for (var i = 0; i < declaration.FunctionTypes.Count; i++)
+        {
+            var type = declaration.FunctionTypes[i];
+            module.AddSymbol(new AuroraSymbolInfo(
+                type.Name.Value,
+                AuroraSymbolKind.Type,
+                declaration.Source.ModulePath,
+                module.Path,
+                TextRange.FromSourceSpan(type.Name.Range),
+                type.Access == MemberAccess.Export));
+        }
+
         for (var i = 0; i < declaration.Statements.Count; i++)
         {
             switch (declaration.Statements[i])

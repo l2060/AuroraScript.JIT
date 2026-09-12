@@ -7,11 +7,13 @@ module-item        = module-meta
                    | include-declaration
                    | import-declaration
                    | export-declaration
+                   | function-type-declaration
                    | statement ;
 
 global-declaration-file = global-meta global-declaration* EOF ;
 global-meta        = "@global" "(" ")" ";" ;
-global-declaration = declare-function | declare-variable | declare-type ;
+global-declaration = declare-function | declare-variable | declare-type
+                   | declare-function-type ;
 
 module-meta        = "@module" "(" identifier ")" ";" ;
 include-declaration = "include" string-literal ";" ;
@@ -19,6 +21,7 @@ import-declaration  = "import" identifier "from" string-literal ";" ;
 context-declaration = "context" identifier [ "as" type-reference ] ";" ;
 
 export-declaration = "export" ( function-declaration
+                              | function-type-declaration
                               | variable-declaration
                               | enum-declaration
                               | type-declaration ) ;
@@ -49,21 +52,23 @@ annotation         = "@" identifier [ "(" [ annotation-argument { "," annotation
 annotation-argument = identifier | string-literal | number-literal | boolean-literal ;
 annotated-function = annotation+ function-declaration ;
 
-function-declaration = [ "native" ] ( "func" | "function" ) identifier parameter-list [ type-reference ] block ;
-declare-function     = "declare" ( "func" | "function" ) identifier parameter-list [ type-reference ] ";" ;
+function-declaration = [ "native" ] "func" identifier parameter-list [ type-reference ] block ;
+function-type-declaration = "type" identifier parameter-list [ type-reference ] ";" ;
+declare-function     = "declare" "func" identifier parameter-list [ type-reference ] ";" ;
 declare-variable     = "declare" ( "var" | "const" ) identifier ";" ;
+declare-function-type = "declare" function-type-declaration ;
 declare-type         = "declare" "type" identifier "{" ambient-member* "}" ;
 ambient-member       = "constructor" parameter-list ";"
                      | "static" ( "const" | "var" ) identifier ";"
-                     | "static" ( "func" | "function" ) identifier parameter-list [ type-reference ] ";"
+                     | "static" "func" identifier parameter-list [ type-reference ] ";"
                      | ( "const" | "var" ) identifier ";"
-                     | ( "func" | "function" ) identifier parameter-list [ type-reference ] ";"
+                     | "func" identifier parameter-list [ type-reference ] ";"
                      | type-reference identifier ";" ;
 type-declaration     = "type" identifier "{" type-field* "}" ;
 type-field           = type-reference identifier ";" ;
 type-reference       = identifier [ "." identifier ] ;
 parameter-list       = "(" [ parameter { "," parameter } ] ")" ;
-parameter            = [ "..." ] identifier [ "=" expression ] ;
+parameter            = [ type-reference ] [ "..." ] identifier [ "=" expression ] ;
 
 variable-declaration = ( "var" | "const" ) binding [ "=" expression ] ";" ;
 binding              = identifier | object-pattern | array-pattern ;

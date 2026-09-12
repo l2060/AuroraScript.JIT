@@ -45,6 +45,18 @@ internal sealed class BuiltinDefinitionDocuments
         {
             _knownTypes.Add(SyntheticTypeNames[i]);
         }
+        foreach (var pair in catalog.FunctionTypes)
+        {
+            _knownTypes.Add(pair.Key);
+        }
+        foreach (var pair in catalog.ObjectTypes)
+        {
+            _knownTypes.Add(pair.Key);
+        }
+        foreach (var pair in catalog.Prototypes)
+        {
+            _knownTypes.Add(pair.Key);
+        }
 
         foreach (var pair in catalog.Globals)
         {
@@ -59,6 +71,37 @@ internal sealed class BuiltinDefinitionDocuments
         {
             var document = BuildModuleDocument(pair.Value);
             _documentsByModulePath[pair.Key] = document;
+            _documentsByUri[document.Uri] = document;
+        }
+
+        foreach (var pair in catalog.FunctionTypes)
+        {
+            var document = BuildFunctionTypeDocument(pair.Value);
+            _documentsByTypeName[pair.Key] = document;
+            _documentsByUri[document.Uri] = document;
+        }
+
+        foreach (var pair in catalog.ObjectTypes)
+        {
+            var document = BuildTypeDocument(
+                pair.Key,
+                pair.Value.Documentation.GetNotes(_locale),
+                pair.Value.Members);
+            _documentsByTypeName[pair.Key] = document;
+            _documentsByUri[document.Uri] = document;
+        }
+
+        // A prototype without a matching global still names a reachable instance
+        // type, so keep its members navigable from declaration documents.
+        foreach (var pair in catalog.Prototypes)
+        {
+            if (_documentsByTypeName.ContainsKey(pair.Key))
+            {
+                continue;
+            }
+
+            var document = BuildTypeDocument(pair.Key, Array.Empty<string>(), pair.Value);
+            _documentsByTypeName[pair.Key] = document;
             _documentsByUri[document.Uri] = document;
         }
 
@@ -85,6 +128,35 @@ internal sealed class BuiltinDefinitionDocuments
         }
 
         location = new DefinitionLocation(document.Uri, document.GlobalRange);
+        return true;
+    }
+
+    public bool TryGetTypeLocation(string name, out DefinitionLocation location)
+    {
+        location = null!;
+        if (name == null || !_documentsByTypeName.TryGetValue(name, out var document))
+        {
+            return false;
+        }
+
+        location = new DefinitionLocation(document.Uri, document.GlobalRange);
+        return true;
+    }
+
+    public bool TryGetTypeMemberLocation(
+        string typeName,
+        string memberName,
+        out DefinitionLocation location)
+    {
+        location = null!;
+        if (typeName == null ||
+            !_documentsByTypeName.TryGetValue(typeName, out var document) ||
+            !document.MemberRanges.TryGetValue(memberName, out var range))
+        {
+            return false;
+        }
+
+        location = new DefinitionLocation(document.Uri, range);
         return true;
     }
 
@@ -288,6 +360,100 @@ internal sealed class BuiltinDefinitionDocuments
         builder.AppendLine(";");
 
         return new DocumentInfo(uri, builder.ToString(), globalRange, memberRanges, builtinReferences);
+    }
+
+    private DocumentInfo BuildTypeDocument(
+        string typeName,
+        IReadOnlyList<string> notes,
+        IReadOnlyDictionary<string, BuiltinApiMember> members)
+    {
+        var uri = Uri(typeName);
+        var builder = new DocumentTextBuilder();
+        var memberRanges = new Dictionary<string, TextRange>(StringComparer.Ordinal);
+        var builtinReferences = new List<BuiltinReference>();
+
+        builder.AppendLine("// AuroraScript built-in declaration document.");
+        builder.AppendLine("// Generated from the runtime API catalog for editor navigation.");
+        builder.AppendLine();
+
+        AppendDocumentation(builder, uri, string.Empty, notes, null, null, builtinReferences);
+        builder.Append("declare type ");
+        var globalRange = builder.AppendToken(uri, typeName);
+        builder.AppendLine(" {");
+
+        foreach (var memberPair in members)
+        {
+            AppendMember(
+                builder,
+                uri,
+                memberPair.Value,
+                instanceMember: true,
+                memberRanges,
+                builtinReferences);
+        }
+
+        builder.AppendLine("}");
+
+        return new DocumentInfo(uri, builder.ToString(), globalRange, memberRanges, builtinReferences);
+    }
+
+    private DocumentInfo BuildFunctionTypeDocument(BuiltinApiFunctionType functionType)
+    {
+        var uri = Uri(functionType.Name);
+        var builder = new DocumentTextBuilder();
+        var memberRanges = new Dictionary<string, TextRange>(StringComparer.Ordinal);
+        var builtinReferences = new List<BuiltinReference>();
+
+        builder.AppendLine("// AuroraScript built-in function type declaration document.");
+        builder.AppendLine("// Generated from the runtime API catalog for editor navigation.");
+        builder.AppendLine();
+        AppendDocumentation(
+            builder,
+            uri,
+            string.Empty,
+            functionType.Documentation.GetNotes(_locale),
+            null,
+            null,
+            builtinReferences);
+        builder.Append("declare type ");
+        var typeRange = builder.AppendToken(uri, functionType.Name);
+        builder.Append("(");
+        for (var i = 0; i < functionType.Parameters.Count; i++)
+        {
+            if (i > 0)
+            {
+                builder.Append(", ");
+            }
+
+            var parameter = functionType.Parameters[i];
+            if (parameter.Variadic)
+            {
+                builder.Append("...");
+            }
+            AppendFormattedType(
+                builder,
+                uri,
+                BuiltinTypeFormatter.FormatParameterType(parameter),
+                builtinReferences);
+            builder.Append(" ").Append(
+                BuiltinTypeFormatter.SafeParameterName(parameter.Name, i));
+        }
+        builder.Append(") ");
+        AppendFormattedType(
+            builder,
+            uri,
+            BuiltinTypeFormatter.FormatType(
+                functionType.ReturnType,
+                BuiltinTypeFormatter.TypeUsage.Return),
+            builtinReferences);
+        builder.AppendLine(";");
+
+        return new DocumentInfo(
+            uri,
+            builder.ToString(),
+            typeRange,
+            memberRanges,
+            builtinReferences);
     }
 
     private void AppendConstructor(

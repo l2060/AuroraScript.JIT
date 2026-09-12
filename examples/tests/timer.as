@@ -9,7 +9,7 @@ export var timers = [0,, 1, 2, 3, 4, 5];
 // timers[10] = 10;
 // var sdss = timers[10];
 
-function time_proc(timer, arrays, clrdata) {
+func time_proc(timer, arrays, clrdata) {
 	for (var item in timers) {
 		timeCount++;
 	}
@@ -17,13 +17,13 @@ function time_proc(timer, arrays, clrdata) {
 
 }
 
-export function testCallback() {
+export func testCallback() {
 	CREATE_TIMER(time_proc);
 }
 
 
 
-export function createTimer(callback, interval = 521) {
+export func createTimer(callback, interval = 521) {
 
 	var timer = {
 		timeId: timeCount++,
@@ -39,10 +39,10 @@ export function createTimer(callback, interval = 521) {
 			log("reset");
 		}
 	};
-	function log(text) {
+	func log(text) {
 		console.log("Timer:" + timer.timeId + " [" + text /*.toUpperCase()*/ + "]");
 	}
-	function cancel() {
+	func cancel() {
 		log("canceled");
 		timer.cancel = null;
 		timeCount--;

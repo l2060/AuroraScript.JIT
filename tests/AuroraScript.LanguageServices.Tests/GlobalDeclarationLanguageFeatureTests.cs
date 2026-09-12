@@ -59,6 +59,43 @@ public sealed class GlobalDeclarationLanguageFeatureTests : IDisposable
     }
 
     [Fact]
+    public void DeclaredCallableTypesPreserveStrongSignatures()
+    {
+        var service = CreateService();
+        var mainPath = Path.Combine(_root, "main.as");
+        var globalsPath = Path.Combine(_root, "globals.as");
+        var globals =
+            """
+            @global();
+            declare type Predicate(Number value) Boolean;
+            """;
+        var main =
+            """
+            @module(MAIN);
+            export func use(Predicate predicate, Number value) Boolean {
+                return predicate(value);
+            }
+            """;
+        service.OpenOrUpdateDocument(globalsPath, globals);
+        service.OpenOrUpdateDocument(mainPath, main);
+
+        var definition = service.GetDefinition(
+            mainPath,
+            PositionOf(main, "Predicate"));
+        Assert.NotNull(definition);
+        Assert.Equal(
+            globalsPath.Replace('\\', '/'),
+            definition!.Path.Replace('\\', '/'));
+
+        var hover = service.GetHover(mainPath, PositionOf(main, "Predicate"));
+        Assert.NotNull(hover);
+        Assert.Contains(
+            "declare type Predicate(Number value) Boolean;",
+            hover!.Contents,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AmbientTypesDriveEditorFeaturesWithoutShadowingLocals()
     {
         var service = CreateService();

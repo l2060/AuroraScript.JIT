@@ -190,6 +190,18 @@ namespace AuroraScript.Compiler.Analyzer
                             this.Root.MetaInfos[meta.Name.Value] = meta.Value?.Value;
                         }
                     }
+                    else if (node is FunctionTypeDeclaration functionType)
+                    {
+                        RejectGlobalNonDeclareStatement(node);
+                        if (!this.Root.AddFunctionType(functionType))
+                        {
+                            throw new AuroraCompilationException(
+                                AuroraCompilationStage.Parsing,
+                                Lexer.FullPath,
+                                functionType.Name,
+                                $"Duplicate function type declaration '{functionType.Name.Value}'.");
+                        }
+                    }
                     else if (node is FunctionDeclaration func)
                     {
                         RejectGlobalNonDeclareStatement(node);
@@ -245,6 +257,7 @@ namespace AuroraScript.Compiler.Analyzer
 
                     _seenEffectiveModuleStatement = true;
                 }
+                ValidateFunctionTypeNames();
                 ValidateTypeReferences();
                 SetSourceRecursive(this.Root);
             }
@@ -390,9 +403,10 @@ namespace AuroraScript.Compiler.Analyzer
             if (symbol == Symbols.KW_INCLUDE) { var res = ParseInclude(); if (res != null) res.IsIndependent = true; return res; }
             if (symbol == Symbols.KW_CONTEXT) { var res = ParseContextDeclaration(); if (res != null) res.IsIndependent = true; return res; }
             if (symbol == Symbols.KW_EXPORT) { var res = ParseExportStatement(); if (res != null) res.IsIndependent = true; return res; }
+            if (IsFunctionTypeDeclarationStart()) { var res = ParseFunctionTypeDeclaration(MemberAccess.Internal); if (res != null) res.IsIndependent = true; return res; }
             if (IsTypeDeclarationStart()) { var res = ParseTypeDeclaration(MemberAccess.Internal); if (res != null) res.IsIndependent = true; return res; }
             if (IsNativeFunctionDeclarationStart()) { var res = ParseNativeFunctionDeclaration(MemberAccess.Internal); if (res != null) res.IsIndependent = true; return res; }
-            if (symbol == Symbols.KW_FUNCTION || symbol == Symbols.KW_FUNC) { var res = ParseFunctionDeclaration(MemberAccess.Internal); if (res != null) res.IsIndependent = true; return res; }
+            if (symbol == Symbols.KW_FUNC) { var res = ParseFunctionDeclaration(MemberAccess.Internal); if (res != null) res.IsIndependent = true; return res; }
             if (symbol == Symbols.KW_DECLARE) { var res = ParseDeclare(MemberAccess.Internal); if (res != null) res.IsIndependent = true; return res; }
             if (symbol == Symbols.KW_CONST || symbol == Symbols.KW_VAR) { var res = ParseVariableDeclaration(MemberAccess.Internal); if (res != null) res.IsIndependent = true; return res; }
             if (symbol == Symbols.KW_ENUM) { var res = ParseEnumDeclaration(MemberAccess.Internal); if (res != null) res.IsIndependent = true; return res; }
@@ -437,6 +451,7 @@ namespace AuroraScript.Compiler.Analyzer
 
             if (node is VariableDeclaration { IsDeclare: true } ||
                 node is FunctionDeclaration function && (function.Flags & FunctionFlags.Declare) != 0 ||
+                node is FunctionTypeDeclaration { IsDeclare: true } ||
                 node is AmbientDeclaration)
             {
                 return;
@@ -1257,7 +1272,11 @@ namespace AuroraScript.Compiler.Analyzer
             }
 
             var symbol = this.Lexer.PeekSymbol();
-            if (symbol == Symbols.KW_FUNCTION || symbol == Symbols.KW_FUNC)
+            if (IsFunctionTypeDeclarationStart())
+            {
+                return ParseFunctionTypeDeclaration(MemberAccess.Export);
+            }
+            if (symbol == Symbols.KW_FUNC)
             {
                 return ParseFunctionDeclaration(MemberAccess.Export);
             }
@@ -1300,17 +1319,75 @@ namespace AuroraScript.Compiler.Analyzer
 
         private Statement ParseFunctionDeclaration(MemberAccess access = MemberAccess.Internal)
         {
-            var start = this.Lexer.NextRangeOfKind(Symbols.KW_FUNCTION, Symbols.KW_FUNC);
+            var start = this.Lexer.NextRangeOfKind(Symbols.KW_FUNC);
             var functionName = this.Lexer.NextOfKind<IdentifierToken>();
             var func = this.ParseFunction(functionName, access, FunctionFlags.General);
             return SetRange(func, start, func.Range);
+        }
+
+        private Statement ParseFunctionTypeDeclaration(
+            MemberAccess access = MemberAccess.Internal,
+            SourceSpan? declarationStart = null,
+            bool isDeclare = false)
+        {
+            if (scopeStack.Current != ScopeType.MODULE)
+            {
+                throw new AuroraCompilationException(
+                    AuroraCompilationStage.Parsing,
+                    Lexer.FullPath,
+                    Lexer.LookAtHead(),
+                    "Function types are only allowed at module scope.");
+            }
+
+            var typeStart = Lexer.NextOfKind<IdentifierToken>().Range;
+            var start = declarationStart ?? typeStart;
+            var name = Lexer.NextOfKind<IdentifierToken>();
+            if (IsCheckTypeName(name.Value) ||
+                string.Equals(
+                    name.Value,
+                    "void",
+                    StringComparison.Ordinal))
+            {
+                throw new AuroraCompilationException(
+                    AuroraCompilationStage.Parsing,
+                    Lexer.FullPath,
+                    name,
+                    $"Function type '{name.Value}' conflicts with a built-in type.");
+            }
+            Lexer.Expect(Symbols.PT_LEFTPARENTHESIS);
+            var parameters = ParseFunctionArguments();
+            for (var i = 0; i < parameters.Count; i++)
+            {
+                if (parameters[i].Initializer != null ||
+                    parameters[i].IsSpreadOperator)
+                {
+                    throw new AuroraCompilationException(
+                        AuroraCompilationStage.Parsing,
+                        Lexer.FullPath,
+                        parameters[i].Name,
+                        "Function type parameters cannot use defaults or rest syntax.");
+                }
+            }
+            TypeReference returnType = null;
+            if (IsTypeReferenceFollowedBy(Symbols.PT_SEMICOLON))
+            {
+                returnType = ParseTypeReference();
+            }
+            var end = Lexer.NextRangeOfKind(Symbols.PT_SEMICOLON);
+            var declaration = new FunctionTypeDeclaration(
+                access,
+                name,
+                parameters,
+                returnType,
+                isDeclare);
+            return SetRange(declaration, start, end);
         }
 
         private bool IsNativeFunctionDeclarationStart()
         {
             var symbol = PeekSymbol(1);
             return PeekToken(0) is IdentifierToken { Value: "native" } &&
-                (symbol == Symbols.KW_FUNCTION || symbol == Symbols.KW_FUNC);
+                symbol == Symbols.KW_FUNC;
         }
 
         private Statement ParseNativeFunctionDeclaration(MemberAccess access)
@@ -1325,7 +1402,7 @@ namespace AuroraScript.Compiler.Analyzer
             }
 
             var start = Lexer.NextOfKind<IdentifierToken>();
-            Lexer.NextRangeOfKind(Symbols.KW_FUNCTION, Symbols.KW_FUNC);
+            Lexer.NextRangeOfKind(Symbols.KW_FUNC);
             var functionName = Lexer.NextOfKind<IdentifierToken>();
             var function = ParseFunction(
                 functionName,
@@ -1382,6 +1459,13 @@ namespace AuroraScript.Compiler.Analyzer
             return PeekToken(0) is IdentifierToken { Value: "type" } &&
                 PeekToken(1) is IdentifierToken &&
                 PeekSymbol(2) == Symbols.PT_LEFTBRACE;
+        }
+
+        private bool IsFunctionTypeDeclarationStart()
+        {
+            return PeekToken(0) is IdentifierToken { Value: "type" } &&
+                PeekToken(1) is IdentifierToken &&
+                PeekSymbol(2) == Symbols.PT_LEFTPARENTHESIS;
         }
 
         private TypeDeclaration ParseTypeDeclaration(MemberAccess access)
@@ -1484,10 +1568,18 @@ namespace AuroraScript.Compiler.Analyzer
 
             if (PeekToken(0) is IdentifierToken { Value: "type" })
             {
+                if (PeekToken(1) is IdentifierToken &&
+                    PeekSymbol(2) == Symbols.PT_LEFTPARENTHESIS)
+                {
+                    return ParseFunctionTypeDeclaration(
+                        access,
+                        start,
+                        isDeclare: true);
+                }
                 return ParseAmbientDeclaration(start);
             }
 
-            if (this.Lexer.TestNext(Symbols.KW_FUNCTION) || this.Lexer.TestNext(Symbols.KW_FUNC))
+            if (this.Lexer.TestNext(Symbols.KW_FUNC))
             {
                 var funcName = this.Lexer.NextOfKind<IdentifierToken>();
                 this.Lexer.Expect(Symbols.PT_LEFTPARENTHESIS);
@@ -1604,7 +1696,7 @@ namespace AuroraScript.Compiler.Analyzer
                     end);
             }
 
-            if (Lexer.TestNext(Symbols.KW_FUNCTION) || Lexer.TestNext(Symbols.KW_FUNC))
+            if (Lexer.TestNext(Symbols.KW_FUNC))
             {
                 var name = NextAmbientMemberName();
                 Lexer.Expect(Symbols.PT_LEFTPARENTHESIS);
@@ -3246,6 +3338,33 @@ namespace AuroraScript.Compiler.Analyzer
             new TypeReferenceValidator(Root, Lexer.FullPath).Apply();
         }
 
+        private void ValidateFunctionTypeNames()
+        {
+            for (var typeIndex = 0;
+                typeIndex < Root.FunctionTypes.Count;
+                typeIndex++)
+            {
+                var functionType = Root.FunctionTypes[typeIndex];
+                for (var functionIndex = 0;
+                    functionIndex < Root.Functions.Count;
+                    functionIndex++)
+                {
+                    var function = Root.Functions[functionIndex];
+                    if (function.Name != null &&
+                        StringComparer.Ordinal.Equals(
+                            function.Name.Value,
+                            functionType.Name.Value))
+                    {
+                        throw new AuroraCompilationException(
+                            AuroraCompilationStage.Parsing,
+                            Lexer.FullPath,
+                            function.Name,
+                            $"Function type '{functionType.Name.Value}' conflicts with function body '{function.Name.Value}'.");
+                    }
+                }
+            }
+        }
+
         private sealed class TypeReferenceValidator : IAstVisitor
         {
             private readonly ModuleDeclaration _module;
@@ -3275,6 +3394,19 @@ namespace AuroraScript.Compiler.Analyzer
                     Validate(node.Parameters[i].DeclaredType);
                 }
                 base.VisitFunction(node);
+            }
+
+            protected override void VisitFunctionTypeDeclaration(
+                FunctionTypeDeclaration node)
+            {
+                if (!TypeReferenceFacts.IsVoid(node.ReturnType))
+                {
+                    Validate(node.ReturnType);
+                }
+                for (var i = 0; i < node.Parameters.Count; i++)
+                {
+                    Validate(node.Parameters[i].DeclaredType);
+                }
             }
 
             protected override void VisitCheckExpression(CheckExpression node)

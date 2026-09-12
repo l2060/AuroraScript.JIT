@@ -52,7 +52,44 @@ public static class BuiltinApiLoader
             }
         }
 
-        return new BuiltinApiCatalog(version, globals, prototypes, modules);
+        var functionTypes = new Dictionary<string, BuiltinApiFunctionType>(StringComparer.Ordinal);
+        if (root.TryGetProperty("functionTypes", out var functionTypesElement))
+        {
+            foreach (var functionTypeProperty in functionTypesElement.EnumerateObject())
+            {
+                var value = functionTypeProperty.Value;
+                var returnType = value.TryGetProperty("returns", out var returnsElement)
+                    ? returnsElement.GetString() ?? "any"
+                    : "any";
+                functionTypes.Add(
+                    functionTypeProperty.Name,
+                    new BuiltinApiFunctionType(
+                        functionTypeProperty.Name,
+                        ReadParameters(value),
+                        returnType,
+                        ReadDocumentation(value)));
+            }
+        }
+
+        var objectTypes = new Dictionary<string, BuiltinApiObjectType>(StringComparer.Ordinal);
+        if (root.TryGetProperty("objectTypes", out var objectTypesElement))
+        {
+            foreach (var objectTypeProperty in objectTypesElement.EnumerateObject())
+            {
+                var value = objectTypeProperty.Value;
+                var members = value.TryGetProperty("members", out var membersElement)
+                    ? ReadMembers(objectTypeProperty.Name, membersElement)
+                    : new Dictionary<string, BuiltinApiMember>(StringComparer.Ordinal);
+                objectTypes.Add(
+                    objectTypeProperty.Name,
+                    new BuiltinApiObjectType(
+                        objectTypeProperty.Name,
+                        members,
+                        ReadDocumentation(value)));
+            }
+        }
+
+        return new BuiltinApiCatalog(version, globals, prototypes, modules, functionTypes, objectTypes);
     }
 
     private static BuiltinApiModule ReadModule(string name, JsonElement element)

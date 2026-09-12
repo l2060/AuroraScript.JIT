@@ -209,6 +209,7 @@ namespace AuroraScript.Compiler.Backend
                     cancellationToken.ThrowIfCancellationRequested();
                     ModuleUsageAnalyzer.Apply(session, plans[i]);
                     FunctionBinder.BindFunctionBodies(session, plans[i], functionMaps[i]);
+                    CallableContractAnalyzer.Apply(session, plans[i]);
                     ClosurePlanner.PlanModule(plans[i]);
                 }
                 return;
@@ -222,6 +223,7 @@ namespace AuroraScript.Compiler.Backend
             {
                 ModuleUsageAnalyzer.Apply(session, plans[i]);
                 FunctionBinder.BindFunctionBodies(session, plans[i], functionMaps[i]);
+                CallableContractAnalyzer.Apply(session, plans[i]);
                 ClosurePlanner.PlanModule(plans[i]);
             });
         }
@@ -241,6 +243,10 @@ namespace AuroraScript.Compiler.Backend
             var firstSymbol = new SymbolId(session.Symbols.Count);
             var symbolCount = 0;
             var module = modulePlan.Declaration;
+            if (globalDeclarations.CallableTypes.Count != 0)
+            {
+                module.SetAmbientFunctionTypes(globalDeclarations.CallableTypes);
+            }
 
             for (var i = 0; i < module.Imports.Count; i++)
             {

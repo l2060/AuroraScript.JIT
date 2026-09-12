@@ -205,7 +205,8 @@ namespace AuroraScript.Compiler.Backend.Emission
 
                 var code = _moduleCode.GetDirect(function.Id);
                 var returnsVoid =
-                    function.IsNativeDeclared &&
+                    (function.IsNativeDeclared ||
+                        function.CallableType != null) &&
                     TypeReferenceFacts.IsVoid(function.Declaration.ReturnType);
                 if (code == null ||
                     code.ReturnType == FlowValueType.None ||
@@ -238,7 +239,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                         directMode: true,
                         allowRuntimeBoundaryInDirectMode:
                             function.IsNativeDeclared);
-                    var signatureSupported = function.IsNativeDeclared ||
+                    var signatureSupported =
+                        function.IsNativeDeclared ||
+                        function.CallableType != null ||
                         NativeDirectCallSignatureValidator.CanEmit(
                             code,
                             id => _module.GetFunctionIndex(id) is var index && index >= 0 && candidates[index],
@@ -282,7 +285,8 @@ namespace AuroraScript.Compiler.Backend.Emission
                     ? "lambda_" + function.Id.Value
                     : function.Name;
                 var returnsVoid =
-                    function.IsNativeDeclared &&
+                    (function.IsNativeDeclared ||
+                        function.CallableType != null) &&
                     TypeReferenceFacts.IsVoid(function.Declaration.ReturnType);
                 TypeReferenceFacts.TryGetNativeObject(
                     _session.CompileSession.HostExports,
@@ -336,7 +340,8 @@ namespace AuroraScript.Compiler.Backend.Emission
                         : code.ReturnType == FlowValueType.String
                             ? StackValueKind.String
                             : StackValueKind.Datum);
-                if (function.IsNativeDeclared)
+                if (function.IsNativeDeclared ||
+                    function.CallableType != null)
                 {
                     function.NativeEntryMethod = method;
                 }
@@ -1121,6 +1126,15 @@ namespace AuroraScript.Compiler.Backend.Emission
                 declaredType,
                 out _))
             {
+                return;
+            }
+            if (TypeReferenceFacts.TryGetFunctionType(
+                _module.Declaration,
+                declaredType,
+                out _))
+            {
+                // Callable contracts retain the Datum closure representation at
+                // the dynamic shell. Native dispatch is selected at call sites.
                 return;
             }
             if (declaredType != null)
@@ -2024,6 +2038,11 @@ namespace AuroraScript.Compiler.Backend.Emission
                         return EmitImportedNativeCall(call, imported, materializeVoid);
                     }
                     if (TryGetDirectCall(call, out _)) return EmitDirectCall(call, materializeVoid);
+                    if (TryEmitCallableNativeCall(
+                            call,
+                            materializeVoid,
+                            out var callableKind))
+                        return callableKind;
                     return EmitCall(call, materializeVoid);
                 case GetPropertyExpression property:
                     return EmitGetProperty(property);
@@ -3939,6 +3958,319 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
 
             return hasSpread || call.Arguments.Count > 2;
+        }
+
+        private bool TryEmitCallableNativeCall(
+            FunctionCallExpression call,
+            bool materializeVoid,
+            out StackValueKind returnKind)
+        {
+            returnKind = StackValueKind.Datum;
+            var target = call?.Target;
+            while (target is GroupExpression group &&
+                group.Expressions.Count == 1)
+            {
+                target = group.Expressions[0];
+            }
+            if (target is not NameExpression name ||
+                HasSpread(call.Arguments))
+            {
+                return false;
+            }
+
+            var binding = _code.GetName(name);
+            if (!binding.IsLocal ||
+                (uint)binding.Local.Value >=
+                    (uint)_function.LocalSlots.Length ||
+                _function.LocalSlots[binding.Local.Value].Declaration
+                    is not ParameterDeclaration parameter ||
+                !TypeReferenceFacts.TryGetFunctionType(
+                    _module.Declaration,
+                    parameter.DeclaredType,
+                    out var callable))
+            {
+                return false;
+            }
+
+            var callableModule =
+                callable.Parent as ModuleDeclaration ??
+                _module.Declaration;
+            ReportCallableCallWarnings(
+                call,
+                callable,
+                callableModule);
+            if (callable.ReturnType == null ||
+                callable.Parameters.Count != call.Arguments.Count ||
+                callable.Parameters.Count > 16)
+            {
+                return false;
+            }
+            var parameterTypes =
+                new DirectParameterType[callable.Parameters.Count];
+            var delegateSignature =
+                new Type[callable.Parameters.Count + 1];
+            var canUseNativeArguments = true;
+            for (var i = 0; i < callable.Parameters.Count; i++)
+            {
+                var declared = callable.Parameters[i].DeclaredType;
+                if (declared == null)
+                {
+                    return false;
+                }
+                var flow = TypeReferenceFacts.GetFlowType(
+                    callableModule,
+                    declared,
+                    _session.CompileSession.HostExports);
+                if (flow == FlowValueType.None)
+                {
+                    return false;
+                }
+                TypeReferenceFacts.TryGetNativeObject(
+                    _session.CompileSession.HostExports,
+                    declared,
+                    out var native);
+                parameterTypes[i] =
+                    new DirectParameterType(flow, nativeObject: native);
+                delegateSignature[i] =
+                    GetNativeParameterType(parameterTypes[i]);
+                var actual =
+                    _code.GetExpressionType(call.Arguments[i]);
+                if (!FlowValueTypeFacts.CanPassNativeArgument(
+                        parameterTypes[i],
+                        actual) ||
+                    native != null &&
+                    !ReferenceEquals(
+                        _code.GetNativeObjectType(call.Arguments[i]),
+                        native))
+                {
+                    canUseNativeArguments = false;
+                }
+            }
+
+            var returnsVoid =
+                TypeReferenceFacts.IsVoid(callable.ReturnType);
+            var returnFlow = TypeReferenceFacts.GetFlowType(
+                callableModule,
+                callable.ReturnType,
+                _session.CompileSession.HostExports);
+            if (returnFlow == FlowValueType.None)
+            {
+                return false;
+            }
+            TypeReferenceFacts.TryGetNativeObject(
+                _session.CompileSession.HostExports,
+                callable.ReturnType,
+                out var nativeReturn);
+            var returnType = new DirectParameterType(
+                returnFlow,
+                nativeObject: nativeReturn);
+            delegateSignature[^1] = returnsVoid
+                ? typeof(void)
+                : GetNativeParameterType(returnType);
+            var delegateType =
+                System.Linq.Expressions.Expression.GetDelegateType(
+                    delegateSignature);
+            var invoke = delegateType.GetMethod(nameof(Action.Invoke));
+
+            var targetDatum = DeclareLocal(typeof(ScriptDatum));
+            var closure = DeclareLocal(typeof(ClosureFunction));
+            var nativeTarget = DeclareLocal(delegateType);
+            var nativeResult = returnsVoid
+                ? null
+                : DeclareLocal(delegateSignature[^1]);
+            var frame = DeclareLocal(typeof(int));
+            var fallback = _il.DefineLabel();
+            var done = _il.DefineLabel();
+
+            EmitDatum(call.Target);
+            _il.Emit(OpCodes.Stloc, targetDatum);
+            _il.Emit(OpCodes.Ldloc, targetDatum);
+            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumToObject);
+            _il.Emit(OpCodes.Isinst, typeof(ClosureFunction));
+            _il.Emit(OpCodes.Stloc, closure);
+            _il.Emit(OpCodes.Ldloc, closure);
+            _il.Emit(OpCodes.Brfalse, fallback);
+            _il.Emit(OpCodes.Ldloc, closure);
+            _il.Emit(
+                OpCodes.Call,
+                typeof(CallFrameOps).GetMethod(
+                    nameof(CallFrameOps.GetNativeTarget)));
+            _il.Emit(OpCodes.Isinst, delegateType);
+            _il.Emit(OpCodes.Stloc, nativeTarget);
+            _il.Emit(OpCodes.Ldloc, nativeTarget);
+            _il.Emit(OpCodes.Brfalse, fallback);
+            if (!canUseNativeArguments)
+            {
+                _il.Emit(OpCodes.Br, fallback);
+            }
+
+            _il.Emit(OpCodes.Ldarg_0);
+            _il.Emit(OpCodes.Ldloc, closure);
+            _il.Emit(
+                OpCodes.Call,
+                typeof(CallFrameOps).GetMethod(
+                    nameof(CallFrameOps.EnterClosure)));
+            _il.Emit(OpCodes.Stloc, frame);
+
+            _il.BeginExceptionBlock();
+            _protectedRegionDepth++;
+            try
+            {
+                _il.Emit(OpCodes.Ldloc, nativeTarget);
+                for (var i = 0; i < call.Arguments.Count; i++)
+                {
+                    EmitDirectArgument(
+                        call.Arguments[i],
+                        parameterTypes[i]);
+                }
+                _il.Emit(OpCodes.Callvirt, invoke);
+                if (!returnsVoid)
+                {
+                    _il.Emit(OpCodes.Stloc, nativeResult);
+                }
+            }
+            finally
+            {
+                _protectedRegionDepth--;
+            }
+            _il.BeginFinallyBlock();
+            _il.Emit(OpCodes.Ldarg_0);
+            _il.Emit(OpCodes.Ldloc, frame);
+            _il.Emit(
+                OpCodes.Call,
+                typeof(CallFrameOps).GetMethod(
+                    nameof(CallFrameOps.Leave)));
+            _il.EndExceptionBlock();
+            if (returnsVoid)
+            {
+                if (materializeVoid)
+                {
+                    EmitNull();
+                }
+            }
+            else
+            {
+                _il.Emit(OpCodes.Ldloc, nativeResult);
+            }
+            _il.Emit(OpCodes.Br, done);
+
+            _il.MarkLabel(fallback);
+            _il.Emit(OpCodes.Ldloc, targetDatum);
+            _il.Emit(OpCodes.Ldarg_0);
+            for (var i = 0; i < call.Arguments.Count; i++)
+            {
+                EmitDatum(call.Arguments[i]);
+            }
+            _il.Emit(
+                OpCodes.Call,
+                TypedRuntimeMetadata.Invoke[call.Arguments.Count]);
+            if (returnsVoid)
+            {
+                if (!materializeVoid)
+                {
+                    _il.Emit(OpCodes.Pop);
+                }
+            }
+            else if (returnType.NativeObject == null &&
+                FlowValueTypeFacts.FromCheckedTypeName(
+                    callable.ReturnType.Name) != FlowValueType.None)
+            {
+                _il.Emit(
+                    OpCodes.Call,
+                    TypedRuntimeMetadata.GetTypeCheck(
+                        FlowValueTypeFacts.GetCheckedType(
+                            callable.ReturnType.Name)));
+            }
+            if (!returnsVoid)
+            {
+                EmitDatumToNativeParameter(_il, returnType);
+            }
+
+            _il.MarkLabel(done);
+            returnKind = returnsVoid
+                ? materializeVoid
+                    ? StackValueKind.Datum
+                    : StackValueKind.Void
+                : GetCallableReturnKind(returnType);
+            return true;
+        }
+
+        private void ReportCallableCallWarnings(
+            FunctionCallExpression call,
+            FunctionTypeDeclaration callable,
+            ModuleDeclaration callableModule)
+        {
+            if (!callable.IsStrong)
+            {
+                return;
+            }
+            if (call.Arguments.Count != callable.Parameters.Count)
+            {
+                _session.CompileSession.ReportWarning(
+                    call,
+                    $"Call to function type '{callable.Name.Value}' supplies {call.Arguments.Count} arguments, but its calling convention requires {callable.Parameters.Count}.");
+                return;
+            }
+            for (var i = 0; i < callable.Parameters.Count; i++)
+            {
+                var declared = callable.Parameters[i].DeclaredType;
+                if (declared == null)
+                {
+                    continue;
+                }
+                var expected = TypeReferenceFacts.GetFlowType(
+                    callableModule,
+                    declared,
+                    _session.CompileSession.HostExports);
+                var actual =
+                    _code.GetExpressionType(call.Arguments[i]);
+                if (actual == FlowValueType.Dynamic ||
+                    expected == FlowValueType.None)
+                {
+                    continue;
+                }
+                TypeReferenceFacts.TryGetNativeObject(
+                    _session.CompileSession.HostExports,
+                    declared,
+                    out var expectedNative);
+                var actualNative =
+                    _code.GetNativeObjectType(call.Arguments[i]);
+                var compatible =
+                    FlowValueTypeFacts.CanPassNativeArgument(
+                        new DirectParameterType(
+                            expected,
+                            nativeObject: expectedNative),
+                        actual) &&
+                    (expectedNative == null ||
+                        actual != FlowValueType.Object ||
+                        actualNative == null ||
+                        actualNative.ClrType ==
+                            expectedNative.ClrType);
+                if (!compatible)
+                {
+                    _session.CompileSession.ReportWarning(
+                        call.Arguments[i],
+                        $"Argument {i + 1} of function type '{callable.Name.Value}' is incompatible with declared type '{declared.DisplayName}'.");
+                }
+            }
+        }
+
+        private static StackValueKind GetCallableReturnKind(
+            DirectParameterType type)
+        {
+            if (type.NativeObject != null)
+                return StackValueKind.Object;
+            return type.Type switch
+            {
+                FlowValueType.Int32 => StackValueKind.Int32,
+                FlowValueType.UInt32 => StackValueKind.UInt32,
+                FlowValueType.Int64 => StackValueKind.Int64,
+                FlowValueType.UInt64 => StackValueKind.UInt64,
+                FlowValueType.Number => StackValueKind.Number,
+                FlowValueType.Boolean => StackValueKind.Boolean,
+                FlowValueType.String => StackValueKind.String,
+                _ => StackValueKind.Datum
+            };
         }
 
         private StackValueKind EmitCall(FunctionCallExpression call, bool materializeVoid = true, bool fixedClosure = false)

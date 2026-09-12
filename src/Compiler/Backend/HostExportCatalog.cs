@@ -368,6 +368,7 @@ namespace AuroraScript.Compiler.Backend
     internal sealed class HostExportDescriptor
     {
         private readonly ParameterInfo[] _parameters;
+        private readonly AuroraCallbackArgumentAttribute[] _callbackArguments;
         public HostExportDescriptor(
             MethodInfo method,
             AuroraExportValueKind returnKind,
@@ -385,6 +386,9 @@ namespace AuroraScript.Compiler.Backend
             TakesThisObject = takesThisObject;
             UseDynamicForExtraArguments = useDynamicForExtraArguments;
             _parameters = method.GetParameters();
+            _callbackArguments = new List<AuroraCallbackArgumentAttribute>(
+                method.GetCustomAttributes<AuroraCallbackArgumentAttribute>(
+                    inherit: false)).ToArray();
             RequiredScriptParameterCount = runtimeDefaults != null ? parameterKinds.Length - runtimeDefaults.Length : CountRequiredScriptParameters(
                 _parameters,
                 takesContext,
@@ -400,6 +404,8 @@ namespace AuroraScript.Compiler.Backend
         public bool TakesThisObject { get; }
         public bool UseDynamicForExtraArguments { get; }
         public int RequiredScriptParameterCount { get; }
+        public IReadOnlyList<AuroraCallbackArgumentAttribute> CallbackArguments =>
+            _callbackArguments;
         internal HostExportDescriptor NextOverload { get; set; }
 
         public Type GetScriptParameterType(int index)

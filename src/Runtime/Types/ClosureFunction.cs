@@ -1,4 +1,5 @@
 using System;
+using System.Linq.Expressions;
 using System.Reflection;
 
 namespace AuroraScript.Runtime.Types
@@ -22,15 +23,45 @@ namespace AuroraScript.Runtime.Types
         public readonly ScriptModule Module;
         internal readonly Upvalue[] Upvalues;
         internal MethodInfo NativeEntry { get; private set; }
+        internal Delegate NativeTarget { get; private set; }
         internal ScriptDatum[] NativeDefaults { get; private set; }
 
         internal bool NativeSignatureComplete { get; private set; }
+        internal bool NativeEntryTakesContext { get; private set; }
 
         internal void SetNativeEntry(MethodInfo method, ScriptDatum[] defaults, bool signatureComplete)
         {
             NativeEntry = method;
+            NativeEntryTakesContext = true;
             NativeSignatureComplete = signatureComplete;
             NativeDefaults = defaults;
+        }
+
+        internal void SetNativeCallableEntry(
+            MethodInfo method,
+            ScriptDatum[] defaults,
+            bool signatureComplete)
+        {
+            SetNativeEntry(method, defaults, signatureComplete);
+            NativeEntryTakesContext = false;
+            NativeTarget = CreateNativeTarget(method);
+        }
+
+        private static Delegate CreateNativeTarget(MethodInfo method)
+        {
+            if (method == null || !method.IsStatic)
+            {
+                return null;
+            }
+            var parameters = method.GetParameters();
+            var signature = new Type[parameters.Length + 1];
+            for (var i = 0; i < parameters.Length; i++)
+            {
+                signature[i] = parameters[i].ParameterType;
+            }
+            signature[^1] = method.ReturnType;
+            return method.CreateDelegate(
+                Expression.GetDelegateType(signature));
         }
 
         internal ClosureFunction(ScriptDomain domain, ScriptModule module, ScriptFunctionDelegate targetDelegate, Upvalue[] upvalues, string funcName = null)

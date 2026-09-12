@@ -56,6 +56,19 @@ namespace AuroraScript.Compiler.Analyzer
             base.VisitFunction(node);
         }
 
+        protected override void VisitFunctionTypeDeclaration(
+            FunctionTypeDeclaration node)
+        {
+            if (!TypeReferenceFacts.IsVoid(node.ReturnType))
+            {
+                ValidateReference(node.ReturnType);
+            }
+            for (var i = 0; i < node.Parameters.Count; i++)
+            {
+                ValidateReference(node.Parameters[i].DeclaredType);
+            }
+        }
+
         protected override void VisitCheckExpression(CheckExpression node)
         {
             ValidateReference(node.AssertedType);
@@ -103,12 +116,32 @@ namespace AuroraScript.Compiler.Analyzer
             base.VisitSetPropertyExpression(node);
         }
 
+        protected override void VisitName(NameExpression node)
+        {
+            if ((_module.TryGetFunctionType(
+                        node.Identifier.Value,
+                        out var declaration) ||
+                    _module.TryGetAmbientFunctionType(
+                        node.Identifier.Value,
+                        out declaration)) &&
+                !HasValueExport(_module, node.Identifier.Value))
+            {
+                throw new AuroraCompilationException(
+                    AuroraCompilationStage.Linking,
+                    _module.Source.FullPath,
+                    node.Identifier,
+                    $"Function type '{declaration.Name.Value}' is compile-time only and cannot be used as a value.");
+            }
+            base.VisitName(node);
+        }
+
         private void ValidateReference(TypeReference reference)
         {
             if (reference == null ||
                 IsBuiltin(reference) ||
                 TypeReferenceFacts.TryGetNativeObject(_hostExports, reference, out _) ||
                 TypeReferenceFacts.TryGetClrType(_hostExports, reference, out _) ||
+                _module.TryResolveFunctionType(reference, out _) ||
                 _module.TryResolveType(reference, out _))
             {
                 return;
@@ -130,9 +163,19 @@ namespace AuroraScript.Compiler.Analyzer
             }
 
             var imported = FindImportedModule(alias.Identifier.Value);
-            if (imported == null ||
-                !imported.TryGetType(member.Identifier.Value, out var declaration) ||
-                declaration.Access != MemberAccess.Export ||
+            if (imported == null)
+            {
+                return;
+            }
+            var isExportedType =
+                imported.TryGetType(member.Identifier.Value, out var declaration) &&
+                declaration.Access == MemberAccess.Export;
+            var isExportedFunctionType =
+                imported.TryGetFunctionType(
+                    member.Identifier.Value,
+                    out var functionType) &&
+                functionType.Access == MemberAccess.Export;
+            if ((!isExportedType && !isExportedFunctionType) ||
                 HasValueExport(imported, member.Identifier.Value))
             {
                 return;

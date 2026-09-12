@@ -1,3 +1,5 @@
+using AuroraScript.Compiler.Analyzer;
+using AuroraScript.Compiler.Ast;
 using AuroraScript.Core;
 using AuroraScript.Source;
 using System;
@@ -79,14 +81,22 @@ namespace AuroraScript.Compiler.GlobalDeclarations
 
         public GlobalDeclarationIndex(
             IReadOnlyDictionary<string, GlobalDeclarationInfo> declarations,
-            IReadOnlyList<AuroraCompilationDiagnostic> diagnostics)
+            IReadOnlyList<AuroraCompilationDiagnostic> diagnostics,
+            IReadOnlyDictionary<string, FunctionTypeDeclaration> callableTypes = null)
         {
             Declarations = declarations ?? new Dictionary<string, GlobalDeclarationInfo>(StringComparer.Ordinal);
             Diagnostics = diagnostics ?? Array.Empty<AuroraCompilationDiagnostic>();
+            CallableTypes = callableTypes ??
+                new Dictionary<string, FunctionTypeDeclaration>(StringComparer.Ordinal);
         }
 
         public IReadOnlyDictionary<string, GlobalDeclarationInfo> Declarations { get; }
         public IReadOnlyList<AuroraCompilationDiagnostic> Diagnostics { get; }
+
+        /// <summary>
+        /// Ambient callable contracts declared as <c>declare type Name(...) ReturnType;</c>.
+        /// </summary>
+        public IReadOnlyDictionary<string, FunctionTypeDeclaration> CallableTypes { get; }
 
         public bool TryGet(string name, out GlobalDeclarationInfo declaration)
         {
@@ -97,6 +107,7 @@ namespace AuroraScript.Compiler.GlobalDeclarations
     internal sealed class GlobalDeclarationWorkspaceIndexBuilder
     {
         private readonly Dictionary<string, GlobalDeclarationInfo> _declarations = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, FunctionTypeDeclaration> _callableTypes = new(StringComparer.Ordinal);
         private readonly List<AuroraCompilationDiagnostic> _diagnostics = new();
         private readonly HashSet<string> _files = new(ScriptPath.Comparer);
 
@@ -122,13 +133,26 @@ namespace AuroraScript.Compiler.GlobalDeclarations
             {
                 AddDeclaration(result.Declarations[i]);
             }
+
+            AddCallableTypes(filePath, text);
         }
 
         public GlobalDeclarationIndex ToIndex()
         {
             return new GlobalDeclarationIndex(
                 new Dictionary<string, GlobalDeclarationInfo>(_declarations, StringComparer.Ordinal),
-                _diagnostics.ToArray());
+                _diagnostics.ToArray(),
+                new Dictionary<string, FunctionTypeDeclaration>(_callableTypes, StringComparer.Ordinal));
+        }
+
+        private void AddCallableTypes(string filePath, string text)
+        {
+            var callableTypes = GlobalDeclarationScanner.ReadCallableTypes(filePath, text);
+            for (var i = 0; i < callableTypes.Count; i++)
+            {
+                var callableType = callableTypes[i];
+                _callableTypes.TryAdd(callableType.Name.Value, callableType);
+            }
         }
 
         private void AddDeclaration(GlobalDeclarationInfo declaration)
@@ -226,6 +250,70 @@ namespace AuroraScript.Compiler.GlobalDeclarations
             text ??= string.Empty;
             var scanner = new Scanner(filePath, text);
             return scanner.Scan();
+        }
+
+        /// <summary>
+        /// Makes the ambient callable contracts of a declaration index resolvable
+        /// as type references inside every compiled module.
+        /// </summary>
+        public static void BindAmbientFunctionTypes(
+            IReadOnlyList<ModuleDeclaration> modules,
+            GlobalDeclarationIndex index)
+        {
+            if (modules == null || index == null || index.CallableTypes.Count == 0)
+            {
+                return;
+            }
+
+            for (var i = 0; i < modules.Count; i++)
+            {
+                modules[i]?.SetAmbientFunctionTypes(index.CallableTypes);
+            }
+        }
+
+        /// <summary>
+        /// Reads the ambient callable contracts (<c>declare type Name(...) ReturnType;</c>)
+        /// of a <c>@global()</c> declaration file.
+        /// </summary>
+        /// <remarks>
+        /// The textual scanner only records declaration names, so the full parser is used to
+        /// recover parameter and return contracts. Malformed files are reported by the scanner,
+        /// therefore parse failures are ignored here.
+        /// </remarks>
+        public static IReadOnlyList<FunctionTypeDeclaration> ReadCallableTypes(string filePath, string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return Array.Empty<FunctionTypeDeclaration>();
+            }
+
+            ModuleDeclaration module;
+            try
+            {
+                var fullPath = ScriptPath.NormalizeFullPath(filePath);
+                var source = new MemorySource(ScriptPath.GetDirectoryName(fullPath), fullPath, text);
+                using var lexer = new AuroraLexer(source.BaseDirectory, source, text);
+                module = new AuroraParser(lexer, EngineOptions.Default).Parse();
+            }
+            catch (Exception)
+            {
+                return Array.Empty<FunctionTypeDeclaration>();
+            }
+
+            List<FunctionTypeDeclaration> callableTypes = null;
+            for (var i = 0; i < module.FunctionTypes.Count; i++)
+            {
+                var callableType = module.FunctionTypes[i];
+                if (!callableType.IsDeclare)
+                {
+                    continue;
+                }
+
+                callableTypes ??= new List<FunctionTypeDeclaration>(module.FunctionTypes.Count);
+                callableTypes.Add(callableType);
+            }
+
+            return callableTypes ?? (IReadOnlyList<FunctionTypeDeclaration>)Array.Empty<FunctionTypeDeclaration>();
         }
 
         public static GlobalDeclarationIndex BuildIndex(IEnumerable<(string Path, string Text)> documents)
@@ -723,8 +811,7 @@ namespace AuroraScript.Compiler.GlobalDeclarations
                     return;
                 }
 
-                if (string.Equals(kindText, "func", StringComparison.Ordinal) ||
-                    string.Equals(kindText, "function", StringComparison.Ordinal))
+                if (string.Equals(kindText, "func", StringComparison.Ordinal))
                 {
                     ParseDeclareFunction(statementStart);
                     return;
@@ -757,9 +844,39 @@ namespace AuroraScript.Compiler.GlobalDeclarations
                     return;
                 }
                 SkipTrivia();
+                if (ConsumeIf('('))
+                {
+                    if (!SkipBalancedParentheses())
+                    {
+                        AddDiagnostic(
+                            CurrentSpan(1),
+                            $"declare {kindText} parameter list must be closed with ')'.");
+                        return;
+                    }
+                    SkipTrivia();
+                    TrySkipReturnType();
+                    SkipTrivia();
+                    if (!ConsumeIf(';'))
+                    {
+                        AddDiagnostic(
+                            CurrentSpan(1),
+                            $"declare {kindText} callable type must end with ';'.");
+                        SkipStatement();
+                        return;
+                    }
+                    _declarations.Add(new GlobalDeclarationInfo(
+                        name,
+                        GlobalDeclarationKind.Type,
+                        _filePath,
+                        nameRange,
+                        SpanFrom(statementStart, PreviousPosition())));
+                    return;
+                }
                 if (!ConsumeIf('{'))
                 {
-                    AddDiagnostic(CurrentSpan(1), $"declare {kindText} requires a member block.");
+                    AddDiagnostic(
+                        CurrentSpan(1),
+                        $"declare {kindText} requires a parameter list or member block.");
                     SkipStatement();
                     return;
                 }
@@ -846,8 +963,7 @@ namespace AuroraScript.Compiler.GlobalDeclarations
                     {
                         memberDeclarationKind = GlobalDeclarationKind.Var;
                     }
-                    else if (string.Equals(memberKind, "func", StringComparison.Ordinal) ||
-                        string.Equals(memberKind, "function", StringComparison.Ordinal))
+                    else if (string.Equals(memberKind, "func", StringComparison.Ordinal))
                     {
                         memberDeclarationKind = GlobalDeclarationKind.Function;
                     }

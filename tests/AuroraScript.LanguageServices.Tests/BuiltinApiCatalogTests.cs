@@ -114,8 +114,168 @@ public sealed class BuiltinApiCatalogTests
         Assert.Equal("HttpResponse", request.ReturnType);
         Assert.True(http.TryGetMember("getAsync", out var getAsync));
         Assert.Equal("callback", getAsync.Parameters[^1].Name);
-        Assert.Equal("function", getAsync.Parameters[^1].Type);
+        Assert.Equal("HttpCallback", getAsync.Parameters[^1].Type);
         Assert.Equal("boolean", getAsync.ReturnType);
+
+        Assert.True(catalog.FunctionTypes.TryGetValue("HttpCallback", out var callback));
+        Assert.Equal("object", callback.ReturnType);
+        Assert.Collection(
+            callback.Parameters,
+            error => Assert.Equal(("error", "object"), (error.Name, error.Type)),
+            response => Assert.Equal(("response", "HttpResponse"), (response.Name, response.Type)));
+    }
+
+    [Fact]
+    public void LoadsNamedObjectTypeShapes()
+    {
+        var catalog = LoadCatalog();
+
+        Assert.True(catalog.TryGetObjectType("HttpResponse", out var response));
+        Assert.True(response.TryGetMember("status", out var status));
+        Assert.Equal("number", status.ReturnType);
+        Assert.True(status.ReadOnly);
+        Assert.True(response.TryGetMember("bytes", out var bytes));
+        Assert.Equal("UInt8Array", bytes.ReturnType);
+
+        Assert.True(catalog.TryGetObjectType("HttpRequestOptions", out var options));
+        Assert.True(options.TryGetMember("timeout", out var timeout));
+        Assert.Equal("number", timeout.ReturnType);
+        Assert.False(timeout.ReadOnly);
+        Assert.True(options.TryGetMember("responseHeaders", out _));
+    }
+
+    [Fact]
+    public void EveryBuiltinTypeNameResolvesToADeclaredType()
+    {
+        var catalog = LoadCatalog();
+
+        foreach (var module in catalog.Modules.Values)
+        {
+            AssertResolvableTypeNames(module.Members.Values, catalog);
+        }
+        foreach (var global in catalog.Globals.Values)
+        {
+            AssertResolvableTypeNames(global.Members.Values, catalog);
+            AssertResolvableTypeNames(global.Constructors, catalog);
+        }
+        foreach (var prototype in catalog.Prototypes.Values)
+        {
+            AssertResolvableTypeNames(prototype.Values, catalog);
+        }
+        foreach (var objectType in catalog.ObjectTypes.Values)
+        {
+            AssertResolvableTypeNames(objectType.Members.Values, catalog);
+        }
+        foreach (var functionType in catalog.FunctionTypes.Values)
+        {
+            foreach (var parameter in functionType.Parameters)
+            {
+                AssertResolvableTypeName(parameter.Type, functionType.Name, catalog);
+            }
+
+            AssertResolvableTypeName(functionType.ReturnType, functionType.Name, catalog);
+        }
+    }
+
+    private static void AssertResolvableTypeNames(
+        IEnumerable<BuiltinApiMember> members,
+        BuiltinApiCatalog catalog)
+    {
+        foreach (var member in members)
+        {
+            foreach (var parameter in member.Parameters)
+            {
+                AssertResolvableTypeName(parameter.Type, member.FullName, catalog);
+            }
+
+            AssertResolvableTypeName(member.ReturnType, member.FullName, catalog);
+        }
+    }
+
+    private static void AssertResolvableTypeName(
+        string declaredType,
+        string owner,
+        BuiltinApiCatalog catalog)
+    {
+        foreach (var part in declaredType.Split(
+            '|',
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var typeName = part.EndsWith("[]", StringComparison.Ordinal)
+                ? part.Substring(0, part.Length - 2)
+                : part;
+            if (PrimitiveTypeNames.Contains(typeName))
+            {
+                continue;
+            }
+
+            Assert.True(
+                catalog.Globals.ContainsKey(typeName) ||
+                    catalog.Prototypes.ContainsKey(typeName) ||
+                    catalog.FunctionTypes.ContainsKey(typeName) ||
+                    catalog.ObjectTypes.ContainsKey(typeName),
+                $"{owner} references '{typeName}', which has no declared type to navigate to.");
+        }
+    }
+
+    private static readonly HashSet<string> PrimitiveTypeNames = new(StringComparer.Ordinal)
+    {
+        "number", "string", "boolean", "bool", "array", "date", "object",
+        "any", "regex", "regexp", "null", "undefined", "void"
+    };
+
+    [Fact]
+    public void EveryBuiltinFunctionParameterUsesANamedFunctionType()
+    {
+        var catalog = LoadCatalog();
+
+        foreach (var module in catalog.Modules.Values)
+        {
+            AssertNamedFunctionParameters(module.Members.Values, catalog);
+        }
+        foreach (var global in catalog.Globals.Values)
+        {
+            AssertNamedFunctionParameters(global.Members.Values, catalog);
+            AssertNamedFunctionParameters(global.Constructors, catalog);
+        }
+        foreach (var prototype in catalog.Prototypes.Values)
+        {
+            AssertNamedFunctionParameters(prototype.Values, catalog);
+        }
+    }
+
+    private static void AssertNamedFunctionParameters(
+        IEnumerable<BuiltinApiMember> members,
+        BuiltinApiCatalog catalog)
+    {
+        foreach (var member in members)
+        {
+            foreach (var parameter in member.Parameters)
+            {
+                Assert.DoesNotMatch(
+                    @"(^|\|)\s*(function|func)\s*(\||$)",
+                    parameter.Type);
+                if (parameter.Name.Contains("callback", StringComparison.OrdinalIgnoreCase))
+                {
+                    Assert.True(
+                        catalog.FunctionTypes.ContainsKey(parameter.Type),
+                        $"{member.FullName}.{parameter.Name} must reference a declared function type.");
+                }
+                foreach (var typeName in parameter.Type.Split(
+                    '|',
+                    StringSplitOptions.RemoveEmptyEntries |
+                    StringSplitOptions.TrimEntries))
+                {
+                    if (typeName.EndsWith("Callback", StringComparison.Ordinal) ||
+                        typeName.EndsWith("Factory", StringComparison.Ordinal))
+                    {
+                        Assert.True(
+                            catalog.FunctionTypes.ContainsKey(typeName),
+                            $"{member.FullName}.{parameter.Name} references unknown function type '{typeName}'.");
+                    }
+                }
+            }
+        }
     }
 
     [Fact]

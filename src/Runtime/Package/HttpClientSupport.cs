@@ -19,82 +19,93 @@ namespace AuroraScript.Runtime.Package
         private static readonly HttpClient Client = CreateClient();
 
         [Export("request", DynamicAdapter = nameof(REQUEST))]
-        public static ScriptObject RequestCore(string method, string url)
-            => ExecuteObject(ParseRequest(ToArgs(method, url), "request"));
+        public static HttpResponseValue RequestCore(string method, string url)
+            => ExecuteObject(CreateSimpleRequest(method, url, "request"));
 
+        [AuroraCallbackArgument(0, 1, typeof(HttpResponseValue))]
         [Export("requestAsync", DynamicAdapter = nameof(REQUEST_ASYNC))]
         public static bool RequestAsyncCore(ScriptContext ctx, string method, string url, ScriptObject callback)
-            => StartAsync(ctx, ParseRequest(ToArgs(method, url), "requestAsync"), callback, "requestAsync");
+            => StartAsync(ctx, CreateSimpleRequest(method, url, "requestAsync"), callback, "requestAsync");
 
         [Export("get", DynamicAdapter = nameof(GET))]
-        public static ScriptObject GetCore(string url)
-            => ExecuteObject(ParseVerb(ToArgs(url), HttpMethod.Get, "get", acceptsBody: false));
+        public static HttpResponseValue GetCore(string url)
+            => ExecuteObject(CreateSimpleSpec(HttpMethod.Get, url, "get"));
 
+        [AuroraCallbackArgument(0, 1, typeof(HttpResponseValue))]
         [Export("getAsync", DynamicAdapter = nameof(GET_ASYNC))]
         public static bool GetAsyncCore(ScriptContext ctx, string url, ScriptObject callback)
-            => StartAsync(ctx, ParseVerb(ToArgs(url), HttpMethod.Get, "getAsync", acceptsBody: false), callback, "getAsync");
+            => StartAsync(ctx, CreateSimpleSpec(HttpMethod.Get, url, "getAsync"), callback, "getAsync");
 
         [Export("post", DynamicAdapter = nameof(POST))]
-        public static ScriptObject PostCore(string url)
-            => ExecuteObject(ParseVerb(ToArgs(url), HttpMethod.Post, "post", acceptsBody: true));
+        public static HttpResponseValue PostCore(string url)
+            => ExecuteObject(CreateSimpleSpec(HttpMethod.Post, url, "post"));
 
         [Export("post", DynamicAdapter = nameof(POST))]
-        public static ScriptObject PostCore(string url, string body)
-            => ExecuteObject(ParseVerb(ToArgs(url, body), HttpMethod.Post, "post", acceptsBody: true));
+        public static HttpResponseValue PostCore(string url, string body)
+            => ExecuteObject(CreateSimpleSpec(HttpMethod.Post, url, "post", EncodeTextBody(body),
+                "text/plain; charset=utf-8"));
 
         [Export("post", DynamicAdapter = nameof(POST))]
-        public static ScriptObject PostCore(string url, ScriptUInt8Array body)
-            => ExecuteObject(ParseVerb(ToArgs(url, body), HttpMethod.Post, "post", acceptsBody: true));
+        public static HttpResponseValue PostCore(string url, ScriptUInt8Array body)
+            => ExecuteObject(CreateSimpleSpec(HttpMethod.Post, url, "post", CopyBytes(body),
+                "application/octet-stream"));
 
+        [AuroraCallbackArgument(0, 1, typeof(HttpResponseValue))]
         [Export("postAsync", DynamicAdapter = nameof(POST_ASYNC))]
         public static bool PostAsyncCore(ScriptContext ctx, string url, ScriptObject callback)
-            => StartAsync(ctx, ParseVerb(ToArgs(url), HttpMethod.Post, "postAsync", acceptsBody: true), callback, "postAsync");
+            => StartAsync(ctx, CreateSimpleSpec(HttpMethod.Post, url, "postAsync"), callback, "postAsync");
 
         [Export("put", DynamicAdapter = nameof(PUT))]
-        public static ScriptObject PutCore(string url)
-            => ExecuteObject(ParseVerb(ToArgs(url), HttpMethod.Put, "put", acceptsBody: true));
+        public static HttpResponseValue PutCore(string url)
+            => ExecuteObject(CreateSimpleSpec(HttpMethod.Put, url, "put"));
 
         [Export("put", DynamicAdapter = nameof(PUT))]
-        public static ScriptObject PutCore(string url, string body)
-            => ExecuteObject(ParseVerb(ToArgs(url, body), HttpMethod.Put, "put", acceptsBody: true));
+        public static HttpResponseValue PutCore(string url, string body)
+            => ExecuteObject(CreateSimpleSpec(HttpMethod.Put, url, "put", EncodeTextBody(body),
+                "text/plain; charset=utf-8"));
 
+        [AuroraCallbackArgument(0, 1, typeof(HttpResponseValue))]
         [Export("putAsync", DynamicAdapter = nameof(PUT_ASYNC))]
         public static bool PutAsyncCore(ScriptContext ctx, string url, ScriptObject callback)
-            => StartAsync(ctx, ParseVerb(ToArgs(url), HttpMethod.Put, "putAsync", acceptsBody: true), callback, "putAsync");
+            => StartAsync(ctx, CreateSimpleSpec(HttpMethod.Put, url, "putAsync"), callback, "putAsync");
 
         [Export("patch", DynamicAdapter = nameof(PATCH))]
-        public static ScriptObject PatchCore(string url)
-            => ExecuteObject(ParseVerb(ToArgs(url), HttpMethod.Patch, "patch", acceptsBody: true));
+        public static HttpResponseValue PatchCore(string url)
+            => ExecuteObject(CreateSimpleSpec(HttpMethod.Patch, url, "patch"));
 
         [Export("patch", DynamicAdapter = nameof(PATCH))]
-        public static ScriptObject PatchCore(string url, string body)
-            => ExecuteObject(ParseVerb(ToArgs(url, body), HttpMethod.Patch, "patch", acceptsBody: true));
+        public static HttpResponseValue PatchCore(string url, string body)
+            => ExecuteObject(CreateSimpleSpec(HttpMethod.Patch, url, "patch", EncodeTextBody(body),
+                "text/plain; charset=utf-8"));
 
+        [AuroraCallbackArgument(0, 1, typeof(HttpResponseValue))]
         [Export("patchAsync", DynamicAdapter = nameof(PATCH_ASYNC))]
         public static bool PatchAsyncCore(ScriptContext ctx, string url, ScriptObject callback)
-            => StartAsync(ctx, ParseVerb(ToArgs(url), HttpMethod.Patch, "patchAsync", acceptsBody: true), callback, "patchAsync");
+            => StartAsync(ctx, CreateSimpleSpec(HttpMethod.Patch, url, "patchAsync"), callback, "patchAsync");
 
         [Export("delete", DynamicAdapter = nameof(DELETE))]
-        public static ScriptObject DeleteCore(string url)
-            => ExecuteObject(ParseVerb(ToArgs(url), HttpMethod.Delete, "delete", acceptsBody: false));
+        public static HttpResponseValue DeleteCore(string url)
+            => ExecuteObject(CreateSimpleSpec(HttpMethod.Delete, url, "delete"));
 
+        [AuroraCallbackArgument(0, 1, typeof(HttpResponseValue))]
         [Export("deleteAsync", DynamicAdapter = nameof(DELETE_ASYNC))]
         public static bool DeleteAsyncCore(ScriptContext ctx, string url, ScriptObject callback)
-            => StartAsync(ctx, ParseVerb(ToArgs(url), HttpMethod.Delete, "deleteAsync", acceptsBody: false), callback, "deleteAsync");
+            => StartAsync(ctx, CreateSimpleSpec(HttpMethod.Delete, url, "deleteAsync"), callback, "deleteAsync");
 
         [Export("head", DynamicAdapter = nameof(HEAD))]
-        public static ScriptObject HeadCore(string url)
-            => ExecuteObject(ParseVerb(ToArgs(url), HttpMethod.Head, "head", acceptsBody: false));
+        public static HttpResponseValue HeadCore(string url)
+            => ExecuteObject(CreateSimpleSpec(HttpMethod.Head, url, "head"));
 
+        [AuroraCallbackArgument(0, 1, typeof(HttpResponseValue))]
         [Export("headAsync", DynamicAdapter = nameof(HEAD_ASYNC))]
         public static bool HeadAsyncCore(ScriptContext ctx, string url, ScriptObject callback)
-            => StartAsync(ctx, ParseVerb(ToArgs(url), HttpMethod.Head, "headAsync", acceptsBody: false), callback, "headAsync");
+            => StartAsync(ctx, CreateSimpleSpec(HttpMethod.Head, url, "headAsync"), callback, "headAsync");
 
-        private static ScriptObject ExecuteObject(HttpRequestSpec spec)
+        private static HttpResponseValue ExecuteObject(HttpRequestSpec spec)
         {
             var result = default(ScriptDatum);
             ExecuteSynchronously(spec, ref result);
-            return result.Object;
+            return (HttpResponseValue)result.Object;
         }
 
         private static bool StartAsync(
@@ -112,24 +123,6 @@ namespace AuroraScript.Runtime.Package
             var result = default(ScriptDatum);
             StartAsynchronous(ctx, spec, function, ref result);
             return result.Boolean;
-        }
-
-        private static ScriptDatum[] ToArgs(params object[] values)
-        {
-            var args = new ScriptDatum[values.Length];
-            for (var i = 0; i < values.Length; i++)
-            {
-                args[i] = values[i] switch
-                {
-                    null => default,
-                    string text => ScriptDatum.FromString(text),
-                    ScriptUInt8Array bytes => ScriptDatum.FromObject(bytes),
-                    ScriptObject obj => ScriptDatum.FromObject(obj),
-                    _ => throw new InvalidOperationException("Unsupported HTTP core argument.")
-                };
-            }
-
-            return args;
         }
 
         public static void REQUEST(ScriptContext ctx, ScriptObject thisObject, Span<ScriptDatum> args, ref ScriptDatum result)
@@ -232,6 +225,65 @@ namespace AuroraScript.Runtime.Package
                 callback,
                 ref result);
         }
+
+        private static HttpRequestSpec CreateSimpleRequest(
+            string methodText,
+            string url,
+            string apiName)
+        {
+            if (string.IsNullOrWhiteSpace(methodText))
+            {
+                throw new AuroraRuntimeException(
+                    $"http.{apiName} requires 'method' to be a non-empty string.");
+            }
+            HttpMethod method;
+            try
+            {
+                method = new HttpMethod(methodText.Trim().ToUpperInvariant());
+            }
+            catch (Exception exception) when (
+                exception is ArgumentException or FormatException)
+            {
+                throw new AuroraRuntimeException(
+                    $"http.{apiName} received an invalid HTTP method: {exception.Message}");
+            }
+            return CreateSimpleSpec(method, url, apiName);
+        }
+
+        private static HttpRequestSpec CreateSimpleSpec(
+            HttpMethod method,
+            string url,
+            string apiName,
+            byte[] body = null,
+            string contentType = null)
+        {
+            if (string.IsNullOrWhiteSpace(url) ||
+                !Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
+                (uri.Scheme != Uri.UriSchemeHttp &&
+                    uri.Scheme != Uri.UriSchemeHttps))
+            {
+                throw new AuroraRuntimeException(
+                    $"http.{apiName} requires an absolute http or https url.");
+            }
+            return new HttpRequestSpec(
+                apiName,
+                method,
+                uri,
+                Array.Empty<RequestHeader>(),
+                body,
+                contentType,
+                responseHeader: false,
+                timeoutMilliseconds: null);
+        }
+
+        private static byte[] EncodeTextBody(string body) =>
+            Encoding.UTF8.GetBytes(body ?? string.Empty);
+
+        private static byte[] CopyBytes(ScriptUInt8Array body) =>
+            body == null
+                ? throw new AuroraRuntimeException(
+                    "http request body requires a UInt8Array.")
+                : (byte[])body._items.Clone();
 
         private static HttpRequestSpec ParseRequest(Span<ScriptDatum> args, string apiName)
         {
@@ -350,18 +402,19 @@ namespace AuroraScript.Runtime.Package
                 timeoutMilliseconds);
         }
 
-        private static List<RequestHeader> ReadHeaders(ScriptObject options, string apiName)
+        private static IReadOnlyList<RequestHeader> ReadHeaders(
+            ScriptObject options,
+            string apiName)
         {
-            var result = new List<RequestHeader>();
             if (options == null)
             {
-                return result;
+                return Array.Empty<RequestHeader>();
             }
 
             var datum = options.GetPropertyDatum(null, "headers");
             if (datum.Kind == ValueKind.Null)
             {
-                return result;
+                return Array.Empty<RequestHeader>();
             }
 
             if (datum.Kind != ValueKind.Object || datum.Object == null || datum.Object == ScriptObject.Null)
@@ -372,6 +425,7 @@ namespace AuroraScript.Runtime.Package
 
             var headers = datum.Object;
             var names = headers.EnumerationKeys();
+            var result = new List<RequestHeader>(names.Count);
             for (var i = 0; i < names.Count; i++)
             {
                 var name = names[i];
@@ -394,7 +448,9 @@ namespace AuroraScript.Runtime.Package
             return result;
         }
 
-        private static bool ContainsHeader(List<RequestHeader> headers, string name)
+        private static bool ContainsHeader(
+            IReadOnlyList<RequestHeader> headers,
+            string name)
         {
             for (var i = 0; i < headers.Count; i++)
             {
@@ -654,7 +710,7 @@ namespace AuroraScript.Runtime.Package
             }
         }
 
-        private static async Task<ScriptObject> SendAsync(HttpRequestSpec spec)
+        private static async Task<HttpResponseValue> SendAsync(HttpRequestSpec spec)
         {
             using var request = CreateRequest(spec);
             using var timeout = CreateTimeout(spec.TimeoutMilliseconds);
@@ -705,29 +761,22 @@ namespace AuroraScript.Runtime.Package
             return request;
         }
 
-        private static ScriptObject CreateResponse(HttpRequestSpec spec, HttpResponseMessage response, byte[] bytes)
+        private static HttpResponseValue CreateResponse(HttpRequestSpec spec, HttpResponseMessage response, byte[] bytes)
         {
-
             var text = DecodeBody(bytes, response.Content.Headers);
-            var result = new ScriptObject();
-            result.Define("status", ScriptDatum.FromNumber((int)response.StatusCode), writeable: false, enumerable: true);
-            result.Define("statusText", ScriptDatum.FromString(response.ReasonPhrase ?? string.Empty), writeable: false, enumerable: true);
-            result.Define("ok", ScriptDatum.FromBoolean(response.IsSuccessStatusCode), writeable: false, enumerable: true);
-            result.Define(
-                "url",
-                ScriptDatum.FromString(response.RequestMessage?.RequestUri?.ToString() ?? spec.Uri.ToString()),
-                writeable: false,
-                enumerable: true);
+            ScriptObject headers = null;
             if (spec.ResponseHeader)
             {
-                var headers = CreateHeaders(response);
-                result.Define("headers", ScriptDatum.FromObject(headers), writeable: false, enumerable: true);
+                headers = CreateHeaders(response);
             }
-            result.Define("body", ScriptDatum.FromString(text), writeable: false, enumerable: true);
-            result.Define("text", ScriptDatum.FromString(text), writeable: false, enumerable: true);
-            result.Define("bytes", ScriptDatum.FromObject(new ScriptUInt8Array(bytes)), writeable: false, enumerable: true);
-            result.Frozen();
-            return result;
+            return new HttpResponseValue(
+                (int)response.StatusCode,
+                response.ReasonPhrase,
+                response.IsSuccessStatusCode,
+                response.RequestMessage?.RequestUri?.ToString() ?? spec.Uri.ToString(),
+                headers,
+                text,
+                new ScriptUInt8Array(bytes));
         }
 
         private static ScriptObject CreateHeaders(HttpResponseMessage response)
@@ -870,7 +919,7 @@ namespace AuroraScript.Runtime.Package
                 string apiName,
                 HttpMethod method,
                 Uri uri,
-                List<RequestHeader> headers,
+                IReadOnlyList<RequestHeader> headers,
                 byte[] body,
                 string contentType,
                 bool responseHeader,
@@ -892,7 +941,7 @@ namespace AuroraScript.Runtime.Package
 
             public Uri Uri { get; }
 
-            public List<RequestHeader> Headers { get; }
+            public IReadOnlyList<RequestHeader> Headers { get; }
 
             public byte[] Body { get; }
 

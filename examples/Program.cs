@@ -365,7 +365,7 @@ namespace Examples
         private static void TestCompileBlock(ScriptDomain domain)
         {
             var block = engine.CompileBlock("""
-function clamp(v, min, max) {
+func clamp(v, min, max) {
     if (v < min) return min;
     if (v > max) return max;
     return v;

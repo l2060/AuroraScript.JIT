@@ -107,6 +107,7 @@ namespace AuroraScript.Compiler
 
             var modules = _modulesByPath.Values.ToArray();
             Array.Sort(modules, CompareModulesByPath);
+            GlobalDeclarationScanner.BindAmbientFunctionTypes(modules, GlobalDeclarations);
             LinkModules(modules);
             ValidateLinkedTypeReferences(modules);
             ModuleNameConflictCheck(modules);

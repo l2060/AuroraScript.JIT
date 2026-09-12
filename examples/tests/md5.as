@@ -7,46 +7,46 @@
 *
 **/
 
-function throwMethod() {
+func throwMethod() {
 	console.log("Start testError");
 	var ax = xxxx.c(1);
 	console.log("End testError");
 }
 
-native function RotateLeft(uint32 lValue, int32 iShiftBits) uint32 {
+native func RotateLeft(uint32 lValue, int32 iShiftBits) uint32 {
 	return(lValue << iShiftBits) | (lValue >>> (32 - iShiftBits));
 }
 
-native function AddUnsigned(uint32 lX, uint32 lY) uint32 {
+native func AddUnsigned(uint32 lX, uint32 lY) uint32 {
 	return lX + lY;
 }
 
-native function F(uint32 x, uint32 y, uint32 z) uint32 { return(x & y) | ((~x) & z); }
-native function G(uint32 x, uint32 y, uint32 z) uint32 { return(x & z) | (y & (~z)); }
-native function H(uint32 x, uint32 y, uint32 z) uint32 { return(x ^ y ^ z); }
-native function I(uint32 x, uint32 y, uint32 z) uint32 { return(y ^ (x | (~z))); }
+native func F(uint32 x, uint32 y, uint32 z) uint32 { return(x & y) | ((~x) & z); }
+native func G(uint32 x, uint32 y, uint32 z) uint32 { return(x & z) | (y & (~z)); }
+native func H(uint32 x, uint32 y, uint32 z) uint32 { return(x ^ y ^ z); }
+native func I(uint32 x, uint32 y, uint32 z) uint32 { return(y ^ (x | (~z))); }
 
-native function FF(uint32 a, uint32 b, uint32 c, uint32 d, uint32 x, int32 s, uint32 ac) uint32 {
+native func FF(uint32 a, uint32 b, uint32 c, uint32 d, uint32 x, int32 s, uint32 ac) uint32 {
 	a = AddUnsigned(a, AddUnsigned(AddUnsigned(F(b, c, d), x), ac));
 	return AddUnsigned(RotateLeft(a, s), b);
 };
 
-native function GG(uint32 a, uint32 b, uint32 c, uint32 d, uint32 x, int32 s, uint32 ac) uint32 {
+native func GG(uint32 a, uint32 b, uint32 c, uint32 d, uint32 x, int32 s, uint32 ac) uint32 {
 	a = AddUnsigned(a, AddUnsigned(AddUnsigned(G(b, c, d), x), ac));
 	return AddUnsigned(RotateLeft(a, s), b);
 };
 
-native function HH(uint32 a, uint32 b, uint32 c, uint32 d, uint32 x, int32 s, uint32 ac) uint32 {
+native func HH(uint32 a, uint32 b, uint32 c, uint32 d, uint32 x, int32 s, uint32 ac) uint32 {
 	a = AddUnsigned(a, AddUnsigned(AddUnsigned(H(b, c, d), x), ac));
 	return AddUnsigned(RotateLeft(a, s), b);
 };
 
-native function II(uint32 a, uint32 b, uint32 c, uint32 d, uint32 x, int32 s, uint32 ac) uint32 {
+native func II(uint32 a, uint32 b, uint32 c, uint32 d, uint32 x, int32 s, uint32 ac) uint32 {
 	a = AddUnsigned(a, AddUnsigned(AddUnsigned(I(b, c, d), x), ac));
 	return AddUnsigned(RotateLeft(a, s), b);
 };
 
-native function WordToHex(uint32 lValue) String {
+native func WordToHex(uint32 lValue) String {
 	var WordToHexValue = '';
 	var WordToHexValue_temp = '';
 	var lByte = 0;
@@ -59,7 +59,7 @@ native function WordToHex(uint32 lValue) String {
 	return WordToHexValue;
 };
 
-export native function MD5(String input) String {
+export native func MD5(String input) String {
 
 	var a = 0x67452301u;
 	var b = 0xEFCDAB89u;

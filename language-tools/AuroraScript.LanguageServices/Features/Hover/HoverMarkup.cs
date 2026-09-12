@@ -65,7 +65,6 @@ public static class HoverMarkup
         "declare",
         "type",
         "func",
-        "function",
         "constructor",
         "const",
         "var",
@@ -263,8 +262,7 @@ public static class HoverMarkup
             return HoverRunKind.Keyword;
         }
 
-        if (string.Equals(previousWord, "func", StringComparison.Ordinal) ||
-            string.Equals(previousWord, "function", StringComparison.Ordinal))
+        if (string.Equals(previousWord, "func", StringComparison.Ordinal))
         {
             return HoverRunKind.Function;
         }

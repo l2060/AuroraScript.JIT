@@ -1,6 +1,6 @@
 var fns = [];
 
-function setup() {
+func setup() {
 	console.log("1");
 	var v = 3;
 	var x = v + 5;
@@ -95,7 +95,7 @@ export func test() {
 func closure1() {
 	var title = '123';
 	var count = 0;
-	function makeCounter1() {
+	func makeCounter1() {
 		var slot1 = 10;
 		return() => {
 			slot1++;
@@ -104,7 +104,7 @@ func closure1() {
 			return { title, count };
 		};
 	}
-	function makeCounter2() {
+	func makeCounter2() {
 		var slot2 = 20;
 		func ddd() {
 			slot2++;

@@ -50,7 +50,8 @@ For default code generation style, also read `docs/script-authoring-best-practic
 
 - Empty statement: `;`
 - Block: `{ statement* }`
-- Function: `func name(args) { ... }` or `function name(args) { ... }`
+- Function body: `func name(args) { ... }`
+- Callable type: `type Name();` (weak) or `type Name(Type arg) ReturnType;` (strong). A parameter list distinguishes it from a structural `type Name { ... }`; only `func` defines a body.
 - Execution context: `context name;` or `context name as NativeType;` at module scope. Each name aliases `ScriptContext.UserState`. Typed names require a `[NativeType]` selected with `WithNativeTypes`, `AddNativeType`, or `AddNativeTypes`. Do not generate `$state`.
 - External declaration in an `@global()` file: `declare func name(args);`, `declare var name;`, `declare const name;`, `declare type Name { ... }`
 - Variable: `var name;`, `var name = expr;`, `const name = expr;`

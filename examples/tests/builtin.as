@@ -68,31 +68,42 @@ export func testNativeScript() {
 }
 
 
-export native func testPacketArray() void{
+export native func testPacketArray() void {
 	packetArrayInit(null);
 }
 
-native func packetArrayInit(Float64Array array) void{
-	if(!array){
+native func packetArrayInit(Float64Array array) void {
+	if (!array) {
 		array = new Float64Array(128);
 	}
 	packetArrayWork(array);
 }
 
-native func packetArrayWork(Float64Array array) void{
-	if(array){
+native func packetArrayWork(Float64Array array) void {
+	if (array) {
 
 		console.log(array);
 	}
 
 }
-native func log(String text) void{
+native func log(String text) void {
 	console.log(text);
+
+
 }
 
-export native func testPath() void{
+native func actionCallback(Action callback) void {
+	callback();
+}
+
+export native func testAction() void {
+	actionCallback(testPath);
+}
+
+
+export native func testPath() void {
 	var p1 = Path.of('media', 'input.mp4');
-	var path = Path.of('a','b','c');
+	var path = Path.of('a', 'b', 'c');
 	path.append('data');
 	path.append(p1);
 	log(path);

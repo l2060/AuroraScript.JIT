@@ -31,6 +31,24 @@ internal static class BuiltinQuery
             return true;
         }
 
+        if (context.TypeReference != null &&
+            builtins.TryGetObjectType(context.TypeReference.Value, out var objectType))
+        {
+            hover = new HoverResult(
+                BuiltinFormat.FormatObjectType(objectType, locale),
+                TextRange.FromSourceSpan(context.TypeReference.Range));
+            return true;
+        }
+
+        if (context.TypeReference != null &&
+            builtins.FunctionTypes.TryGetValue(context.TypeReference.Value, out var functionType))
+        {
+            hover = new HoverResult(
+                BuiltinFormat.FormatFunctionType(functionType, locale),
+                TextRange.FromSourceSpan(context.TypeReference.Range));
+            return true;
+        }
+
         if (context.PropertyAccess != null &&
             context.IsOnPropertyOwner &&
             context.PropertyAccess.Object is NameExpression ownerName)

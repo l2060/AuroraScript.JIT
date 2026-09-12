@@ -110,9 +110,9 @@ Duplicate declarations in one scope are rejected. A child block may shadow an ou
 
 ### 5. Define functions and methods
 
-`func` and `function` are equivalent. Types remain optional. A function
-without a return contract keeps the normal weakly typed behavior; a type name
-after the parameter list adds an exact boundary contract:
+`func` is the only keyword that defines a function body. Types remain
+optional. A function without a return contract keeps the normal weakly typed
+behavior; a type name after the parameter list adds an exact boundary contract:
 
 ```as
 func clamp(value, minimum, maximum) {
@@ -148,6 +148,26 @@ return operations.format(operations.add(20, 22));
 
 Lambdas can have an expression body or a block body and can capture outer bindings.
 
+Callable contracts use the same `type` keyword as structural types. A
+parameter list selects a callable type, while a member block selects a
+structural type:
+
+```as
+type Callback();
+export type Predicate(Number value, Array items) Boolean;
+
+func apply(Predicate callback, Number value, Array items) Boolean {
+    return callback(value, items);
+}
+```
+
+A declaration without parameter and return types is weak and preserves dynamic
+invocation. A complete strong signature validates calls, supplies contextual
+lambda parameter types, and permits a compatible non-capturing function value
+to expose a guarded native entry. Calls fall back to the ordinary Datum closure
+when no matching native entry exists. An `@global()` declaration file uses
+`declare type Callback(...);` for a host-provided callable type.
+
 `native func` is an explicit module-scope ABI contract. It emits a
 `ScriptContext`-aware CLR-native entry for declared numeric, boolean, array,
 packed-array, and host NativeType parameters and returns, while retaining
@@ -173,8 +193,9 @@ The CLR native entry then returns `void`; falling through and bare `return;`
 are valid, while `return expression;` is rejected. A direct native call used
 as a statement does not materialize a result. Dynamic, exported, or
 value-producing calls observe `null`, matching a host `[Export]` method
-whose CLR return type is `void`. `void` is not an alias for `Null` and is not
-valid on ordinary functions, parameters, fields, or assertions.
+whose CLR return type is `void`. `void` is not an alias for `Null`; it is valid
+only as a `native func` or callable `type Name(...)` return contract, not on
+ordinary functions, parameters, fields, or assertions.
 
 Native functions may use trailing primitive defaults that the compiler can evaluate as constants,
 but the default must exactly match an explicit `Number`, `Boolean`, `String`, or
@@ -203,7 +224,7 @@ The source-level primitive and collection forms are:
 | `null` | `null` | Missing value. |
 | general `array` | `[1, "two", null]`, `new Array(n)` | Growable and heterogeneous; `new Array(n)` creates `n` null slots. |
 | plain `object` | `{ name: "Aurora", ...other }` | Mutable property map. |
-| `function` | `func f() {}`, `x => x` | Callable value/closure. |
+| `function` | `func f() {}`, `x => x` | Runtime `typeof` name for callable values/closures; named callable contracts use `type Name(...);`. |
 | `regex` | `/pattern/flags`, `new Regex(pattern, flags)` | Literal flags are `g`, `i`, `m`, `u`, and `y`. |
 | `enum` | `enum Mode { Read, Write = 4 }` | Object whose members are 32-bit integer numbers. |
 
@@ -449,7 +470,7 @@ Rules:
 - `include` and `import` must be at the top of the module.
 - A host-enabled native module is imported by its bare module path. Native modules do not become globals, and relative paths continue to resolve as project sources.
 - `export` may only appear at module scope.
-- `native` is contextual: it modifies a module-scope `func`/`function`
+- `native` is contextual: it modifies a module-scope `func`
   declaration and remains a valid identifier elsewhere.
 - `declare` is not valid in modules. Use a separate `@global()` declaration file for host globals.
 - Duplicate module-scope names are rejected.

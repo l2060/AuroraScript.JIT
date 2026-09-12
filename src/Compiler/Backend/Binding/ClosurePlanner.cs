@@ -154,7 +154,8 @@ namespace AuroraScript.Compiler.Backend.Binding
 
         private static bool CanBindModuleDirectCall(FunctionPlan function)
         {
-            return function.IsModuleFunction &&
+            return (function.IsModuleFunction ||
+                    function.CallableType != null) &&
                 (!function.HasDefaultParameters || function.IsNativeDeclared) &&
                 function.UpvalueSlots.Length == 0 &&
                 function.CapturedLocalSlots.Length == 0;
@@ -179,7 +180,9 @@ namespace AuroraScript.Compiler.Backend.Binding
 
         private static bool RequiresClosureObject(FunctionPlan function)
         {
-            return function.Visibility != FunctionVisibility.InternalOnly || !function.IsDirectCallCandidate;
+            return function.CallableType != null ||
+                function.Visibility != FunctionVisibility.InternalOnly ||
+                !function.IsDirectCallCandidate;
         }
 
         private static int GetParameterCount(FunctionPlan function)

@@ -138,6 +138,41 @@ public sealed class DefinitionFeatureTests : IDisposable
     }
 
     [Fact]
+    public void ResolvesAndDocumentsImportedFunctionTypes()
+    {
+        var mainPath = Path.Combine(_root, "main.as");
+        var libPath = Path.Combine(_root, "lib.as");
+        var main =
+            """
+            @module(MAIN);
+            import lib from './lib';
+            export func run(lib.Predicate callback) Boolean {
+                return callback(1);
+            }
+            """;
+        var lib =
+            """
+            @module(LIB);
+            export type Predicate(Number value) Boolean;
+            """;
+        var service = CreateService();
+        service.OpenOrUpdateDocument(libPath, lib);
+        service.OpenOrUpdateDocument(mainPath, main);
+
+        var position = PositionOf(main, "Predicate");
+        var definition = service.GetDefinition(mainPath, position);
+        var hover = service.GetHover(mainPath, position);
+
+        Assert.NotNull(definition);
+        Assert.Equal(ScriptPath.NormalizeFullPath(libPath), definition!.Path);
+        Assert.NotNull(hover);
+        Assert.Contains(
+            "export type Predicate(Number value) Boolean;",
+            hover!.Contents,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ResolvesImportPathDefinitionToTargetDocument()
     {
         var appDirectory = Path.Combine(_root, "app");
@@ -701,7 +736,7 @@ public sealed class DefinitionFeatureTests : IDisposable
         var timer =
             """
             @module(TIMER);
-            export function createTimer() {
+            export func createTimer() {
                 var timer = {
                     count: 50,
                     reset: () => {
@@ -740,7 +775,7 @@ public sealed class DefinitionFeatureTests : IDisposable
         var main =
             """
             @module(MAIN);
-            function createContext() {
+            func createContext() {
                 return {
                     failures: [],
                     passed: true
@@ -772,10 +807,10 @@ public sealed class DefinitionFeatureTests : IDisposable
         var main =
             """
             @module(MAIN);
-            function createFirst() {
+            func createFirst() {
                 return { passed: false };
             }
-            function createSecond() {
+            func createSecond() {
                 return { passed: true };
             }
             export func first() {
@@ -1022,20 +1057,23 @@ public sealed class DefinitionFeatureTests : IDisposable
     }
 
     [Fact]
-    public void ResolvesSyntheticBuiltinTypeReferenceToVirtualDocument()
+    public void ResolvesBuiltinFunctionTypeReferenceToVirtualDocument()
     {
         var service = CreateService();
         var arrayDocument = service.GetBuiltinDocument("aurora-builtin:/Array.as");
         Assert.NotNull(arrayDocument);
-        var position = PositionOf(arrayDocument!.Text, "Function");
+        var position = PositionOf(arrayDocument!.Text, "ArrayMapCallback");
 
         var definition = service.GetDefinition(arrayDocument.Uri, position);
 
         Assert.NotNull(definition);
-        Assert.Equal("aurora-builtin:/Function.as", definition!.Path);
+        Assert.Equal("aurora-builtin:/ArrayMapCallback.as", definition!.Path);
         var functionDocument = service.GetBuiltinDocument(definition.Path);
         Assert.NotNull(functionDocument);
-        Assert.Contains("declare type Function", functionDocument!.Text, StringComparison.Ordinal);
+        Assert.Contains(
+            "declare type ArrayMapCallback(Object value, Number index) Object;",
+            functionDocument!.Text,
+            StringComparison.Ordinal);
     }
 
     [Fact]

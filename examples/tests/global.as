@@ -29,6 +29,7 @@ declare type Vec2 {
 	static func length(Number x, Number y) Number;
 }
 
+declare type Action() void;
 
 declare type UserState {
 	Number x;

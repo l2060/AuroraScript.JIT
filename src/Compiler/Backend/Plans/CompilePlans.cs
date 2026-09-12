@@ -2,6 +2,7 @@ using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Compiler.Backend.Binding;
+using AuroraScript.Compiler.Backend.Code;
 using AuroraScript.Core;
 using AuroraScript.Runtime;
 using AuroraScript.Tokens;
@@ -45,6 +46,31 @@ namespace AuroraScript.Compiler.Backend.Plans
 
         public ScriptDatum Value { get; }
         public NumericLiteralSuffix NumericHint { get; }
+    }
+
+    internal readonly struct ContextualParameterType :
+        IEquatable<ContextualParameterType>
+    {
+        public ContextualParameterType(
+            FlowValueType type,
+            HostNativeObjectDescriptor nativeObject = null)
+        {
+            Type = type;
+            NativeObject = nativeObject;
+        }
+
+        public FlowValueType Type { get; }
+        public HostNativeObjectDescriptor NativeObject { get; }
+
+        public bool Equals(ContextualParameterType other) =>
+            Type == other.Type &&
+            NativeObject?.ClrType == other.NativeObject?.ClrType;
+
+        public override bool Equals(object obj) =>
+            obj is ContextualParameterType other && Equals(other);
+
+        public override int GetHashCode() =>
+            HashCode.Combine(Type, NativeObject?.ClrType);
     }
 
     internal readonly struct LocalSlot
@@ -187,6 +213,9 @@ namespace AuroraScript.Compiler.Backend.Plans
         public bool IsLambda => Declaration?.Flags == FunctionFlags.Lambda;
         public bool IsNativeDeclared => Declaration?.IsNative == true;
         public MethodInfo NativeEntryMethod { get; set; }
+        public FunctionTypeDeclaration CallableType { get; set; }
+        public ModuleDeclaration CallableTypeModule { get; set; }
+        public bool HasCallableTypeConflict { get; set; }
 
     }
 
@@ -197,6 +226,8 @@ namespace AuroraScript.Compiler.Backend.Plans
         private readonly Dictionary<string, SymbolId> _symbolsByName;
         private Dictionary<SymbolId, InlineConstant> _inlineConstants;
         private HashSet<string> _declaredOnlyNames;
+        private Dictionary<FunctionId, Dictionary<int, ContextualParameterType?>>
+            _contextualParameters;
 
         public ModulePlan(ModuleId id, ModuleDeclaration declaration)
         {
@@ -241,6 +272,67 @@ namespace AuroraScript.Compiler.Backend.Plans
             var index = GetFunctionIndex(function);
             return index >= 0 && (uint)parameterIndex < (uint)_functions[index].Declaration.Parameters.Count &&
                 _functions[index].Declaration.Parameters[parameterIndex].Initializer != null;
+        }
+
+        public void RecordContextualNativeParameter(
+            FunctionId function,
+            int parameterIndex,
+            HostNativeObjectDescriptor nativeType)
+        {
+            if (nativeType == null)
+            {
+                return;
+            }
+            RecordContextualParameter(
+                function,
+                parameterIndex,
+                new ContextualParameterType(
+                    FlowValueType.Object,
+                    nativeType));
+        }
+
+        public void RecordContextualParameter(
+            FunctionId function,
+            int parameterIndex,
+            ContextualParameterType parameterType)
+        {
+            if (!function.IsValid ||
+                parameterIndex < 0 ||
+                parameterType.Type == FlowValueType.None)
+            {
+                return;
+            }
+            _contextualParameters ??=
+                new Dictionary<FunctionId,
+                    Dictionary<int, ContextualParameterType?>>();
+            if (!_contextualParameters.TryGetValue(
+                    function,
+                    out var parameters))
+            {
+                parameters =
+                    new Dictionary<int, ContextualParameterType?>();
+                _contextualParameters.Add(function, parameters);
+            }
+            if (!parameters.TryGetValue(parameterIndex, out var existing) ||
+                existing.HasValue &&
+                existing.Value.Equals(parameterType))
+            {
+                parameters[parameterIndex] = parameterType;
+            }
+            else
+            {
+                // Conflicting callback contracts cannot be specialized safely.
+                parameters[parameterIndex] = null;
+            }
+        }
+
+        public IReadOnlyDictionary<int, ContextualParameterType?>
+            GetContextualParameters(FunctionId function)
+        {
+            return _contextualParameters != null &&
+                _contextualParameters.TryGetValue(function, out var parameters)
+                    ? parameters
+                    : null;
         }
         public bool HasInlineConstants => _inlineConstants != null && _inlineConstants.Count != 0;
 

@@ -3606,7 +3606,7 @@ public sealed class CompilerBackendPlanTests
         var root = Path.GetTempPath();
         var block = ParseBlock(
             """
-            function add(left, right) {
+            func add(left, right) {
                 return left + right;
             }
             return add(value, 2);

@@ -568,6 +568,64 @@ namespace AuroraScript.Compiler.Backend.Code
         public PredictionFacts? Prediction { get; internal set; }
         internal PredictionFacts GetPredictionFacts() => new(ReturnType, _expressionTypes, _nativeObjectTypes);
 
+        internal void ApplyContextualParameterPredictions(
+            IReadOnlyDictionary<int, ContextualParameterType?> parameters)
+        {
+            if (parameters == null || parameters.Count == 0)
+            {
+                return;
+            }
+
+            var current = Prediction;
+            var types = current?.Types != null
+                ? new Dictionary<Expression, FlowValueType>(
+                    current.Value.Types,
+                    ReferenceEqualityComparer.Instance)
+                : new Dictionary<Expression, FlowValueType>(
+                    ReferenceEqualityComparer.Instance);
+            var nativeTypes = current?.NativeTypes != null
+                ? new Dictionary<Expression, HostNativeObjectDescriptor>(
+                    current.Value.NativeTypes,
+                    ReferenceEqualityComparer.Instance)
+                : new Dictionary<Expression, HostNativeObjectDescriptor>(
+                    ReferenceEqualityComparer.Instance);
+
+            var parameterIndex = 0;
+            for (var slotIndex = 0; slotIndex < Function.LocalSlots.Length; slotIndex++)
+            {
+                var slot = Function.LocalSlots[slotIndex];
+                if (!slot.IsParameter)
+                {
+                    continue;
+                }
+                if (parameters.TryGetValue(parameterIndex, out var parameterType) &&
+                    parameterType.HasValue)
+                {
+                    foreach (var pair in _names)
+                    {
+                        if (pair.Value.IsLocal && pair.Value.Local.Equals(slot.Id))
+                        {
+                            types[pair.Key] = parameterType.Value.Type;
+                            if (parameterType.Value.NativeObject != null)
+                            {
+                                nativeTypes[pair.Key] =
+                                    parameterType.Value.NativeObject;
+                            }
+                        }
+                    }
+                }
+                parameterIndex++;
+            }
+
+            if (types.Count != 0)
+            {
+                Prediction = new PredictionFacts(
+                    current?.ReturnType ?? ReturnType,
+                    types,
+                    nativeTypes);
+            }
+        }
+
         public TypedFunctionCode WithGuardedTypes(
             IReadOnlyDictionary<Expression, FlowValueType> guardedTypes,
             IReadOnlyDictionary<Expression, HostNativeObjectDescriptor> guardedNativeTypes)

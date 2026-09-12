@@ -32,6 +32,7 @@ namespace AuroraScript.Compiler
             var sourcePath = ScriptPath.NormalizeFullPath(source.FullPath);
             var moduleSyntaxTrees = await BuildSyntaxTreeAsync(source, cancellationToken).ConfigureAwait(false);
             var globalDeclarations = await BuildGlobalDeclarationIndexAsync(cancellationToken).ConfigureAwait(false);
+            GlobalDeclarationScanner.BindAmbientFunctionTypes(moduleSyntaxTrees, globalDeclarations);
             LinkModules(moduleSyntaxTrees);
             ValidateLinkedTypeReferences(moduleSyntaxTrees);
 

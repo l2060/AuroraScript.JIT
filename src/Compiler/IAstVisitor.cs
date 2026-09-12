@@ -29,6 +29,13 @@ namespace AuroraScript.Compiler
             AfterVisitNode(node);
         }
 
+        public void AcceptFunctionTypeDeclaration(FunctionTypeDeclaration node)
+        {
+            BeforeVisitNode(node);
+            VisitFunctionTypeDeclaration(node);
+            AfterVisitNode(node);
+        }
+
         public void AcceptTypeDeclaration(TypeDeclaration node)
         {
             BeforeVisitNode(node);
@@ -396,6 +403,10 @@ namespace AuroraScript.Compiler
             {
                 node.Imports[i].Accept(this);
             }
+            for (var i = 0; i < node.FunctionTypes.Count; i++)
+            {
+                node.FunctionTypes[i].Accept(this);
+            }
             for (var i = 0; i < node.Types.Count; i++)
             {
                 node.Types[i].Accept(this);
@@ -422,6 +433,15 @@ namespace AuroraScript.Compiler
                 node.Parameters[i].Accept(this);
             }
             node.Body?.Accept(this);
+        }
+
+        protected virtual void VisitFunctionTypeDeclaration(
+            FunctionTypeDeclaration node)
+        {
+            for (var i = 0; i < node.Parameters.Count; i++)
+            {
+                node.Parameters[i].Accept(this);
+            }
         }
 
 

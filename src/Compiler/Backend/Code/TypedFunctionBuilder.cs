@@ -1227,6 +1227,7 @@ namespace AuroraScript.Compiler.Backend.Code
                                 InvalidateLocalFieldsUsedAsValue(call.Arguments[i]);
                             }
                         }
+                        RecordCallableLambdaParameters(call);
 
                         if (TryBindClrCall(call, out var clrCall))
                         {
@@ -1296,6 +1297,23 @@ namespace AuroraScript.Compiler.Backend.Code
                         else if (TryGetHostExport(call, out var hostExport))
                         {
                             type = GetNativeFlowType(hostExport.ReturnKind);
+                        }
+                        else if (TryGetCallableType(
+                                     call.Target,
+                                     out var callable,
+                                     out var callableModule) &&
+                            callable.Parameters.Count ==
+                                call.Arguments.Count &&
+                            callable.ReturnType != null)
+                        {
+                            type = TypeReferenceFacts.GetFlowType(
+                                callableModule,
+                                callable.ReturnType,
+                                _hostExports);
+                            if (type == FlowValueType.None)
+                            {
+                                type = FlowValueType.Dynamic;
+                            }
                         }
                         else
                         {
@@ -1665,8 +1683,47 @@ namespace AuroraScript.Compiler.Backend.Code
                                 out var returned):
                         return returned;
                     case FunctionCallExpression call
+                        when TryGetHostExportContract(
+                            call,
+                            out var contractReturned):
+                        return contractReturned;
+                    case FunctionCallExpression call
                         when TryGetScriptNativeReturn(call, out var scriptReturned):
                         return scriptReturned;
+                    case FunctionCallExpression call
+                        when TryGetCallableType(
+                                call.Target,
+                                out var callable,
+                                out _) &&
+                            TypeReferenceFacts.TryGetNativeObject(
+                                _hostExports,
+                                callable.ReturnType,
+                                out var callableReturned):
+                        return callableReturned;
+                    case GetPropertyExpression property
+                        when _nativeObjectTypes.TryGetValue(
+                                property.Object,
+                                out var receiver) &&
+                            TryGetStaticPropertyName(
+                                property.Property,
+                                out var memberName):
+                        if (receiver.TryGetField(memberName, out var field) &&
+                            field.Kind == AuroraExportValueKind.Object &&
+                            _hostExports.TryGetNativeObject(
+                                field.Field.FieldType,
+                                out var fieldType))
+                        {
+                            return fieldType;
+                        }
+                        if (receiver.TryGetGetter(memberName, out var getter) &&
+                            getter.ReturnKind == AuroraExportValueKind.Object &&
+                            _hostExports.TryGetNativeObject(
+                                getter.Method.ReturnType,
+                                out var getterType))
+                        {
+                            return getterType;
+                        }
+                        return null;
                     case AssignmentExpression assignment:
                         return _nativeObjectTypes.TryGetValue(assignment.Right, out var assigned)
                             ? assigned
@@ -1922,6 +1979,19 @@ namespace AuroraScript.Compiler.Backend.Code
                     }
                 }
 
+                if (expression is FunctionCallExpression callableCall &&
+                    TryGetCallableType(
+                        callableCall.Target,
+                        out var callable,
+                        out var callableModule) &&
+                    TypeReferenceFacts.TryGetCustomType(
+                        callableModule,
+                        callable.ReturnType,
+                        out var callableReturned))
+                {
+                    return callableReturned;
+                }
+
                 if (expression is GetPropertyExpression property)
                 {
                     return InferStructuralFieldType(property);
@@ -2043,6 +2113,132 @@ namespace AuroraScript.Compiler.Backend.Code
                 }
 
                 return null;
+            }
+
+            private void RecordCallableLambdaParameters(
+                FunctionCallExpression call)
+            {
+                if (call?.Target is not NameExpression target ||
+                    !_names.TryGetValue(target, out var binding) ||
+                    !binding.DirectFunction.IsValid)
+                {
+                    return;
+                }
+
+                FunctionPlan callee = null;
+                for (var i = 0; i < _module.Functions.Count; i++)
+                {
+                    if (_module.Functions[i].Id.Equals(
+                            binding.DirectFunction))
+                    {
+                        callee = _module.Functions[i];
+                        break;
+                    }
+                }
+                if (callee?.Declaration == null)
+                {
+                    return;
+                }
+
+                var count = Math.Min(
+                    call.Arguments.Count,
+                    callee.Declaration.Parameters.Count);
+                for (var argumentIndex = 0;
+                    argumentIndex < count;
+                    argumentIndex++)
+                {
+                    if (UnwrapGroups(call.Arguments[argumentIndex])
+                            is not LambdaExpression lambda ||
+                        !TypeReferenceFacts.TryGetFunctionType(
+                            _module.Declaration,
+                            callee.Declaration.Parameters[argumentIndex]
+                                .DeclaredType,
+                            out var callable))
+                    {
+                        continue;
+                    }
+
+                    var callableModule =
+                        callable.Parent as ModuleDeclaration ??
+                        _module.Declaration;
+                    FunctionPlan callback = null;
+                    for (var functionIndex = 0;
+                        functionIndex < _module.Functions.Count;
+                        functionIndex++)
+                    {
+                        var candidate = _module.Functions[functionIndex];
+                        if (ReferenceEquals(
+                                candidate.Declaration,
+                                lambda.Function))
+                        {
+                            callback = candidate;
+                            break;
+                        }
+                    }
+                    if (callback == null)
+                    {
+                        continue;
+                    }
+
+                    var parameterCount = Math.Min(
+                        callable.Parameters.Count,
+                        lambda.Function.Parameters.Count);
+                    for (var parameterIndex = 0;
+                        parameterIndex < parameterCount;
+                        parameterIndex++)
+                    {
+                        var declared =
+                            callable.Parameters[parameterIndex].DeclaredType;
+                        if (declared == null)
+                        {
+                            continue;
+                        }
+                        var flow = TypeReferenceFacts.GetFlowType(
+                            callableModule,
+                            declared,
+                            _hostExports);
+                        if (flow == FlowValueType.None)
+                        {
+                            continue;
+                        }
+                        TypeReferenceFacts.TryGetNativeObject(
+                            _hostExports,
+                            declared,
+                            out var native);
+                        _module.RecordContextualParameter(
+                            callback.Id,
+                            parameterIndex,
+                            new ContextualParameterType(flow, native));
+                    }
+                }
+            }
+
+            private bool TryGetCallableType(
+                Expression expression,
+                out FunctionTypeDeclaration declaration,
+                out ModuleDeclaration declarationModule)
+            {
+                declaration = null;
+                declarationModule = null;
+                expression = UnwrapGroups(expression);
+                if (expression is not NameExpression name ||
+                    !_names.TryGetValue(name, out var binding) ||
+                    !binding.IsLocal ||
+                    (uint)binding.Local.Value >=
+                        (uint)_function.LocalSlots.Length ||
+                    _function.LocalSlots[binding.Local.Value].Declaration
+                        is not ParameterDeclaration local ||
+                    !TypeReferenceFacts.TryGetFunctionType(
+                        _module.Declaration,
+                        local.DeclaredType,
+                        out declaration))
+                {
+                    return false;
+                }
+                declarationModule =
+                    declaration.Parent as ModuleDeclaration ??
+                    _module.Declaration;
+                return true;
             }
 
             private static Expression UnwrapGroups(Expression expression)
@@ -2435,11 +2631,116 @@ namespace AuroraScript.Compiler.Backend.Code
                         _module.Declaration.Imports, out var ownerName))
                         _hostExports.TryGetGlobal(ownerName, memberName, out descriptor);
                     if (descriptor != null)
+                    {
+                        RecordCallbackNativeParameters(call, descriptor);
                         HostExportArgumentFacts.TrySelectOverload(descriptor, call.Arguments,
                             HostArgumentType, HostArgumentClrType, out descriptor);
+                    }
                 }
                 (_hostCalls ??= new())[call] = descriptor;
                 return descriptor != null;
+            }
+
+            private bool TryGetHostExportContract(
+                FunctionCallExpression call,
+                out HostNativeObjectDescriptor nativeType)
+            {
+                nativeType = null;
+                if (call?.Target is not GetPropertyExpression property ||
+                    !TryGetStaticPropertyName(
+                        property.Property,
+                        out var memberName) ||
+                    property.Object is not NameExpression receiver ||
+                    !_names.TryGetValue(receiver, out var binding))
+                {
+                    return false;
+                }
+
+                HostExportDescriptor descriptor = null;
+                var import = LoadedImportFacts.Resolve(
+                    _module,
+                    _function,
+                    binding);
+                if (import != null)
+                {
+                    descriptor = LoadedImportFacts.GetNative(
+                        import,
+                        memberName,
+                        _hostExports);
+                }
+                else if (_hostExports.TryResolveExportOwner(
+                    binding,
+                    receiver.Identifier?.Value,
+                    _module.Declaration.Imports,
+                    out var ownerName))
+                {
+                    _hostExports.TryGetGlobal(
+                        ownerName,
+                        memberName,
+                        out descriptor);
+                }
+                if (descriptor == null)
+                {
+                    return false;
+                }
+
+                Type returnType = null;
+                for (var candidate = descriptor;
+                    candidate != null;
+                    candidate = candidate.NextOverload)
+                {
+                    if (candidate.ReturnKind != AuroraExportValueKind.Object ||
+                        returnType != null &&
+                        returnType != candidate.Method.ReturnType)
+                    {
+                        return false;
+                    }
+                    returnType = candidate.Method.ReturnType;
+                }
+                return returnType != null &&
+                    _hostExports.TryGetNativeObject(returnType, out nativeType);
+            }
+
+            private void RecordCallbackNativeParameters(
+                FunctionCallExpression call,
+                HostExportDescriptor descriptor)
+            {
+                if (descriptor.CallbackArguments.Count == 0)
+                {
+                    return;
+                }
+                for (var i = 0; i < descriptor.CallbackArguments.Count; i++)
+                {
+                    var contract = descriptor.CallbackArguments[i];
+                    var argumentIndex = call.Arguments.Count -
+                        contract.CallbackArgumentFromEnd - 1;
+                    if ((uint)argumentIndex >= (uint)call.Arguments.Count ||
+                        call.Arguments[argumentIndex] is not LambdaExpression lambda ||
+                        (uint)contract.CallbackParameterIndex >=
+                            (uint)lambda.Function.Parameters.Count ||
+                        !_hostExports.TryGetNativeObject(
+                            contract.NativeType,
+                            out var nativeType))
+                    {
+                        continue;
+                    }
+
+                    for (var functionIndex = 0;
+                        functionIndex < _module.Functions.Count;
+                        functionIndex++)
+                    {
+                        var callback = _module.Functions[functionIndex];
+                        if (!ReferenceEquals(callback.Declaration, lambda.Function))
+                        {
+                            continue;
+                        }
+                        _module.RecordContextualNativeParameter(
+                            callback.Id,
+                            contract.CallbackParameterIndex,
+                            nativeType);
+                        break;
+                    }
+                }
             }
 
             private void BindLoadedConstant(GetPropertyExpression property)

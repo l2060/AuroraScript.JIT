@@ -17,7 +17,6 @@ namespace AuroraScript.Compiler
         public static readonly Symbols KW_ELSE = new Symbols("else", SymbolTypes.KeyWord);
         //public static readonly Symbols KW_TYPE = new Symbols("type", SymbolTypes.KeyWord);
         public static readonly Symbols KW_CONST = new Symbols("const", SymbolTypes.KeyWord);
-        public static readonly Symbols KW_FUNCTION = new Symbols("function", SymbolTypes.KeyWord);
         public static readonly Symbols KW_FUNC = new Symbols("func", SymbolTypes.KeyWord);
         //public static readonly Symbols KW_GET = new Symbols("get", SymbolTypes.KeyWord);
         //public static readonly Symbols KW_SET = new Symbols("set", SymbolTypes.KeyWord);
@@ -453,7 +452,6 @@ namespace AuroraScript.Compiler
                     if (name.SequenceEqual("context")) return KW_CONTEXT;
                     break;
                 case 8:
-                    if (name.SequenceEqual("function")) return KW_FUNCTION;
                     if (name.SequenceEqual("debugger")) return KW_DEBUGGER;
                     if (name.SequenceEqual("continue")) return KW_CONTINUE;
                     break;

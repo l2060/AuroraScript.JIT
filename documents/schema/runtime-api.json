@@ -2,6 +2,188 @@
   "$schema": "runtime-api.schema.json",
   "language": "AuroraScript",
   "versionTarget": "4.0.0",
+  "functionTypes": {
+    "HttpCallback": {
+      "parameters": [
+        { "name": "error", "type": "object" },
+        { "name": "response", "type": "HttpResponse" }
+      ],
+      "returns": "object",
+      "notes": {
+        "en": ["Receives either an error with a null response or a null error with a buffered HTTP response."],
+        "zh-CN": ["接收错误与空响应，或空错误与已缓冲的 HTTP 响应。"]
+      }
+    },
+    "ArrayMapCallback": {
+      "parameters": [
+        { "name": "value", "type": "any" },
+        { "name": "index", "type": "number" }
+      ],
+      "returns": "any"
+    },
+    "ArrayPredicateCallback": {
+      "parameters": [
+        { "name": "value", "type": "any" },
+        { "name": "index", "type": "number" }
+      ],
+      "returns": "boolean"
+    },
+    "ArrayReduceCallback": {
+      "parameters": [
+        { "name": "accumulator", "type": "any" },
+        { "name": "value", "type": "any" },
+        { "name": "index", "type": "number" }
+      ],
+      "returns": "any"
+    },
+    "StringReplaceCallback": {
+      "parameters": [
+        { "name": "arguments", "type": "any", "variadic": true }
+      ],
+      "returns": "string",
+      "notes": {
+        "en": ["Receives the full match, capture groups, match index, and original string as positional arguments."],
+        "zh-CN": ["按位置接收完整匹配、捕获组、匹配索引和原始字符串。"]
+      }
+    },
+    "HashMapValueFactory": {
+      "parameters": [
+        { "name": "key", "type": "any" }
+      ],
+      "returns": "any",
+      "notes": {
+        "en": ["Creates the value inserted for a missing HashMap key."],
+        "zh-CN": ["为 HashMap 中缺失的键创建待插入值。"]
+      }
+    }
+  },
+  "objectTypes": {
+    "HttpRequestOptions": {
+      "notes": {
+        "en": ["Optional request shape accepted by every http method."],
+        "zh-CN": ["所有 http 方法都接受的可选请求配置对象。"]
+      },
+      "members": {
+        "headers": {
+          "kind": "property",
+          "returns": "object",
+          "writable": true,
+          "notes": {
+            "en": ["Optional header map whose values are a string or a string array. Content-Length is managed automatically."],
+            "zh-CN": ["可选的请求头映射，值可以是字符串或字符串数组。Content-Length 由运行时自动管理。"]
+          }
+        },
+        "body": {
+          "kind": "property",
+          "returns": "string|UInt8Array",
+          "writable": true,
+          "notes": {
+            "en": ["Optional request body. A string sends text/plain; charset=utf-8 and a UInt8Array sends application/octet-stream."],
+            "zh-CN": ["可选的请求体。字符串以 text/plain; charset=utf-8 发送，UInt8Array 以 application/octet-stream 发送。"]
+          }
+        },
+        "contentType": {
+          "kind": "property",
+          "returns": "string",
+          "writable": true,
+          "notes": {
+            "en": ["Optional content type that overrides the type inferred from the body."],
+            "zh-CN": ["可选的内容类型，覆盖根据请求体推断出的类型。"]
+          }
+        },
+        "timeout": {
+          "kind": "property",
+          "returns": "number",
+          "writable": true,
+          "notes": {
+            "en": ["Optional request timeout as a positive integer number of milliseconds."],
+            "zh-CN": ["可选的请求超时，取以毫秒为单位的正整数。"]
+          }
+        },
+        "responseHeaders": {
+          "kind": "property",
+          "returns": "boolean",
+          "writable": true,
+          "notes": {
+            "en": ["Set to true to populate the response headers map."],
+            "zh-CN": ["设为 true 时填充响应头映射。"]
+          }
+        }
+      }
+    },
+    "HttpResponse": {
+      "notes": {
+        "en": ["Buffered response returned by the synchronous http methods and passed to HttpCallback."],
+        "zh-CN": ["同步 http 方法的返回值，同时作为 HttpCallback 的响应参数。"]
+      },
+      "members": {
+        "status": {
+          "kind": "property",
+          "returns": "number",
+          "notes": {
+            "en": ["Numeric HTTP status code."],
+            "zh-CN": ["HTTP 状态码。"]
+          }
+        },
+        "statusText": {
+          "kind": "property",
+          "returns": "string",
+          "notes": {
+            "en": ["HTTP reason phrase."],
+            "zh-CN": ["HTTP 状态短语。"]
+          }
+        },
+        "ok": {
+          "kind": "property",
+          "returns": "boolean",
+          "notes": {
+            "en": ["True for a successful HTTP status code."],
+            "zh-CN": ["状态码表示成功时为 true。"]
+          }
+        },
+        "url": {
+          "kind": "property",
+          "returns": "string",
+          "notes": {
+            "en": ["Final response URL."],
+            "zh-CN": ["最终响应地址。"]
+          }
+        },
+        "headers": {
+          "kind": "property",
+          "returns": "object",
+          "notes": {
+            "en": ["Lowercase response header map, populated when options.responseHeaders is true."],
+            "zh-CN": ["小写键的响应头映射，在 options.responseHeaders 为 true 时填充。"]
+          }
+        },
+        "body": {
+          "kind": "property",
+          "returns": "string",
+          "notes": {
+            "en": ["Decoded response body."],
+            "zh-CN": ["解码后的响应体。"]
+          }
+        },
+        "text": {
+          "kind": "property",
+          "returns": "string",
+          "notes": {
+            "en": ["Decoded response text."],
+            "zh-CN": ["解码后的响应文本。"]
+          }
+        },
+        "bytes": {
+          "kind": "property",
+          "returns": "UInt8Array",
+          "notes": {
+            "en": ["Buffered response bytes."],
+            "zh-CN": ["已缓冲的响应字节。"]
+          }
+        }
+      }
+    }
+  },
   "modules": {
     "fs": {
       "kind": "module",
@@ -216,7 +398,7 @@
             { "name": "method", "type": "string" },
             { "name": "url", "type": "string" },
             { "name": "options", "type": "HttpRequestOptions", "optional": true },
-            { "name": "callback", "type": "function" }
+            { "name": "callback", "type": "HttpCallback" }
           ],
           "returns": "boolean",
           "notes": {
@@ -241,7 +423,7 @@
           "parameters": [
             { "name": "url", "type": "string" },
             { "name": "options", "type": "HttpRequestOptions", "optional": true },
-            { "name": "callback", "type": "function" }
+            { "name": "callback", "type": "HttpCallback" }
           ],
           "returns": "boolean",
           "notes": {
@@ -272,13 +454,13 @@
             { "name": "url", "type": "string" },
             { "name": "body", "type": "string|UInt8Array", "optional": true },
             { "name": "options", "type": "HttpRequestOptions", "optional": true },
-            { "name": "callback", "type": "function" }
+            { "name": "callback", "type": "HttpCallback" }
           ],
           "overloads": [
-            "postAsync(url: string, callback: function)",
-            "postAsync(url: string, options: HttpRequestOptions, callback: function)",
-            "postAsync(url: string, body: string|UInt8Array, callback: function)",
-            "postAsync(url: string, body: string|UInt8Array, options: HttpRequestOptions, callback: function)"
+            "postAsync(url: string, callback: HttpCallback)",
+            "postAsync(url: string, options: HttpRequestOptions, callback: HttpCallback)",
+            "postAsync(url: string, body: string|UInt8Array, callback: HttpCallback)",
+            "postAsync(url: string, body: string|UInt8Array, options: HttpRequestOptions, callback: HttpCallback)"
           ],
           "returns": "boolean",
           "notes": {
@@ -309,13 +491,13 @@
             { "name": "url", "type": "string" },
             { "name": "body", "type": "string|UInt8Array", "optional": true },
             { "name": "options", "type": "HttpRequestOptions", "optional": true },
-            { "name": "callback", "type": "function" }
+            { "name": "callback", "type": "HttpCallback" }
           ],
           "overloads": [
-            "putAsync(url: string, callback: function)",
-            "putAsync(url: string, options: HttpRequestOptions, callback: function)",
-            "putAsync(url: string, body: string|UInt8Array, callback: function)",
-            "putAsync(url: string, body: string|UInt8Array, options: HttpRequestOptions, callback: function)"
+            "putAsync(url: string, callback: HttpCallback)",
+            "putAsync(url: string, options: HttpRequestOptions, callback: HttpCallback)",
+            "putAsync(url: string, body: string|UInt8Array, callback: HttpCallback)",
+            "putAsync(url: string, body: string|UInt8Array, options: HttpRequestOptions, callback: HttpCallback)"
           ],
           "returns": "boolean",
           "notes": {
@@ -346,13 +528,13 @@
             { "name": "url", "type": "string" },
             { "name": "body", "type": "string|UInt8Array", "optional": true },
             { "name": "options", "type": "HttpRequestOptions", "optional": true },
-            { "name": "callback", "type": "function" }
+            { "name": "callback", "type": "HttpCallback" }
           ],
           "overloads": [
-            "patchAsync(url: string, callback: function)",
-            "patchAsync(url: string, options: HttpRequestOptions, callback: function)",
-            "patchAsync(url: string, body: string|UInt8Array, callback: function)",
-            "patchAsync(url: string, body: string|UInt8Array, options: HttpRequestOptions, callback: function)"
+            "patchAsync(url: string, callback: HttpCallback)",
+            "patchAsync(url: string, options: HttpRequestOptions, callback: HttpCallback)",
+            "patchAsync(url: string, body: string|UInt8Array, callback: HttpCallback)",
+            "patchAsync(url: string, body: string|UInt8Array, options: HttpRequestOptions, callback: HttpCallback)"
           ],
           "returns": "boolean",
           "notes": {
@@ -377,7 +559,7 @@
           "parameters": [
             { "name": "url", "type": "string" },
             { "name": "options", "type": "HttpRequestOptions", "optional": true },
-            { "name": "callback", "type": "function" }
+            { "name": "callback", "type": "HttpCallback" }
           ],
           "returns": "boolean",
           "notes": {
@@ -402,7 +584,7 @@
           "parameters": [
             { "name": "url", "type": "string" },
             { "name": "options", "type": "HttpRequestOptions", "optional": true },
-            { "name": "callback", "type": "function" }
+            { "name": "callback", "type": "HttpCallback" }
           ],
           "returns": "boolean",
           "notes": {
@@ -461,7 +643,7 @@
             },
             {
               "name": "callback",
-              "type": "function",
+              "type": "ArrayMapCallback",
               "optional": true
             }
           ],
@@ -1847,7 +2029,7 @@
         "ticks": {
           "kind": "method",
           "parameters": [],
-          "returns": "int64",
+          "returns": "Int64",
           "notes": {
             "en": [
               "Returns monotonic 100-nanosecond ticks since the engine clock started.",
@@ -3185,7 +3367,7 @@
         "parameters": [
           {
             "name": "callback",
-            "type": "function"
+            "type": "ArrayPredicateCallback"
           }
         ],
         "returns": "any",
@@ -3203,7 +3385,7 @@
         "parameters": [
           {
             "name": "callback",
-            "type": "function"
+            "type": "ArrayPredicateCallback"
           }
         ],
         "returns": "number",
@@ -3221,7 +3403,7 @@
         "parameters": [
           {
             "name": "callback",
-            "type": "function"
+            "type": "ArrayPredicateCallback"
           }
         ],
         "returns": "any",
@@ -3239,7 +3421,7 @@
         "parameters": [
           {
             "name": "callback",
-            "type": "function"
+            "type": "ArrayPredicateCallback"
           }
         ],
         "returns": "number",
@@ -3257,7 +3439,7 @@
         "parameters": [
           {
             "name": "callback",
-            "type": "function"
+            "type": "ArrayMapCallback"
           }
         ],
         "returns": "array",
@@ -3275,7 +3457,7 @@
         "parameters": [
           {
             "name": "callback",
-            "type": "function"
+            "type": "ArrayPredicateCallback"
           }
         ],
         "returns": "array",
@@ -3293,7 +3475,7 @@
         "parameters": [
           {
             "name": "callback",
-            "type": "function"
+            "type": "ArrayPredicateCallback"
           }
         ],
         "returns": "boolean",
@@ -3311,7 +3493,7 @@
         "parameters": [
           {
             "name": "callback",
-            "type": "function"
+            "type": "ArrayPredicateCallback"
           }
         ],
         "returns": "boolean",
@@ -3348,7 +3530,7 @@
         "parameters": [
           {
             "name": "callback",
-            "type": "function"
+            "type": "ArrayReduceCallback"
           }
         ],
         "returns": "any",
@@ -3777,7 +3959,7 @@
           },
           {
             "name": "replacement",
-            "type": "string|function"
+            "type": "string|StringReplaceCallback"
           }
         ],
         "returns": "string",
@@ -4276,7 +4458,7 @@
           },
           {
             "name": "value",
-            "type": "any"
+            "type": "any|HashMapValueFactory"
           }
         ],
         "returns": "any",

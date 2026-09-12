@@ -586,6 +586,12 @@ internal static class SemanticTokenScanner
                         node.Types[i].Name.Value,
                         AuroraSemanticTokenTypes.Type);
                 }
+                for (var i = 0; i < node.FunctionTypes.Count; i++)
+                {
+                    Declare(
+                        node.FunctionTypes[i].Name.Value,
+                        AuroraSemanticTokenTypes.Type);
+                }
 
                 for (var i = 0; i < node.Imports.Count; i++)
                 {
@@ -604,6 +610,10 @@ internal static class SemanticTokenScanner
                 for (var i = 0; i < node.Types.Count; i++)
                 {
                     node.Types[i].Accept(this);
+                }
+                for (var i = 0; i < node.FunctionTypes.Count; i++)
+                {
+                    node.FunctionTypes[i].Accept(this);
                 }
 
                 for (var i = 0; i < node.AmbientDeclarations.Count; i++)
@@ -693,6 +703,26 @@ internal static class SemanticTokenScanner
             finally
             {
                 PopScope();
+            }
+        }
+
+        protected override void VisitFunctionTypeDeclaration(
+            FunctionTypeDeclaration node)
+        {
+            _builder.AddToken(
+                node.Name,
+                AuroraSemanticTokenTypes.Type,
+                SemanticTokenPriority.Declaration);
+            if (node.ReturnType != null)
+            {
+                _builder.AddToken(
+                    node.ReturnType.Token,
+                    AuroraSemanticTokenTypes.Type,
+                    SemanticTokenPriority.Ast);
+            }
+            for (var i = 0; i < node.Parameters.Count; i++)
+            {
+                node.Parameters[i].Accept(this);
             }
         }
 

@@ -116,7 +116,18 @@
       "id": "function.declaration",
       "syntax": "func name(parameters) { statements }",
       "scope": "module-or-block",
-      "notes": ["function is also accepted as a keyword."]
+      "notes": ["func is the only keyword that defines a function body."]
+    },
+    {
+      "id": "function.type",
+      "syntax": "type Name(); | type Name(Type parameter) ReturnType; | export type Name(...); | declare type Name(...);",
+      "scope": "module-or-global-declaration",
+      "notes": [
+        "type followed by a parameter list declares a compile-time callable type; type followed by a member block declares a structural type.",
+        "A signature with no typed parameters and no return type is weak and preserves dynamic invocation.",
+        "A complete strong signature validates calls, supplies contextual lambda parameter types, and enables guarded native callable dispatch for compatible non-capturing function values.",
+        "export exposes the callable type to importing modules; declare is used in @global() declaration files; no runtime value is emitted."
+      ]
     },
     {
       "id": "constraint.int32",

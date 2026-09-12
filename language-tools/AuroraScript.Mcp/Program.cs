@@ -1117,6 +1117,45 @@ internal sealed class AuroraMcpServer
                 }
             }
         }
+
+        if (api["functionTypes"] is JsonObject functionTypes)
+        {
+            foreach (var functionType in functionTypes)
+            {
+                if (functionType.Value is JsonObject node)
+                {
+                    yield return RuntimeApiEntry.FromJson(functionType.Key, "function-type", node);
+                }
+            }
+        }
+
+        if (api["objectTypes"] is JsonObject objectTypes)
+        {
+            foreach (var objectType in objectTypes)
+            {
+                if (objectType.Value is not JsonObject node)
+                {
+                    continue;
+                }
+
+                yield return RuntimeApiEntry.FromJson(objectType.Key, "object-type", node);
+                if (node["members"] is not JsonObject members)
+                {
+                    continue;
+                }
+
+                foreach (var member in members)
+                {
+                    if (member.Value is JsonObject memberNode)
+                    {
+                        yield return RuntimeApiEntry.FromJson(
+                            $"{objectType.Key}.{member.Key}",
+                            "object-type-member",
+                            memberNode);
+                    }
+                }
+            }
+        }
     }
 
     private static void AddPatternWarnings(

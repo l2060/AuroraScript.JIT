@@ -5,6 +5,7 @@ using AuroraScript.Tokens;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Xunit;
 
 namespace AuroraScript.Tests;
@@ -141,7 +142,9 @@ public sealed class LexerTests
         var tokens = ReadTokens(lexer);
 
         Assert.Equal(29, tokens.Count);
-        Assert.DoesNotContain(tokens, token => token is IdentifierToken);
+        Assert.Equal(
+            "function",
+            Assert.Single(tokens.OfType<IdentifierToken>()).Value);
     }
 
     [Fact]

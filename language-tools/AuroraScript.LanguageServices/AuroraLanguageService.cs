@@ -704,13 +704,15 @@ public sealed class AuroraLanguageService
         out HoverResult hover)
     {
         hover = null!;
-        var definition = AuroraDefinitionResolver.Resolve(index, normalizedSource, position);
+        var definition =
+            ResolveStructuralTypeDefinition(index, normalizedSource, position) ??
+            AuroraDefinitionResolver.Resolve(index, normalizedSource, position);
         if (definition == null || BuiltinDefinitionDocuments.IsBuiltinUri(definition.Path))
         {
             return false;
         }
 
-        var hoverRange = GetHoverRange(context);
+        var hoverRange = GetHoverRange(context, position);
         var normalizedDefinitionPath = AuroraWorkspaceIndex.NormalizePath(definition.Path);
         var targetModule = index.TryGetModule(normalizedDefinitionPath);
         if (targetModule != null)
@@ -744,7 +746,9 @@ public sealed class AuroraLanguageService
             out hover);
     }
 
-    private static TextRange GetHoverRange(AstQueryContext context)
+    private static TextRange GetHoverRange(
+        AstQueryContext context,
+        TextPosition position)
     {
         if (context.PropertyAccess != null &&
             context.IsOnPropertyName &&
@@ -763,6 +767,14 @@ public sealed class AuroraLanguageService
         if (context.Name != null)
         {
             return TextRange.FromSourceSpan(context.Name.Identifier.Range);
+        }
+
+        if (context.TypeReference != null)
+        {
+            return TextRange.FromSourceSpan(
+                context.TypeQualifier?.Range.Contains(position) == true
+                    ? context.TypeQualifier.Range
+                    : context.TypeReference.Range);
         }
 
         return default;
@@ -1425,7 +1437,7 @@ public sealed class AuroraLanguageService
         }
 
         if (context.TypeReference != null &&
-            _builtinDocuments.TryGetGlobalLocation(context.TypeReference.Value, out var typeLocation))
+            _builtinDocuments.TryGetTypeLocation(context.TypeReference.Value, out var typeLocation))
         {
             return typeLocation;
         }

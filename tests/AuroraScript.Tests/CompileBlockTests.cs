@@ -15,7 +15,7 @@ public sealed class CompileBlockTests
         var engine = workspace.CreateEngine();
         var block = engine.CompileBlock(
             """
-            function clamp(value, min, max) {
+            func clamp(value, min, max) {
                 if (value < min) return min;
                 if (value > max) return max;
                 return value;
@@ -190,7 +190,7 @@ public sealed class CompileBlockTests
     {
         return engine.CompileBlock(
             """
-            function local(value) {
+            func local(value) {
                 return value + 1;
             }
             return local(1);

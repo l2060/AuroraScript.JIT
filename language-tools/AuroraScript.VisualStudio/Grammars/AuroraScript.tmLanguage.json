@@ -192,7 +192,7 @@
       "patterns": [
         {
           "name": "meta.declaration.ambient-type.aurora",
-          "match": "\\b(declare)\\s+(type)\\s+([\\p{L}_$][\\p{L}\\p{N}_$]*)(?=\\s*\\{)",
+          "match": "\\b(declare)\\s+(type)\\s+([\\p{L}_$][\\p{L}\\p{N}_$]*)(?=\\s*[\\{\\(])",
           "captures": {
             "1": { "name": "keyword.declaration.declare.aurora" },
             "2": { "name": "keyword.declaration.type.aurora" },
@@ -201,7 +201,7 @@
         },
         {
           "name": "meta.declaration.type.aurora",
-          "match": "\\b(?:(export)\\s+)?(type)\\s+([\\p{L}_$][\\p{L}\\p{N}_$]*)(?=\\s*\\{)",
+          "match": "\\b(?:(export)\\s+)?(type)\\s+([\\p{L}_$][\\p{L}\\p{N}_$]*)(?=\\s*[\\{\\(])",
           "captures": {
             "1": { "name": "keyword.control.export.aurora" },
             "2": { "name": "keyword.declaration.type.aurora" },
@@ -210,16 +210,17 @@
         },
         {
           "name": "meta.declaration.function.aurora",
-          "match": "\\b(?:(export)\\s+)?(func|function)\\s+([\\p{L}_$][\\p{L}\\p{N}_$]*)",
+          "match": "\\b(?:(export)\\s+)?(?:(native)\\s+)?(func)\\s+([\\p{L}_$][\\p{L}\\p{N}_$]*)",
           "captures": {
             "1": { "name": "keyword.control.export.aurora" },
-            "2": { "name": "keyword.declaration.function.aurora" },
-            "3": { "name": "entity.name.function.aurora" }
+            "2": { "name": "keyword.declaration.native.aurora" },
+            "3": { "name": "keyword.declaration.function.aurora" },
+            "4": { "name": "entity.name.function.aurora" }
           }
         },
         {
           "name": "meta.declaration.external-function.aurora",
-          "match": "\\b(declare)\\s+(func|function)\\s+([\\p{L}_$][\\p{L}\\p{N}_$]*)(?=\\s*\\()",
+          "match": "\\b(declare)\\s+(func)\\s+([\\p{L}_$][\\p{L}\\p{N}_$]*)(?=\\s*\\()",
           "captures": {
             "1": { "name": "keyword.declaration.declare.aurora" },
             "2": { "name": "keyword.declaration.function.aurora" },
@@ -323,7 +324,7 @@
         },
         {
           "name": "meta.function-call.aurora",
-          "match": "(^|[^\\p{L}\\p{N}_$\\.])(?!(?:if|for|while|catch|function|func|return|new|typeof|import|include|export|declare)\\b)([\\p{L}_$][\\p{L}\\p{N}_$]*)(?=\\s*\\()",
+          "match": "(^|[^\\p{L}\\p{N}_$\\.])(?!(?:if|for|while|catch|func|return|new|typeof|import|include|export|declare|type)\\b)([\\p{L}_$][\\p{L}\\p{N}_$]*)(?=\\s*\\()",
           "captures": {
             "2": { "name": "entity.name.function.aurora" }
           }
@@ -402,7 +403,7 @@
         },
         {
           "name": "keyword.declaration.aurora",
-          "match": "\\b(?:const|constructor|context|declare|enum|func|function|module|native|static|var|readonly)\\b"
+          "match": "\\b(?:const|constructor|context|declare|enum|func|module|native|static|var|readonly)\\b"
         },
         {
           "name": "keyword.operator.type-check.aurora",

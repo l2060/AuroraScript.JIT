@@ -58,7 +58,12 @@ namespace AuroraScript.Compiler.Backend.Code
 
         internal static HostExportDescriptor CreateNativeDescriptor(ClosureFunction closure)
         {
-            if (closure.NativeEntry is not { } method || !closure.NativeSignatureComplete) return null;
+            if (closure.NativeEntry is not { } method ||
+                !closure.NativeSignatureComplete ||
+                !closure.NativeEntryTakesContext)
+            {
+                return null;
+            }
             var parameters = method.GetParameters();
             var kinds = new AuroraExportValueKind[parameters.Length - 1];
             if (!TryGetKind(method.ReturnType, out var resultKind)) return null;

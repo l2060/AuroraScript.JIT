@@ -82,7 +82,14 @@ namespace AuroraScript.Compiler.Backend.Emission
                         complete = false;
                 }
                 il.Emit(complete ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
-                il.Emit(OpCodes.Call, typeof(ClosureFunction).GetMethod("SetNativeEntry", BindingFlags.Instance | BindingFlags.NonPublic));
+                il.Emit(
+                    OpCodes.Call,
+                    typeof(ClosureFunction).GetMethod(
+                        function.CallableType != null
+                            ? "SetNativeCallableEntry"
+                            : "SetNativeEntry",
+                        BindingFlags.Instance |
+                        BindingFlags.NonPublic));
             }
         }
 

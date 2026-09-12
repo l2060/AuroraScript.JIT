@@ -43,6 +43,11 @@ namespace AuroraScript.Compiler.Backend.Code
                 return FlowValueType.Object;
             }
 
+            if (TryGetFunctionType(module, type, out _))
+            {
+                return FlowValueType.Object;
+            }
+
             return module != null && module.TryResolveType(type, out _)
                 ? FlowValueType.Object
                 : FlowValueType.None;
@@ -57,6 +62,17 @@ namespace AuroraScript.Compiler.Backend.Code
             return type != null &&
                 module != null &&
                 module.TryResolveType(type, out declaration);
+        }
+
+        public static bool TryGetFunctionType(
+            ModuleDeclaration module,
+            TypeReference type,
+            out FunctionTypeDeclaration declaration)
+        {
+            declaration = null;
+            return type != null &&
+                module != null &&
+                module.TryResolveFunctionType(type, out declaration);
         }
 
         public static bool TryGetNativeObject(

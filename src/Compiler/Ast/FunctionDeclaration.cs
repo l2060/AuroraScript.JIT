@@ -95,7 +95,12 @@ namespace AuroraScript.Compiler.Ast
         /// Optional source-level return contract. A missing contract preserves
         /// the existing weakly typed, inference-only behavior.
         /// </summary>
-        public TypeReference ReturnType { get; }
+        public TypeReference ReturnType { get; private set; }
+
+        internal void ApplyContextualReturnType(TypeReference returnType)
+        {
+            ReturnType ??= returnType;
+        }
 
 
         public override void Accept(IAstVisitor visitor)

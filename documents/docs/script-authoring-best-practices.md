@@ -491,5 +491,5 @@ When validating loop code, use the recommended cached-bound form:
 - Do not return console output as the only result when the host expects a value.
 - Do not generate a full JavaScript program. Generate AuroraScript syntax and validate it with AuroraScript tooling.
 - Do not use broad runtime APIs until they are confirmed in `schema/runtime-api.json`.
-- Do not put `void` on ordinary `func`, parameters, fields, or `as` assertions; it is a native-function return contract only.
+- Do not put `void` on ordinary `func`, parameters, fields, or `as` assertions; it is a return contract for `native func` and callable `type Name(...)` declarations.
 - Do not write `return expression;` from `native func ... void`.

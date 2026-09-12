@@ -35,6 +35,26 @@ public sealed class TextMateGrammarTests
             "declarations",
             "keyword.declaration.type.aurora",
             "declare type Stats {");
+        AssertPattern(
+            repository,
+            "declarations",
+            "entity.name.type.aurora",
+            "export type Predicate(Number value) Boolean;");
+        AssertPattern(
+            repository,
+            "declarations",
+            "entity.name.type.aurora",
+            "declare type Callback(Number value) Boolean;");
+        AssertPattern(
+            repository,
+            "declarations",
+            "entity.name.function.aurora",
+            "export native func add(Number value) Number {");
+        AssertPattern(
+            repository,
+            "declarations",
+            "entity.name.function.aurora",
+            "declare func log(value);");
         AssertPattern(repository, "comments", "comment.line.double-slash.aurora", "// comment");
         AssertBeginPattern(repository, "comments", "comment.block.aurora", "/* comment */");
         AssertPattern(repository, "keywords", "keyword.operator.word.aurora", "typeof value in obj");

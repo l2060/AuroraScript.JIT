@@ -40,6 +40,19 @@ internal static class ScriptDocumentationQuery
             }
         }
 
+        for (var i = 0; i < module.FunctionTypes.Count; i++)
+        {
+            var functionType = module.FunctionTypes[i];
+            if (Contains(TextRange.FromSourceSpan(functionType.Name.Range), position))
+            {
+                return TryBuildFunctionTypeHover(
+                    sourceText,
+                    functionType,
+                    TextRange.FromSourceSpan(functionType.Name.Range),
+                    out hover);
+            }
+        }
+
         for (var i = 0; i < module.Statements.Count; i++)
         {
             if (TryGetStatementHover(sourceName, sourceText, module.Statements[i], position, out hover))
@@ -63,6 +76,15 @@ internal static class ScriptDocumentationQuery
         if (TryFindFunction(module, definitionRange, out var function))
         {
             return TryBuildFunctionHover(sourceName, sourceText, function, hoverRange, out hover);
+        }
+
+        for (var i = 0; i < module.FunctionTypes.Count; i++)
+        {
+            var functionType = module.FunctionTypes[i];
+            if (SameRange(TextRange.FromSourceSpan(functionType.Name.Range), definitionRange))
+            {
+                return TryBuildFunctionTypeHover(sourceText, functionType, hoverRange, out hover);
+            }
         }
 
         if (TryFindMemberDeclaration(module, sourceName, sourceText, definitionRange, hoverRange, out hover))
@@ -181,10 +203,41 @@ internal static class ScriptDocumentationQuery
 
         AppendFunctionSignature(
             builder,
+            "func",
             function.Name.Value,
             function.Parameters,
             function.ReturnType);
         builder.Append("\n```");
+        AppendComments(builder, comments);
+        hover = new HoverResult(builder.ToString(), hoverRange);
+        return true;
+    }
+
+    private static bool TryBuildFunctionTypeHover(
+        string sourceText,
+        FunctionTypeDeclaration functionType,
+        TextRange hoverRange,
+        out HoverResult hover)
+    {
+        var comments = ReadLeadingComments(sourceText, functionType.Range.StartLine);
+        var builder = new StringBuilder();
+        builder.Append("```").Append(BuiltinTypeFormatter.MarkdownLanguageId).Append('\n');
+        if (functionType.Access == MemberAccess.Export)
+        {
+            builder.Append("export ");
+        }
+        else if (functionType.IsDeclare)
+        {
+            builder.Append("declare ");
+        }
+
+        AppendFunctionSignature(
+            builder,
+            "type",
+            functionType.Name.Value,
+            functionType.Parameters,
+            functionType.ReturnType);
+        builder.Append(";\n```");
         AppendComments(builder, comments);
         hover = new HoverResult(builder.ToString(), hoverRange);
         return true;
@@ -395,6 +448,7 @@ internal static class ScriptDocumentationQuery
         {
             AppendFunctionSignature(
                 builder,
+                "func",
                 name,
                 lambda.Function.Parameters,
                 lambda.Function.ReturnType);
@@ -445,11 +499,12 @@ internal static class ScriptDocumentationQuery
 
     private static void AppendFunctionSignature(
         StringBuilder builder,
+        string keyword,
         string name,
         IReadOnlyList<ParameterDeclaration> parameters,
         TypeReference returnType)
     {
-        builder.Append("func ").Append(name).Append('(');
+        builder.Append(keyword).Append(' ').Append(name).Append('(');
         for (var i = 0; i < parameters.Count; i++)
         {
             if (i > 0)

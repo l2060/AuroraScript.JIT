@@ -48,8 +48,23 @@ namespace AuroraScript.Compiler.Backend.Code
             return (callableReturns ?? CallableReturnPredictions.Build(new[] { module }, hostExports)).GetModuleCode(module);
         }
 
-        internal void ApplyPredictions(CallableReturnPredictions predictions) =>
+        internal void ApplyPredictions(CallableReturnPredictions predictions)
+        {
             predictions.Apply(_module, _generic, _direct, Initializer);
+            for (var i = 0; i < _module.Functions.Count; i++)
+            {
+                var function = _module.Functions[i];
+                var parameters = _module.GetContextualParameters(function.Id);
+                if (parameters == null)
+                {
+                    continue;
+                }
+                _generic[function.ModuleIndex]
+                    .ApplyContextualParameterPredictions(parameters);
+                _direct[function.ModuleIndex]?
+                    .ApplyContextualParameterPredictions(parameters);
+            }
+        }
 
         internal static TypedModuleCode Analyze(
             ModulePlan module, HostExportCatalog hostExports, CallableReturnPredictions callableReturns)
@@ -442,7 +457,9 @@ namespace AuroraScript.Compiler.Backend.Code
                         : NativeCoercionKind.None;
                 if (checkedType != FlowValueType.None)
                 {
-                    result[parameterIndex++] = checkedType == FlowValueType.Number &&
+                    result[parameterIndex++] =
+                        function.CallableType == null &&
+                        checkedType == FlowValueType.Number &&
                         demand is NativeCoercionKind.Int32Bitwise or NativeCoercionKind.Int32Shift
                             ? DirectParameterType.FromCoercion(demand)
                             : new DirectParameterType(checkedType);

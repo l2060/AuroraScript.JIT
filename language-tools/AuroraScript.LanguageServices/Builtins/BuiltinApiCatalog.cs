@@ -8,6 +8,8 @@ public sealed class BuiltinApiCatalog
     private readonly Dictionary<string, BuiltinApiSymbol> _globals;
     private readonly Dictionary<string, BuiltinApiModule> _modules;
     private readonly Dictionary<string, IReadOnlyDictionary<string, BuiltinApiMember>> _prototypes;
+    private readonly Dictionary<string, BuiltinApiFunctionType> _functionTypes;
+    private readonly Dictionary<string, BuiltinApiObjectType> _objectTypes;
 
     public BuiltinApiCatalog(
         string versionTarget,
@@ -21,15 +23,25 @@ public sealed class BuiltinApiCatalog
         string versionTarget,
         IReadOnlyDictionary<string, BuiltinApiSymbol> globals,
         IReadOnlyDictionary<string, IReadOnlyDictionary<string, BuiltinApiMember>> prototypes,
-        IReadOnlyDictionary<string, BuiltinApiModule> modules)
+        IReadOnlyDictionary<string, BuiltinApiModule> modules,
+        IReadOnlyDictionary<string, BuiltinApiFunctionType>? functionTypes = null,
+        IReadOnlyDictionary<string, BuiltinApiObjectType>? objectTypes = null)
     {
         VersionTarget = versionTarget ?? string.Empty;
         _globals = new Dictionary<string, BuiltinApiSymbol>(globals ?? EmptyGlobals, StringComparer.Ordinal);
         _modules = new Dictionary<string, BuiltinApiModule>(modules ?? EmptyModules, StringComparer.Ordinal);
         _prototypes = new Dictionary<string, IReadOnlyDictionary<string, BuiltinApiMember>>(prototypes ?? EmptyPrototypes, StringComparer.Ordinal);
+        _functionTypes = new Dictionary<string, BuiltinApiFunctionType>(
+            functionTypes ?? EmptyFunctionTypes,
+            StringComparer.Ordinal);
+        _objectTypes = new Dictionary<string, BuiltinApiObjectType>(
+            objectTypes ?? EmptyObjectTypes,
+            StringComparer.Ordinal);
         Globals = _globals;
         Modules = _modules;
         Prototypes = _prototypes;
+        FunctionTypes = _functionTypes;
+        ObjectTypes = _objectTypes;
     }
 
     private static readonly IReadOnlyDictionary<string, BuiltinApiSymbol> EmptyGlobals =
@@ -41,10 +53,30 @@ public sealed class BuiltinApiCatalog
     private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, BuiltinApiMember>> EmptyPrototypes =
         new Dictionary<string, IReadOnlyDictionary<string, BuiltinApiMember>>(StringComparer.Ordinal);
 
+    private static readonly IReadOnlyDictionary<string, BuiltinApiFunctionType> EmptyFunctionTypes =
+        new Dictionary<string, BuiltinApiFunctionType>(StringComparer.Ordinal);
+
+    private static readonly IReadOnlyDictionary<string, BuiltinApiObjectType> EmptyObjectTypes =
+        new Dictionary<string, BuiltinApiObjectType>(StringComparer.Ordinal);
+
     public string VersionTarget { get; }
     public IReadOnlyDictionary<string, BuiltinApiSymbol> Globals { get; }
     public IReadOnlyDictionary<string, BuiltinApiModule> Modules { get; }
     public IReadOnlyDictionary<string, IReadOnlyDictionary<string, BuiltinApiMember>> Prototypes { get; }
+    public IReadOnlyDictionary<string, BuiltinApiFunctionType> FunctionTypes { get; }
+    public IReadOnlyDictionary<string, BuiltinApiObjectType> ObjectTypes { get; }
+
+    public bool TryGetObjectType(string name, out BuiltinApiObjectType objectType)
+    {
+        return _objectTypes.TryGetValue(name, out objectType!);
+    }
+
+    public bool TryGetObjectTypeMember(string typeName, string memberName, out BuiltinApiMember member)
+    {
+        member = null!;
+        return _objectTypes.TryGetValue(typeName, out var objectType) &&
+            objectType.TryGetMember(memberName, out member);
+    }
 
     public bool TryGetGlobal(string name, out BuiltinApiSymbol symbol)
     {

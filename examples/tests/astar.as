@@ -20,6 +20,7 @@ type SeededRng {
 	int32 seed;
 }
 
+
 export type AStar {
 	int32 width;
 	int32 height;

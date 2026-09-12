@@ -72,7 +72,7 @@ public sealed class ClosureFunctionContextTests
             """
             @module(TEST);
 
-            export function increment(value) {
+            export func increment(value) {
                 return value + 1;
             }
             """,
@@ -94,7 +94,7 @@ public sealed class ClosureFunctionContextTests
             """
             @module(TEST);
 
-            export function identity(value) {
+            export func identity(value) {
                 return value;
             }
             """,
@@ -118,7 +118,7 @@ public sealed class ClosureFunctionContextTests
             """
             @module(TEST);
 
-            export function increment(value) {
+            export func increment(value) {
                 return value + 1;
             }
             """,

@@ -1,12 +1,18 @@
 using AuroraScript.Core;
 using AuroraScript.Runtime;
+using AuroraScript.Runtime.Package;
 using AuroraScript.Runtime.Types;
 using AuroraScript.Tests.Infrastructure;
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection.Metadata;
+using System.Reflection.Metadata.Ecma335;
+using System.Reflection.PortableExecutable;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -198,6 +204,125 @@ public sealed class HttpClientModuleTests
         Assert.Equal("callback", server.Requests[0].Headers["X-Test"]);
     }
 
+#if NET9_0_OR_GREATER
+    [Fact]
+    public async Task ResponseMembersAndCallbackResponseUseGuardedNativeAccess()
+    {
+        await using var server = new LoopbackHttpServer(
+            expectedRequests: 2,
+            _ => Task.FromResult(new LoopbackResponse(
+                200,
+                "OK",
+                Encoding.UTF8.GetBytes("native"),
+                new Dictionary<string, string> { ["X-Reply"] = "typed" })));
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource(
+            "main.as",
+            """
+            @module(TEST);
+            import http from 'http';
+
+            export func run(url) {
+                var response = http.get(url, { responseHeaders: true });
+                return response.status + '|' + response.ok + '|' + response.text + '|' +
+                    response.headers['x-reply'] + '|' + response.bytes.length;
+            }
+
+            export func begin(url) {
+                return http.getAsync(url, (error, response) => {
+                    if (error != null) {
+                        HOST_COMPLETE('error');
+                        return;
+                    }
+                    HOST_COMPLETE(response.status + '|' + response.text);
+                });
+            }
+            """);
+        var assemblyPath = Path.Combine(workspace.Root, "http-native-output.dll");
+        var engine = new AuroraEngine(CreateOptions(
+            workspace.Root,
+            enableHttpClient: true,
+            CompilationMode.Persistence,
+            assemblyPath));
+        await engine.BuildAsync("main.as");
+        var completion = new TaskCompletionSource<string>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var domain = engine.CreateDomain(global => global.Define(
+            "HOST_COMPLETE",
+            (Action<string>)(value => completion.TrySetResult(value)),
+            writeable: false,
+            enumerable: false));
+
+        var url = server.BaseAddress.ToString();
+        ScriptAssert.Equal("200|True|native|typed|6", TestWorkspace.Execute(
+            domain,
+            "run",
+            arguments: ScriptDatum.FromString(url)));
+        ScriptAssert.Equal(true, TestWorkspace.Execute(
+            domain,
+            "begin",
+            arguments: ScriptDatum.FromString(url)));
+        Assert.Equal(
+            "200|native",
+            await completion.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        await server.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+
+        using var stream = File.OpenRead(assemblyPath);
+        using var peReader = new PEReader(stream);
+        var reader = peReader.GetMetadataReader();
+        var statusTokens = FindMemberTokens(
+            reader,
+            nameof(HttpResponseValue),
+            nameof(HttpResponseValue.Status));
+        var textTokens = FindMemberTokens(
+            reader,
+            nameof(HttpResponseValue),
+            nameof(HttpResponseValue.Text));
+        var okTokens = FindMemberTokens(
+            reader,
+            nameof(HttpResponseValue),
+            nameof(HttpResponseValue.Ok));
+        var headersTokens = FindMemberTokens(
+            reader,
+            nameof(HttpResponseValue),
+            nameof(HttpResponseValue.GetHeadersCore));
+        var bytesTokens = FindMemberTokens(
+            reader,
+            nameof(HttpResponseValue),
+            nameof(HttpResponseValue.GetBytesCore));
+        Assert.NotEmpty(statusTokens);
+        Assert.NotEmpty(textTokens);
+        Assert.NotEmpty(okTokens);
+        Assert.NotEmpty(headersTokens);
+        Assert.NotEmpty(bytesTokens);
+        Assert.True(CountMethodsContaining(
+            peReader,
+            reader,
+            opcode: 0x7B,
+            statusTokens) >= 2);
+        Assert.True(CountMethodsContaining(
+            peReader,
+            reader,
+            opcode: 0x7B,
+            textTokens) >= 2);
+        Assert.True(CountMethodsContaining(
+            peReader,
+            reader,
+            opcode: 0x7B,
+            okTokens) >= 1);
+        Assert.True(CountMethodsContaining(
+            peReader,
+            reader,
+            opcode: 0x6F,
+            headersTokens) >= 1);
+        Assert.True(CountMethodsContaining(
+            peReader,
+            reader,
+            opcode: 0x6F,
+            bytesTokens) >= 1);
+    }
+#endif
+
     [Fact]
     public async Task CallbackApiReportsTransportTimeoutAsScriptError()
     {
@@ -279,7 +404,8 @@ public sealed class HttpClientModuleTests
     private static EngineOptions CreateOptions(
         string root,
         bool enableHttpClient,
-        CompilationMode mode = CompilationMode.Dynamic)
+        CompilationMode mode = CompilationMode.Dynamic,
+        string? assemblyPath = null)
     {
         var options = EngineOptions.Default
             .WithCompiler(compiler => compiler.SourceResolver = ScriptSources.FileSystem(root))
@@ -287,6 +413,10 @@ public sealed class HttpClientModuleTests
             .WithRuntime(runtime => runtime.ConsoleStdOut = TextWriter.Null)
             .WithRuntime(runtime => runtime.ConsoleErrorOut = TextWriter.Null);
 
+        if (!string.IsNullOrEmpty(assemblyPath))
+        {
+            options = options.WithOutput(output => output.AssemblyFile = assemblyPath);
+        }
         return enableHttpClient
             ? options.WithPackages(packages => packages.Add(NativePackages.HttpClient))
             : options;
@@ -452,6 +582,66 @@ public sealed class HttpClientModuleTests
             await stream.WriteAsync(response.Body, cancellationToken).ConfigureAwait(false);
         }
     }
+
+#if NET9_0_OR_GREATER
+    private static int[] FindMemberTokens(
+        MetadataReader reader,
+        string typeName,
+        string memberName)
+    {
+        return reader.MemberReferences
+            .Where(handle =>
+            {
+                var reference = reader.GetMemberReference(handle);
+                return reader.GetString(reference.Name) == memberName &&
+                    reference.Parent.Kind == HandleKind.TypeReference &&
+                    reader.GetString(reader.GetTypeReference(
+                        (TypeReferenceHandle)reference.Parent).Name) == typeName;
+            })
+            .Select(handle => MetadataTokens.GetToken(handle))
+            .ToArray();
+    }
+
+    private static int CountMethodsContaining(
+        PEReader peReader,
+        MetadataReader reader,
+        byte opcode,
+        int[] metadataTokens)
+    {
+        var count = 0;
+        foreach (var handle in reader.MethodDefinitions)
+        {
+            var method = reader.GetMethodDefinition(handle);
+            if (method.RelativeVirtualAddress == 0)
+            {
+                continue;
+            }
+            var il = peReader.GetMethodBody(method.RelativeVirtualAddress).GetILBytes();
+            if (metadataTokens.Any(token => ContainsInstruction(il, opcode, token)))
+            {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static bool ContainsInstruction(
+        ReadOnlySpan<byte> il,
+        byte opcode,
+        int metadataToken)
+    {
+        for (var i = 0; i + 5 <= il.Length; i++)
+        {
+            if (il[i] == opcode &&
+                BinaryPrimitives.ReadInt32LittleEndian(il.Slice(i + 1, 4)) ==
+                    metadataToken)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+#endif
 
     private sealed record LoopbackRequest(
         string Method,

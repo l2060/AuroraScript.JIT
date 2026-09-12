@@ -572,11 +572,12 @@ public sealed class ModuleCompilationTests
                 var name;
                 static func create(size);
             }
+            declare type Callback(Number value) Boolean;
             """)
         ]);
 
         Assert.Empty(index.Diagnostics);
-        Assert.Equal(2, index.Declarations.Count);
+        Assert.Equal(3, index.Declarations.Count);
         Assert.Equal(
             AuroraScript.Compiler.GlobalDeclarations.GlobalDeclarationKind.Type,
             index.Declarations["Host"].Kind);
@@ -587,6 +588,10 @@ public sealed class ModuleCompilationTests
             index.Declarations["Widget"].Kind);
         Assert.Equal(["constructor", "name", "create"], index.Declarations["Widget"].Members.Select(member => member.Name));
         Assert.True(index.Declarations["Widget"].Members[2].IsStatic);
+        Assert.Equal(
+            AuroraScript.Compiler.GlobalDeclarations.GlobalDeclarationKind.Type,
+            index.Declarations["Callback"].Kind);
+        Assert.Empty(index.Declarations["Callback"].Members);
     }
 
     [Fact]

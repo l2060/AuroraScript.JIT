@@ -22,6 +22,14 @@
         "type": "object",
         "additionalProperties": { "$ref": "#/$defs/member" }
       }
+    },
+    "functionTypes": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/functionType" }
+    },
+    "objectTypes": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/objectType" }
     }
   },
   "additionalProperties": false,
@@ -67,6 +75,31 @@
           "items": { "$ref": "#/$defs/parameter" }
         },
         "returns": { "type": "string" },
+        "notes": { "$ref": "#/$defs/localizedNotes" }
+      },
+      "additionalProperties": false
+    },
+    "functionType": {
+      "type": "object",
+      "required": ["parameters", "returns"],
+      "properties": {
+        "parameters": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/parameter" }
+        },
+        "returns": { "type": "string" },
+        "notes": { "$ref": "#/$defs/localizedNotes" }
+      },
+      "additionalProperties": false
+    },
+    "objectType": {
+      "type": "object",
+      "required": ["members"],
+      "properties": {
+        "members": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/member" }
+        },
         "notes": { "$ref": "#/$defs/localizedNotes" }
       },
       "additionalProperties": false

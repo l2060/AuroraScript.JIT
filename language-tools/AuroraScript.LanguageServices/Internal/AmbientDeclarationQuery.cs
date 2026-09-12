@@ -23,17 +23,21 @@ internal sealed class AmbientContractCatalog
 {
     public static readonly AmbientContractCatalog Empty = new(
         GlobalDeclarationIndex.Empty,
-        new Dictionary<string, AmbientDeclaration>(StringComparer.Ordinal));
+        new Dictionary<string, AmbientDeclaration>(StringComparer.Ordinal),
+        new Dictionary<string, FunctionTypeDeclaration>(StringComparer.Ordinal));
 
     private readonly GlobalDeclarationIndex _index;
     private readonly Dictionary<string, AmbientDeclaration> _containers;
+    private readonly Dictionary<string, FunctionTypeDeclaration> _functionTypes;
 
     private AmbientContractCatalog(
         GlobalDeclarationIndex index,
-        Dictionary<string, AmbientDeclaration> containers)
+        Dictionary<string, AmbientDeclaration> containers,
+        Dictionary<string, FunctionTypeDeclaration> functionTypes)
     {
         _index = index;
         _containers = containers;
+        _functionTypes = functionTypes;
     }
 
     public GlobalDeclarationIndex Index => _index;
@@ -44,6 +48,7 @@ internal sealed class AmbientContractCatalog
         AuroraParseService? parseService)
     {
         var containers = new Dictionary<string, AmbientDeclaration>(StringComparer.Ordinal);
+        var functionTypes = new Dictionary<string, FunctionTypeDeclaration>(StringComparer.Ordinal);
         if (snapshot != null && parseService != null)
         {
             foreach (var document in snapshot.Documents.Values)
@@ -67,10 +72,18 @@ internal sealed class AmbientContractCatalog
                         containers[ambient.Name.Value] = ambient;
                     }
                 }
+                for (var i = 0; i < parsed.Module.FunctionTypes.Count; i++)
+                {
+                    var functionType = parsed.Module.FunctionTypes[i];
+                    if (functionType.IsDeclare)
+                    {
+                        functionTypes[functionType.Name.Value] = functionType;
+                    }
+                }
             }
         }
 
-        return new AmbientContractCatalog(index, containers);
+        return new AmbientContractCatalog(index, containers, functionTypes);
     }
 
     public bool TryGetRoot(string name, out GlobalDeclarationInfo declaration)
@@ -81,6 +94,13 @@ internal sealed class AmbientContractCatalog
     public bool TryGetContainer(string name, out AmbientDeclaration declaration)
     {
         return _containers.TryGetValue(name, out declaration!);
+    }
+
+    public bool TryGetFunctionType(
+        string name,
+        out FunctionTypeDeclaration declaration)
+    {
+        return _functionTypes.TryGetValue(name, out declaration!);
     }
 
     public bool TryGetMember(
@@ -695,6 +715,32 @@ internal static class AmbientDeclarationQuery
 
     private static string FormatRoot(GlobalDeclarationInfo root, AmbientContractCatalog catalog)
     {
+        if (catalog.TryGetFunctionType(root.Name, out var functionType))
+        {
+            var builder = new StringBuilder("declare type ");
+            builder.Append(functionType.Name.Value).Append('(');
+            for (var i = 0; i < functionType.Parameters.Count; i++)
+            {
+                if (i > 0)
+                {
+                    builder.Append(", ");
+                }
+                var parameter = functionType.Parameters[i];
+                if (parameter.DeclaredType != null)
+                {
+                    builder.Append(parameter.DeclaredType.DisplayName).Append(' ');
+                }
+                builder.Append(parameter.Name.Value);
+            }
+            builder.Append(')');
+            if (functionType.ReturnType != null)
+            {
+                builder.Append(' ').Append(functionType.ReturnType.DisplayName);
+            }
+            builder.Append(';');
+            return WrapCode(builder.ToString());
+        }
+
         if (catalog.TryGetContainer(root.Name, out var container))
         {
             return WrapCode("declare type " + root.Name);

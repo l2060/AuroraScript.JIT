@@ -25,6 +25,7 @@ public sealed class SemanticTokensFeatureTests : IDisposable
             """
             @module(TEST);
             enum Status { Ready, Failed = 2 }
+            type Predicate(Number value) Boolean;
             func narrow(int32 value) int32 { return value; }
             export func run() {
                 const string = 1;
@@ -76,6 +77,7 @@ public sealed class SemanticTokensFeatureTests : IDisposable
         AssertToken(source, result, "Math", AuroraSemanticTokenTypes.Type);
         AssertToken(source, result, "HotPatch", AuroraSemanticTokenTypes.Type);
         AssertToken(source, result, "int32", AuroraSemanticTokenTypes.Type);
+        AssertToken(source, result, "Predicate", AuroraSemanticTokenTypes.Type);
         AssertToken(source, result, "$arg", AuroraSemanticTokenTypes.BuiltinVariable);
         AssertNoToken(source, result, "$state", AuroraSemanticTokenTypes.BuiltinVariable);
         AssertNoToken(source, result, "$args", AuroraSemanticTokenTypes.BuiltinVariable);

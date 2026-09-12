@@ -85,7 +85,6 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
         "const",
         "var",
         "func",
-        "function",
         "enum",
         "declare",
         "new",
@@ -114,7 +113,6 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
         "for",
         "from",
         "func",
-        "function",
         "if",
         "import",
         "in",
@@ -1022,10 +1020,15 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
                     }
                     break;
                 case "func":
-                case "function":
                     if (!PreviousSignificantIdentifierIs(text, start, "declare"))
                     {
                         CollectFunctionSymbol(text, i, currentScope, bodyScopeSymbols, index);
+                    }
+                    break;
+                case "type":
+                    if (!PreviousSignificantIdentifierIs(text, start, "declare"))
+                    {
+                        CollectNamedTypeSymbol(text, i, currentScope, index);
                     }
                     break;
                 case "var":
@@ -1084,8 +1087,7 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
             return false;
         }
 
-        if (string.Equals(keyword, "func", StringComparison.Ordinal) ||
-            string.Equals(keyword, "function", StringComparison.Ordinal))
+        if (string.Equals(keyword, "func", StringComparison.Ordinal))
         {
             var nameStart = SkipTrivia(text, keywordEnd);
             if (TryReadIdentifier(text, nameStart, out _, out _, out var declaredName))
@@ -1266,6 +1268,20 @@ internal sealed class AuroraSyntaxTagger : ITagger<ClassificationTag>
         if (TryReadIdentifier(text, nameStart, out var tokenStart, out var tokenEnd, out var name))
         {
             scope.Declare(name, LightweightSymbolKind.Local);
+            index.AddLocalDeclarationSpan(tokenStart, tokenEnd);
+        }
+    }
+
+    private static void CollectNamedTypeSymbol(
+        string text,
+        int start,
+        LightweightScope scope,
+        LightweightSymbolIndex index)
+    {
+        var nameStart = SkipTrivia(text, start);
+        if (TryReadIdentifier(text, nameStart, out var tokenStart, out var tokenEnd, out var name))
+        {
+            scope.Declare(name, LightweightSymbolKind.DeclaredType);
             index.AddLocalDeclarationSpan(tokenStart, tokenEnd);
         }
     }

@@ -16,6 +16,22 @@ namespace AuroraScript.Runtime
             return context.EnterModule(module);
         }
 
+        /// <summary>Temporarily enters a closure while a native callable target runs.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int EnterClosure(
+            ScriptContext context,
+            ClosureFunction closure)
+        {
+            return context.EnterClosure(closure);
+        }
+
+        /// <summary>Returns the cached strongly typed target of a closure.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static Delegate GetNativeTarget(ClosureFunction closure)
+        {
+            return closure?.NativeTarget;
+        }
+
         /// <summary>Restores the context state that preceded a lightweight call frame.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Leave(ScriptContext context, int restoreDepth)

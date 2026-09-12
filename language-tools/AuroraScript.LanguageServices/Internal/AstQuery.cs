@@ -59,6 +59,9 @@ internal static class AstQuery
             case FunctionDeclaration function:
                 VisitFunction(function, state);
                 return;
+            case FunctionTypeDeclaration functionType:
+                VisitFunctionType(functionType, state);
+                return;
             case TypeDeclaration type:
                 VisitTypeDeclaration(type, state);
                 return;
@@ -203,6 +206,7 @@ internal static class AstQuery
         {
             VisitTypeReference(module.Contexts[i].DeclaredType, state);
         }
+        VisitList(module.FunctionTypes, state);
         VisitList(module.Types, state);
         VisitList(module.Statements, state);
         VisitList(module.Functions, state);
@@ -222,6 +226,17 @@ internal static class AstQuery
             Visit(function.Parameters[i], state);
         }
         Visit(function.Body, state);
+    }
+
+    private static void VisitFunctionType(
+        FunctionTypeDeclaration function,
+        QueryState state)
+    {
+        VisitTypeReference(function.ReturnType, state);
+        for (var i = 0; i < function.Parameters.Count; i++)
+        {
+            Visit(function.Parameters[i], state);
+        }
     }
 
     private static void VisitTypeDeclaration(

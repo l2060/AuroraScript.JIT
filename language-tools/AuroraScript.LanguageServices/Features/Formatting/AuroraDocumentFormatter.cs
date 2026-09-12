@@ -475,7 +475,6 @@ internal static class AuroraDocumentFormatter
             previous.SymbolId == Symbols.KW_FOR.Id ||
             previous.SymbolId == Symbols.KW_WHILE.Id ||
             previous.SymbolId == Symbols.KW_CATCH.Id ||
-            previous.SymbolId == Symbols.KW_FUNCTION.Id ||
             previous.SymbolId == Symbols.KW_FUNC.Id)
         {
             requiredSpace = true;

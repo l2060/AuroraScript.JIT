@@ -131,7 +131,7 @@ public sealed class StringOptimizationTests
 
     private const string WordSource = """
         @module(TEST);
-        export native function WordToHex(uint32 value) String {
+        export native func WordToHex(uint32 value) String {
             var result = '';
             var temp = '';
             var octet;

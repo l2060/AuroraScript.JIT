@@ -138,11 +138,11 @@ internal static class LightweightBuiltinDefinitionQuery
         var escapedName = Regex.Escape(name);
         return Regex.IsMatch(
                 maskedSource,
-                $@"(?<!{IdentifierBoundary})(?:var|const|function|func|import)\s+{escapedName}(?!{IdentifierBoundary})",
+                $@"(?<!{IdentifierBoundary})(?:var|const|type|func|import)\s+{escapedName}(?!{IdentifierBoundary})",
                 RegexOptions.CultureInvariant) ||
             Regex.IsMatch(
                 maskedSource,
-                $@"(?<!{IdentifierBoundary})(?:function|func)\s+[$_\p{{L}}][$_\p{{L}}\p{{Nd}}]*\s*\([^)]*(?<!{IdentifierBoundary}){escapedName}(?!{IdentifierBoundary})(?!\s+(?:\.\.\.)?[$_\p{{L}}])",
+                $@"(?<!{IdentifierBoundary})(?:type|func)\s+[$_\p{{L}}][$_\p{{L}}\p{{Nd}}]*\s*\([^)]*(?<!{IdentifierBoundary}){escapedName}(?!{IdentifierBoundary})(?!\s+(?:\.\.\.)?[$_\p{{L}}])",
                 RegexOptions.CultureInvariant);
     }
 

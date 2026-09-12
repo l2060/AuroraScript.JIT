@@ -15,7 +15,7 @@ mem.go();
 
 
 
-function defineTest(name, run) {
+func defineTest(name, run) {
 	(__testCases as Array).push({ name: name, run: run });
 }
 
@@ -154,13 +154,13 @@ export func testIssue2() {
 }
 
 
-function input_change(value) {
+func input_change(value) {
 	GIVE("esd", value);
 	var c = '#00ff62ff';
 	console.log("输入值=", value);
 }
 
-export function testInput() {
+export func testInput() {
 	INPUT_NUMBER('购买数量', '输入一个0-99的值', 'number', input_change);
 
 	INPUT_NUMBER('购买数量', '输入一个0-99的值', 'number', (value) => {
@@ -494,7 +494,7 @@ export func benchmarkArrays(iterations = 200000) {
 }
 
 export func benchmarkClosure(iterations = 500000) {
-	function makeCounter() {
+	func makeCounter() {
 		var count = 0;
 		return() => {
 			count = count + 1;
@@ -623,7 +623,7 @@ defineTest("object.behavior", (ctx) => {
 	});
 
 defineTest("closure.state", (ctx) => {
-		function makeCounter(start) {
+		func makeCounter(start) {
 			var value = start;
 			return() => {
 				value = value + 1;
@@ -822,7 +822,7 @@ export func testDeconstruction() {
 
 
 
-export function testClrFunc() {
+export func testClrFunc() {
 
 	var num055 = Number("055");
 
@@ -841,14 +841,14 @@ export function testClrFunc() {
 func closure1() {
 	var title = '123';
 	var count = 0;
-	function makeCounter1() {
+	func makeCounter1() {
 		return() => {
 			title = 'ABC';
 			count = count + 1;
 			return { title, count };
 		};
 	}
-	function makeCounter2() {
+	func makeCounter2() {
 		return() => {
 			title = 'XYZ';
 			count = count + 1;
@@ -872,7 +872,7 @@ export func testTypeOf() {
 }
 
 
-export function testClosure() {
+export func testClosure() {
 	var closure = closure1();
 	console.log(JSON.stringify(closure.a()));
 	console.log(JSON.stringify(closure.b()));
@@ -880,7 +880,7 @@ export function testClosure() {
 	console.log(JSON.stringify(closure.b()));
 }
 
-export function testMD5() {
+export func testMD5() {
 	console.time("MD5_SUM");
 	var md5Code = md5.MD5("12345");
 	console.timeEnd("MD5_SUM");
@@ -888,7 +888,7 @@ export function testMD5() {
 	return md5Code;
 }
 
-export function testMD5_1000() {
+export func testMD5_1000() {
 	var last = "";
 	for (var i = 0; i < 1000; i++) {
 		last = md5.MD5("12345");

@@ -24,7 +24,7 @@ public sealed class ParserSyntaxTests
 
     [Theory]
     [InlineData("var value = 1; const fixedValue = 2;")]
-    [InlineData("func add(a, b = 2) { return a + b; } function empty() { return; }")]
+    [InlineData("func add(a, b = 2) { return a + b; } func empty() { return; }")]
     [InlineData("enum Color { Red, Green = 4, Blue }")]
     [InlineData("if (true) { var x = 1; } else if (false) { var x = 2; } else { var x = 3; }")]
     [InlineData("for (var i = 0; i < 3; i++) { if (i == 1) continue; }")]
@@ -73,12 +73,29 @@ public sealed class ParserSyntaxTests
             """
             var native = 1;
             native func internalValue() Number { return native; }
-            export native function exportedValue() Number { return internalValue(); }
+            export native func exportedValue() Number { return internalValue(); }
             """);
 
         Assert.Equal(2, module.Functions.Count);
         Assert.All(module.Functions, function => Assert.True(function.IsNative));
         Assert.Equal(MemberAccess.Export, module.Functions[1].Access);
+    }
+
+    [Fact]
+    public void TypeSyntaxDeclaresWeakAndStrongCallableTypes()
+    {
+        var module = Parse(
+            """
+            type Weak();
+            export type Handler(Number value, Array items) Boolean;
+            func apply(Handler callback) Boolean { return callback(1, []); }
+            """);
+
+        Assert.Equal(2, module.FunctionTypes.Count);
+        Assert.False(module.FunctionTypes[0].IsStrong);
+        Assert.True(module.FunctionTypes[1].IsStrong);
+        Assert.Single(module.Functions);
+        Assert.Equal(MemberAccess.Export, module.FunctionTypes[1].Access);
     }
 
     [Fact]
@@ -154,6 +171,12 @@ public sealed class ParserSyntaxTests
     [InlineData("enum E { A,,B }")]
     [InlineData("enum E { A = 1.5 }")]
     [InlineData("enum E { A = 2147483648 }")]
+    [InlineData("function oldStyle() { return 1; }")]
+    [InlineData("native function oldStyle() Number { return 1; }")]
+    [InlineData("function OldCallable(Number value) Number;")]
+    [InlineData("type Invalid(Number value = 1) Number;")]
+    [InlineData("type Invalid(Number ...values) Number;")]
+    [InlineData("type Same(Number value) Number; func Same(Number value) Number { return value; }")]
     public void RejectsInvalidSyntax(string body)
     {
         var exception = Record.Exception(() => Parse("@module(TEST);\n" + body));
@@ -246,6 +269,23 @@ public sealed class ParserSyntaxTests
         Assert.True(widget.Members[6].IsStatic);
     }
 
+    [Fact]
+    public void ParsesDeclaredCallableTypes()
+    {
+        var module = Parse(
+            """
+            @global();
+            declare type Callback();
+            declare type Predicate(Number value) Boolean;
+            """);
+
+        Assert.Equal(2, module.FunctionTypes.Count);
+        Assert.All(module.FunctionTypes, type => Assert.True(type.IsDeclare));
+        Assert.False(module.FunctionTypes[0].IsStrong);
+        Assert.True(module.FunctionTypes[1].IsStrong);
+        Assert.Equal("Boolean", module.FunctionTypes[1].ReturnType.Name);
+    }
+
     [Theory]
     [InlineData("@module(TEST);\ndeclare type Host { const VALUE; }", "only allowed inside @global")]
     [InlineData("@global();\ndeclare type Host { const VALUE = 1; }", "cannot have initializers")]
@@ -254,6 +294,7 @@ public sealed class ParserSyntaxTests
     [InlineData("@global();\ndeclare module Host { const VALUE; }", "only allows")]
     [InlineData("@global();\ndeclare type Host { constructor(); constructor(); }", "Duplicate constructor")]
     [InlineData("@global();\ndeclare type Host { var value; func value(); }", "Duplicate ambient member")]
+    [InlineData("@global();\ndeclare type Invalid(Number value = 1) Number;", "cannot use defaults")]
     public void RejectsInvalidAmbientDeclarations(string source, string message)
     {
         var parse = Assert.Throws<AuroraCompilationException>(() => Parse(source));

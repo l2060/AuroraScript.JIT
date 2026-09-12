@@ -514,8 +514,76 @@ public sealed class BuiltinLanguageFeatureTests
         Assert.Contains("callback(null, response)", hover.Contents, StringComparison.Ordinal);
         Assert.NotNull(signature);
         Assert.Equal(
-            "static func getAsync(String url, HttpRequestOptions options = null, Function callback) Boolean",
+            "static func getAsync(String url, HttpRequestOptions options = null, HttpCallback callback) Boolean",
             Assert.Single(signature!.Signatures).Label);
+
+        var definition = service.GetDefinition(
+            "test.as",
+            source,
+            PositionOf(source, "getAsync"));
+        Assert.NotNull(definition);
+        var httpDocument = service.GetBuiltinDocument(definition!.Path);
+        Assert.NotNull(httpDocument);
+        var callbackDefinition = service.GetDefinition(
+            httpDocument!.Uri,
+            PositionOf(httpDocument.Text, "HttpCallback"));
+        Assert.NotNull(callbackDefinition);
+        Assert.Equal(
+            "aurora-builtin:/HttpCallback.as",
+            callbackDefinition!.Path);
+        var callbackDocument = service.GetBuiltinDocument(callbackDefinition.Path);
+        Assert.NotNull(callbackDocument);
+        Assert.Contains(
+            "declare type HttpCallback(Object error, HttpResponse response) Object;",
+            callbackDocument!.Text,
+            StringComparison.Ordinal);
+
+        var responseDefinition = service.GetDefinition(
+            callbackDocument.Uri,
+            PositionOf(callbackDocument.Text, "HttpResponse response"));
+        Assert.NotNull(responseDefinition);
+        Assert.Equal("aurora-builtin:/HttpResponse.as", responseDefinition!.Path);
+        var responseDocument = service.GetBuiltinDocument(responseDefinition.Path);
+        Assert.NotNull(responseDocument);
+        Assert.Contains("declare type HttpResponse {", responseDocument!.Text, StringComparison.Ordinal);
+        Assert.Contains("const Number status;", responseDocument.Text, StringComparison.Ordinal);
+        Assert.Contains("const UInt8Array bytes;", responseDocument.Text, StringComparison.Ordinal);
+
+        var optionsDefinition = service.GetDefinition(
+            httpDocument.Uri,
+            PositionOf(httpDocument.Text, "HttpRequestOptions options"));
+        Assert.NotNull(optionsDefinition);
+        Assert.Equal("aurora-builtin:/HttpRequestOptions.as", optionsDefinition!.Path);
+        var optionsDocument = service.GetBuiltinDocument(optionsDefinition.Path);
+        Assert.NotNull(optionsDocument);
+        Assert.Contains("declare type HttpRequestOptions {", optionsDocument!.Text, StringComparison.Ordinal);
+        Assert.Contains("Number timeout;", optionsDocument.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DefinitionAndHoverResolveBuiltinTypeAnnotationsInScripts()
+    {
+        const string source =
+            """
+            @module(TEST);
+            import http from 'http';
+            export func handle(HttpResponse response) {
+                return response.status;
+            }
+            """;
+        var service = CreateService();
+
+        var definition = service.GetDefinition(
+            "test.as",
+            source,
+            PositionOf(source, "HttpResponse"));
+        Assert.NotNull(definition);
+        Assert.Equal("aurora-builtin:/HttpResponse.as", definition!.Path);
+
+        var hover = service.GetHover("test.as", source, PositionOf(source, "HttpResponse"));
+        Assert.NotNull(hover);
+        Assert.Contains("declare type HttpResponse {", hover!.Contents, StringComparison.Ordinal);
+        Assert.Contains("const Number status", hover.Contents, StringComparison.Ordinal);
     }
 
     [Fact]

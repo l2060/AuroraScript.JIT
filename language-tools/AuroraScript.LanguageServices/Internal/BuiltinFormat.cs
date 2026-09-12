@@ -33,6 +33,36 @@ internal static class BuiltinFormat
         return BuiltinTypeFormatter.FormatHover(code, symbol.Documentation.GetNotes(locale));
     }
 
+    public static string FormatObjectType(BuiltinApiObjectType objectType, string? locale = null)
+    {
+        var members = new string[objectType.Members.Count];
+        var index = 0;
+        foreach (var pair in objectType.Members)
+        {
+            members[index++] = BuiltinTypeFormatter.FormatMemberSignature(pair.Value, instanceMember: true);
+        }
+
+        return BuiltinTypeFormatter.FormatHover(
+            BuiltinTypeFormatter.FormatDeclareType(objectType.Name, members),
+            objectType.Documentation.GetNotes(locale));
+    }
+
+    public static string FormatFunctionType(BuiltinApiFunctionType functionType, string? locale = null)
+    {
+        var builder = new StringBuilder();
+        builder.Append("declare type ").Append(functionType.Name).Append('(');
+        BuiltinTypeFormatter.AppendMappedParameters(builder, functionType.Parameters);
+        builder
+            .Append(") ")
+            .Append(BuiltinTypeFormatter.FormatType(
+                functionType.ReturnType,
+                BuiltinTypeFormatter.TypeUsage.Return))
+            .Append(';');
+        return BuiltinTypeFormatter.FormatHover(
+            builder.ToString(),
+            functionType.Documentation.GetNotes(locale));
+    }
+
     public static string FormatModule(
         BuiltinApiModule module,
         string? alias = null,
