@@ -569,6 +569,27 @@ public sealed class CallableFunctionTypeTests
         var cases = new List<(string Source, object Expected)>
         {
             ("""
+             type Narrow(int32 x) Number;
+             func raw(x = 9) { return x; }
+             func mixed(Narrow f) {
+                 return [f(1.5), (f)(2i), f(...[3.5]), f(), f(4i,5), f(6.5), f(7i)];
+             }
+             func precise(Narrow f) Number { return f(8i); }
+             export func run() { return [mixed(raw), precise(x=>x+1)]; }
+             """, new object[] { new object[] { 1.5, 2, 3.5, 9, 4, 6.5, 7 }, 9 }),
+            ("""
+             type ObjectFactory() Object;
+             type ArrayFactory() Array;
+             func raw() { return {}; }
+             func objectValue(ObjectFactory f) Object { return f(); }
+             func arrayValue(ArrayFactory f) Array { return f(); }
+             export func run() {
+                 var value = objectValue(raw);
+                 try { arrayValue(raw); } catch (error) { return true; }
+                 return false;
+             }
+             """, true),
+            ("""
              type Signed(int64 x) String;
              type Unsigned(uint64 x) String;
              type Narrow(int32 x) Number;
@@ -725,11 +746,13 @@ public sealed class CallableFunctionTypeTests
         var (_, domain) = await workspace.CompileModuleAsync($$"""
             @module(TEST);
             type Supplier() Number;
+            type OtherSupplier() Number;
             native func use(Supplier f) Number { {{calls}} return v{{count-1}}; }
-            export func run() { return use(()=>1); }
+            native func other(OtherSupplier f) Number { return f(); }
+            export func run() { return use(()=>1) + other(()=>1); }
             """, CompilationMode.Persistence);
         using (domain)
-            ScriptAssert.Equal(1, TestWorkspace.Execute(domain, "run"));
+            ScriptAssert.Equal(2, TestWorkspace.Execute(domain, "run"));
         var methods = Assembly.Load(File.ReadAllBytes(Path.Combine(workspace.Root, "test-output.dll")))
             .GetTypes().SelectMany(t => t.GetMethods()).ToArray();
         Assert.Single(methods, m => m.Name.Contains("$callable", StringComparison.Ordinal));

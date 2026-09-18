@@ -1,6 +1,9 @@
 using AuroraScript.Compiler.Ast;
+using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Backend;
+using AuroraScript.Compiler.Backend.Plans;
 using System;
+using System.Collections.Generic;
 
 namespace AuroraScript.Compiler.Backend.Code
 {
@@ -12,6 +15,28 @@ namespace AuroraScript.Compiler.Backend.Code
     /// </summary>
     internal static class TypeReferenceFacts
     {
+        public static bool TryGetCallableType(
+            ModuleDeclaration module,
+            FunctionPlan function,
+            IReadOnlyDictionary<NameExpression, BoundName> names,
+            Expression expression,
+            out FunctionTypeDeclaration declaration,
+            out ModuleDeclaration declarationModule)
+        {
+            declaration = null;
+            declarationModule = null;
+            while (expression is GroupExpression group && group.Expressions.Count == 1)
+                expression = group.Expressions[0];
+            if (expression is not NameExpression name ||
+                !names.TryGetValue(name, out var binding) || !binding.IsLocal ||
+                (uint)binding.Local.Value >= (uint)function.LocalSlots.Length ||
+                function.LocalSlots[binding.Local.Value].Declaration is not ParameterDeclaration parameter ||
+                !TryGetFunctionType(module, parameter.DeclaredType, out declaration))
+                return false;
+            declarationModule = declaration.Parent as ModuleDeclaration ?? module;
+            return true;
+        }
+
         public static FlowValueType GetFlowType(
             ModuleDeclaration module,
             TypeReference type,

@@ -223,12 +223,8 @@ public sealed class ClrDirectCompilationTests
     public async Task UnknownMemberOnProvenClrTypeProducesNonFatalWarning()
     {
         using var workspace = new TestWorkspace();
-        using var warningOutput = new StringWriter();
-        var engine = workspace.CreateEngine(configureRuntime: runtime =>
-        {
-            runtime.RegisterCLRType<Host>("Host");
-            runtime.ConsoleErrorOut = warningOutput;
-        });
+        var engine = workspace.CreateEngine(
+            configureRuntime: runtime => runtime.RegisterCLRType<Host>("Host"));
         await engine.BuildAsync(workspace.MemorySource("main.as", """
             @module(TEST);
             export func run() {
@@ -246,7 +242,6 @@ public sealed class ClrDirectCompilationTests
             "does not contain an accessible writable instance member 'fs'",
             warning.Message,
             StringComparison.Ordinal);
-        Assert.Contains("warning:", warningOutput.ToString(), StringComparison.Ordinal);
 
         using var domain = engine.CreateDomain();
         ScriptAssert.Equal(

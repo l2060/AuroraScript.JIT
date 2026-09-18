@@ -661,6 +661,14 @@ namespace AuroraScript.Compiler.Backend.Code
                 : BoundName.Unbound;
         }
 
+        public bool TryGetCallableType(
+            ModuleDeclaration module,
+            Expression expression,
+            out FunctionTypeDeclaration declaration,
+            out ModuleDeclaration declarationModule) =>
+            TypeReferenceFacts.TryGetCallableType(
+                module, Function, _names, expression, out declaration, out declarationModule);
+
         public LocalSlotId GetDeclarationSlot(VariableDeclaration declaration)
         {
             return declaration != null && _declarations.TryGetValue(declaration, out var slot)

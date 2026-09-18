@@ -3,40 +3,32 @@ using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Backend.Code;
 using AuroraScript.Runtime;
 using System;
+using System.Collections.Generic;
+using System.Reflection;
 using System.Reflection.Emit;
 
 namespace AuroraScript.Compiler.Backend.Emission
 {
     internal sealed partial class TypedCilEmitter
     {
+        private Dictionary<FunctionTypeDeclaration, CallablePlan> _callablePlans;
+
         private bool TryEmitCallableCall(
             FunctionCallExpression call,
             bool materializeVoid,
             out StackValueKind returnKind)
         {
             returnKind = StackValueKind.Datum;
-            if (UnwrapGroup(call.Target) is not NameExpression name)
+            if (!_code.TryGetCallableType(
+                _module.Declaration, call.Target, out var callable, out var callableModule))
                 return false;
 
-            var binding = _code.GetName(name);
-            if (!binding.IsLocal ||
-                _function.LocalSlots[binding.Local.Value].Declaration
-                    is not ParameterDeclaration parameter ||
-                !TypeReferenceFacts.TryGetFunctionType(
-                    _module.Declaration, parameter.DeclaredType, out var callable))
+            var plan = GetCallablePlan(callable, callableModule);
+            ReportCallableCallWarnings(call, plan);
+            if (plan.ReturnType.Type == FlowValueType.None)
                 return false;
 
-            var callableModule = callable.Parent as ModuleDeclaration ?? _module.Declaration;
-            ReportCallableCallWarnings(call, callable, callableModule);
-            var returnFlow = TypeReferenceFacts.GetFlowType(
-                callableModule, callable.ReturnType, _session.CompileSession.HostExports);
-            if (returnFlow == FlowValueType.None)
-                return false;
-
-            TypeReferenceFacts.TryGetNativeObject(
-                _session.CompileSession.HostExports, callable.ReturnType, out var nativeReturn);
-            var returnType = new DirectParameterType(returnFlow, nativeObject: nativeReturn);
-            if (TryPlanCallableCall(call, callable, callableModule, returnType, out var plan))
+            if (CanUseCallableThunk(call, plan))
             {
                 returnKind = EmitCallableThunkCall(call, plan, materializeVoid);
             }
@@ -45,34 +37,33 @@ namespace AuroraScript.Compiler.Backend.Emission
                 // Reuse the ordinary entry for wide calls, spread and arguments
                 // that cannot safely round trip before the native target probe.
                 EmitCall(call);
-                returnKind = EmitCallableResult(_il, callable, returnType, materializeVoid);
+                returnKind = EmitCallableResult(_il, callable, plan.ReturnType, materializeVoid);
             }
             return true;
         }
 
-        private bool TryPlanCallableCall(
-            FunctionCallExpression call,
+        // Only contract facts are cached. Operand facts can differ between call
+        // sites and guarded emission, so they are checked separately below.
+        private CallablePlan GetCallablePlan(
             FunctionTypeDeclaration callable,
-            ModuleDeclaration callableModule,
-            DirectParameterType returnType,
-            out CallablePlan plan)
+            ModuleDeclaration callableModule)
         {
-            plan = default;
-            var returnsVoid = TypeReferenceFacts.IsVoid(callable.ReturnType);
-            if (HasSpread(call.Arguments) ||
-                callable.Parameters.Count != call.Arguments.Count ||
-                call.Arguments.Count >= TypedRuntimeMetadata.Invoke.Length ||
-                !returnsVoid && !CanRoundTripThroughDatum(returnType))
-                return false;
+            _callablePlans ??= new(ReferenceEqualityComparer.Instance);
+            if (_callablePlans.TryGetValue(callable, out var plan))
+                return plan;
 
+            var returnFlow = TypeReferenceFacts.GetFlowType(
+                callableModule, callable.ReturnType, _session.CompileSession.HostExports);
+            TypeReferenceFacts.TryGetNativeObject(
+                _session.CompileSession.HostExports, callable.ReturnType, out var nativeReturn);
+            var returnType = new DirectParameterType(returnFlow, nativeObject: nativeReturn);
+            var returnsVoid = TypeReferenceFacts.IsVoid(callable.ReturnType);
+            var canUseThunk = callable.Parameters.Count < TypedRuntimeMetadata.Invoke.Length &&
+                (returnsVoid || CanRoundTripThroughDatum(returnType));
             var parameterTypes = new DirectParameterType[callable.Parameters.Count];
-            var delegateSignature = new Type[callable.Parameters.Count + 2];
-            delegateSignature[0] = typeof(ScriptContext);
             for (var i = 0; i < callable.Parameters.Count; i++)
             {
                 var parameter = callable.Parameters[i];
-                if (parameter.Initializer != null || parameter.IsSpreadOperator)
-                    return false;
                 var declared = parameter.DeclaredType;
                 var flow = declared == null ? FlowValueType.Dynamic :
                     TypeReferenceFacts.GetFlowType(
@@ -80,23 +71,44 @@ namespace AuroraScript.Compiler.Backend.Emission
                 TypeReferenceFacts.TryGetNativeObject(
                     _session.CompileSession.HostExports, declared, out var native);
                 var type = new DirectParameterType(flow, nativeObject: native);
+                parameterTypes[i] = type;
+                canUseThunk &= parameter.Initializer == null && !parameter.IsSpreadOperator &&
+                    CanRoundTripThroughDatum(type);
+            }
+            Type[] delegateSignature = null;
+            if (canUseThunk)
+            {
+                delegateSignature = new Type[parameterTypes.Length + 2];
+                delegateSignature[0] = typeof(ScriptContext);
+                for (var i = 0; i < parameterTypes.Length; i++)
+                    delegateSignature[i + 1] = GetNativeParameterType(parameterTypes[i]);
+                delegateSignature[^1] = returnsVoid ? typeof(void) : GetNativeParameterType(returnType);
+            }
+            plan = new CallablePlan(callable, parameterTypes, delegateSignature, returnType);
+            _callablePlans.Add(callable, plan);
+            return plan;
+        }
+
+        private bool CanUseCallableThunk(FunctionCallExpression call, CallablePlan plan)
+        {
+            if (plan.DelegateType == null || HasSpread(call.Arguments) ||
+                plan.ParameterTypes.Length != call.Arguments.Count)
+                return false;
+            for (var i = 0; i < plan.ParameterTypes.Length; i++)
+            {
+                var type = plan.ParameterTypes[i];
+                var flow = type.Type;
                 var actual = _code.GetExpressionType(call.Arguments[i]);
                 // Native argument compatibility permits narrowing and changes of
                 // script kind. A thunk's fallback must instead recover the original
                 // datum, without introducing a conversion failure before its probe.
-                if (!CanRoundTripThroughDatum(type) ||
-                    !(flow == FlowValueType.Dynamic || flow == actual ||
+                if (!(flow == FlowValueType.Dynamic || flow == actual ||
                         flow == FlowValueType.Number &&
                             actual is FlowValueType.Int32 or FlowValueType.UInt32) ||
-                    native != null && !ReferenceEquals(
-                        _code.GetNativeObjectType(call.Arguments[i]), native))
+                    type.NativeObject != null && !ReferenceEquals(
+                        _code.GetNativeObjectType(call.Arguments[i]), type.NativeObject))
                     return false;
-
-                parameterTypes[i] = type;
-                delegateSignature[i + 1] = GetNativeParameterType(type);
             }
-            delegateSignature[^1] = returnsVoid ? typeof(void) : GetNativeParameterType(returnType);
-            plan = new CallablePlan(callable, parameterTypes, delegateSignature, returnType);
             return true;
         }
 
@@ -128,14 +140,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             return GetCallableReturnKind(returnType);
         }
 
-        private static Expression UnwrapGroup(Expression expression)
-        {
-            while (expression is GroupExpression group && group.Expressions.Count == 1)
-                expression = group.Expressions[0];
-            return expression;
-        }
-
-        private readonly struct CallablePlan
+        private sealed class CallablePlan
         {
             public CallablePlan(
                 FunctionTypeDeclaration callable,
@@ -146,7 +151,8 @@ namespace AuroraScript.Compiler.Backend.Emission
                 Callable = callable;
                 ParameterTypes = parameterTypes;
                 DelegateSignature = delegateSignature;
-                DelegateType = System.Linq.Expressions.Expression.GetDelegateType(delegateSignature);
+                DelegateType = delegateSignature == null ? null :
+                    System.Linq.Expressions.Expression.GetDelegateType(delegateSignature);
                 ReturnType = returnType;
             }
 
@@ -156,6 +162,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             public Type DelegateType { get; }
             public bool ReturnsVoid => TypeReferenceFacts.IsVoid(Callable.ReturnType);
             public DirectParameterType ReturnType { get; }
+            public MethodInfo Thunk { get; set; }
         }
     }
 }

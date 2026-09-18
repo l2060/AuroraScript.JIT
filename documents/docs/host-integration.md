@@ -561,8 +561,8 @@ registrations cannot be used as source type contracts.
 
 When flow analysis proves a frozen CLR receiver, accessing a statically named
 member that does not exist produces a non-fatal compilation warning. Warnings
-are written to `RuntimeOptions.ConsoleErrorOut` and retained in
-`AuroraEngine.CompilationWarnings`. Dynamic receivers remain unrestricted.
+are available through `AuroraEngine.CompilationWarnings`; the host decides how
+to display or log them. Dynamic receivers remain unrestricted.
 
 Expose a host object or delegate to one domain:
 

@@ -1742,22 +1742,10 @@ namespace AuroraScript.Compiler.Backend.Code
                 out HostNativeObjectDescriptor descriptor)
             {
                 descriptor = null;
-                if (call?.Target is NameExpression target &&
-                    _names.TryGetValue(target, out var binding) &&
-                    binding.DirectFunction.IsValid)
+                if (TypeReferenceFacts.TryGetNativeObject(
+                    _hostExports, GetDirectCallDeclaration(call)?.ReturnType, out descriptor))
                 {
-                    for (var i = 0; i < _module.Functions.Count; i++)
-                    {
-                        var function = _module.Functions[i];
-                        if (function.Id.Equals(binding.DirectFunction) &&
-                            TypeReferenceFacts.TryGetNativeObject(
-                                _hostExports,
-                                function.Declaration?.ReturnType,
-                                out descriptor))
-                        {
-                            return true;
-                        }
-                    }
+                    return true;
                 }
 
                 if (_function.ImportedNativeCalls.TryGetValue(call, out var imported) &&
@@ -1959,22 +1947,11 @@ namespace AuroraScript.Compiler.Backend.Code
                     return predictedStructural;
 
                 if (expression is FunctionCallExpression call &&
-                    call.Target is NameExpression target &&
-                    _names.TryGetValue(target, out var targetBinding) &&
-                    targetBinding.DirectFunction.IsValid)
+                    TypeReferenceFacts.TryGetCustomType(
+                        _module.Declaration, GetDirectCallDeclaration(call)?.ReturnType,
+                        out var returned))
                 {
-                    for (var i = 0; i < _module.Functions.Count; i++)
-                    {
-                        var function = _module.Functions[i];
-                        if (function.Id.Equals(targetBinding.DirectFunction) &&
-                            TypeReferenceFacts.TryGetCustomType(
-                                _module.Declaration,
-                                function.Declaration.ReturnType,
-                                out var returned))
-                        {
-                            return returned;
-                        }
-                    }
+                    return returned;
                 }
 
                 if (expression is FunctionCallExpression callableCall &&
@@ -2085,61 +2062,20 @@ namespace AuroraScript.Compiler.Backend.Code
                 FunctionCallExpression call,
                 int argumentIndex)
             {
-                if (call.Target is not NameExpression target ||
-                    !_names.TryGetValue(target, out var binding) ||
-                    !binding.DirectFunction.IsValid)
-                {
-                    return null;
-                }
-
-                for (var i = 0; i < _module.Functions.Count; i++)
-                {
-                    var function = _module.Functions[i];
-                    if (!function.Id.Equals(binding.DirectFunction) ||
-                        function.Declaration == null ||
-                        argumentIndex >= function.Declaration.Parameters.Count)
-                    {
-                        continue;
-                    }
-
-                    return TypeReferenceFacts.TryGetCustomType(
-                        _module.Declaration,
-                        function.Declaration.Parameters[argumentIndex].DeclaredType,
-                        out var parameterType)
-                            ? parameterType
-                            : null;
-                }
-
-                return null;
+                var declaration = GetDirectCallDeclaration(call);
+                return declaration != null && argumentIndex < declaration.Parameters.Count &&
+                    TypeReferenceFacts.TryGetCustomType(
+                        _module.Declaration, declaration.Parameters[argumentIndex].DeclaredType,
+                        out var parameterType) ? parameterType : null;
             }
 
             private bool TryGetCallableType(
                 Expression expression,
                 out FunctionTypeDeclaration declaration,
-                out ModuleDeclaration declarationModule)
-            {
-                declaration = null;
-                declarationModule = null;
-                expression = UnwrapGroups(expression);
-                if (expression is not NameExpression name ||
-                    !_names.TryGetValue(name, out var binding) ||
-                    !binding.IsLocal ||
-                    (uint)binding.Local.Value >=
-                        (uint)_function.LocalSlots.Length ||
-                    _function.LocalSlots[binding.Local.Value].Declaration
-                        is not ParameterDeclaration local ||
-                    !TypeReferenceFacts.TryGetFunctionType(
-                        _module.Declaration,
-                        local.DeclaredType,
-                        out declaration))
-                {
-                    return false;
-                }
-                declarationModule =
-                    declaration.Parent as ModuleDeclaration ??
-                    _module.Declaration;
-                return true;
-            }
+                out ModuleDeclaration declarationModule) =>
+                TypeReferenceFacts.TryGetCallableType(
+                    _module.Declaration, _function, _names, expression,
+                    out declaration, out declarationModule);
 
             private static Expression UnwrapGroups(Expression expression)
             {
@@ -3166,29 +3102,21 @@ namespace AuroraScript.Compiler.Backend.Code
                         FlowValueType.UInt16Array;
             }
 
-            private FlowValueType GetDeclaredCallReturnType(FunctionCallExpression call)
+            private FunctionDeclaration GetDirectCallDeclaration(FunctionCallExpression call)
             {
-                if (call.Target is not NameExpression target ||
+                if (call?.Target is not NameExpression target ||
                     !_names.TryGetValue(target, out var binding) ||
                     !binding.DirectFunction.IsValid)
                 {
-                    return FlowValueType.None;
+                    return null;
                 }
-                for (var i = 0; i < _module.Functions.Count; i++)
-                {
-                    var function = _module.Functions[i];
-                    if (!function.Id.Equals(binding.DirectFunction) ||
-                        function.Declaration == null)
-                    {
-                        continue;
-                    }
-                    return TypeReferenceFacts.GetFlowType(
-                        _module.Declaration,
-                        function.Declaration.ReturnType,
-                        _hostExports);
-                }
-                return FlowValueType.None;
+                var index = _module.GetFunctionIndex(binding.DirectFunction);
+                return index >= 0 ? _module.Functions[index].Declaration : null;
             }
+
+            private FlowValueType GetDeclaredCallReturnType(FunctionCallExpression call) =>
+                TypeReferenceFacts.GetFlowType(
+                    _module.Declaration, GetDirectCallDeclaration(call)?.ReturnType, _hostExports);
 
             private bool ApplyExactNumericStorage(AstNode body)
             {

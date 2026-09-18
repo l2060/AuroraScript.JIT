@@ -23,7 +23,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             CallablePlan plan,
             bool materializeVoid)
         {
-            var thunk = GetCallableThunk(plan);
+            var thunk = plan.Thunk ??= GetCallableThunk(plan);
 
             _il.Emit(OpCodes.Ldarg_0);
             EmitDatum(call.Target);

@@ -3996,9 +3996,9 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void ReportCallableCallWarnings(
             FunctionCallExpression call,
-            FunctionTypeDeclaration callable,
-            ModuleDeclaration callableModule)
+            CallablePlan plan)
         {
+            var callable = plan.Callable;
             if (!callable.IsStrong || HasSpread(call.Arguments))
             {
                 return;
@@ -4017,29 +4017,20 @@ namespace AuroraScript.Compiler.Backend.Emission
                 {
                     continue;
                 }
-                var expected = TypeReferenceFacts.GetFlowType(
-                    callableModule,
-                    declared,
-                    _session.CompileSession.HostExports);
+                var expected = plan.ParameterTypes[i];
                 var actual =
                     _code.GetExpressionType(call.Arguments[i]);
                 if (actual == FlowValueType.Dynamic ||
-                    expected == FlowValueType.None)
+                    expected.Type == FlowValueType.None)
                 {
                     continue;
                 }
-                TypeReferenceFacts.TryGetNativeObject(
-                    _session.CompileSession.HostExports,
-                    declared,
-                    out var expectedNative);
+                var expectedNative = expected.NativeObject;
                 var actualNative =
                     _code.GetNativeObjectType(call.Arguments[i]);
                 var compatible =
                     FlowValueTypeFacts.CanPassNativeArgument(
-                        new DirectParameterType(
-                            expected,
-                            nativeObject: expectedNative),
-                        actual) &&
+                        expected, actual) &&
                     (expectedNative == null ||
                         actual != FlowValueType.Object ||
                         actualNative == null ||
