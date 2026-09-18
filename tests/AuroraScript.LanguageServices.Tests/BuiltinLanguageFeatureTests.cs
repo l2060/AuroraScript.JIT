@@ -534,7 +534,7 @@ public sealed class BuiltinLanguageFeatureTests
         var callbackDocument = service.GetBuiltinDocument(callbackDefinition.Path);
         Assert.NotNull(callbackDocument);
         Assert.Contains(
-            "declare type HttpCallback(Object error, HttpResponse response) Object;",
+            "declare type HttpCallback(Object error, HttpResponse response) void;",
             callbackDocument!.Text,
             StringComparison.Ordinal);
 

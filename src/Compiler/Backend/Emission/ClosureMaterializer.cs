@@ -73,12 +73,31 @@ namespace AuroraScript.Compiler.Backend.Emission
                     il.Emit(OpCodes.Stelem, typeof(ScriptDatum));
                 }
                 // CLR-erased checked contracts must keep using the checked datum shell.
+                var declaringModule =
+                    function.CallableTypeModule ??
+                        function.Declaration.Parent as Compiler.Ast.ModuleDeclaration;
                 var complete = true;
                 foreach (var parameter in parameters)
                 {
-                    var type = TypeReferenceFacts.GetFlowType(function.Declaration.Parent as Compiler.Ast.ModuleDeclaration, parameter.DeclaredType);
+                    var type = TypeReferenceFacts.GetFlowType(
+                        declaringModule,
+                        parameter.DeclaredType,
+                        session.CompileSession.HostExports);
+                    var nativeObject =
+                        TypeReferenceFacts.TryGetNativeObject(
+                            session.CompileSession.HostExports,
+                            parameter.DeclaredType,
+                            out _);
+                    // A callable contract lowers to the same Datum the shell forwards,
+                    // so the native signature stays reconstructable for direct callers.
+                    var callable =
+                        TypeReferenceFacts.TryGetFunctionType(
+                            declaringModule,
+                            parameter.DeclaredType,
+                            out _);
                     if (parameter.DeclaredType != null && type is not (FlowValueType.Int32 or FlowValueType.UInt32 or
-                        FlowValueType.Int64 or FlowValueType.UInt64 or FlowValueType.Number or FlowValueType.Boolean or FlowValueType.String))
+                        FlowValueType.Int64 or FlowValueType.UInt64 or FlowValueType.Number or FlowValueType.Boolean or FlowValueType.String) &&
+                        !nativeObject && !callable)
                         complete = false;
                 }
                 il.Emit(complete ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);

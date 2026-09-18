@@ -1,4 +1,4 @@
-using AuroraScript.Compiler.Ast;
+﻿using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Backend.Code;
 using AuroraScript.Compiler.Backend.Plans;
@@ -99,59 +99,201 @@ namespace AuroraScript.Compiler.Backend.Analysis
                 FunctionCallExpression call,
                 FunctionPlan owner)
             {
+                // Spread changes positional correspondence. The ordinary call
+                // remains valid, but supplies no contextual parameter proof.
+                for (var i = 0; i < call.Arguments.Count; i++)
+                    if (call.Arguments[i] is SpreadExpression)
+                        return;
+
                 var target = Unwrap(call.Target) as NameExpression;
-                if (target == null ||
-                    !_moduleFunctions.TryGetValue(
+                FunctionPlan callee = null;
+                if (target != null)
+                    _moduleFunctions.TryGetValue(
                         target.Identifier.Value,
-                        out var callee) ||
-                    HasLocal(owner, target.Identifier.Value))
+                        out callee);
+
+                if (callee != null &&
+                    !HasLocal(owner, target.Identifier.Value))
                 {
+                    var count = Math.Min(
+                        call.Arguments.Count,
+                        callee.Declaration.Parameters.Count);
+                    for (var i = 0; i < count; i++)
+                    {
+                        if (TypeReferenceFacts.TryGetFunctionType(
+                                _module.Declaration,
+                                callee.Declaration.Parameters[i].DeclaredType,
+                                out var callable))
+                        {
+                            ApplyArgument(
+                                call.Arguments[i],
+                                callable,
+                                owner);
+                        }
+                    }
                     return;
                 }
 
-                var count = Math.Min(
-                    call.Arguments.Count,
-                    callee.Declaration.Parameters.Count);
+                if (!TryGetHostCallableContract(
+                        call,
+                        owner,
+                        out var argument,
+                        out var hostCallable,
+                        out var objectArgumentsAllowNull))
+                {
+                    return;
+                }
+                ApplyArgument(
+                    argument,
+                    hostCallable,
+                    owner,
+                    objectArgumentsAllowNull);
+            }
+
+            private void ApplyArgument(
+                Expression argumentExpression,
+                FunctionTypeDeclaration callable,
+                FunctionPlan owner,
+                bool objectArgumentsAllowNull = false)
+            {
+                var argument = Unwrap(argumentExpression);
+                FunctionPlan function = null;
+                if (argument is LambdaExpression lambda)
+                {
+                    _functionsByDeclaration.TryGetValue(
+                        lambda.Function,
+                        out function);
+                }
+                else if (argument is NameExpression name &&
+                    _moduleFunctions.TryGetValue(
+                        name.Identifier.Value,
+                        out var named) &&
+                    !HasLocal(owner, name.Identifier.Value))
+                {
+                    function = named;
+                }
+                if (function == null)
+                    return;
+
+                if (function.IsLambda)
+                    RecordParameterPredictions(function, callable);
+                if (!ValidateCompatibility(
+                        argumentExpression,
+                        function,
+                        callable) ||
+                    !HasCompleteNativeSignature(callable))
+                {
+                    return;
+                }
+                Apply(
+                    function,
+                    callable,
+                    objectArgumentsAllowNull);
+            }
+
+            // Discover each lambda's contextual facts once, alongside its ABI
+            // contract. Partial contracts remain predictions, never declarations.
+            private void RecordParameterPredictions(
+                FunctionPlan function,
+                FunctionTypeDeclaration callable)
+            {
+                var module = callable.Parent as ModuleDeclaration ?? _module.Declaration;
+                var count = Math.Min(function.Declaration.Parameters.Count, callable.Parameters.Count);
                 for (var i = 0; i < count; i++)
                 {
-                    if (!TypeReferenceFacts.TryGetFunctionType(
-                            _module.Declaration,
-                            callee.Declaration.Parameters[i].DeclaredType,
-                            out var callable))
-                    {
+                    var declared = callable.Parameters[i].DeclaredType;
+                    var flow = TypeReferenceFacts.GetFlowType(module, declared, _session.HostExports);
+                    if (flow == FlowValueType.None)
                         continue;
-                    }
-
-                    var argument = Unwrap(call.Arguments[i]);
-                    FunctionPlan function = null;
-                    if (argument is LambdaExpression lambda)
-                    {
-                        _functionsByDeclaration.TryGetValue(
-                            lambda.Function,
-                            out function);
-                    }
-                    else if (argument is NameExpression name &&
-                        _moduleFunctions.TryGetValue(
-                            name.Identifier.Value,
-                            out var named) &&
-                        !HasLocal(owner, name.Identifier.Value))
-                    {
-                        function = named;
-                    }
-                    if (function == null)
-                    {
-                        continue;
-                    }
-                    if (!ValidateCompatibility(
-                            call.Arguments[i],
-                            function,
-                            callable) ||
-                        !HasCompleteNativeSignature(callable))
-                    {
-                        continue;
-                    }
-                    Apply(function, callable);
+                    TypeReferenceFacts.TryGetNativeObject(_session.HostExports, declared, out var native);
+                    _module.RecordContextualParameter(function.Id, i, new ContextualParameterType(flow, native));
                 }
+            }
+
+            private bool TryGetHostCallableContract(
+                FunctionCallExpression call,
+                FunctionPlan owner,
+                out Expression argument,
+                out FunctionTypeDeclaration callable,
+                out bool objectArgumentsAllowNull)
+            {
+                argument = null;
+                callable = null;
+                objectArgumentsAllowNull = false;
+                if (Unwrap(call.Target) is not GetPropertyExpression property ||
+                    Unwrap(property.Object) is not NameExpression receiver ||
+                    Unwrap(property.Property) is not NameExpression member ||
+                    HasLocal(owner, receiver.Identifier.Value))
+                {
+                    return false;
+                }
+
+                ImportDeclaration import = null;
+                for (var i = 0; i < _module.Declaration.Imports.Count; i++)
+                {
+                    var candidate = _module.Declaration.Imports[i];
+                    if (!candidate.Include &&
+                        candidate.Name != null &&
+                        StringComparer.Ordinal.Equals(
+                            candidate.Name.Value,
+                            receiver.Identifier.Value))
+                    {
+                        import = candidate;
+                        break;
+                    }
+                }
+                if (import?.Module == null ||
+                    !_session.HostExports.TryGetPackageTypeName(
+                        import.Reference,
+                        out var ownerName) ||
+                    !_session.HostExports.TryGetGlobal(
+                        ownerName,
+                        member.Identifier.Value,
+                        out var descriptor))
+                {
+                    return false;
+                }
+
+                string callableName = null;
+                var argumentFromEnd = 0;
+                for (var candidate = descriptor;
+                    candidate != null;
+                    candidate = candidate.NextOverload)
+                {
+                    if (candidate.CallableTypeName == null)
+                    {
+                        continue;
+                    }
+                    if (callableName != null &&
+                        (!StringComparer.Ordinal.Equals(
+                            callableName,
+                            candidate.CallableTypeName) ||
+                         argumentFromEnd !=
+                            candidate.CallableArgumentFromEnd ||
+                         objectArgumentsAllowNull !=
+                            candidate.CallableObjectArgumentsAllowNull))
+                    {
+                        return false;
+                    }
+                    callableName = candidate.CallableTypeName;
+                    argumentFromEnd =
+                        candidate.CallableArgumentFromEnd;
+                    objectArgumentsAllowNull =
+                        candidate.CallableObjectArgumentsAllowNull;
+                }
+                var argumentIndex =
+                    call.Arguments.Count - argumentFromEnd - 1;
+                if (callableName == null ||
+                    (uint)argumentIndex >= (uint)call.Arguments.Count ||
+                    !import.Module.TryGetFunctionType(
+                        callableName,
+                        out callable) ||
+                    callable.Access != MemberAccess.Export)
+                {
+                    return false;
+                }
+                argument = call.Arguments[argumentIndex];
+                return argument != null;
             }
 
             private bool ValidateCompatibility(
@@ -223,7 +365,8 @@ namespace AuroraScript.Compiler.Backend.Analysis
 
             private void Apply(
                 FunctionPlan function,
-                FunctionTypeDeclaration callable)
+                FunctionTypeDeclaration callable,
+                bool objectArgumentsAllowNull)
             {
                 if (function.Declaration.Parameters.Count !=
                     callable.Parameters.Count)
@@ -249,6 +392,7 @@ namespace AuroraScript.Compiler.Backend.Analysis
                     var expected = callable.Parameters[i].DeclaredType;
                     var actual = function.Declaration.Parameters[i].DeclaredType;
                     if (actual != null &&
+                        expected != null &&
                         !StringComparer.Ordinal.Equals(
                             actual.DisplayName,
                             expected.DisplayName))
@@ -284,8 +428,21 @@ namespace AuroraScript.Compiler.Backend.Analysis
                 {
                     if (function.IsLambda)
                     {
-                        function.Declaration.Parameters[i].DeclaredType ??=
+                        var expected =
                             callable.Parameters[i].DeclaredType;
+                        if (function.Declaration.Parameters[i].DeclaredType == null &&
+                            expected != null)
+                        {
+                            function.Declaration.Parameters[i].DeclaredType =
+                                objectArgumentsAllowNull
+                                    ? new TypeReference(
+                                        expected.Qualifier,
+                                        expected.Token)
+                                    {
+                                        AllowsNull = true
+                                    }
+                                    : expected;
+                        }
                     }
                 }
                 if (function.IsLambda)
@@ -309,8 +466,7 @@ namespace AuroraScript.Compiler.Backend.Analysis
                 }
                 for (var i = 0; i < callable.Parameters.Count; i++)
                 {
-                    if (callable.Parameters[i].DeclaredType == null ||
-                        callable.Parameters[i].Initializer != null ||
+                    if (callable.Parameters[i].Initializer != null ||
                         callable.Parameters[i].IsSpreadOperator)
                     {
                         return false;

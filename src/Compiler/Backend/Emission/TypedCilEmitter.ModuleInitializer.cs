@@ -1,4 +1,4 @@
-using AuroraScript.Compiler.Ast;
+﻿using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Backend.Code;
 using AuroraScript.Compiler.Backend.Plans;

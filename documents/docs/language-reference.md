@@ -165,7 +165,10 @@ A declaration without parameter and return types is weak and preserves dynamic
 invocation. A complete strong signature validates calls, supplies contextual
 lambda parameter types, and permits a compatible non-capturing function value
 to expose a guarded native entry. Calls fall back to the ordinary Datum closure
-when no matching native entry exists. An `@global()` declaration file uses
+when no matching native entry exists. Fallback calls preserve the original script
+arguments; native dispatch must not introduce earlier argument conversions.
+A callable declared `void` discards the target's result: calls used as values
+produce `null`, including dynamic fallback and spread calls. An `@global()` declaration file uses
 `declare type Callback(...);` for a host-provided callable type.
 
 `native func` is an explicit module-scope ABI contract. It emits a

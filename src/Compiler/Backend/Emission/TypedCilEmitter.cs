@@ -1,4 +1,4 @@
-using AuroraScript.Compiler.Ast;
+﻿using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Compiler.Backend.Code;
@@ -211,7 +211,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                 if (code == null ||
                     code.ReturnType == FlowValueType.None ||
                     FlowValueTypeFacts.ContainsPackedArray(code.ReturnType) ||
-                    (HasContextLocal(function) && !function.IsNativeDeclared) ||
+                    (HasContextLocal(function) &&
+                        !function.IsNativeDeclared &&
+                        function.CallableType == null) ||
                     (!returnsVoid &&
                         !ReturnsOnAllPaths(function.Declaration.Body as Statement)))
                 {
@@ -238,7 +240,8 @@ namespace AuroraScript.Compiler.Backend.Emission
                         id => _module.GetFunctionIndex(id) is var index && index >= 0 && candidates[index],
                         directMode: true,
                         allowRuntimeBoundaryInDirectMode:
-                            function.IsNativeDeclared);
+                            function.IsNativeDeclared ||
+                            function.CallableType != null);
                     var signatureSupported =
                         function.IsNativeDeclared ||
                         function.CallableType != null ||
@@ -267,11 +270,14 @@ namespace AuroraScript.Compiler.Backend.Emission
                     parameterTypes[parameterIndex] = WithNativeObjectParameter(
                         parameterTypes[parameterIndex], function.Declaration.Parameters[parameterIndex]);
 
+                var hasContext =
+                    function.IsNativeDeclared ||
+                    function.CallableType != null;
                 var nativeParameters = new Type[
                     parameterTypes.Length +
-                    (function.IsNativeDeclared ? 1 : 0)];
-                var nativeParameterOffset = function.IsNativeDeclared ? 1 : 0;
-                if (function.IsNativeDeclared)
+                    (hasContext ? 1 : 0)];
+                var nativeParameterOffset = hasContext ? 1 : 0;
+                if (hasContext)
                 {
                     nativeParameters[0] = typeof(ScriptContext);
                 }
@@ -319,7 +325,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     native.IL,
                     code,
                     parameterTypes,
-                    function.IsNativeDeclared,
+                    hasContext,
                     nativeReturn,
                     returnsVoid
                         ? StackValueKind.Void
@@ -514,11 +520,14 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private void EmitDirectMethods()
         {
+            _directModuleState = new bool[_directMethods.Length];
+            _directModuleStateCalls = new List<FunctionId>[_directMethods.Length];
             for (var i = 0; i < _directMethods.Length; i++)
             {
                 ref var direct = ref _directMethods[i];
                 if (!direct.IsDefined || direct.Emitted) continue;
                 var function = direct.Code.Function;
+                BeginModuleStateTracking(i);
                 EmitMethodBody(
                     function,
                     direct.Code,
@@ -529,8 +538,11 @@ namespace AuroraScript.Compiler.Backend.Emission
                     direct.ReturnKind,
                     direct.NativeReturn,
                     out _);
+                EndModuleStateTracking(i);
                 direct.Emitted = true;
             }
+
+            PublishNativeEntryModuleState();
         }
 
         public bool TryEmit(FunctionPlan function, out MethodInfo method, out int localCount)
@@ -592,7 +604,9 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 var body = function.Declaration.Body as Statement;
                 var supportsRuntimeBoundary =
-                    !directMode || function.IsNativeDeclared;
+                    !directMode ||
+                    function.IsNativeDeclared ||
+                    function.CallableType != null;
                 _handlesFinallyReturn = supportsRuntimeBoundary &&
                     function.HasReturnInFinally;
                 _hasArgumentBufferCleanup = supportsRuntimeBoundary &&
@@ -1064,7 +1078,11 @@ namespace AuroraScript.Compiler.Backend.Emission
                 if (!slot.IsParameter) continue;
                 _il.Emit(
                     OpCodes.Ldarg,
-                    parameterIndex + (_function.IsNativeDeclared ? 1 : 0));
+                    parameterIndex +
+                    (_function.IsNativeDeclared ||
+                        _function.CallableType != null
+                            ? 1
+                            : 0));
                 var storageType = _locals[slot.Id.Value].LocalType;
                 var argumentType = GetNativeParameterType(
                     _directParameterTypes[parameterIndex]);
@@ -1116,8 +1134,19 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 var captured = TryGetCapturedIndex(slot, out _);
                 if (captured) _il.Emit(OpCodes.Dup);
-                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumToObject);
-                _il.Emit(OpCodes.Castclass, nativeParameter.ClrType);
+                if (declaredType.AllowsNull)
+                {
+                    _il.Emit(
+                        OpCodes.Call,
+                        typeof(TypeCheckOps)
+                            .GetMethod(nameof(TypeCheckOps.GetNullableNativeObject))
+                            .MakeGenericMethod(nativeParameter.ClrType));
+                }
+                else
+                {
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumToObject);
+                    _il.Emit(OpCodes.Castclass, nativeParameter.ClrType);
+                }
                 if (captured) _il.Emit(OpCodes.Pop);
                 return;
             }
@@ -2038,7 +2067,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                         return EmitImportedNativeCall(call, imported, materializeVoid);
                     }
                     if (TryGetDirectCall(call, out _)) return EmitDirectCall(call, materializeVoid);
-                    if (TryEmitCallableNativeCall(
+                    if (TryEmitCallableCall(
                             call,
                             materializeVoid,
                             out var callableKind))
@@ -3627,6 +3656,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 throw new NotSupportedException("Typed direct call target.");
             }
 
+            RecordModuleStateCall(function);
             ref var prepared = ref _directMethods[_module.GetFunctionIndex(function)];
             var parameterCount = prepared.ParameterTypes.Length;
             var argumentCount = call.Arguments.Count;
@@ -3682,10 +3712,14 @@ namespace AuroraScript.Compiler.Backend.Emission
             FunctionCallExpression call,
             out FunctionPlan target)
         {
+            // A native entry receives the caller context, so an entry that works
+            // on its own module state would observe this module instead.
             if (_function.ImportedNativeCalls.TryGetValue(
                     call,
                     out target) &&
-                target.NativeEntryMethod != null)
+                target.NativeEntryMethod != null &&
+                target.NativeEntryModuleStateResolved &&
+                !target.NativeEntryUsesModuleState)
             {
                 var parameters = target.Declaration.Parameters;
                 for (var i = 0; i < parameters.Count; i++)
@@ -3960,247 +3994,12 @@ namespace AuroraScript.Compiler.Backend.Emission
             return hasSpread || call.Arguments.Count > 2;
         }
 
-        private bool TryEmitCallableNativeCall(
-            FunctionCallExpression call,
-            bool materializeVoid,
-            out StackValueKind returnKind)
-        {
-            returnKind = StackValueKind.Datum;
-            var target = call?.Target;
-            while (target is GroupExpression group &&
-                group.Expressions.Count == 1)
-            {
-                target = group.Expressions[0];
-            }
-            if (target is not NameExpression name ||
-                HasSpread(call.Arguments))
-            {
-                return false;
-            }
-
-            var binding = _code.GetName(name);
-            if (!binding.IsLocal ||
-                (uint)binding.Local.Value >=
-                    (uint)_function.LocalSlots.Length ||
-                _function.LocalSlots[binding.Local.Value].Declaration
-                    is not ParameterDeclaration parameter ||
-                !TypeReferenceFacts.TryGetFunctionType(
-                    _module.Declaration,
-                    parameter.DeclaredType,
-                    out var callable))
-            {
-                return false;
-            }
-
-            var callableModule =
-                callable.Parent as ModuleDeclaration ??
-                _module.Declaration;
-            ReportCallableCallWarnings(
-                call,
-                callable,
-                callableModule);
-            if (callable.ReturnType == null ||
-                callable.Parameters.Count != call.Arguments.Count ||
-                callable.Parameters.Count > 16)
-            {
-                return false;
-            }
-            var parameterTypes =
-                new DirectParameterType[callable.Parameters.Count];
-            var delegateSignature =
-                new Type[callable.Parameters.Count + 1];
-            var canUseNativeArguments = true;
-            for (var i = 0; i < callable.Parameters.Count; i++)
-            {
-                var declared = callable.Parameters[i].DeclaredType;
-                if (declared == null)
-                {
-                    return false;
-                }
-                var flow = TypeReferenceFacts.GetFlowType(
-                    callableModule,
-                    declared,
-                    _session.CompileSession.HostExports);
-                if (flow == FlowValueType.None)
-                {
-                    return false;
-                }
-                TypeReferenceFacts.TryGetNativeObject(
-                    _session.CompileSession.HostExports,
-                    declared,
-                    out var native);
-                parameterTypes[i] =
-                    new DirectParameterType(flow, nativeObject: native);
-                delegateSignature[i] =
-                    GetNativeParameterType(parameterTypes[i]);
-                var actual =
-                    _code.GetExpressionType(call.Arguments[i]);
-                if (!FlowValueTypeFacts.CanPassNativeArgument(
-                        parameterTypes[i],
-                        actual) ||
-                    native != null &&
-                    !ReferenceEquals(
-                        _code.GetNativeObjectType(call.Arguments[i]),
-                        native))
-                {
-                    canUseNativeArguments = false;
-                }
-            }
-
-            var returnsVoid =
-                TypeReferenceFacts.IsVoid(callable.ReturnType);
-            var returnFlow = TypeReferenceFacts.GetFlowType(
-                callableModule,
-                callable.ReturnType,
-                _session.CompileSession.HostExports);
-            if (returnFlow == FlowValueType.None)
-            {
-                return false;
-            }
-            TypeReferenceFacts.TryGetNativeObject(
-                _session.CompileSession.HostExports,
-                callable.ReturnType,
-                out var nativeReturn);
-            var returnType = new DirectParameterType(
-                returnFlow,
-                nativeObject: nativeReturn);
-            delegateSignature[^1] = returnsVoid
-                ? typeof(void)
-                : GetNativeParameterType(returnType);
-            var delegateType =
-                System.Linq.Expressions.Expression.GetDelegateType(
-                    delegateSignature);
-            var invoke = delegateType.GetMethod(nameof(Action.Invoke));
-
-            var targetDatum = DeclareLocal(typeof(ScriptDatum));
-            var closure = DeclareLocal(typeof(ClosureFunction));
-            var nativeTarget = DeclareLocal(delegateType);
-            var nativeResult = returnsVoid
-                ? null
-                : DeclareLocal(delegateSignature[^1]);
-            var frame = DeclareLocal(typeof(int));
-            var fallback = _il.DefineLabel();
-            var done = _il.DefineLabel();
-
-            EmitDatum(call.Target);
-            _il.Emit(OpCodes.Stloc, targetDatum);
-            _il.Emit(OpCodes.Ldloc, targetDatum);
-            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumToObject);
-            _il.Emit(OpCodes.Isinst, typeof(ClosureFunction));
-            _il.Emit(OpCodes.Stloc, closure);
-            _il.Emit(OpCodes.Ldloc, closure);
-            _il.Emit(OpCodes.Brfalse, fallback);
-            _il.Emit(OpCodes.Ldloc, closure);
-            _il.Emit(
-                OpCodes.Call,
-                typeof(CallFrameOps).GetMethod(
-                    nameof(CallFrameOps.GetNativeTarget)));
-            _il.Emit(OpCodes.Isinst, delegateType);
-            _il.Emit(OpCodes.Stloc, nativeTarget);
-            _il.Emit(OpCodes.Ldloc, nativeTarget);
-            _il.Emit(OpCodes.Brfalse, fallback);
-            if (!canUseNativeArguments)
-            {
-                _il.Emit(OpCodes.Br, fallback);
-            }
-
-            _il.Emit(OpCodes.Ldarg_0);
-            _il.Emit(OpCodes.Ldloc, closure);
-            _il.Emit(
-                OpCodes.Call,
-                typeof(CallFrameOps).GetMethod(
-                    nameof(CallFrameOps.EnterClosure)));
-            _il.Emit(OpCodes.Stloc, frame);
-
-            _il.BeginExceptionBlock();
-            _protectedRegionDepth++;
-            try
-            {
-                _il.Emit(OpCodes.Ldloc, nativeTarget);
-                for (var i = 0; i < call.Arguments.Count; i++)
-                {
-                    EmitDirectArgument(
-                        call.Arguments[i],
-                        parameterTypes[i]);
-                }
-                _il.Emit(OpCodes.Callvirt, invoke);
-                if (!returnsVoid)
-                {
-                    _il.Emit(OpCodes.Stloc, nativeResult);
-                }
-            }
-            finally
-            {
-                _protectedRegionDepth--;
-            }
-            _il.BeginFinallyBlock();
-            _il.Emit(OpCodes.Ldarg_0);
-            _il.Emit(OpCodes.Ldloc, frame);
-            _il.Emit(
-                OpCodes.Call,
-                typeof(CallFrameOps).GetMethod(
-                    nameof(CallFrameOps.Leave)));
-            _il.EndExceptionBlock();
-            if (returnsVoid)
-            {
-                if (materializeVoid)
-                {
-                    EmitNull();
-                }
-            }
-            else
-            {
-                _il.Emit(OpCodes.Ldloc, nativeResult);
-            }
-            _il.Emit(OpCodes.Br, done);
-
-            _il.MarkLabel(fallback);
-            _il.Emit(OpCodes.Ldloc, targetDatum);
-            _il.Emit(OpCodes.Ldarg_0);
-            for (var i = 0; i < call.Arguments.Count; i++)
-            {
-                EmitDatum(call.Arguments[i]);
-            }
-            _il.Emit(
-                OpCodes.Call,
-                TypedRuntimeMetadata.Invoke[call.Arguments.Count]);
-            if (returnsVoid)
-            {
-                if (!materializeVoid)
-                {
-                    _il.Emit(OpCodes.Pop);
-                }
-            }
-            else if (returnType.NativeObject == null &&
-                FlowValueTypeFacts.FromCheckedTypeName(
-                    callable.ReturnType.Name) != FlowValueType.None)
-            {
-                _il.Emit(
-                    OpCodes.Call,
-                    TypedRuntimeMetadata.GetTypeCheck(
-                        FlowValueTypeFacts.GetCheckedType(
-                            callable.ReturnType.Name)));
-            }
-            if (!returnsVoid)
-            {
-                EmitDatumToNativeParameter(_il, returnType);
-            }
-
-            _il.MarkLabel(done);
-            returnKind = returnsVoid
-                ? materializeVoid
-                    ? StackValueKind.Datum
-                    : StackValueKind.Void
-                : GetCallableReturnKind(returnType);
-            return true;
-        }
-
         private void ReportCallableCallWarnings(
             FunctionCallExpression call,
             FunctionTypeDeclaration callable,
             ModuleDeclaration callableModule)
         {
-            if (!callable.IsStrong)
+            if (!callable.IsStrong || HasSpread(call.Arguments))
             {
                 return;
             }
@@ -4971,6 +4770,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 if (TryEmitModuleCachedRead(expression, out var cachedKind)) return cachedKind;
                 if (TryEmitSharedModuleRead(expression)) return StackValueKind.Datum;
 
+                MarkModuleStateUse(binding);
                 _il.Emit(OpCodes.Ldarg_0);
                 _session.Builder.LoadStringConstant(_il, binding.Name);
                 _il.Emit(OpCodes.Call, IsModuleBinding(binding)
@@ -5784,6 +5584,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     _il.Emit(OpCodes.Ldloc, value);
                     return StackValueKind.Datum;
                 }
+                MarkModuleStateUse(binding);
                 _il.Emit(OpCodes.Ldarg_0);
                 _session.Builder.LoadStringConstant(_il, binding.Name);
                 EmitDatum(assignment.Right);
@@ -6521,6 +6322,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 EmitStoreUpvalue(binding.Upvalue, value);
                 return;
             }
+            MarkModuleStateUse(binding);
             _il.Emit(OpCodes.Ldarg_0);
             _session.Builder.LoadStringConstant(_il, binding.Name);
             _il.Emit(OpCodes.Ldloc, value);

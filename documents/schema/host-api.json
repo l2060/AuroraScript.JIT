@@ -2364,6 +2364,11 @@
         "ImportPath": {
           "kind": "property",
           "signature": "string ImportPath"
+        },
+        "Declarations": {
+          "kind": "property",
+          "signature": "string Declarations",
+          "summary": "Optional compile-time declarations appended to the package module; callable types do not create runtime members."
         }
       },
       "notes": [
@@ -2435,6 +2440,21 @@
           "signature": "string DynamicAdapter",
           "summary": "Optional compatible Datum callback used for dynamic calls while the exported fixed Core remains available to direct-call compilation."
         },
+        "CallableType": {
+          "kind": "property",
+          "signature": "string CallableType",
+          "summary": "Names an exported callable contract declared by the containing native package."
+        },
+        "CallableArgumentFromEnd": {
+          "kind": "property",
+          "signature": "int CallableArgumentFromEnd",
+          "summary": "Zero-based callback argument position counted from the end of the script argument list."
+        },
+        "CallableObjectArgumentsAllowNull": {
+          "kind": "property",
+          "signature": "bool CallableObjectArgumentsAllowNull",
+          "summary": "Allows object-backed callback parameters to receive script null while retaining their native type on non-null paths."
+        },
         "IsGetter": {
           "kind": "property",
           "signature": "bool IsGetter",
@@ -2460,6 +2480,7 @@
         "A CLR void return is a procedure. Direct native calls used as statements do not materialize a result; dynamic or exported calls observe script null, matching native func ... void.",
         "params exports generate Datum adapters only; they are not compiler direct-call candidates.",
         "DynamicAdapter names an existing compatibility callback and suppresses generation of a dynamic wrapper. IsGetter exports a zero-argument instance Core or CLR get accessor as a property getter. IsSetter exports a one-required-argument void native-instance Core as the matching setter.",
+        "CallableType links a callback argument to a package declaration such as export type Callback(Object value) void;. The ordinary ScriptObject callback ABI remains available. A compatible non-capturing lambda may additionally expose a context-aware native target; capturing lambdas retain their dynamic closure entry.",
         "For a CLR property, put Export with an explicit script name and IsGetter = true on its get accessor, not on the property declaration. Proven reads call get_Property directly; dynamic reads use the usual adapter. Preserve script value kinds and conversion behavior when removing a Core wrapper.",
         "Writable and Enumerable default to false for methods and constants. Mutable native instance fields default to writable and all native instance fields default to enumerable unless explicitly overridden. Writable method and constant slots are omitted from the compiler native-call catalog. Native fields and getter/setter exports are routed by generated instance property overrides."
       ]

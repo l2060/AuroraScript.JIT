@@ -17,7 +17,10 @@ namespace AuroraScript.Compiler.Backend.Emission
         /// <summary>
         /// True when argument zero of the method being emitted is the script context.
         /// </summary>
-        private bool HasContextArgument => !_directMode || _function.IsNativeDeclared;
+        private bool HasContextArgument =>
+            !_directMode ||
+            _function.IsNativeDeclared ||
+            _function.CallableType != null;
 
         private bool TryGetNativeIndexer(Expression receiver, Expression index, out HostNativeObjectDescriptor owner)
         {

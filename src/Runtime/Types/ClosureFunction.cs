@@ -43,7 +43,7 @@ namespace AuroraScript.Runtime.Types
             bool signatureComplete)
         {
             SetNativeEntry(method, defaults, signatureComplete);
-            NativeEntryTakesContext = false;
+            NativeEntryTakesContext = true;
             NativeTarget = CreateNativeTarget(method);
         }
 
@@ -185,7 +185,7 @@ namespace AuroraScript.Runtime.Types
             }
             catch
             {
-                AbortInvoke(ctx, frame);
+                CallFrameOps.Abort(ctx, frame);
                 throw;
             }
             ctx.LeaveFrame(frame);
@@ -213,7 +213,7 @@ namespace AuroraScript.Runtime.Types
             }
             catch
             {
-                AbortInvoke(ctx, frame);
+                CallFrameOps.Abort(ctx, frame);
                 throw;
             }
             ctx.LeaveFrame(frame);
@@ -241,7 +241,7 @@ namespace AuroraScript.Runtime.Types
             }
             catch
             {
-                AbortInvoke(ctx, frame);
+                CallFrameOps.Abort(ctx, frame);
                 throw;
             }
             ctx.LeaveFrame(frame);
@@ -269,7 +269,7 @@ namespace AuroraScript.Runtime.Types
             }
             catch
             {
-                AbortInvoke(ctx, frame);
+                CallFrameOps.Abort(ctx, frame);
                 throw;
             }
             ctx.LeaveFrame(frame);
@@ -297,7 +297,7 @@ namespace AuroraScript.Runtime.Types
             }
             catch
             {
-                AbortInvoke(ctx, frame);
+                CallFrameOps.Abort(ctx, frame);
                 throw;
             }
             ctx.LeaveFrame(frame);
@@ -325,7 +325,7 @@ namespace AuroraScript.Runtime.Types
             }
             catch
             {
-                AbortInvoke(ctx, frame);
+                CallFrameOps.Abort(ctx, frame);
                 throw;
             }
             ctx.LeaveFrame(frame);
@@ -353,7 +353,7 @@ namespace AuroraScript.Runtime.Types
             }
             catch
             {
-                AbortInvoke(ctx, frame);
+                CallFrameOps.Abort(ctx, frame);
                 throw;
             }
             ctx.LeaveFrame(frame);
@@ -381,7 +381,7 @@ namespace AuroraScript.Runtime.Types
             }
             catch
             {
-                AbortInvoke(ctx, frame);
+                CallFrameOps.Abort(ctx, frame);
                 throw;
             }
             ctx.LeaveFrame(frame);
@@ -442,6 +442,44 @@ namespace AuroraScript.Runtime.Types
             }
         }
 
+        /// <summary>
+        /// Invokes a cached context-aware native callable from a detached root.
+        /// Returns false when the closure has no exactly matching native target,
+        /// allowing the caller to preserve the ordinary dynamic ABI.
+        /// </summary>
+        internal bool TryInvokeNativeDetached<T1, T2>(
+            ScriptObject userState,
+            T1 argument1,
+            T2 argument2)
+        {
+            if (NativeTarget is not Action<ScriptContext, T1, T2> target)
+            {
+                return false;
+            }
+
+            var context = Domain.ContextPool.Rent(
+                Domain,
+                userState,
+                Module,
+                null);
+            var frame = context.EnterClosure(this);
+            try
+            {
+                target(context, argument1, argument2);
+                context.LeaveFrame(frame);
+                return true;
+            }
+            catch
+            {
+                CallFrameOps.Abort(context, frame);
+                throw;
+            }
+            finally
+            {
+                context.Release();
+            }
+        }
+
         private ScriptDatum InvokeArray(ScriptContext ctx, Span<ScriptDatum> args)
         {
             var frame = ctx.EnterClosure(this);
@@ -463,7 +501,7 @@ namespace AuroraScript.Runtime.Types
             }
             catch
             {
-                AbortInvoke(ctx, frame);
+                CallFrameOps.Abort(ctx, frame);
                 throw;
             }
             ctx.LeaveFrame(frame);
@@ -538,12 +576,6 @@ namespace AuroraScript.Runtime.Types
             args[5] = arg5;
             args[6] = arg6;
             return ((ScriptFunctionDelegate)targetDelegate).Invoke(context, args);
-        }
-
-        private static void AbortInvoke(ScriptContext context, int restoreDepth)
-        {
-            context.CaptureExceptionStack();
-            context.LeaveFrame(restoreDepth);
         }
 
         private static ScriptDatum GetArg(Span<ScriptDatum> args, int index)

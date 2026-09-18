@@ -50,6 +50,17 @@ Bare `"fs"` resolves to the enabled extension package before the project resolve
 
 Each engine and script domain receives its own module instance. Selecting a package for one engine does not make it available to another engine. Package selections must be finalized before constructing `AuroraEngine` so compiler resolution, Host Core direct calls, and runtime registration stay consistent. `WithNativeTypes(typeof(FileSystemSupport))` and `AddNativeType<FileSystemSupport>()` are rejected; enable packages only with `WithPackages`. Custom packages can also be added with `packages.Add<T>()` when `T` is a generated `[NativePackage]` type.
 
+Custom packages can expose compile-time callback contracts through
+`NativePackageAttribute.Declarations`, for example
+`export type Completion(Object error, Result value) void;`. Set
+`ExportAttribute.CallableType` on the Core method that receives the callback;
+`CallableArgumentFromEnd` identifies its script argument when it is not the
+last one. The exported Core still receives a normal `ScriptObject` callback.
+A compatible non-capturing lambda may additionally use a context-aware native
+target, while capturing lambdas retain the dynamic closure entry. Set
+`CallableObjectArgumentsAllowNull` when an object-backed callback parameter is
+an error-first/optional value.
+
 Every path parameter exposed by `fs` accepts either a path string or a script `Path` object. Write, append, copy, move, and directory-creation operations return `true` when they complete. The module provides these baseline APIs:
 
 | Script API | Result and behavior |

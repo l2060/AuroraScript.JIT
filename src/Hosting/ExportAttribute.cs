@@ -42,6 +42,25 @@ namespace AuroraScript.Hosting
         /// span; those constructors are not bypassed by direct CLR constructor emission.</summary>
         public string DynamicAdapter { get; set; }
 
+        /// <summary>
+        /// Optional callable type used by a script callback argument. The type
+        /// must be declared by the native package's compile-time declarations.
+        /// </summary>
+        public string CallableType { get; set; }
+
+        /// <summary>
+        /// Zero-based callback argument position counted from the end of the
+        /// script argument list.
+        /// </summary>
+        public int CallableArgumentFromEnd { get; set; }
+
+        /// <summary>
+        /// Allows callback parameters with object-backed contracts to receive
+        /// script <c>null</c>. The native representation is a nullable CLR
+        /// reference while the ordinary callback entry remains dynamic.
+        /// </summary>
+        public bool CallableObjectArgumentsAllowNull { get; set; }
+
         /// <summary>Exports a zero-argument instance Core method as a property getter.</summary>
         public bool IsGetter { get; set; }
 

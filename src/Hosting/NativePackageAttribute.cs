@@ -19,5 +19,12 @@ namespace AuroraScript.Hosting
 
         /// <summary>Bare path used by script imports.</summary>
         public string ImportPath { get; }
+
+        /// <summary>
+        /// Optional compile-time declarations appended to the package module.
+        /// Use this for exported callable contracts; declarations do not create
+        /// runtime package members.
+        /// </summary>
+        public string Declarations { get; set; }
     }
 }

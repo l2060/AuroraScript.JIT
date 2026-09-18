@@ -118,7 +118,7 @@ public sealed class BuiltinApiCatalogTests
         Assert.Equal("boolean", getAsync.ReturnType);
 
         Assert.True(catalog.FunctionTypes.TryGetValue("HttpCallback", out var callback));
-        Assert.Equal("object", callback.ReturnType);
+        Assert.Equal("void", callback.ReturnType);
         Assert.Collection(
             callback.Parameters,
             error => Assert.Equal(("error", "object"), (error.Name, error.Type)),

@@ -8,7 +8,7 @@
         { "name": "error", "type": "object" },
         { "name": "response", "type": "HttpResponse" }
       ],
-      "returns": "object",
+      "returns": "void",
       "notes": {
         "en": ["Receives either an error with a null response or a null error with a buffered HTTP response."],
         "zh-CN": ["接收错误与空响应，或空错误与已缓冲的 HTTP 响应。"]

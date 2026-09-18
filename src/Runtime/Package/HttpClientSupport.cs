@@ -13,7 +13,10 @@ using System.Threading.Tasks;
 namespace AuroraScript.Runtime.Package
 {
     [NativeType("http")]
-    [NativePackage("http")]
+    [NativePackage(
+        "http",
+        Declarations =
+            "export type HttpCallback(error, HttpResponse response) void;")]
     public sealed partial class HttpClientSupport : ScriptObject
     {
         private static readonly HttpClient Client = CreateClient();
@@ -22,8 +25,11 @@ namespace AuroraScript.Runtime.Package
         public static HttpResponseValue RequestCore(string method, string url)
             => ExecuteObject(CreateSimpleRequest(method, url, "request"));
 
-        [AuroraCallbackArgument(0, 1, typeof(HttpResponseValue))]
-        [Export("requestAsync", DynamicAdapter = nameof(REQUEST_ASYNC))]
+        [Export(
+            "requestAsync",
+            DynamicAdapter = nameof(REQUEST_ASYNC),
+            CallableType = "HttpCallback",
+            CallableObjectArgumentsAllowNull = true)]
         public static bool RequestAsyncCore(ScriptContext ctx, string method, string url, ScriptObject callback)
             => StartAsync(ctx, CreateSimpleRequest(method, url, "requestAsync"), callback, "requestAsync");
 
@@ -31,8 +37,11 @@ namespace AuroraScript.Runtime.Package
         public static HttpResponseValue GetCore(string url)
             => ExecuteObject(CreateSimpleSpec(HttpMethod.Get, url, "get"));
 
-        [AuroraCallbackArgument(0, 1, typeof(HttpResponseValue))]
-        [Export("getAsync", DynamicAdapter = nameof(GET_ASYNC))]
+        [Export(
+            "getAsync",
+            DynamicAdapter = nameof(GET_ASYNC),
+            CallableType = "HttpCallback",
+            CallableObjectArgumentsAllowNull = true)]
         public static bool GetAsyncCore(ScriptContext ctx, string url, ScriptObject callback)
             => StartAsync(ctx, CreateSimpleSpec(HttpMethod.Get, url, "getAsync"), callback, "getAsync");
 
@@ -50,8 +59,11 @@ namespace AuroraScript.Runtime.Package
             => ExecuteObject(CreateSimpleSpec(HttpMethod.Post, url, "post", CopyBytes(body),
                 "application/octet-stream"));
 
-        [AuroraCallbackArgument(0, 1, typeof(HttpResponseValue))]
-        [Export("postAsync", DynamicAdapter = nameof(POST_ASYNC))]
+        [Export(
+            "postAsync",
+            DynamicAdapter = nameof(POST_ASYNC),
+            CallableType = "HttpCallback",
+            CallableObjectArgumentsAllowNull = true)]
         public static bool PostAsyncCore(ScriptContext ctx, string url, ScriptObject callback)
             => StartAsync(ctx, CreateSimpleSpec(HttpMethod.Post, url, "postAsync"), callback, "postAsync");
 
@@ -64,8 +76,11 @@ namespace AuroraScript.Runtime.Package
             => ExecuteObject(CreateSimpleSpec(HttpMethod.Put, url, "put", EncodeTextBody(body),
                 "text/plain; charset=utf-8"));
 
-        [AuroraCallbackArgument(0, 1, typeof(HttpResponseValue))]
-        [Export("putAsync", DynamicAdapter = nameof(PUT_ASYNC))]
+        [Export(
+            "putAsync",
+            DynamicAdapter = nameof(PUT_ASYNC),
+            CallableType = "HttpCallback",
+            CallableObjectArgumentsAllowNull = true)]
         public static bool PutAsyncCore(ScriptContext ctx, string url, ScriptObject callback)
             => StartAsync(ctx, CreateSimpleSpec(HttpMethod.Put, url, "putAsync"), callback, "putAsync");
 
@@ -78,8 +93,11 @@ namespace AuroraScript.Runtime.Package
             => ExecuteObject(CreateSimpleSpec(HttpMethod.Patch, url, "patch", EncodeTextBody(body),
                 "text/plain; charset=utf-8"));
 
-        [AuroraCallbackArgument(0, 1, typeof(HttpResponseValue))]
-        [Export("patchAsync", DynamicAdapter = nameof(PATCH_ASYNC))]
+        [Export(
+            "patchAsync",
+            DynamicAdapter = nameof(PATCH_ASYNC),
+            CallableType = "HttpCallback",
+            CallableObjectArgumentsAllowNull = true)]
         public static bool PatchAsyncCore(ScriptContext ctx, string url, ScriptObject callback)
             => StartAsync(ctx, CreateSimpleSpec(HttpMethod.Patch, url, "patchAsync"), callback, "patchAsync");
 
@@ -87,8 +105,11 @@ namespace AuroraScript.Runtime.Package
         public static HttpResponseValue DeleteCore(string url)
             => ExecuteObject(CreateSimpleSpec(HttpMethod.Delete, url, "delete"));
 
-        [AuroraCallbackArgument(0, 1, typeof(HttpResponseValue))]
-        [Export("deleteAsync", DynamicAdapter = nameof(DELETE_ASYNC))]
+        [Export(
+            "deleteAsync",
+            DynamicAdapter = nameof(DELETE_ASYNC),
+            CallableType = "HttpCallback",
+            CallableObjectArgumentsAllowNull = true)]
         public static bool DeleteAsyncCore(ScriptContext ctx, string url, ScriptObject callback)
             => StartAsync(ctx, CreateSimpleSpec(HttpMethod.Delete, url, "deleteAsync"), callback, "deleteAsync");
 
@@ -96,8 +117,11 @@ namespace AuroraScript.Runtime.Package
         public static HttpResponseValue HeadCore(string url)
             => ExecuteObject(CreateSimpleSpec(HttpMethod.Head, url, "head"));
 
-        [AuroraCallbackArgument(0, 1, typeof(HttpResponseValue))]
-        [Export("headAsync", DynamicAdapter = nameof(HEAD_ASYNC))]
+        [Export(
+            "headAsync",
+            DynamicAdapter = nameof(HEAD_ASYNC),
+            CallableType = "HttpCallback",
+            CallableObjectArgumentsAllowNull = true)]
         public static bool HeadAsyncCore(ScriptContext ctx, string url, ScriptObject callback)
             => StartAsync(ctx, CreateSimpleSpec(HttpMethod.Head, url, "headAsync"), callback, "headAsync");
 
@@ -689,9 +713,11 @@ namespace AuroraScript.Runtime.Package
 
             ScriptDatum error = ScriptDatum.Null;
             ScriptDatum response = ScriptDatum.Null;
+            HttpResponseValue nativeResponse = null;
             try
             {
-                response = ScriptDatum.FromObject(await SendAsync(spec).ConfigureAwait(false));
+                nativeResponse = await SendAsync(spec).ConfigureAwait(false);
+                response = ScriptDatum.FromObject(nativeResponse);
             }
             catch (Exception exception) when (IsRequestException(exception))
             {
@@ -702,7 +728,13 @@ namespace AuroraScript.Runtime.Package
 
             try
             {
-                callback.InvokeClrDetached(userState, error, response);
+                if (!callback.TryInvokeNativeDetached(
+                        userState,
+                        error,
+                        nativeResponse))
+                {
+                    callback.InvokeClrDetached(userState, error, response);
+                }
             }
             catch (Exception exception)
             {

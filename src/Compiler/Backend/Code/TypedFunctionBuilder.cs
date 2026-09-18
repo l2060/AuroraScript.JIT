@@ -705,6 +705,7 @@ namespace AuroraScript.Compiler.Backend.Code
                         }
                         if (function.LocalSlots[i].Declaration is
                                 ParameterDeclaration nativeParameter &&
+                            !IsCaptured(function.LocalSlots[i].Id) &&
                             TypeReferenceFacts.TryGetNativeObject(
                                 hostExports,
                                 nativeParameter.DeclaredType,
@@ -1227,7 +1228,6 @@ namespace AuroraScript.Compiler.Backend.Code
                                 InvalidateLocalFieldsUsedAsValue(call.Arguments[i]);
                             }
                         }
-                        RecordCallableLambdaParameters(call);
 
                         if (TryBindClrCall(call, out var clrCall))
                         {
@@ -1302,8 +1302,6 @@ namespace AuroraScript.Compiler.Backend.Code
                                      call.Target,
                                      out var callable,
                                      out var callableModule) &&
-                            callable.Parameters.Count ==
-                                call.Arguments.Count &&
                             callable.ReturnType != null)
                         {
                             type = TypeReferenceFacts.GetFlowType(
@@ -2115,104 +2113,6 @@ namespace AuroraScript.Compiler.Backend.Code
                 return null;
             }
 
-            private void RecordCallableLambdaParameters(
-                FunctionCallExpression call)
-            {
-                if (call?.Target is not NameExpression target ||
-                    !_names.TryGetValue(target, out var binding) ||
-                    !binding.DirectFunction.IsValid)
-                {
-                    return;
-                }
-
-                FunctionPlan callee = null;
-                for (var i = 0; i < _module.Functions.Count; i++)
-                {
-                    if (_module.Functions[i].Id.Equals(
-                            binding.DirectFunction))
-                    {
-                        callee = _module.Functions[i];
-                        break;
-                    }
-                }
-                if (callee?.Declaration == null)
-                {
-                    return;
-                }
-
-                var count = Math.Min(
-                    call.Arguments.Count,
-                    callee.Declaration.Parameters.Count);
-                for (var argumentIndex = 0;
-                    argumentIndex < count;
-                    argumentIndex++)
-                {
-                    if (UnwrapGroups(call.Arguments[argumentIndex])
-                            is not LambdaExpression lambda ||
-                        !TypeReferenceFacts.TryGetFunctionType(
-                            _module.Declaration,
-                            callee.Declaration.Parameters[argumentIndex]
-                                .DeclaredType,
-                            out var callable))
-                    {
-                        continue;
-                    }
-
-                    var callableModule =
-                        callable.Parent as ModuleDeclaration ??
-                        _module.Declaration;
-                    FunctionPlan callback = null;
-                    for (var functionIndex = 0;
-                        functionIndex < _module.Functions.Count;
-                        functionIndex++)
-                    {
-                        var candidate = _module.Functions[functionIndex];
-                        if (ReferenceEquals(
-                                candidate.Declaration,
-                                lambda.Function))
-                        {
-                            callback = candidate;
-                            break;
-                        }
-                    }
-                    if (callback == null)
-                    {
-                        continue;
-                    }
-
-                    var parameterCount = Math.Min(
-                        callable.Parameters.Count,
-                        lambda.Function.Parameters.Count);
-                    for (var parameterIndex = 0;
-                        parameterIndex < parameterCount;
-                        parameterIndex++)
-                    {
-                        var declared =
-                            callable.Parameters[parameterIndex].DeclaredType;
-                        if (declared == null)
-                        {
-                            continue;
-                        }
-                        var flow = TypeReferenceFacts.GetFlowType(
-                            callableModule,
-                            declared,
-                            _hostExports);
-                        if (flow == FlowValueType.None)
-                        {
-                            continue;
-                        }
-                        TypeReferenceFacts.TryGetNativeObject(
-                            _hostExports,
-                            declared,
-                            out var native);
-                        _module.RecordContextualParameter(
-                            callback.Id,
-                            parameterIndex,
-                            new ContextualParameterType(flow, native));
-                    }
-                }
-            }
-
             private bool TryGetCallableType(
                 Expression expression,
                 out FunctionTypeDeclaration declaration,
@@ -2632,7 +2532,6 @@ namespace AuroraScript.Compiler.Backend.Code
                         _hostExports.TryGetGlobal(ownerName, memberName, out descriptor);
                     if (descriptor != null)
                     {
-                        RecordCallbackNativeParameters(call, descriptor);
                         HostExportArgumentFacts.TrySelectOverload(descriptor, call.Arguments,
                             HostArgumentType, HostArgumentClrType, out descriptor);
                     }
@@ -2699,48 +2598,6 @@ namespace AuroraScript.Compiler.Backend.Code
                 }
                 return returnType != null &&
                     _hostExports.TryGetNativeObject(returnType, out nativeType);
-            }
-
-            private void RecordCallbackNativeParameters(
-                FunctionCallExpression call,
-                HostExportDescriptor descriptor)
-            {
-                if (descriptor.CallbackArguments.Count == 0)
-                {
-                    return;
-                }
-                for (var i = 0; i < descriptor.CallbackArguments.Count; i++)
-                {
-                    var contract = descriptor.CallbackArguments[i];
-                    var argumentIndex = call.Arguments.Count -
-                        contract.CallbackArgumentFromEnd - 1;
-                    if ((uint)argumentIndex >= (uint)call.Arguments.Count ||
-                        call.Arguments[argumentIndex] is not LambdaExpression lambda ||
-                        (uint)contract.CallbackParameterIndex >=
-                            (uint)lambda.Function.Parameters.Count ||
-                        !_hostExports.TryGetNativeObject(
-                            contract.NativeType,
-                            out var nativeType))
-                    {
-                        continue;
-                    }
-
-                    for (var functionIndex = 0;
-                        functionIndex < _module.Functions.Count;
-                        functionIndex++)
-                    {
-                        var callback = _module.Functions[functionIndex];
-                        if (!ReferenceEquals(callback.Declaration, lambda.Function))
-                        {
-                            continue;
-                        }
-                        _module.RecordContextualNativeParameter(
-                            callback.Id,
-                            contract.CallbackParameterIndex,
-                            nativeType);
-                        break;
-                    }
-                }
             }
 
             private void BindLoadedConstant(GetPropertyExpression property)

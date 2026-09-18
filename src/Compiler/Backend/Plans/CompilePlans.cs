@@ -1,4 +1,4 @@
-using AuroraScript.Compiler.Ast;
+﻿using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Compiler.Backend.Binding;
@@ -213,6 +213,17 @@ namespace AuroraScript.Compiler.Backend.Plans
         public bool IsLambda => Declaration?.Flags == FunctionFlags.Lambda;
         public bool IsNativeDeclared => Declaration?.IsNative == true;
         public MethodInfo NativeEntryMethod { get; set; }
+        /// <summary>
+        /// True when the native entry reads or writes the active module of the
+        /// context it receives. Such an entry observes the caller module when it
+        /// is invoked directly, so only its own module may call it that way.
+        /// </summary>
+        public bool NativeEntryUsesModuleState { get; set; }
+        /// <summary>
+        /// True once the native entry body has been emitted and its module usage
+        /// is final. Before that the entry must be treated as module dependent.
+        /// </summary>
+        public bool NativeEntryModuleStateResolved { get; set; }
         public FunctionTypeDeclaration CallableType { get; set; }
         public ModuleDeclaration CallableTypeModule { get; set; }
         public bool HasCallableTypeConflict { get; set; }
@@ -272,23 +283,6 @@ namespace AuroraScript.Compiler.Backend.Plans
             var index = GetFunctionIndex(function);
             return index >= 0 && (uint)parameterIndex < (uint)_functions[index].Declaration.Parameters.Count &&
                 _functions[index].Declaration.Parameters[parameterIndex].Initializer != null;
-        }
-
-        public void RecordContextualNativeParameter(
-            FunctionId function,
-            int parameterIndex,
-            HostNativeObjectDescriptor nativeType)
-        {
-            if (nativeType == null)
-            {
-                return;
-            }
-            RecordContextualParameter(
-                function,
-                parameterIndex,
-                new ContextualParameterType(
-                    FlowValueType.Object,
-                    nativeType));
         }
 
         public void RecordContextualParameter(

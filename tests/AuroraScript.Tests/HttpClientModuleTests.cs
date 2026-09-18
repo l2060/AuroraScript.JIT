@@ -10,6 +10,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
@@ -245,6 +246,31 @@ public sealed class HttpClientModuleTests
             CompilationMode.Persistence,
             assemblyPath));
         await engine.BuildAsync("main.as");
+        var generatedAssembly = Assembly.Load(
+            File.ReadAllBytes(assemblyPath));
+        var callbackNative = Assert.Single(
+            generatedAssembly.GetTypes()
+                .SelectMany(type => type.GetMethods(
+                    BindingFlags.Public |
+                    BindingFlags.NonPublic |
+                    BindingFlags.Static))
+                .Where(method =>
+                    method.Name.StartsWith(
+                        "lambda_",
+                        StringComparison.Ordinal) &&
+                    method.Name.EndsWith(
+                        "$native",
+                        StringComparison.Ordinal)));
+        Assert.Equal(
+            [
+                typeof(ScriptContext),
+                typeof(ScriptDatum),
+                typeof(HttpResponseValue)
+            ],
+            callbackNative.GetParameters()
+                .Select(parameter => parameter.ParameterType)
+                .ToArray());
+        Assert.Equal(typeof(void), callbackNative.ReturnType);
         var completion = new TaskCompletionSource<string>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         using var domain = engine.CreateDomain(global => global.Define(
@@ -322,6 +348,132 @@ public sealed class HttpClientModuleTests
             bytesTokens) >= 1);
     }
 #endif
+
+    #if NET9_0_OR_GREATER
+    [Fact]
+    public async Task CapturingHttpCallbackKeepsDynamicClosureWithTypedBody()
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource(
+            "main.as",
+            """
+            @module(TEST);
+            import http from 'http';
+
+            export func begin(url, prefix) {
+                return http.getAsync(url, (error, response) => {
+                    HOST_COMPLETE(prefix + response.status);
+                });
+            }
+            """);
+        var assemblyPath = Path.Combine(
+            workspace.Root,
+            "http-capturing-output.dll");
+        var engine = new AuroraEngine(CreateOptions(
+            workspace.Root,
+            enableHttpClient: true,
+            CompilationMode.Persistence,
+            assemblyPath));
+
+        await engine.BuildAsync("main.as");
+
+        var assembly = Assembly.Load(File.ReadAllBytes(assemblyPath));
+        Assert.DoesNotContain(
+            assembly.GetTypes()
+                .SelectMany(type => type.GetMethods(
+                    BindingFlags.Public |
+                    BindingFlags.NonPublic |
+                    BindingFlags.Static)),
+            method =>
+                method.Name.StartsWith(
+                    "lambda_",
+                    StringComparison.Ordinal) &&
+                method.Name.EndsWith(
+                    "$native",
+                    StringComparison.Ordinal));
+
+        using var stream = File.OpenRead(assemblyPath);
+        using var peReader = new PEReader(stream);
+        var reader = peReader.GetMetadataReader();
+        var statusTokens = FindMemberTokens(
+            reader,
+            nameof(HttpResponseValue),
+            nameof(HttpResponseValue.Status));
+        Assert.True(CountMethodsContaining(
+            peReader,
+            reader,
+            opcode: 0x7B,
+            statusTokens) >= 1);
+    }
+    #endif
+
+    [Fact]
+    public async Task CallbackParameterCapturedByNestedLambdaUsesDynamicCell()
+    {
+        await using var server = new LoopbackHttpServer(
+            expectedRequests: 1,
+            _ => Task.FromResult(new LoopbackResponse(
+                204,
+                "No Content",
+                Array.Empty<byte>())));
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource(
+            "main.as",
+            """
+            @module(TEST);
+            import http from 'http';
+
+            export func begin(url) {
+                return http.getAsync(url, (error, response) => {
+                    var readStatus = () => response.status;
+                    HOST_COMPLETE(readStatus());
+                });
+            }
+            """);
+        var engine = new AuroraEngine(CreateOptions(
+            workspace.Root,
+            enableHttpClient: true));
+        await engine.BuildAsync("main.as");
+        var completion = new TaskCompletionSource<double>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var domain = engine.CreateDomain(global => global.Define(
+            "HOST_COMPLETE",
+            (Action<double>)(value => completion.TrySetResult(value)),
+            writeable: false,
+            enumerable: false));
+
+        ScriptAssert.Equal(true, TestWorkspace.Execute(
+            domain,
+            "begin",
+            arguments: ScriptDatum.FromString(
+                server.BaseAddress.ToString())));
+        Assert.Equal(
+            204d,
+            await completion.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        await server.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task HostCallableAcceptsExplicitTypeInDynamicContractSlot()
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource(
+            "main.as",
+            """
+            @module(TEST);
+            import http from 'http';
+
+            native func callback(Object error, HttpResponse response) void {}
+            export func begin(url) {
+                return http.getAsync(url, callback);
+            }
+            """);
+        var engine = new AuroraEngine(CreateOptions(
+            workspace.Root,
+            enableHttpClient: true));
+
+        await engine.BuildAsync("main.as");
+    }
 
     [Fact]
     public async Task CallbackApiReportsTransportTimeoutAsScriptError()

@@ -368,7 +368,6 @@ namespace AuroraScript.Compiler.Backend
     internal sealed class HostExportDescriptor
     {
         private readonly ParameterInfo[] _parameters;
-        private readonly AuroraCallbackArgumentAttribute[] _callbackArguments;
         public HostExportDescriptor(
             MethodInfo method,
             AuroraExportValueKind returnKind,
@@ -386,9 +385,18 @@ namespace AuroraScript.Compiler.Backend
             TakesThisObject = takesThisObject;
             UseDynamicForExtraArguments = useDynamicForExtraArguments;
             _parameters = method.GetParameters();
-            _callbackArguments = new List<AuroraCallbackArgumentAttribute>(
-                method.GetCustomAttributes<AuroraCallbackArgumentAttribute>(
-                    inherit: false)).ToArray();
+            var export = method.GetCustomAttribute<ExportAttribute>();
+            CallableTypeName = string.IsNullOrWhiteSpace(export?.CallableType)
+                ? null
+                : export.CallableType;
+            CallableArgumentFromEnd = export?.CallableArgumentFromEnd ?? 0;
+            CallableObjectArgumentsAllowNull =
+                export?.CallableObjectArgumentsAllowNull == true;
+            if (CallableArgumentFromEnd < 0)
+            {
+                throw new InvalidOperationException(
+                    $"Export '{method.DeclaringType?.FullName}.{method.Name}' has a negative callable argument position.");
+            }
             RequiredScriptParameterCount = runtimeDefaults != null ? parameterKinds.Length - runtimeDefaults.Length : CountRequiredScriptParameters(
                 _parameters,
                 takesContext,
@@ -404,8 +412,9 @@ namespace AuroraScript.Compiler.Backend
         public bool TakesThisObject { get; }
         public bool UseDynamicForExtraArguments { get; }
         public int RequiredScriptParameterCount { get; }
-        public IReadOnlyList<AuroraCallbackArgumentAttribute> CallbackArguments =>
-            _callbackArguments;
+        public string CallableTypeName { get; }
+        public int CallableArgumentFromEnd { get; }
+        public bool CallableObjectArgumentsAllowNull { get; }
         internal HostExportDescriptor NextOverload { get; set; }
 
         public Type GetScriptParameterType(int index)

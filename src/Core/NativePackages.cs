@@ -37,7 +37,9 @@ namespace AuroraScript.Core
             ModulePath = NormalizeModulePath(package.ImportPath);
             Name = ResolveName(ModulePath, TypeName);
             Reference = new ScriptSourceReference(Root, Root + ModulePath, ModulePath);
-            Source = $"@module({Name});";
+            Source = string.IsNullOrWhiteSpace(package.Declarations)
+                ? $"@module({Name});"
+                : $"@module({Name});\n{package.Declarations}";
             RegisterPackage = nativeType.GetMethod(
                 "RegisterPackage",
                 BindingFlags.Public | BindingFlags.Static,

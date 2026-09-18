@@ -93,7 +93,7 @@ native func log(String text) void {
 }
 
 native func actionCallback(Action callback) void {
-	callback();
+	callback(12345);
 }
 
 export native func testAction() void {

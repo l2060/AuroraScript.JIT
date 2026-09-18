@@ -402,6 +402,26 @@ namespace AuroraScript.Runtime
                 ? value
                 : Mismatch(CheckedType.Object, value);
 
+        /// <summary>
+        /// Converts a nullable object-backed callable argument to its native
+        /// representation while preserving script null as a CLR null reference.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static T GetNullableNativeObject<T>(ScriptDatum value)
+            where T : ScriptObject
+        {
+            if (value.Kind == ValueKind.Null)
+            {
+                return null;
+            }
+            if (value.Reference is T result)
+            {
+                return result;
+            }
+            throw new AuroraRuntimeException(
+                $"Type check failed: expected {typeof(T).Name}, actual {value.Kind.ToString().ToLowerInvariant()}.");
+        }
+
         /// <summary>Validates an exact Array value.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum CheckArray(ScriptDatum value) =>

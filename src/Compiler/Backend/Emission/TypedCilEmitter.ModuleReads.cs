@@ -6,6 +6,7 @@ using AuroraScript.Runtime;
 using System.Collections.Generic;
 using System.Reflection.Emit;
 
+
 namespace AuroraScript.Compiler.Backend.Emission
 {
     internal sealed partial class TypedCilEmitter
@@ -14,6 +15,78 @@ namespace AuroraScript.Compiler.Backend.Emission
         private bool _hasRepeatedModuleReads;
         private Dictionary<NameExpression, LocalBuilder> _moduleReadLocals;
         private HashSet<LocalBuilder> _loadedModuleReads;
+        private bool _usesModuleState;
+        private List<FunctionId> _moduleStateCalls;
+        private bool[] _directModuleState;
+        private List<FunctionId>[] _directModuleStateCalls;
+
+        private void BeginModuleStateTracking(int moduleIndex)
+        {
+            if (_directModuleState == null) return;
+            _usesModuleState = false;
+            _moduleStateCalls = _directModuleStateCalls[moduleIndex] ??= new();
+        }
+
+        private void EndModuleStateTracking(int moduleIndex)
+        {
+            if (_directModuleState == null) return;
+            _directModuleState[moduleIndex] = _usesModuleState;
+            _moduleStateCalls = null;
+            _usesModuleState = false;
+        }
+
+        private void MarkModuleStateUse(BoundName binding)
+        {
+            if (IsModuleBinding(binding)) _usesModuleState = true;
+        }
+
+        /// <summary>
+        /// Records a call a direct body performs on another function of this
+        /// module, so module usage propagates along the direct call graph.
+        /// </summary>
+        private void RecordModuleStateCall(FunctionId callee)
+        {
+            _moduleStateCalls?.Add(callee);
+        }
+
+        /// <summary>
+        /// Resolves module usage of every native entry of this module once all
+        /// direct bodies are emitted. A caller of another module may only invoke
+        /// entries proven independent of the active module.
+        /// </summary>
+        private void PublishNativeEntryModuleState()
+        {
+            if (_directModuleState == null) return;
+            var changed = true;
+            while (changed)
+            {
+                changed = false;
+                for (var i = 0; i < _directModuleState.Length; i++)
+                {
+                    var calls = _directModuleStateCalls[i];
+                    if (_directModuleState[i] || calls == null) continue;
+                    for (var j = 0; j < calls.Count; j++)
+                    {
+                        var index = _module.GetFunctionIndex(calls[j]);
+                        // A callee without an emitted direct body carries no
+                        // proof, so its caller stays module dependent.
+                        if (index >= 0 && !_directModuleState[index]) continue;
+                        _directModuleState[i] = true;
+                        changed = true;
+                        break;
+                    }
+                }
+            }
+
+            for (var i = 0; i < _module.Functions.Count; i++)
+            {
+                var function = _module.Functions[i];
+                if (function.NativeEntryMethod == null) continue;
+                function.NativeEntryUsesModuleState =
+                    _directModuleState[function.ModuleIndex];
+                function.NativeEntryModuleStateResolved = true;
+            }
+        }
 
         private void PrepareModuleReadRegions()
         {
@@ -64,6 +137,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             // This set controls emission only; no runtime branch or type test is added.
             if (_loadedModuleReads.Add(local))
             {
+                _usesModuleState = true;
                 _il.Emit(OpCodes.Ldarg_0);
                 _session.Builder.LoadStringConstant(_il, _code.GetName(name).Name);
                 _il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetModule);

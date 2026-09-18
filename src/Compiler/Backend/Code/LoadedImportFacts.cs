@@ -60,7 +60,8 @@ namespace AuroraScript.Compiler.Backend.Code
         {
             if (closure.NativeEntry is not { } method ||
                 !closure.NativeSignatureComplete ||
-                !closure.NativeEntryTakesContext)
+                !closure.NativeEntryTakesContext ||
+                closure.NativeTarget != null)
             {
                 return null;
             }

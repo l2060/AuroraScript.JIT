@@ -226,6 +226,43 @@ public sealed class ModuleInitializerTypingTests
 #if NET9_0_OR_GREATER
     [InlineData(CompilationMode.Persistence)]
 #endif
+    public async Task ImportedNativeFunctionsReadTheirOwnModuleState(CompilationMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WriteSource("lib.as", """
+            @module(LIB);
+            var secret = 41;
+            native func offset() Number { return secret; }
+            export native func read() Number { return offset() + 1; }
+            export native func write(Number value) Number {
+                secret = value;
+                return secret;
+            }
+            export native func scale(Number value) Number { return value * 3; }
+            """);
+        var (_, domain) = await workspace.CompileModuleAsync("""
+            @module(TEST);
+            import lib from 'lib.as';
+            var secret = 999;
+            export native func doubled() Number { return lib.read() * 2; }
+            export func run() {
+                return [lib.read(), lib.write(7), doubled(), secret, lib.scale(2)];
+            }
+            """, mode);
+        using (domain)
+        {
+            ScriptAssert.Equal(
+                new object[] { 42, 7, 16, 999, 6 },
+                TestWorkspace.Execute(domain, "run"));
+        }
+    }
+
+    [Theory]
+    [InlineData(CompilationMode.Dynamic)]
+    [InlineData(CompilationMode.OnlyRun)]
+#if NET9_0_OR_GREATER
+    [InlineData(CompilationMode.Persistence)]
+#endif
     public async Task TopLevelExpressionsShareFunctionInferenceAndNativeEmission(CompilationMode mode)
     {
         using var workspace = new TestWorkspace();

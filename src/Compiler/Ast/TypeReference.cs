@@ -29,5 +29,11 @@ namespace AuroraScript.Compiler.Ast
         public Token Qualifier { get; }
 
         public Token Token { get; }
+
+        /// <summary>
+        /// Host-bound callable contracts may explicitly permit script null for
+        /// an object-backed parameter without weakening its non-null native type.
+        /// </summary>
+        internal bool AllowsNull { get; set; }
     }
 }

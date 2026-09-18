@@ -39,6 +39,13 @@ namespace AuroraScript.Runtime
             context.LeaveFrame(restoreDepth);
         }
 
+        /// <summary>Captures the failing script frame before restoring its caller.</summary>
+        public static void Abort(ScriptContext context, int restoreDepth)
+        {
+            context.CaptureExceptionStack();
+            context.LeaveFrame(restoreDepth);
+        }
+
         /// <summary>Gets an argument or the script null value when it is absent.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum GetArgument(Span<ScriptDatum> arguments, int index)
