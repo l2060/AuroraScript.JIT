@@ -319,10 +319,10 @@ public sealed class ArrayNativeTests
         var (_, domain) = await workspace.CompileModuleAsync("""
             @module(TEST);
             export native func arrayWork(Array value) void { value.push(1); }
-            export func run() { var action = arrayWork; action(); }
+            export func run(value) { var action = arrayWork; action(value); }
             """, mode);
-        var error = Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, "run"));
-        Assert.Contains("expected Array, actual null", error.Message);
+        var error = Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, "run", arguments: [ScriptDatum.FromNumber(1)]));
+        Assert.Contains("expected Array, actual number", error.Message);
         Assert.Contains(error.StackTrace, frame => frame.Method == "arrayWork" && frame.Line == 2);
         Assert.Contains(error.StackTrace, frame => frame.Method == "run" && frame.Line == 3);
     }

@@ -18,6 +18,36 @@ namespace AuroraScript.Compiler.Backend.Code
 {
     internal static partial class TypedFunctionBuilder
     {
+        // (n - n % d) / d is exact truncating integer division for an exact integer n
+        // and a positive integer d. Restrict n to a name: repeated reads must
+        // not invoke getters or evaluate other side effects.
+        internal static bool TryGetExactIntegerQuotient(Expression expression,
+            out NameExpression value, out int divisor)
+        {
+            value = null;
+            divisor = 0;
+            static Expression Unwrap(Expression node)
+            {
+                while (node is GroupExpression group && group.Expressions.Count == 1) node = group.Expression;
+                return node;
+            }
+            if (Unwrap(expression) is not BinaryExpression divide || divide.Operator != Operator.Divide ||
+                Unwrap(divide.Right) is not LiteralExpression { Token: NumberToken denominator } ||
+                !TypeCheckOps.IsInt32(denominator.NumberValue) || denominator.NumberValue <= 0 ||
+                Unwrap(divide.Left) is not BinaryExpression subtract || subtract.Operator != Operator.Subtract ||
+                Unwrap(subtract.Left) is not NameExpression name ||
+                Unwrap(subtract.Right) is not BinaryExpression remainder || remainder.Operator != Operator.Modulo ||
+                Unwrap(remainder.Left) is not NameExpression repeated || name.Identifier.Value != repeated.Identifier.Value ||
+                Unwrap(remainder.Right) is not LiteralExpression { Token: NumberToken modulo } ||
+                modulo.NumberValue != denominator.NumberValue ||
+                denominator.Suffix is NumericLiteralSuffix.Int64 or NumericLiteralSuffix.UInt64 ||
+                modulo.Suffix is NumericLiteralSuffix.Int64 or NumericLiteralSuffix.UInt64)
+                return false;
+            value = name;
+            divisor = (int)denominator.NumberValue;
+            return true;
+        }
+
         internal static FlowValueType GetGuardedBinaryType(BinaryExpression expression,
             Func<Expression, FlowValueType> getType)
         {
@@ -593,22 +623,23 @@ namespace AuroraScript.Compiler.Backend.Code
             private readonly FlowValueType[] _forcedLocalTypes;
             private readonly bool[] _writtenLocals;
             private bool[] _unobservedInitialNulls;
-            private readonly bool[] _localIntegerRangeValid;
-            private readonly long[] _localIntegerRangeMin;
-            private readonly long[] _localIntegerRangeMax;
-            private int _integerRangeLoopDepth;
             private readonly DirectParameterType[] _parameterTypes;
             private readonly IReadOnlyDictionary<FunctionId, FlowValueType> _directReturnTypes;
             private readonly IReadOnlyDictionary<FunctionId, FlowValueType> _universalReturnTypes;
             private readonly DirectParameterType[][] _directParameterTypes;
             private readonly FlowValueType[] _upvalueTypes;
             private readonly HashSet<int> _safeInt32Mutations;
-            private readonly Dictionary<ForStatement, CountedLoop> _countedLoops;
             private readonly Dictionary<int, Dictionary<string, FlowValueType>> _localFields;
             private readonly HashSet<int> _invalidLocalFields;
             private readonly bool _optimisticDirect;
             private readonly Func<Expression, CallableReturnPrediction?> _callableReturnPrediction;
+            private List<Expression>[] _localDefinitions;
+            private bool[] _definitionCandidates;
             private bool _changed;
+            private readonly Dictionary<int, (long Min, long Max)> _guardedIntegerRanges = new();
+            private readonly Dictionary<Expression, (long Min, long Max)> _expressionIntegerRanges = new(ReferenceEqualityComparer.Instance);
+            private readonly Dictionary<UnaryExpression, FlowValueType> _mutationWriteTypes = new(ReferenceEqualityComparer.Instance);
+            private readonly Dictionary<int, (long Min, long Max)> _invariantIntegerRanges = new();
             private FlowValueType _passReturnType;
             private bool _sawReturn;
 
@@ -644,17 +675,12 @@ namespace AuroraScript.Compiler.Backend.Code
                 _localClrTypes = new Type[function.LocalSlots.Length];
                 _forcedLocalTypes = new FlowValueType[function.LocalSlots.Length];
                 _writtenLocals = new bool[function.LocalSlots.Length];
-                _localIntegerRangeValid = new bool[function.LocalSlots.Length];
-                _localIntegerRangeMin = new long[function.LocalSlots.Length];
-                _localIntegerRangeMax = new long[function.LocalSlots.Length];
                 _parameterTypes = parameterTypes;
                 _directReturnTypes = directReturnTypes;
                 _universalReturnTypes = universalReturnTypes;
                 _directParameterTypes = directParameterTypes;
                 _optimisticDirect = parameterTypes != null;
                 _safeInt32Mutations = new HashSet<int>();
-                _countedLoops = new Dictionary<ForStatement, CountedLoop>(
-                    ReferenceEqualityComparer.Instance);
                 _localFields = new Dictionary<int, Dictionary<string, FlowValueType>>();
                 _invalidLocalFields = new HashSet<int>();
 
@@ -749,25 +775,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     {
                         _locals[i] = FlowValueType.Dynamic;
                     }
-                    else if (function.LocalSlots[i].Declaration is
-                            VariableDeclaration
-                            {
-                                Pattern: null,
-                                Initializer: CheckExpression declaredCheck
-                            } &&
-                        TypeReferenceFacts.GetFlowType(
-                            module.Declaration,
-                            declaredCheck.AssertedType,
-                            hostExports) is
-                            var declaredLocalType and
-                            (FlowValueType.Int32 or FlowValueType.UInt32 or
-                                FlowValueType.Int64 or FlowValueType.UInt64))
-                    {
-                        // `var index = expr as int32` is an explicit storage
-                        // contract, so the conservative overflow rules that
-                        // widen inferred integers must not apply to it.
-                        _forcedLocalTypes[i] = declaredLocalType;
-                    }
+
                 }
             }
 
@@ -776,13 +784,13 @@ namespace AuroraScript.Compiler.Backend.Code
                 var body = _function.Declaration?.Body;
                 _unobservedInitialNulls = _binding.UnobservedInitialNulls ??= new InitialNullReadAnalyzer(
                     _function, _names, _declarations, IsCaptured).Analyze(body);
+                _localDefinitions = new LocalDefinitionCollector(_function, _names, IsCaptured).Analyze(body, out _definitionCandidates);
                 var passLimit = Math.Max(4, _locals.Length + 2);
                 var needsFinalAnalysis = AnalyzeToFixedPoint(
                     body as Statement,
                     passLimit);
 
-                var storageChanged = ApplyInt32ContractStorage(body);
-                storageChanged |= ApplyExactNumericStorage(body);
+                var storageChanged = ApplyExactNumericStorage(body);
                 storageChanged |= ApplyLocalCoercionStorage(body);
                 if (storageChanged)
                 {
@@ -799,6 +807,11 @@ namespace AuroraScript.Compiler.Backend.Code
                     PrepareAnalysisPass(clearObjectFacts: false);
                     AnalyzeStatement(body as Statement);
                 }
+                // Derive invariants only from a completed, conservative analysis
+                // of every definition. This can narrow loop-carried copies of an
+                // index that has already passed an array bounds check.
+                for (var pass = 0; pass < passLimit && ApplyProvenIntegerRanges(); pass++)
+                    AnalyzeToFixedPoint(body as Statement, passLimit);
                 var returnType = _sawReturn
                     ? _passReturnType
                     : FlowValueType.Null;
@@ -807,6 +820,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     _names,
                     _declarations,
                     _expressionTypes,
+                    _mutationWriteTypes,
                     _parameterTypes,
                     IsCaptured).Analyze(body as Statement);
                 if (sequentialReturn != FlowValueType.None)
@@ -842,13 +856,17 @@ namespace AuroraScript.Compiler.Backend.Code
                     _localNativeObjectTypes,
                     _writtenLocals,
                     returnType,
-                    _countedLoops,
                     _nativeCalls,
                     _hostCalls,
                     _clrTypes,
                     _localClrTypes,
                     _clrCalls,
-                    _clrMembers) { ModuleCachedReads = _moduleCachedReads };
+                    _clrMembers)
+                {
+                    ModuleCachedReads = _moduleCachedReads,
+                    IntegerRanges = _expressionIntegerRanges,
+                    LocalIntegerRanges = _invariantIntegerRanges
+                };
             }
 
             private bool AnalyzeToFixedPoint(
@@ -872,6 +890,11 @@ namespace AuroraScript.Compiler.Backend.Code
                 _changed = false;
                 _passReturnType = FlowValueType.None;
                 _sawReturn = false;
+                _guardedIntegerRanges.Clear();
+                _expressionIntegerRanges.Clear();
+                _mutationWriteTypes.Clear();
+                _stringIndexBounds.Clear();
+                _indexWriteVersions.Clear();
                 _moduleValues?.Clear();
                 _moduleCachedReads?.Clear();
                 _moduleValueEpoch = 0;
@@ -919,7 +942,7 @@ namespace AuroraScript.Compiler.Backend.Code
                                 ? FlowValueType.Null
                                 : AnalyzeExpression(variable.Initializer);
                             MergeLocal(slot, initializerType);
-                            NoteIntegerWrite(slot, initializerType, variable.Initializer);
+                            RecordIntegerRange(slot, TryGetIntegerRange(variable.Initializer, out var initializerMin, out var initializerMax), initializerMin, initializerMax);
                             if (!_writtenLocals[slot.Value] &&
                                 variable.Initializer != null &&
                                 _structuralTypes.TryGetValue(
@@ -976,76 +999,78 @@ namespace AuroraScript.Compiler.Backend.Code
                         return;
                     case IfStatement @if:
                         AnalyzeExpression(@if.Condition);
+                        var stringBoundsBeforeIf = _stringIndexBounds.Count;
+                        var integerBeforeIf = new Dictionary<int, (long Min, long Max)>(_guardedIntegerRanges);
+                        RefineIntegerCondition(@if.Condition);
                         var ifBefore = SnapshotStructural();
                         AnalyzeStatement(@if.Body);
                         var thenStructural = SnapshotStructural();
+                        var integerThen = new Dictionary<int, (long Min, long Max)>(_guardedIntegerRanges);
+                        RestoreStringBounds(stringBoundsBeforeIf);
+                        RestoreIntegerRanges(integerBeforeIf);
+                        RefineIntegerCondition(@if.Condition, truth: false);
                         RestoreStructural(ifBefore);
                         AnalyzeStatement(@if.Else);
+                        RestoreStringBounds(stringBoundsBeforeIf);
                         IntersectStructural(thenStructural);
+                        if (!CanFallThrough(@if.Else)) RestoreIntegerRanges(integerThen);
+                        else if (CanFallThrough(@if.Body)) MergeIntegerRanges(integerThen);
                         _shapeSnapshotCount -= 2;
                         return;
                     case WhileStatement @while:
+                        var stringBoundsBeforeWhile = _stringIndexBounds.Count;
+                        var integerBeforeWhile = RetainLoopInvariantRanges(@while);
                         AnalyzeExpression(@while.Condition);
+                        RefineIntegerCondition(@while.Condition);
                         var whileBefore = SnapshotStructural();
-                        var whileInt32Slots = GetSafeInt32WhileMutations(@while);
-                        for (var i = 0; i < whileInt32Slots.Count; i++)
-                        {
-                            _safeInt32Mutations.Add(whileInt32Slots[i]);
-                        }
-                        _integerRangeLoopDepth++;
-                        try
-                        {
-                            AnalyzeStatement(@while.Body);
-                        }
-                        finally
-                        {
-                            _integerRangeLoopDepth--;
-                            for (var i = 0; i < whileInt32Slots.Count; i++)
-                            {
-                                _safeInt32Mutations.Remove(whileInt32Slots[i]);
-                            }
-                        }
+                        AnalyzeStatement(@while.Body);
                         IntersectStructural(whileBefore);
+                        RestoreIntegerRanges(integerBeforeWhile);
+                        RestoreStringBounds(stringBoundsBeforeWhile);
                         _shapeSnapshotCount--;
                         return;
                     case ForStatement @for:
                         if (@for.Initializer is Statement initializerStatement) AnalyzeStatement(initializerStatement);
                         else if (@for.Initializer is Expression initializerExpression) AnalyzeExpression(initializerExpression);
+                        var integerEntryFor = new Dictionary<int, (long Min, long Max)>(_guardedIntegerRanges);
+                        var integerBeforeFor = RetainLoopInvariantRanges(@for);
+                        var stringBoundsBeforeFor = _stringIndexBounds.Count;
                         AnalyzeExpression(@for.Condition);
+                        RefineIntegerCondition(@for.Condition);
                         var forBefore = SnapshotStructural();
                         if (TryGetSafeInt32Induction(@for, out var inductionSlot))
                         {
+                            if (integerEntryFor.TryGetValue(inductionSlot.Value, out var initialRange) &&
+                                _guardedIntegerRanges.TryGetValue(inductionSlot.Value, out var guardedRange))
+                                _guardedIntegerRanges[inductionSlot.Value] = (Math.Max(initialRange.Min, guardedRange.Min), guardedRange.Max);
                             _safeInt32Mutations.Add(inductionSlot.Value);
-                            _integerRangeLoopDepth++;
                             try
                             {
                                 AnalyzeStatement(@for.Body);
+                                // A continue may bypass the body's final writes
+                                // before reaching this shared incrementor.
+                                RetainLoopInvariantRanges(@for.Body);
                                 AnalyzeExpression(@for.Incrementor);
                             }
                             finally
                             {
-                                _integerRangeLoopDepth--;
                                 _safeInt32Mutations.Remove(inductionSlot.Value);
                             }
                         }
                         else
                         {
-                            _countedLoops.Remove(@for);
-                            _integerRangeLoopDepth++;
-                            try
-                            {
-                                AnalyzeStatement(@for.Body);
-                                AnalyzeExpression(@for.Incrementor);
-                            }
-                            finally
-                            {
-                                _integerRangeLoopDepth--;
-                            }
+                            AnalyzeStatement(@for.Body);
+                            RetainLoopInvariantRanges(@for.Body);
+                            AnalyzeExpression(@for.Incrementor);
                         }
                         IntersectStructural(forBefore);
+                        RestoreIntegerRanges(integerBeforeFor);
+                        RestoreStringBounds(stringBoundsBeforeFor);
                         _shapeSnapshotCount--;
                         return;
                     case ForInStatement forIn:
+                        InvalidateStringBounds(forIn);
+                        _guardedIntegerRanges.Clear();
                         AnalyzeStatement(forIn.Initializer);
                         AnalyzeExpression(forIn.Iterator?.Right);
                         if (forIn.Iterator?.Left != null && _names.TryGetValue(forIn.Iterator.Left, out var iterator))
@@ -1054,30 +1079,27 @@ namespace AuroraScript.Compiler.Backend.Code
                             MergeLocal(iterator.Local, FlowValueType.Dynamic);
                         }
                         var forInBefore = SnapshotStructural();
-                        _integerRangeLoopDepth++;
-                        try
-                        {
-                            AnalyzeStatement(forIn.Body);
-                        }
-                        finally
-                        {
-                            _integerRangeLoopDepth--;
-                        }
+                        AnalyzeStatement(forIn.Body);
                         IntersectStructural(forInBefore);
+                        _guardedIntegerRanges.Clear();
                         _shapeSnapshotCount--;
                         return;
                     case TryStatement @try:
+                        _guardedIntegerRanges.Clear();
                         var tryBefore = SnapshotStructural();
                         AnalyzeStatement(@try.Body);
                         if (@try.CatchBody != null)
                         {
                             var afterTry = SnapshotStructural();
                             RestoreStructural(tryBefore);
+                            _guardedIntegerRanges.Clear();
                             AnalyzeStatement(@try.CatchBody);
                             IntersectStructural(afterTry);
                             _shapeSnapshotCount--;
                         }
+                        _guardedIntegerRanges.Clear();
                         AnalyzeStatement(@try.FinallyBody);
+                        _guardedIntegerRanges.Clear();
                         _shapeSnapshotCount--;
                         return;
                     case ThrowStatement @throw:
@@ -1119,17 +1141,27 @@ namespace AuroraScript.Compiler.Backend.Code
                         break;
                     case BinaryExpression binary:
                         var binaryLeft = AnalyzeExpression(binary.Left);
+                        var stringBoundsBeforeRight = _stringIndexBounds.Count;
+                        Dictionary<int, (long Min, long Max)> shortCircuitRanges = null;
+                        if (binary.Operator == Operator.LogicalAnd || binary.Operator == Operator.LogicalOr)
+                        {
+                            shortCircuitRanges = new(_guardedIntegerRanges);
+                            RefineIntegerCondition(binary.Left, binary.Operator == Operator.LogicalAnd);
+                        }
                         var binaryRight = AnalyzeExpression(binary.Right);
-                        var inductionArithmetic = GetInductionArithmeticType(binary);
-                        type = inductionArithmetic != FlowValueType.None
-                            ? inductionArithmetic
-                            : AnalyzeBinary(
+                        RestoreStringBounds(stringBoundsBeforeRight);
+                        if (shortCircuitRanges != null) MergeIntegerRanges(shortCircuitRanges);
+                        type = AnalyzeBinary(
                                 this,
                                 binary.Operator,
                                 binary.Left,
                                 binary.Right,
                                 binaryLeft,
                                 binaryRight);
+                        if (TryGetExactIntegerQuotient(binary, out var numerator, out var divisor) &&
+                            TryGetIntegerRange(numerator, out var numeratorMin, out var numeratorMax) &&
+                            numeratorMin >= -9007199254740991L && numeratorMax <= 9007199254740991L)
+                            type = FitsInt32(numeratorMin / divisor, numeratorMax / divisor) ? FlowValueType.Int32 : FlowValueType.Number;
                         if (type == FlowValueType.Number)
                         {
                             var ranged = TryKeepRangedIntegerArithmetic(
@@ -1147,6 +1179,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     case AssignmentExpression assignment:
                         type = AnalyzeExpression(assignment.Right);
                         AnalyzeExpression(assignment.Left);
+                        var assignmentRange = TryGetIntegerRange(assignment.Right, out var assignmentMin, out var assignmentMax);
                         _structuralTypes.TryGetValue(
                             assignment.Right,
                             out var assignedStructuralType);
@@ -1162,7 +1195,7 @@ namespace AuroraScript.Compiler.Backend.Code
                             assignedStructuralType,
                             assignedNativeType,
                             assignedClrType);
-                        NoteIntegerWrite(assignment.Left, type, assignment.Right);
+                        RecordIntegerRange(assignment.Left, assignmentRange, assignmentMin, assignmentMax);
                         break;
                     case CompoundExpression compound:
                         var left = AnalyzeExpression(compound.Left);
@@ -1195,8 +1228,10 @@ namespace AuroraScript.Compiler.Backend.Code
                         {
                             type = declaredCompound;
                         }
+                        var compoundRange = TryGetBinaryIntegerRange(compound.Operator.SimplerOperator,
+                            compound.Left, compound.Right, out var compoundMin, out var compoundMax);
                         WriteTarget(compound.Left, type, null);
-                        NoteIntegerWrite(compound.Left, type, compound.Operator.SimplerOperator, compound.Right);
+                        RecordIntegerRange(compound.Left, compoundRange, compoundMin, compoundMax);
                         break;
                     case UnaryExpression unary:
                         var operand = AnalyzeExpression(unary.Expression);
@@ -1204,11 +1239,15 @@ namespace AuroraScript.Compiler.Backend.Code
                         if (IsMutation(unary.Operator))
                         {
                             var writeType = GetMutationWriteType(unary);
+                            _mutationWriteTypes[unary] = writeType;
+                            var mutationRange = TryGetIntegerRange(unary.Expression, out var mutationMin, out var mutationMax);
+                            var mutationDelta = unary.Operator == Operator.PreIncrement || unary.Operator == Operator.PostIncrement ? 1 : -1;
                             WriteTarget(
                                 unary.Expression,
                                 writeType,
                                 null);
-                            NoteIntegerMutation(unary.Expression, writeType, unary.Operator);
+                            RecordIntegerRange(unary.Expression, mutationRange,
+                                (long)(double)(mutationMin + mutationDelta), (long)(double)(mutationMax + mutationDelta));
                         }
                         break;
                     case GroupExpression group:
@@ -1364,12 +1403,30 @@ namespace AuroraScript.Compiler.Backend.Code
                         type = FlowValueTypeFacts.IsPackedArray(elementObjectType)
                             ? FlowValueTypeFacts.GetPackedElementType(elementObjectType)
                             : FlowValueType.Dynamic;
+                        if (FlowValueTypeFacts.IsPackedArray(elementObjectType) &&
+                            FlowValueTypeFacts.IsNumberCompatible(indexType) &&
+                            TryGetIntegerRange(element.Index, out _, out _))
+                            RefineIntegerRange(element.Index, 0, int.MaxValue - 33);
                         break;
                     case SetElementExpression element:
-                        AnalyzeExpression(element.Object);
+                        var setObjectType = AnalyzeExpression(element.Object);
                         var setIndexType = AnalyzeExpression(element.Index);
                         InvalidateLocalFieldsUsedAsValue(element.Object);
                         type = AnalyzeExpression(element.Value);
+                        if (UnwrapGroups(element.Index) is NameExpression setIndex &&
+                            _names.TryGetValue(setIndex, out var indexBinding) && indexBinding.IsLocal &&
+                            !WritesLocal(element.Value, indexBinding.Local))
+                        {
+                            if (FlowValueTypeFacts.IsPackedArray(setObjectType) &&
+                                FlowValueTypeFacts.IsNumberCompatible(setIndexType) &&
+                                TryGetIntegerRange(element.Index, out _, out _))
+                                RefineIntegerRange(element.Index, 0, int.MaxValue - 33);
+                            else if (setIndexType == FlowValueType.Int32 &&
+                                _nativeObjectTypes.TryGetValue(element.Object, out var indexOwner) &&
+                                indexOwner.ClrType == typeof(ScriptArray))
+                                // Array accepts negative indices (including no-op writes).
+                                RefineIntegerRange(element.Index, int.MinValue, int.MaxValue - 33);
+                        }
                         break;
                     case ArrayLiteralExpression array:
                         for (var i = 0; i < array.Elements.Count; i++)
@@ -1427,6 +1484,9 @@ namespace AuroraScript.Compiler.Backend.Code
                 }
 
                 _expressionTypes[expression] = type;
+                if (FlowValueTypeFacts.IsNumberCompatible(type) &&
+                    TryGetIntegerRange(expression, out var expressionMin, out var expressionMax))
+                    _expressionIntegerRanges[expression] = (expressionMin, expressionMax);
                 var structuralType = InferStructuralType(expression);
                 if (structuralType != null)
                 {
@@ -2397,6 +2457,8 @@ namespace AuroraScript.Compiler.Backend.Code
                 if (binding.IsLocal)
                 {
                     var type = _locals[binding.Local.Value];
+                    if (type == FlowValueType.Number && _guardedIntegerRanges.TryGetValue(binding.Local.Value, out var range) &&
+                        FitsInt32(range.Min, range.Max)) return FlowValueType.Int32;
                     return type == FlowValueType.None ? FlowValueType.Dynamic : type;
                 }
                 if (binding.Upvalue.IsValid)
@@ -2596,6 +2658,8 @@ namespace AuroraScript.Compiler.Backend.Code
                 (_nativeCalls ??= new Dictionary<FunctionCallExpression, HostNativeMethodDescriptor>())[call] = binding;
                 if (binding == null) return false;
                 type = GetNativeFlowType(binding.ReturnKind);
+                if (binding.Method.DeclaringType == typeof(StringValue) && binding.Method.Name == nameof(StringValue.CharCodeAtCore) &&
+                    IsBoundedCharacterRead(call, property)) type = FlowValueType.Int32;
                 return true;
             }
 
@@ -2779,7 +2843,17 @@ namespace AuroraScript.Compiler.Backend.Code
                         clrType = null;
                     }
                     InvalidateLocalFields(binding.Local);
+                    _guardedIntegerRanges.Remove(binding.Local.Value);
+                    _indexWriteVersions[binding.Local.Value] = IndexVersion(binding.Local.Value) + 1;
                     _writtenLocals[binding.Local.Value] = true;
+                    if (_function.LocalSlots[binding.Local.Value].Declaration is ParameterDeclaration parameter)
+                    {
+                        if (TypeReferenceFacts.TryGetCustomType(_module.Declaration, parameter.DeclaredType, out var declaredShape))
+                            structuralType = declaredShape;
+                        if (!IsCaptured(binding.Local) &&
+                            TypeReferenceFacts.TryGetNativeObject(_hostExports, parameter.DeclaredType, out var declaredNative))
+                            nativeObjectType = declaredNative;
+                    }
                     if (!ReferenceEquals(
                         _localStructuralTypes[binding.Local.Value],
                         structuralType))
@@ -2800,10 +2874,7 @@ namespace AuroraScript.Compiler.Backend.Code
                         _changed = true;
                     }
                     MergeLocal(binding.Local, type);
-                    if (!IsExactIntegerStorage(type))
-                    {
-                        ClearLocalIntegerRange(binding.Local);
-                    }
+
                 }
                 else if (target is GetElementExpression element)
                 {
@@ -2836,10 +2907,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     _locals[slot.Value] = merged;
                     _changed = true;
                 }
-                if (!IsExactIntegerStorage(merged))
-                {
-                    ClearLocalIntegerRange(slot);
-                }
+
             }
 
             private bool ApplyLocalCoercionStorage(AstNode body)
@@ -2883,213 +2951,6 @@ namespace AuroraScript.Compiler.Backend.Code
                     changed = true;
                 }
                 return changed;
-            }
-
-            /// <summary>
-            /// Pins locals whose every definition is an integer form to Int32
-            /// storage. Writing `var i = 0` is an integer annotation, so the
-            /// conservative overflow rules must not widen the local to
-            /// <see cref="FlowValueType.Number"/>: it wraps like a native
-            /// integer and the script owns that risk. `var d = 2.0` and any
-            /// non-integer assignment keep Number storage.
-            /// </summary>
-            private bool ApplyInt32ContractStorage(AstNode body)
-            {
-                var definitions = new LocalDefinitionCollector(
-                    _function,
-                    _names,
-                    IsCaptured).Analyze(body, out var candidates);
-                // Locals start optimistic and drop out once a definition can
-                // hold a non-integer, so counters that refer to each other -
-                // `length` and `length - 1` - settle together instead of
-                // widening each other one pass at a time.
-                var integral = new bool[candidates.Length];
-                for (var i = 0; i < candidates.Length; i++)
-                {
-                    integral[i] = candidates[i] &&
-                        definitions[i].Count > 0 &&
-                        _forcedLocalTypes[i] == FlowValueType.None;
-                }
-                bool changed;
-                do
-                {
-                    changed = false;
-                    for (var i = 0; i < integral.Length; i++)
-                    {
-                        if (!integral[i] || AllDefinitionsAreIntegers(definitions[i], integral))
-                        {
-                            continue;
-                        }
-                        integral[i] = false;
-                        changed = true;
-                    }
-                }
-                while (changed);
-
-                var applied = false;
-                for (var i = 0; i < integral.Length; i++)
-                {
-                    if (!integral[i])
-                    {
-                        continue;
-                    }
-                    // Pin even when the local already reads as Int32, so that
-                    // expressions built from it - `currentX - 1` - are treated
-                    // as integer arithmetic rather than widened for overflow.
-                    _forcedLocalTypes[i] = FlowValueType.Int32;
-                    _locals[i] = FlowValueType.Int32;
-                    applied = true;
-                }
-                return applied;
-            }
-
-            private bool AllDefinitionsAreIntegers(
-                List<Expression> definitions,
-                bool[] integral)
-            {
-                for (var i = 0; i < definitions.Count; i++)
-                {
-                    if (!IsIntegerDefinition(definitions[i], integral))
-                    {
-                        return false;
-                    }
-                }
-                return true;
-            }
-
-            /// <summary>
-            /// Returns whether an expression can only ever produce a signed
-            /// 32-bit integer, allowing wrap-around on overflow.
-            /// </summary>
-            private bool IsIntegerDefinition(Expression expression, bool[] integral)
-            {
-                expression = UnwrapGroups(expression);
-                switch (expression)
-                {
-                    case null:
-                        return false;
-                    case CheckExpression check:
-                        return TypeReferenceFacts.GetFlowType(
-                            _module.Declaration,
-                            check.AssertedType,
-                            _hostExports) == FlowValueType.Int32;
-                    case LiteralExpression literal:
-                        return LiteralTypeFacts.GetType(literal) == FlowValueType.Int32;
-                    case NameExpression name:
-                        return IsIntegerName(name, integral);
-                    case GetPropertyExpression property:
-                        return IsInt32ConstraintExpression(property);
-                    case GetElementExpression element:
-                        return IsInt32PackedElement(element);
-                    case FunctionCallExpression call:
-                        return GetDeclaredCallReturnType(call) == FlowValueType.Int32;
-                    case UnaryExpression unary:
-                        if (unary.Operator == Operator.BitwiseNot)
-                        {
-                            return _expressionTypes.TryGetValue(unary, out var bitwiseType) &&
-                                bitwiseType == FlowValueType.Int32;
-                        }
-                        if (IsMutation(unary.Operator))
-                        {
-                            return IsIntegerDefinition(unary.Expression, integral);
-                        }
-                        // Negation is left to flow analysis because `-0` is a
-                        // number a 32-bit slot cannot represent.
-                        return unary.Operator == Operator.Negate &&
-                            _expressionTypes.TryGetValue(expression, out var negated) &&
-                            negated == FlowValueType.Int32;
-                    case BinaryExpression binary:
-                        return IsIntegerArithmetic(
-                            binary,
-                            binary.Operator,
-                            binary.Left,
-                            binary.Right,
-                            integral);
-                    case CompoundExpression compound:
-                        return IsIntegerArithmetic(
-                            compound,
-                            compound.Operator.SimplerOperator,
-                            compound.Left,
-                            compound.Right,
-                            integral);
-                    default:
-                        return false;
-                }
-            }
-
-            private bool IsIntegerName(NameExpression name, bool[] integral)
-            {
-                if (!_names.TryGetValue(name, out var binding))
-                {
-                    return false;
-                }
-                if (binding.HasConstant)
-                {
-                    return binding.Constant.Kind == ValueKind.Number &&
-                        NumericLiteralFacts.IsExactInt32(binding.Constant.Number);
-                }
-                if (!binding.IsLocal)
-                {
-                    return false;
-                }
-                var slot = binding.Local.Value;
-                return integral[slot] ||
-                    _forcedLocalTypes[slot] == FlowValueType.Int32 ||
-                    _locals[slot] == FlowValueType.Int32;
-            }
-
-            private bool IsIntegerArithmetic(
-                Expression expression,
-                Operator op,
-                Expression leftExpression,
-                Expression rightExpression,
-                bool[] integral)
-            {
-                if (op == Operator.BitwiseAnd ||
-                    op == Operator.BitwiseOr ||
-                    op == Operator.BitwiseXor ||
-                    op == Operator.LeftShift ||
-                    op == Operator.SignedRightShift)
-                {
-                    // Dynamic operands can also produce exact 64-bit results.
-                    // Those results must not be pinned to wrapping Int32 storage.
-                    if (!_expressionTypes.TryGetValue(expression, out var resultType) ||
-                        FlowValueTypeFacts.ContainsExact64(resultType))
-                    {
-                        return false;
-                    }
-                    if ((op == Operator.BitwiseAnd ||
-                            op == Operator.BitwiseOr ||
-                            op == Operator.BitwiseXor) &&
-                            (IsUInt32Flow(leftExpression) ||
-                                IsUInt32Flow(rightExpression)) ||
-                        (op == Operator.LeftShift ||
-                            op == Operator.SignedRightShift) &&
-                            IsUInt32Flow(leftExpression))
-                    {
-                        return false;
-                    }
-                    // The remaining bitwise results fit signed 32-bit storage.
-                    return true;
-                }
-                // Division is excluded because script division is not integer
-                // division.
-                if (op != Operator.Add &&
-                    op != Operator.Subtract &&
-                    op != Operator.Multiply &&
-                    op != Operator.Modulo)
-                {
-                    return false;
-                }
-                return IsIntegerDefinition(leftExpression, integral) &&
-                    IsIntegerDefinition(rightExpression, integral);
-            }
-
-            private bool IsUInt32Flow(Expression expression)
-            {
-                return expression != null &&
-                    _expressionTypes.TryGetValue(expression, out var type) &&
-                    type == FlowValueType.UInt32;
             }
 
             private bool IsInt32PackedElement(GetElementExpression element)
@@ -3162,6 +3023,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 }
                 if (!_names.TryGetValue(conditionName, out var conditionBinding) ||
                     !conditionBinding.IsLocal ||
+                    IsCaptured(conditionBinding.Local) ||
                     _locals[conditionBinding.Local.Value] != FlowValueType.Int32 ||
                     !_expressionTypes.TryGetValue(condition.Right, out var boundType) ||
                     boundType != FlowValueType.Int32)
@@ -3230,179 +3092,10 @@ namespace AuroraScript.Compiler.Backend.Code
                     FlowValueTypeFacts.IsPackedArray(ownerType);
             }
 
-            private List<int> GetSafeInt32WhileMutations(WhileStatement statement)
-            {
-                var result = new List<int>(2);
-                if (statement?.Condition is not BinaryExpression condition)
-                {
-                    return result;
-                }
-
-                TryAdd(condition.Left);
-                TryAdd(condition.Right);
-                return result;
-
-                void TryAdd(Expression expression)
-                {
-                    if (expression is not NameExpression name ||
-                        !_names.TryGetValue(name, out var binding) ||
-                        !binding.IsLocal ||
-                        _locals[binding.Local.Value] != FlowValueType.Int32 ||
-                        IsCaptured(binding.Local))
-                    {
-                        return;
-                    }
-
-                    var direction = GetGuardedWhileDirection(
-                        condition,
-                        binding.Local);
-                    if (direction == 0)
-                    {
-                        return;
-                    }
-
-                    var writes = new Int32WhileMutationAnalyzer(
-                        this,
-                        binding.Local,
-                        direction);
-                    writes.Analyze(statement.Body);
-                    if (writes.IsValid && writes.FoundMutation)
-                    {
-                        result.Add(binding.Local.Value);
-                    }
-                }
-            }
-
-            private int GetGuardedWhileDirection(
-                BinaryExpression condition,
-                LocalSlotId slot)
-            {
-                var onLeft = IsLocalName(condition.Left, slot);
-                var onRight = IsLocalName(condition.Right, slot);
-                if (onLeft == onRight)
-                {
-                    return 0;
-                }
-
-                if (condition.Operator == Operator.LessThan ||
-                    condition.Operator == Operator.LessThanOrEqual)
-                {
-                    return onLeft ? 1 : -1;
-                }
-                if (condition.Operator == Operator.GreaterThan ||
-                    condition.Operator == Operator.GreaterThanOrEqual)
-                {
-                    return onLeft ? -1 : 1;
-                }
-                return 0;
-            }
-
-            private sealed class Int32WhileMutationAnalyzer
-            {
-                private readonly TypeAnalyzer _owner;
-                private readonly LocalSlotId _slot;
-                private readonly int _direction;
-                private AstNode _root;
-
-                public Int32WhileMutationAnalyzer(
-                    TypeAnalyzer owner,
-                    LocalSlotId slot,
-                    int direction)
-                {
-                    _owner = owner;
-                    _slot = slot;
-                    _direction = direction;
-                    IsValid = true;
-                }
-
-                public bool IsValid { get; private set; }
-                public bool FoundMutation { get; private set; }
-
-                public void Analyze(AstNode node)
-                {
-                    _root = node;
-                    Visit(node);
-                }
-
-                private void Visit(AstNode node)
-                {
-                    if (!IsValid || node == null ||
-                        node is FunctionDeclaration or LambdaExpression)
-                    {
-                        return;
-                    }
-                    if (!ReferenceEquals(node, _root) &&
-                        node is ForStatement or ForInStatement or WhileStatement)
-                    {
-                        if (_owner.WritesLocal(node, _slot))
-                        {
-                            IsValid = false;
-                        }
-                        return;
-                    }
-
-                    if (node is UnaryExpression unary &&
-                        IsMutation(unary.Operator) &&
-                        _owner.IsLocalName(unary.Expression, _slot))
-                    {
-                        var direction =
-                            unary.Operator == Operator.PreIncrement ||
-                            unary.Operator == Operator.PostIncrement
-                                ? 1
-                                : -1;
-                        FoundMutation = true;
-                        IsValid = direction == _direction;
-                        return;
-                    }
-
-                    if (node is CompoundExpression compound &&
-                        _owner.IsLocalName(compound.Left, _slot))
-                    {
-                        var op = compound.Operator.SimplerOperator;
-                        var direction = op == Operator.Add
-                            ? 1
-                            : op == Operator.Subtract ? -1 : 0;
-                        FoundMutation = true;
-                        IsValid = direction == _direction &&
-                            TryEvaluateInt32Constant(compound.Right, out var delta) &&
-                            delta > 0 && delta <= 32;
-                        return;
-                    }
-
-                    if (node is AssignmentExpression assignment &&
-                        _owner.IsLocalName(assignment.Left, _slot) ||
-                        node is ForInStatement forIn &&
-                            _owner.IsLocalName(forIn.Iterator?.Left, _slot))
-                    {
-                        IsValid = false;
-                        return;
-                    }
-
-                    var visitor = new ChildVisitor(this);
-                    AstTraversal.VisitChildren(node, ref visitor);
-                }
-
-                private readonly struct ChildVisitor : IAstChildVisitor
-                {
-                    private readonly Int32WhileMutationAnalyzer _owner;
-
-                    public ChildVisitor(Int32WhileMutationAnalyzer owner)
-                    {
-                        _owner = owner;
-                    }
-
-                    public void Visit(AstNode node)
-                    {
-                        _owner.Visit(node);
-                    }
-                }
-            }
-
             private sealed class Int32InductionWriteAnalyzer
             {
                 private readonly TypeAnalyzer _owner;
                 private readonly LocalSlotId _slot;
-                private AstNode _root;
                 private bool _rejectNestedLoops;
 
                 public Int32InductionWriteAnalyzer(
@@ -3420,7 +3113,6 @@ namespace AuroraScript.Compiler.Backend.Code
                 public void Analyze(AstNode node, bool rejectNestedLoops)
                 {
                     if (!IsValid || node == null) return;
-                    _root = node;
                     _rejectNestedLoops = rejectNestedLoops;
                     Visit(node);
                 }
@@ -3434,10 +3126,21 @@ namespace AuroraScript.Compiler.Backend.Code
                     }
 
                     if (_rejectNestedLoops &&
-                        !ReferenceEquals(node, _root) &&
                         node is ForStatement or ForInStatement or WhileStatement)
                     {
                         if (_owner.WritesLocal(node, _slot)) IsValid = false;
+                        return;
+                    }
+
+                    if (node is IfStatement conditional)
+                    {
+                        Visit(conditional.Condition);
+                        var before = MaximumDelta;
+                        Visit(conditional.Body);
+                        var then = MaximumDelta;
+                        MaximumDelta = before;
+                        Visit(conditional.Else);
+                        MaximumDelta = Math.Max(then, MaximumDelta);
                         return;
                     }
 
@@ -3572,6 +3275,33 @@ namespace AuroraScript.Compiler.Backend.Code
                 }
             }
 
+            // CLR string storage can also carry script null. Only specialize + when
+            // at least one operand is known to produce an actual string.
+            private bool StringMayBeNull(Expression expression, HashSet<int> visiting = null)
+            {
+                while (expression is GroupExpression group && group.Expressions.Count == 1)
+                    expression = group.Expression;
+                if (expression is LiteralExpression or TemplateStringExpression ||
+                    expression is UnaryExpression unary && unary.Operator == Operator.TypeOf)
+                    return expression is LiteralExpression literal && literal.Token is not StringToken;
+                if (expression is BinaryExpression binary && binary.Operator == Operator.Add)
+                    return StringMayBeNull(binary.Left, visiting) && StringMayBeNull(binary.Right, visiting);
+                if (expression is CompoundExpression compound && compound.Operator.SimplerOperator == Operator.Add)
+                    return StringMayBeNull(compound.Left, visiting) && StringMayBeNull(compound.Right, visiting);
+                if (expression is NameExpression name && _names.TryGetValue(name, out var binding) &&
+                    binding.IsLocal && _definitionCandidates[binding.Local.Value])
+                {
+                    var slot = binding.Local.Value;
+                    visiting ??= new();
+                    if (!visiting.Add(slot)) return false;
+                    foreach (var definition in _localDefinitions[slot])
+                        if (definition != null || !_unobservedInitialNulls[slot])
+                            if (StringMayBeNull(definition, visiting)) { visiting.Remove(slot); return true; }
+                    visiting.Remove(slot);
+                    return _localDefinitions[slot].Count == 0;
+                }
+                return true;
+            }
             public static FlowValueType AnalyzeBinary(
                 TypeAnalyzer analyzer,
                 Operator op,
@@ -3592,7 +3322,10 @@ namespace AuroraScript.Compiler.Backend.Code
                 }
                 if (op == Operator.Add)
                 {
-                    if (left == FlowValueType.String || right == FlowValueType.String) return FlowValueType.String;
+                    if (left == FlowValueType.String || right == FlowValueType.String)
+                        return left == FlowValueType.String && !(analyzer?.StringMayBeNull(leftExpression) ?? true) ||
+                            right == FlowValueType.String && !(analyzer?.StringMayBeNull(rightExpression) ?? true)
+                            ? FlowValueType.String : FlowValueType.Dynamic;
                     var nonNumeric = FlowValueType.String | FlowValueType.Object |
                         FlowValueType.Int32Array | FlowValueType.Int8Array |
                         FlowValueType.BooleanArray | FlowValueType.Float32Array | FlowValueType.Float64Array |
@@ -3620,9 +3353,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     {
                         return FlowValueType.Number;
                     }
-                    return CanKeepUInt32Arithmetic(op, left, right)
-                        ? FlowValueType.UInt32
-                        : CanKeepInt32Arithmetic(
+                    return CanKeepInt32Arithmetic(
                             analyzer,
                             op,
                             leftExpression,
@@ -3659,9 +3390,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     }
                     return FlowValueTypeFacts.IsNumberCompatible(left) &&
                         FlowValueTypeFacts.IsNumberCompatible(right)
-                        ? left == FlowValueType.UInt32 || right == FlowValueType.UInt32
-                            ? FlowValueType.UInt32
-                            : FlowValueType.Int32
+                        ? FlowValueType.Int32
                         : FlowValueType.Number;
                 }
                 if (op == Operator.Subtract || op == Operator.Multiply)
@@ -3683,9 +3412,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     {
                         return FlowValueType.Number;
                     }
-                    return CanKeepUInt32Arithmetic(op, left, right)
-                        ? FlowValueType.UInt32
-                        : CanKeepInt32Arithmetic(
+                    return CanKeepInt32Arithmetic(
                             analyzer,
                             op,
                             leftExpression,
@@ -3726,11 +3453,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     {
                         return FlowValueType.Int32;
                     }
-                    return left == FlowValueType.UInt32 ||
-                        ((op == Operator.BitwiseAnd || op == Operator.BitwiseXor) &&
-                            right == FlowValueType.UInt32)
-                        ? FlowValueType.UInt32
-                        : FlowValueType.Int32;
+                    return FlowValueType.Int32;
                 }
                 if (op == Operator.Modulo)
                 {
@@ -3751,15 +3474,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     {
                         return FlowValueType.Number;
                     }
-                    // Two integers cannot produce the negative zero or NaN that
-                    // would need a Number, so the remainder stays an integer.
-                    if (left == FlowValueType.UInt32 && right == FlowValueType.UInt32)
-                    {
-                        return FlowValueType.UInt32;
-                    }
-                    return left == FlowValueType.Int32 && right == FlowValueType.Int32
-                            ? FlowValueType.Int32
-                            : FlowValueType.Number;
+                    return FlowValueType.Number;
                 }
                 if (op == Operator.UnSignedRightShift)
                 {
@@ -3782,7 +3497,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     {
                         return FlowValueType.Number;
                     }
-                    return left == FlowValueType.UInt32
+                    return FlowValueTypeFacts.IsNumberCompatible(left) && FlowValueTypeFacts.IsNumberCompatible(right)
                         ? FlowValueType.UInt32
                         : FlowValueType.Number;
                 }
@@ -3805,22 +3520,6 @@ namespace AuroraScript.Compiler.Backend.Code
                 return FlowValueType.Dynamic;
             }
 
-            private static bool CanKeepUInt32Arithmetic(
-                Operator op,
-                FlowValueType left,
-                FlowValueType right)
-            {
-                if (op != Operator.Add && op != Operator.Subtract &&
-                    op != Operator.Multiply)
-                {
-                    return false;
-                }
-                return left == FlowValueType.UInt32 &&
-                        right is FlowValueType.UInt32 or FlowValueType.Int32 ||
-                    right == FlowValueType.UInt32 &&
-                        left is FlowValueType.UInt32 or FlowValueType.Int32;
-            }
-
             private static bool CanKeepInt32Arithmetic(
                 TypeAnalyzer analyzer,
                 Operator op,
@@ -3838,12 +3537,6 @@ namespace AuroraScript.Compiler.Backend.Code
                     op != Operator.Multiply)
                 {
                     return false;
-                }
-                if (analyzer != null &&
-                    (analyzer.ContainsInt32Constraint(leftExpression) ||
-                        analyzer.ContainsInt32Constraint(rightExpression)))
-                {
-                    return true;
                 }
                 if (TryEvaluateInt32Arithmetic(op, leftExpression, rightExpression, out _))
                 {
@@ -3864,31 +3557,6 @@ namespace AuroraScript.Compiler.Backend.Code
                         IsInt32Constant(rightExpression, 1);
                 }
                 return false;
-            }
-
-            private bool ContainsInt32Constraint(Expression expression)
-            {
-                expression = UnwrapGroups(expression);
-                if (IsInt32ConstraintExpression(expression))
-                {
-                    return true;
-                }
-                if (expression is BinaryExpression binary)
-                {
-                    return ContainsInt32Constraint(binary.Left) ||
-                        ContainsInt32Constraint(binary.Right);
-                }
-                if (expression is UnaryExpression unary)
-                {
-                    return ContainsInt32Constraint(unary.Expression);
-                }
-                return false;
-            }
-
-            private bool IsInt32ConstraintExpression(Expression expression)
-            {
-                return TryGetDeclaredNumericType(expression, out var type) &&
-                    type == FlowValueType.Int32;
             }
 
             private bool TryGetDeclaredNumericType(
@@ -3962,7 +3630,8 @@ namespace AuroraScript.Compiler.Backend.Code
                 out int value)
             {
                 if (!TryEvaluateInt32Constant(leftExpression, out var left) ||
-                    !TryEvaluateInt32Constant(rightExpression, out var right))
+                    !TryEvaluateInt32Constant(rightExpression, out var right) ||
+                    op == Operator.Multiply && (left == 0 && right < 0 || right == 0 && left < 0))
                 {
                     value = 0;
                     return false;
@@ -4024,7 +3693,8 @@ namespace AuroraScript.Compiler.Backend.Code
                         {
                             if (binary.Operator == Operator.Add) value = checked(left + right);
                             else if (binary.Operator == Operator.Subtract) value = checked(left - right);
-                            else if (binary.Operator == Operator.Multiply) value = checked(left * right);
+                            else if (binary.Operator == Operator.Multiply &&
+                                !(left == 0 && right < 0 || right == 0 && left < 0)) value = checked(left * right);
                             else if (binary.Operator == Operator.BitwiseAnd) value = left & right;
                             else if (binary.Operator == Operator.BitwiseOr) value = left | right;
                             else if (binary.Operator == Operator.BitwiseXor) value = left ^ right;
@@ -4137,9 +3807,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     {
                         return FlowValueType.Dynamic;
                     }
-                    return operand == FlowValueType.UInt32
-                        ? FlowValueType.UInt32
-                        : FlowValueType.Int32;
+                    return FlowValueType.Int32;
                 }
                 if (IsMutation(op))
                 {
@@ -4201,12 +3869,8 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     return FlowValueType.Dynamic;
                 }
-                if (_integerRangeLoopDepth > 0)
-                {
-                    return FlowValueType.Number;
-                }
                 if (
-                    !IsExactIntegerStorage(operand) ||
+                    !FlowValueTypeFacts.IsNumberCompatible(operand) ||
                     !TryGetIntegerRange(expression.Expression, out var min, out var max))
                 {
                     return FlowValueType.Number;
@@ -4219,7 +3883,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 {
                     return FlowValueType.Number;
                 }
-                if (operand == FlowValueType.Int32 && FitsInt32(nextMin, nextMax))
+                if (operand is FlowValueType.Int32 or FlowValueType.Number && FitsInt32(nextMin, nextMax))
                 {
                     return FlowValueType.Int32;
                 }
@@ -4231,194 +3895,298 @@ namespace AuroraScript.Compiler.Backend.Code
             }
 
             private FlowValueType TryKeepRangedIntegerArithmetic(
-                Operator op,
-                Expression leftExpression,
-                Expression rightExpression,
-                FlowValueType left,
-                FlowValueType right)
+                Operator op, Expression leftExpression, Expression rightExpression,
+                FlowValueType left, FlowValueType right)
             {
-                if ((op != Operator.Add &&
-                        op != Operator.Subtract &&
-                        op != Operator.Modulo) ||
-                    !FlowValueTypeFacts.IsNumberCompatible(left) ||
-                    !FlowValueTypeFacts.IsNumberCompatible(right) ||
-                    left == FlowValueType.Number ||
-                    right == FlowValueType.Number)
-                {
-                    return FlowValueType.None;
-                }
-                // Loop-local assignment ranges are not fixed points. Constants and
-                // CLR string length bounds remain valid on every iteration, though.
-                var allowLocalRanges = _integerRangeLoopDepth == 0;
-                if (!TryGetIntegerRange(leftExpression, out var leftMin, out var leftMax, allowLocalRanges) ||
-                    !TryGetIntegerRange(rightExpression, out var rightMin, out var rightMax, allowLocalRanges))
-                {
-                    return FlowValueType.None;
-                }
-                long min;
-                long max;
-                if (op == Operator.Modulo)
-                {
-                    // Integer rem is equivalent to script remainder only when
-                    // zero divisors, negative zero, and MinValue % -1 are
-                    // impossible. A non-negative dividend and a divisor range
-                    // wholly on either side of zero prove all three.
-                    if (leftMin < 0 || rightMin <= 0 && rightMax >= 0)
-                    {
-                        return FlowValueType.None;
-                    }
-                    min = 0;
-                    max = leftMax;
-                }
-                else if (op == Operator.Add
-                    ? !TryAddRange(leftMin, leftMax, rightMin, rightMax, out min, out max)
-                    : !TrySubtractRange(leftMin, leftMax, rightMin, rightMax, out min, out max))
-                {
-                    return FlowValueType.None;
-                }
-                if (left == FlowValueType.Int32 &&
-                    right == FlowValueType.Int32 &&
-                    FitsInt32(min, max))
-                {
-                    return FlowValueType.Int32;
-                }
-                return FlowValueType.None;
+                // A narrow result can have wider operands. Emission preserves
+                // their width until after the operation (especially remainder).
+                return FlowValueTypeFacts.IsNumberCompatible(left) && FlowValueTypeFacts.IsNumberCompatible(right) &&
+                    TryGetBinaryIntegerRange(op, leftExpression, rightExpression, out var min, out var max) && FitsInt32(min, max)
+                    ? FlowValueType.Int32 : FlowValueType.None;
             }
 
-            private void NoteIntegerWrite(
-                Expression target,
-                FlowValueType type,
-                Expression value)
+            private bool TryGetBinaryIntegerRange(Operator op, Expression left, Expression right, out long min, out long max)
             {
-                if (target is not NameExpression name ||
-                    !_names.TryGetValue(name, out var binding) ||
-                    !binding.IsLocal)
+                min = max = 0;
+                if (!TryGetIntegerRange(left, out var a, out var b) || !TryGetIntegerRange(right, out var c, out var d)) return false;
+                if (op == Operator.Add && !TryAddRange(a, b, c, d, out min, out max) ||
+                    op == Operator.Subtract && !TrySubtractRange(a, b, c, d, out min, out max)) return false;
+                if (op == Operator.Multiply)
                 {
-                    return;
+                    // An integer representation must preserve the sign of zero.
+                    if (a <= 0 && b >= 0 && c < 0 || c <= 0 && d >= 0 && a < 0) return false;
+                    try
+                    {
+                        min = Math.Min(Math.Min(checked(a * c), checked(a * d)), Math.Min(checked(b * c), checked(b * d)));
+                        max = Math.Max(Math.Max(checked(a * c), checked(a * d)), Math.Max(checked(b * c), checked(b * d)));
+                    }
+                    catch (OverflowException) { return false; }
                 }
-                NoteIntegerWrite(binding.Local, type, value);
+                else if (op == Operator.Modulo)
+                {
+                    if (a < 0 || c <= 0 && d >= 0) return false;
+                    max = Math.Min(b, Math.Max(Math.Abs(c), Math.Abs(d)) - 1);
+                }
+                else if (op != Operator.Add && op != Operator.Subtract) return false;
+                // Track integral ranges even when an operation needs IEEE rounding.
+                // Storage selection separately requires exact integer execution.
+                if (min < -(1L << 62) || max > (1L << 62)) return false;
+                min = (long)(double)min;
+                max = (long)(double)max;
+                return true;
             }
 
-            private void NoteIntegerWrite(
-                Expression target,
-                FlowValueType type,
-                Operator op,
-                Expression right)
+            private void RecordIntegerRange(Expression target, bool valid, long min, long max)
             {
-                if (target is not NameExpression name ||
-                    !_names.TryGetValue(name, out var binding) ||
-                    !binding.IsLocal)
-                {
-                    return;
-                }
-                if (_integerRangeLoopDepth > 0)
-                {
-                    ClearLocalIntegerRange(binding.Local);
-                    return;
-                }
-                if (!IsExactIntegerStorage(type) ||
-                    (op != Operator.Add &&
-                        op != Operator.Subtract &&
-                        op != Operator.Modulo) ||
-                    !TryGetIntegerRange(target, out var leftMin, out var leftMax) ||
-                    !TryGetIntegerRange(right, out var rightMin, out var rightMax))
-                {
-                    if (!IsExactIntegerStorage(type))
-                    {
-                        ClearLocalIntegerRange(binding.Local);
-                    }
-                    return;
-                }
-                long min;
-                long max;
-                if (op == Operator.Modulo)
-                {
-                    if (leftMin < 0 || rightMin <= 0 && rightMax >= 0)
-                    {
-                        ClearLocalIntegerRange(binding.Local);
-                        return;
-                    }
-                    min = 0;
-                    max = leftMax;
-                }
-                else if (op == Operator.Add
-                    ? !TryAddRange(leftMin, leftMax, rightMin, rightMax, out min, out max)
-                    : !TrySubtractRange(leftMin, leftMax, rightMin, rightMax, out min, out max))
-                {
-                    ClearLocalIntegerRange(binding.Local);
-                    return;
-                }
-                MergeLocalIntegerRange(binding.Local, min, max);
+                if (target is NameExpression name && _names.TryGetValue(name, out var binding) && binding.IsLocal)
+                    RecordIntegerRange(binding.Local, valid, min, max);
             }
 
-            private void NoteIntegerWrite(LocalSlotId slot, FlowValueType type, Expression value)
+            private void RecordIntegerRange(LocalSlotId slot, bool valid, long min, long max)
             {
-                if (_integerRangeLoopDepth > 0)
-                {
-                    ClearLocalIntegerRange(slot);
-                    return;
-                }
-                if (!IsExactIntegerStorage(type) ||
-                    !TryGetIntegerRange(value, out var min, out var max))
-                {
-                    if (!IsExactIntegerStorage(type))
-                    {
-                        ClearLocalIntegerRange(slot);
-                    }
-                    return;
-                }
-                MergeLocalIntegerRange(slot, min, max);
+                if (!IsCaptured(slot) && FlowValueTypeFacts.IsNumberCompatible(_locals[slot.Value]) &&
+                    valid && min <= max && min >= -(1L << 62) && max <= (1L << 62))
+                    _guardedIntegerRanges[slot.Value] = (min, max);
+                else _guardedIntegerRanges.Remove(slot.Value);
             }
 
-            private void NoteIntegerMutation(
-                Expression target,
-                FlowValueType type,
-                Operator op)
+            private bool ApplyProvenIntegerRanges()
             {
-                if (target is not NameExpression name ||
-                    !_names.TryGetValue(name, out var binding) ||
-                    !binding.IsLocal)
+                var changed = false;
+                for (var i = 0; i < _locals.Length; i++)
                 {
-                    return;
-                }
-                if (_integerRangeLoopDepth > 0)
-                {
-                    ClearLocalIntegerRange(binding.Local);
-                    return;
-                }
-                if (!IsExactIntegerStorage(type) ||
-                    !TryGetIntegerRange(target, out var min, out var max))
-                {
-                    if (!IsExactIntegerStorage(type))
+                    if (!_definitionCandidates[i] || !FlowValueTypeFacts.IsNumberCompatible(_locals[i])) continue;
+                    long min = long.MaxValue, max = long.MinValue;
+                    var bounded = TryGetResetCounterRange(i, out var boundedMin, out var boundedMax) ||
+                        TryGetCountedAccumulationRange(i, out boundedMin, out boundedMax);
+                    var increments = false;
+                    var decrements = false;
+                    foreach (var definition in _localDefinitions[i])
                     {
-                        ClearLocalIntegerRange(binding.Local);
+                        if (definition == null && _unobservedInitialNulls[i]) continue;
+                        if (definition is UnaryExpression mutation && IsMutation(mutation.Operator))
+                        {
+                            if (mutation.Operator == Operator.PreIncrement || mutation.Operator == Operator.PostIncrement)
+                                increments = true;
+                            else decrements = true;
+                            continue;
+                        }
+                        if (definition == null ||
+                            !_expressionIntegerRanges.TryGetValue(definition, out var range))
+                        { min = long.MaxValue; break; }
+                        min = Math.Min(min, range.Min);
+                        max = Math.Max(max, range.Max);
                     }
-                    return;
+                    if (bounded) { min = boundedMin; max = boundedMax; }
+                    if (min > max) continue;
+                    if (!bounded && (increments || decrements))
+                    {
+                        // Unit steps stay integral and stop at +/-2^53 under Number
+                        // semantics. Start with every nonmutation definition; then
+                        // intersect this induction fact with each evaluated operand.
+                        const long limit = 9007199254740992L;
+                        if (min < -limit || max > limit) continue;
+                        var initialMin = min;
+                        var initialMax = max;
+                        foreach (var definition in _localDefinitions[i])
+                        {
+                            if (definition is not UnaryExpression mutation || !IsMutation(mutation.Operator)) continue;
+                            var delta = mutation.Operator == Operator.PreIncrement || mutation.Operator == Operator.PostIncrement ? 1 : -1;
+                            var range = _expressionIntegerRanges.TryGetValue(mutation.Expression, out var evaluated)
+                                ? evaluated : (-limit, limit);
+                            var nextMin = Math.Max(-limit, range.Item1 + delta);
+                            var nextMax = Math.Min(limit, range.Item2 + delta);
+                            min = Math.Min(min, decrements ? nextMin : Math.Max(initialMin, nextMin));
+                            max = Math.Max(max, increments ? nextMax : Math.Min(initialMax, nextMax));
+                        }
+                    }
+                    if (!_invariantIntegerRanges.TryGetValue(i, out var previous) || previous != (min, max))
+                    {
+                        _invariantIntegerRanges[i] = (min, max);
+                        changed = true;
+                    }
+                    if (_locals[i] == FlowValueType.Number && FitsInt32(min, max))
+                    {
+                        _locals[i] = _forcedLocalTypes[i] = FlowValueType.Int32;
+                        changed = true;
+                    }
                 }
-                var delta = op == Operator.PreIncrement || op == Operator.PostIncrement
-                    ? 1L
-                    : -1L;
-                if (!TryAddRange(min, max, delta, delta, out var nextMin, out var nextMax))
-                {
-                    ClearLocalIntegerRange(binding.Local);
-                    return;
-                }
-                MergeLocalIntegerRange(binding.Local, nextMin, nextMax);
+                return changed;
             }
 
-            private bool TryGetIntegerRange(Expression expression, out long min, out long max, bool allowLocalRanges = true)
+            // These facts describe the current path, not all writes in a function.
+            // A branch join widens them; loop back edges retain only invariants.
+            private void RestoreIntegerRanges(Dictionary<int, (long Min, long Max)> ranges)
             {
+                _guardedIntegerRanges.Clear();
+                foreach (var pair in ranges) _guardedIntegerRanges.Add(pair.Key, pair.Value);
+            }
+
+            private void MergeIntegerRanges(Dictionary<int, (long Min, long Max)> other)
+            {
+                var current = new Dictionary<int, (long Min, long Max)>(_guardedIntegerRanges);
+                _guardedIntegerRanges.Clear();
+                foreach (var pair in current)
+                    if (other.TryGetValue(pair.Key, out var range))
+                        _guardedIntegerRanges[pair.Key] =
+                            (Math.Min(pair.Value.Min, range.Min), Math.Max(pair.Value.Max, range.Max));
+            }
+
+            private Dictionary<int, (long Min, long Max)> RetainLoopInvariantRanges(AstNode loop)
+            {
+                InvalidateStringBounds(loop);
+                var ranges = new Dictionary<int, (long Min, long Max)>(_guardedIntegerRanges);
+                foreach (var pair in ranges)
+                    if (WritesLocal(loop, new LocalSlotId(pair.Key))) _guardedIntegerRanges.Remove(pair.Key);
+                return new(_guardedIntegerRanges);
+            }
+
+            private static bool CanFallThrough(Statement statement)
+            {
+                if (statement is BreakStatement or ContinueStatement) return false;
+                if (statement is BlockStatement block)
+                {
+                    foreach (var child in block.Statements) if (!CanFallThrough(child)) return false;
+                    return true;
+                }
+                if (statement is IfStatement conditional)
+                    return CanFallThrough(conditional.Body) || CanFallThrough(conditional.Else);
+                return CanCompleteNormally(statement);
+            }
+
+            private void RefineIntegerCondition(Expression condition, bool truth = true)
+            {
+                condition = UnwrapGroups(condition);
+                if (condition is UnaryExpression unary && unary.Operator == Operator.LogicalNot)
+                {
+                    RefineIntegerCondition(unary.Expression, !truth);
+                    return;
+                }
+                if (condition is GetElementExpression element && IsRangeCondition(element) &&
+                    TryGetIntegerRange(element.Index, out _, out _))
+                {
+                    RefineIntegerRange(element.Index, 0, int.MaxValue - 33);
+                    return;
+                }
+                if (condition is not BinaryExpression binary) return;
+                if (binary.Operator == (truth ? Operator.LogicalAnd : Operator.LogicalOr))
+                {
+                    if (!IsRangeCondition(binary)) return;
+                    RefineIntegerCondition(binary.Left, truth);
+                    RefineIntegerCondition(binary.Right, truth);
+                    return;
+                }
+                RefineStringIndexBound(binary, truth);
+                // Re-evaluating the operands' range is valid only for pure reads.
+                if (!IsRangeOperand(binary.Left) || !IsRangeOperand(binary.Right) ||
+                    !_expressionTypes.TryGetValue(binary.Left, out var leftType) || !FlowValueTypeFacts.IsNumberCompatible(leftType) ||
+                    !_expressionTypes.TryGetValue(binary.Right, out var rightType) || !FlowValueTypeFacts.IsNumberCompatible(rightType) ||
+                    !TryGetIntegerRange(binary.Left, out var leftMin, out var leftMax) ||
+                    !TryGetIntegerRange(binary.Right, out var rightMin, out var rightMax)) return;
+                var op = binary.Operator;
+                if (!truth)
+                    op = op == Operator.LessThan ? Operator.GreaterThanOrEqual :
+                        op == Operator.LessThanOrEqual ? Operator.GreaterThan :
+                        op == Operator.GreaterThan ? Operator.LessThanOrEqual :
+                        op == Operator.GreaterThanOrEqual ? Operator.LessThan :
+                        op == Operator.NotEqual ? Operator.Equal : op == Operator.Equal ? Operator.NotEqual : null;
+                if (op == Operator.LessThan || op == Operator.LessThanOrEqual)
+                {
+                    var delta = op == Operator.LessThan ? 1 : 0;
+                    RefineIntegerRange(binary.Left, leftMin, Math.Min(leftMax, rightMax - delta));
+                    RefineIntegerRange(binary.Right, Math.Max(rightMin, leftMin + delta), rightMax);
+                }
+                else if (op == Operator.GreaterThan || op == Operator.GreaterThanOrEqual)
+                {
+                    var delta = op == Operator.GreaterThan ? 1 : 0;
+                    RefineIntegerRange(binary.Left, Math.Max(leftMin, rightMin + delta), leftMax);
+                    RefineIntegerRange(binary.Right, rightMin, Math.Min(rightMax, leftMax - delta));
+                }
+                else if (op == Operator.Equal)
+                {
+                    RefineIntegerRange(binary.Left, Math.Max(leftMin, rightMin), Math.Min(leftMax, rightMax));
+                    RefineIntegerRange(binary.Right, Math.Max(leftMin, rightMin), Math.Min(leftMax, rightMax));
+                }
+                else if (op == Operator.NotEqual)
+                {
+                    if (rightMin == rightMax)
+                        RefineIntegerRange(binary.Left, leftMin == rightMin ? leftMin + 1 : leftMin,
+                            leftMax == rightMax ? leftMax - 1 : leftMax);
+                    if (leftMin == leftMax)
+                        RefineIntegerRange(binary.Right, rightMin == leftMin ? rightMin + 1 : rightMin,
+                            rightMax == leftMax ? rightMax - 1 : rightMax);
+                }
+            }
+
+            private bool IsRangeOperand(Expression expression)
+            {
+                expression = UnwrapGroups(expression);
+                return expression is NameExpression || TryEvaluateInt32Constant(expression, out _) ||
+                    expression is GetPropertyExpression property && IsStaticProperty(property.Property, "length") &&
+                    IsRangeCondition(property.Object) && _expressionTypes.TryGetValue(property.Object, out var receiver) &&
+                    (receiver == FlowValueType.String || FlowValueTypeFacts.IsPackedArray(receiver));
+            }
+
+            private bool IsRangeCondition(Expression expression) => UnwrapGroups(expression) switch
+            {
+                NameExpression or LiteralExpression => true,
+                BinaryExpression binary => IsRangeCondition(binary.Left) && IsRangeCondition(binary.Right),
+                UnaryExpression unary when !IsMutation(unary.Operator) => IsRangeCondition(unary.Expression),
+                GetElementExpression element => _expressionTypes.TryGetValue(element.Object, out var receiver) &&
+                    FlowValueTypeFacts.IsPackedArray(receiver) && IsRangeCondition(element.Object) && IsRangeCondition(element.Index),
+                GetPropertyExpression property => IsRangeOperand(property),
+                _ => false
+            };
+
+            private void RefineIntegerRange(Expression expression, long min, long max)
+            {
+                if (UnwrapGroups(expression) is NameExpression name && _names.TryGetValue(name, out var binding) &&
+                    binding.IsLocal && !IsCaptured(binding.Local) && min <= max)
+                {
+                    if (_guardedIntegerRanges.TryGetValue(binding.Local.Value, out var previous))
+                    {
+                        min = Math.Max(min, previous.Min);
+                        max = Math.Min(max, previous.Max);
+                    }
+                    if (min <= max) _guardedIntegerRanges[binding.Local.Value] = (min, max);
+                }
+            }
+
+            private bool TryGetIntegerRange(Expression expression, out long min, out long max)
+            {
+                expression = UnwrapGroups(expression);
+                if (expression == null) { min = max = 0; return false; }
+                if (_expressionIntegerRanges.TryGetValue(expression, out var evaluated))
+                {
+                    min = evaluated.Min;
+                    max = evaluated.Max;
+                    return true;
+                }
+                if (expression is NameExpression guarded && _names.TryGetValue(guarded, out var guardedBinding) &&
+                    guardedBinding.IsLocal &&
+                    (_guardedIntegerRanges.TryGetValue(guardedBinding.Local.Value, out var range) ||
+                        _invariantIntegerRanges.TryGetValue(guardedBinding.Local.Value, out range)))
+                {
+                    min = range.Min;
+                    max = range.Max;
+                    return true;
+                }
                 if (expression is GetPropertyExpression length && IsStaticProperty(length.Property, "length") &&
-                    _expressionTypes.TryGetValue(length.Object, out var receiverType) && receiverType == FlowValueType.String)
+                    _expressionTypes.TryGetValue(length.Object, out var receiverType) &&
+                    (receiverType == FlowValueType.String || FlowValueTypeFacts.IsPackedArray(receiverType) ||
+                        _nativeObjectTypes.TryGetValue(length.Object, out var lengthOwner) && lengthOwner.ClrType == typeof(ScriptArray)))
                 {
                     min = 0;
-                    max = int.MaxValue;
+                    max = receiverType == FlowValueType.String || FlowValueTypeFacts.IsPackedArray(receiverType)
+                        ? int.MaxValue - 32 : int.MaxValue;
                     return true;
                 }
                 if (expression is GetPropertyExpression property &&
                     _function.CompileTimeProperties.TryGetValue(property, out var constant) &&
                     constant.Value.Kind == ValueKind.Number &&
-                    IsExactInt64(constant.Value.Number))
+                    IsExactInt64(constant.Value.Number) &&
+                    constant.Value.Number >= -9007199254740991d && constant.Value.Number <= 9007199254740991d &&
+                    BitConverter.DoubleToInt64Bits(constant.Value.Number) != long.MinValue)
                 {
                     min = max = (long)constant.Value.Number;
                     return true;
@@ -4428,105 +4196,80 @@ namespace AuroraScript.Compiler.Backend.Code
                     min = max = int32;
                     return true;
                 }
-                if (TryEvaluateInt64Constant(expression, out var exact))
+                if (expression is LiteralExpression { Token: NumberToken literal } &&
+                    literal.Suffix is not (NumericLiteralSuffix.Number or NumericLiteralSuffix.Int64 or NumericLiteralSuffix.UInt64) &&
+                    literal.NumberValue >= -(1L << 62) && literal.NumberValue <= (1L << 62) &&
+                    Math.Truncate(literal.NumberValue) == literal.NumberValue &&
+                    BitConverter.DoubleToInt64Bits(literal.NumberValue) != long.MinValue)
                 {
-                    min = max = exact;
+                    min = max = (long)literal.NumberValue;
+                    return true;
+                }
+                if (expression is NameExpression constantName && _names.TryGetValue(constantName, out var constantBinding) &&
+                    constantBinding.HasConstant && constantBinding.Constant.Kind == ValueKind.Number &&
+                    TypeCheckOps.IsInt32(constantBinding.Constant.Number))
+                {
+                    min = max = (int)constantBinding.Constant.Number;
+                    return true;
+                }
+                if (expression is GetElementExpression packed && _expressionTypes.TryGetValue(packed.Object, out var packedType))
+                {
+                    (min, max) = packedType switch
+                    {
+                        FlowValueType.Int8Array => (sbyte.MinValue, sbyte.MaxValue),
+                        FlowValueType.UInt8Array => (byte.MinValue, byte.MaxValue),
+                        FlowValueType.Int16Array => (short.MinValue, short.MaxValue),
+                        FlowValueType.UInt16Array => (ushort.MinValue, ushort.MaxValue),
+                        _ => (0L, -1L)
+                    };
+                    if (min <= max) return true;
+                }
+                if (expression is FunctionCallExpression call && _expressionTypes.TryGetValue(call, out var callType) &&
+                    callType == FlowValueType.Int32 && _nativeCalls != null && _nativeCalls.TryGetValue(call, out var nativeCall) &&
+                    nativeCall?.Method.DeclaringType == typeof(StringValue) && nativeCall.Method.Name == nameof(StringValue.CharCodeAtCore))
+                {
+                    min = 0; max = char.MaxValue;
+                    return true;
+                }
+                if (TryGetExactIntegerQuotient(expression, out var dividend, out var divisor) &&
+                    TryGetIntegerRange(dividend, out var dividendMin, out var dividendMax) &&
+                    dividendMin >= -9007199254740991L && dividendMax <= 9007199254740991L)
+                {
+                    min = dividendMin / divisor; max = dividendMax / divisor;
                     return true;
                 }
                 if (expression is BinaryExpression binary &&
-                    _expressionTypes.TryGetValue(binary, out var binaryType) &&
-                    IsExactIntegerStorage(binaryType) &&
-                    TryGetIntegerRange(binary.Left, out var leftMin, out var leftMax, allowLocalRanges) &&
-                    TryGetIntegerRange(binary.Right, out var rightMin, out var rightMax, allowLocalRanges))
+                    _expressionTypes.TryGetValue(binary, out var binaryType) && FlowValueTypeFacts.IsNumberCompatible(binaryType) &&
+                    TryGetBinaryIntegerRange(binary.Operator, binary.Left, binary.Right, out min, out max)) return true;
+                if (expression is CompoundExpression compound &&
+                    _expressionTypes.TryGetValue(compound, out var compoundType) && FlowValueTypeFacts.IsNumberCompatible(compoundType) &&
+                    TryGetBinaryIntegerRange(compound.Operator.SimplerOperator, compound.Left, compound.Right, out min, out max)) return true;
+                if (expression is UnaryExpression unary &&
+                    TryGetIntegerRange(unary.Expression, out var operandMin, out var operandMax))
                 {
-                    if (binary.Operator == Operator.Add)
+                    if (unary.Operator == Operator.Negate && (operandMin > 0 || operandMax < 0))
                     {
-                        return TryAddRange(
-                            leftMin,
-                            leftMax,
-                            rightMin,
-                            rightMax,
-                            out min,
-                            out max);
+                        min = -operandMax;
+                        max = -operandMin;
+                        return true;
                     }
-                    if (binary.Operator == Operator.Subtract)
+                    if (IsMutation(unary.Operator) && operandMin >= -9007199254740992L && operandMax <= 9007199254740992L)
                     {
-                        return TrySubtractRange(
-                            leftMin,
-                            leftMax,
-                            rightMin,
-                            rightMax,
-                            out min,
-                            out max);
-                    }
-                    if (binary.Operator == Operator.Modulo &&
-                        leftMin >= 0 &&
-                        (rightMin > 0 || rightMax < 0))
-                    {
-                        min = 0;
-                        max = leftMax;
+                        var delta = unary.Operator == Operator.PreIncrement ? 1 : unary.Operator == Operator.PreDecrement ? -1 : 0;
+                        min = Math.Max(-9007199254740992L, operandMin + delta);
+                        max = Math.Min(9007199254740992L, operandMax + delta);
                         return true;
                     }
                 }
-                if (allowLocalRanges && expression is NameExpression name &&
-                    _names.TryGetValue(name, out var binding) &&
-                    binding.IsLocal &&
-                    (uint)binding.Local.Value < (uint)_localIntegerRangeValid.Length &&
-                    _localIntegerRangeValid[binding.Local.Value] &&
-                    IsExactIntegerStorage(_locals[binding.Local.Value]))
+                if (_expressionTypes.TryGetValue(expression, out var known) && known == FlowValueType.Int32)
                 {
-                    min = _localIntegerRangeMin[binding.Local.Value];
-                    max = _localIntegerRangeMax[binding.Local.Value];
+                    min = int.MinValue;
+                    max = int.MaxValue;
                     return true;
                 }
                 min = 0;
                 max = 0;
                 return false;
-            }
-
-            private void MergeLocalIntegerRange(LocalSlotId slot, long min, long max)
-            {
-                if (!slot.IsValid ||
-                    (uint)slot.Value >= (uint)_localIntegerRangeValid.Length ||
-                    IsCaptured(slot))
-                {
-                    return;
-                }
-                if (!_localIntegerRangeValid[slot.Value])
-                {
-                    _localIntegerRangeValid[slot.Value] = true;
-                    _localIntegerRangeMin[slot.Value] = min;
-                    _localIntegerRangeMax[slot.Value] = max;
-                    _changed = true;
-                    return;
-                }
-                if (min < _localIntegerRangeMin[slot.Value])
-                {
-                    _localIntegerRangeMin[slot.Value] = min;
-                    _changed = true;
-                }
-                if (max > _localIntegerRangeMax[slot.Value])
-                {
-                    _localIntegerRangeMax[slot.Value] = max;
-                    _changed = true;
-                }
-            }
-
-            private void ClearLocalIntegerRange(LocalSlotId slot)
-            {
-                if (!slot.IsValid ||
-                    (uint)slot.Value >= (uint)_localIntegerRangeValid.Length ||
-                    !_localIntegerRangeValid[slot.Value])
-                {
-                    return;
-                }
-                _localIntegerRangeValid[slot.Value] = false;
-                _changed = true;
-            }
-
-            private static bool IsExactIntegerStorage(FlowValueType type)
-            {
-                return type is FlowValueType.Int32 or FlowValueType.UInt32;
             }
 
             private static bool FitsInt32(long min, long max)
@@ -4594,25 +4337,6 @@ namespace AuroraScript.Compiler.Backend.Code
                 return GetInductionType(expression.Left);
             }
 
-            private FlowValueType GetInductionArithmeticType(BinaryExpression expression)
-            {
-                if (expression.Operator != Operator.Add)
-                {
-                    return FlowValueType.None;
-                }
-                if (TryEvaluateInt32Constant(expression.Right, out var right) &&
-                    right >= 0 && right <= 32)
-                {
-                    return GetInductionType(expression.Left);
-                }
-                if (TryEvaluateInt32Constant(expression.Left, out var left) &&
-                    left >= 0 && left <= 32)
-                {
-                    return GetInductionType(expression.Right);
-                }
-                return FlowValueType.None;
-            }
-
             /// <summary>
             /// Returns the native storage a proven induction variable keeps for
             /// a small positive step, or <see cref="FlowValueType.None"/> when
@@ -4645,6 +4369,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 private readonly IReadOnlyDictionary<NameExpression, BoundName> _names;
                 private readonly IReadOnlyDictionary<VariableDeclaration, LocalSlotId> _declarations;
                 private readonly IReadOnlyDictionary<Expression, FlowValueType> _expressionTypes;
+                private readonly IReadOnlyDictionary<UnaryExpression, FlowValueType> _mutationWriteTypes;
                 private readonly DirectParameterType[] _parameterTypes;
                 private readonly Func<LocalSlotId, bool> _isCaptured;
                 private FlowValueType _returnType;
@@ -4656,6 +4381,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     IReadOnlyDictionary<NameExpression, BoundName> names,
                     IReadOnlyDictionary<VariableDeclaration, LocalSlotId> declarations,
                     IReadOnlyDictionary<Expression, FlowValueType> expressionTypes,
+                    IReadOnlyDictionary<UnaryExpression, FlowValueType> mutationWriteTypes,
                     DirectParameterType[] parameterTypes,
                     Func<LocalSlotId, bool> isCaptured)
                 {
@@ -4663,6 +4389,7 @@ namespace AuroraScript.Compiler.Backend.Code
                     _names = names;
                     _declarations = declarations;
                     _expressionTypes = expressionTypes;
+                    _mutationWriteTypes = mutationWriteTypes;
                     _parameterTypes = parameterTypes;
                     _isCaptured = isCaptured;
                 }
@@ -4873,12 +4600,9 @@ namespace AuroraScript.Compiler.Backend.Code
                             }
                             if (TryGetLocal(unary.Expression, out var mutationSlot))
                             {
-                                locals[mutationSlot.Value] =
-                                    knownUnary is FlowValueType.Int32 or
-                                        FlowValueType.UInt32 or FlowValueType.Int64 or
-                                        FlowValueType.UInt64
-                                        ? knownUnary
-                                        : FlowValueType.Number;
+                                // Postfix returns the old value, whose type may
+                                // be narrower than the value written back.
+                                locals[mutationSlot.Value] = _mutationWriteTypes[unary];
                             }
                             return unary.Operator == Operator.PostIncrement ||
                                 unary.Operator == Operator.PostDecrement

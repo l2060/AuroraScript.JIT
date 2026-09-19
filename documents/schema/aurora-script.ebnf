@@ -100,6 +100,8 @@ expression          = assignment ;
 assignment          = lambda-expression
                     | binary-expression
                     | unary-expression
+                    | numeric-cast
+                    | type-assertion
                     | postfix-expression
                     | primary-expression ;
 
@@ -129,6 +131,8 @@ index               = "[" expression "]" ;
 member              = "." identifier ;
 
 unary-expression    = ( "new" | "..." | "++" | "--" | "!" | "~" | "-" | "typeof" ) expression ;
+numeric-cast        = "(" "int32" ")" ( unary-expression | numeric-cast | postfix-expression ) ;
+type-assertion      = expression "as" type-reference ;
 
 binary-expression   = expression binary-operator expression ;
 binary-operator     = "*" | "/" | "%" | "+" | "-" | "<<" | ">>" | ">>>"

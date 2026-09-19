@@ -246,7 +246,7 @@ namespace AuroraScript.Compiler.Backend.Code
         {
             var type = parameter.Type;
             return parameter.IsCoercion ||
-                type == FlowValueType.Boolean || IsNumeric(type) ||
+                type == FlowValueType.Boolean || type == FlowValueType.String || IsNumeric(type) ||
                 IsPackedArray(type);
         }
 
@@ -292,6 +292,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 return true;
             }
             return parameterType == argumentType ||
+                parameterType == FlowValueType.String && argumentType == FlowValueType.Null ||
                 (IsPackedArray(parameterType) &&
                     argumentType == FlowValueType.Null) ||
                 (parameterType == FlowValueType.Number &&
@@ -344,9 +345,6 @@ namespace AuroraScript.Compiler.Backend.Code
                 : type == FlowValueType.UInt64Array
                     ? FlowValueType.UInt64
                 : type is FlowValueType.Float32Array or FlowValueType.Float64Array
-                    ? FlowValueType.Number
-                : type is FlowValueType.UInt8Array or FlowValueType.Int16Array or
-                    FlowValueType.UInt16Array
                     ? FlowValueType.Number
                 : IsPackedArray(type)
                     ? FlowValueType.Int32
@@ -430,22 +428,6 @@ namespace AuroraScript.Compiler.Backend.Code
             (!ModuleSymbol.IsValid || IsDeclaredOnly);
     }
 
-    /// <summary>
-    /// An ascending <c>for</c> loop whose counter was proven to hold exact
-    /// integers, so the emitter can hoist the bound and drive it natively.
-    /// </summary>
-    internal readonly struct CountedLoop
-    {
-        public CountedLoop(LocalSlotId counter, Expression bound)
-        {
-            Counter = counter;
-            Bound = bound;
-        }
-
-        public LocalSlotId Counter { get; }
-        public Expression Bound { get; }
-    }
-
     internal sealed class TypedFunctionCode
     {
         private readonly Dictionary<NameExpression, BoundName> _names;
@@ -456,7 +438,6 @@ namespace AuroraScript.Compiler.Backend.Code
         private readonly Dictionary<Expression, Type> _clrTypes;
         private readonly Dictionary<FunctionCallExpression, MethodBase> _clrCalls;
         private readonly Dictionary<Expression, MemberInfo> _clrMembers;
-        private readonly Dictionary<ForStatement, CountedLoop> _countedLoops;
         private Dictionary<FunctionCallExpression, HostNativeMethodDescriptor> _nativeCalls;
         private Dictionary<FunctionCallExpression, HostExportDescriptor> _hostCalls;
         private readonly IReadOnlyDictionary<Expression, FlowValueType> _guardedTypes;
@@ -473,7 +454,6 @@ namespace AuroraScript.Compiler.Backend.Code
             HostNativeObjectDescriptor[] localNativeObjectTypes,
             bool[] writtenLocals,
             FlowValueType returnType,
-            Dictionary<ForStatement, CountedLoop> countedLoops = null,
             Dictionary<FunctionCallExpression, HostNativeMethodDescriptor> nativeCalls = null,
             Dictionary<FunctionCallExpression, HostExportDescriptor> hostCalls = null,
             Dictionary<Expression, Type> clrTypes = null,
@@ -492,7 +472,6 @@ namespace AuroraScript.Compiler.Backend.Code
                 throw new ArgumentNullException(nameof(localNativeObjectTypes));
             WrittenLocals = writtenLocals ?? throw new ArgumentNullException(nameof(writtenLocals));
             ReturnType = returnType;
-            _countedLoops = countedLoops;
             _nativeCalls = nativeCalls;
             _hostCalls = hostCalls;
             _clrTypes = clrTypes ?? new Dictionary<Expression, Type>(ReferenceEqualityComparer.Instance);
@@ -519,22 +498,31 @@ namespace AuroraScript.Compiler.Backend.Code
         public void SetNativeCall(FunctionCallExpression call, HostNativeMethodDescriptor method) =>
             (_nativeCalls ??= new())[call] = method;
 
-        public bool TryGetCountedLoop(ForStatement statement, out CountedLoop loop)
-        {
-            if (_countedLoops == null || statement == null)
-            {
-                loop = default;
-                return false;
-            }
-            return _countedLoops.TryGetValue(statement, out loop);
-        }
-
         public FunctionPlan Function { get; }
         public FlowValueType[] LocalTypes { get; }
         public HostNativeObjectDescriptor[] LocalNativeObjectTypes { get; }
         public Type[] LocalClrTypes { get; }
         public bool[] WrittenLocals { get; }
         public FlowValueType ReturnType { get; }
+
+        // These describe Number values, not the language's distinct int64 type.
+        internal IReadOnlyDictionary<Expression, (long Min, long Max)> IntegerRanges { get; init; }
+        internal IReadOnlyDictionary<int, (long Min, long Max)> LocalIntegerRanges { get; init; }
+
+        internal bool IsIntegerNumber(Expression expression) => expression != null &&
+            FlowValueTypeFacts.IsNumberCompatible(GetExpressionType(expression)) &&
+            IntegerRanges?.ContainsKey(expression) == true;
+
+        internal bool IsExactIntegerNumber(Expression expression) => IsIntegerNumber(expression) &&
+            IntegerRanges[expression].Min >= -9007199254740991L &&
+            IntegerRanges[expression].Max <= 9007199254740991L;
+
+        // Integral values alone do not justify integer storage. At the Number
+        // precision boundary, integer increments would need rounding branches;
+        // keep native floating arithmetic there instead.
+        internal bool UsesWideIntegerStorage(LocalSlotId slot) => GetLocalType(slot) == FlowValueType.Number &&
+            LocalIntegerRanges != null && LocalIntegerRanges.TryGetValue(slot.Value, out var range) &&
+            range.Min >= -9007199254740991L && range.Max <= 9007199254740991L;
 
         // Reads dominated by a module declaration with no intervening callback.
         internal Dictionary<NameExpression, VariableDeclaration> ModuleCachedReads { get; init; }
@@ -639,7 +627,7 @@ namespace AuroraScript.Compiler.Backend.Code
             : this(original.Function, original._names, original._declarations,
                 original._expressionTypes, original._structuralTypes, original._nativeObjectTypes,
                 original.LocalTypes, original.LocalNativeObjectTypes, original.WrittenLocals,
-                original.ReturnType, original._countedLoops,
+                original.ReturnType,
                 clrTypes: original._clrTypes,
                 localClrTypes: original.LocalClrTypes,
                 clrCalls: original._clrCalls,
@@ -652,6 +640,8 @@ namespace AuroraScript.Compiler.Backend.Code
             _guardedTypes = guardedTypes;
             _guardedNativeTypes = guardedNativeTypes;
             ModuleCachedReads = original.ModuleCachedReads;
+            IntegerRanges = original.IntegerRanges;
+            LocalIntegerRanges = original.LocalIntegerRanges;
         }
 
         public BoundName GetName(NameExpression expression)

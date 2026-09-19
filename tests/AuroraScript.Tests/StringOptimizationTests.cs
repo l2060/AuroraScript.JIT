@@ -187,7 +187,7 @@ public sealed class StringOptimizationTests
             export func wide() { return [0xFFFFFFFFFFFFFFFFUL & 255UL, -1L & 255L]; }
             """, mode);
         using var scope = domain;
-        ScriptAssert.Equal(new object[] { 255D, 255D, 2147483647D, 4294967295D, 2147483648D, 4294967040D, 4294967295D, 0D },
+        ScriptAssert.Equal(new object[] { 255D, 255D, 2147483647D, -1D, -2147483648D, -256D, -1D, 0D },
             TestWorkspace.Execute(domain, "mask", arguments: [ScriptDatum.FromNumber(uint.MaxValue)]));
         var wide = TestWorkspace.Execute(domain, "wide");
         Assert.True(ScriptDatum.TryGetArray(wide, out var array));
@@ -353,7 +353,7 @@ public sealed class StringOptimizationTests
                 return 'unreachable';
             }
             export func checkedReturn(value) String { return value; }
-            export native func invalidNative(Number value) String { return value; }
+            export native func invalidNative(value) String { return value; }
             export func run() {
                 var text = 'start';
                 var assigned = (text += null);
@@ -552,7 +552,7 @@ public sealed class StringOptimizationTests
             Assert.Contains(GetCalls(methods.Single(method => method.Name == "code$native")),
                 call => call.Name == nameof(StringValue.CharCodeAtCore));
             Assert.Contains(GetCalls(methods.Single(method => method.Name == "sum$native")),
-                call => call.Name == nameof(StringValue.CharCodeAtCore));
+                call => call.DeclaringType == typeof(string) && call.Name == "get_Chars");
         }
 #endif
     }

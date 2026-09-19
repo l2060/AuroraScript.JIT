@@ -27,6 +27,7 @@ namespace AuroraScript.Runtime.Interop
 
         public static ScriptDatum CheckInstance<T>(ScriptDatum value)
         {
+            if (value.Kind == ValueKind.Null && !typeof(T).IsValueType) return value;
             _ = GetRequiredInstance<T>(value);
             return value;
         }

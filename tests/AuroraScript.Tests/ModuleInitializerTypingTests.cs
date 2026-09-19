@@ -37,10 +37,13 @@ public sealed class ModuleInitializerTypingTests
             var boolCopy = flag;
             var nullCopy = empty;
             var size = map.size;
-            export func result() { return [size, numericCopy, textCopy, boolCopy, nullCopy]; }
+            var wide = 2147483647;
+            wide += 1;
+            var wideCopy = wide;
+            export func result() { return [size, numericCopy, textCopy, boolCopy, nullCopy, wideCopy, typeof wideCopy]; }
             """, mode);
         using (domain)
-            ScriptAssert.Equal(new object?[] { 0, 5, "hello!", true, null }, TestWorkspace.Execute(domain, "result"));
+            ScriptAssert.Equal(new object?[] { 0, 5, "hello!", true, null, 2147483648d, "number" }, TestWorkspace.Execute(domain, "result"));
 #if NET9_0_OR_GREATER
         if (mode == CompilationMode.Persistence)
         {

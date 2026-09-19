@@ -1,4 +1,5 @@
 using AuroraScript.Runtime.Types;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
 namespace AuroraScript.Runtime
@@ -58,8 +59,7 @@ namespace AuroraScript.Runtime
 
     /// <summary>
     /// Exact runtime assertions for native builtin types on typed parameters
-    /// and <c>value as Number</c>-style checks. Custom <c>type</c> names are
-    /// compile-time grants and never reach this helper.
+    /// and <c>value as Number</c>-style checks, including structural boundaries.
     /// </summary>
     public static class TypeCheckOps
     {
@@ -166,6 +166,29 @@ namespace AuroraScript.Runtime
                 return truncated;
             }
             return MismatchNumber(value);
+        }
+
+        /// <summary>Explicit numeric cast: truncate toward zero, rejecting non-finite or out-of-range results.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int CastInt32Number(double value)
+        {
+            var integer = System.Math.Truncate(value);
+            if (integer >= int.MinValue && integer <= int.MaxValue)
+                return (int)integer;
+            throw new AuroraRuntimeException("Cannot convert number to int32: value is not finite or is out of range.");
+        }
+
+        /// <summary>Explicitly casts a numeric datum to int32, truncating toward zero.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int CastInt32Value(ScriptDatum value)
+        {
+            return value.Kind switch
+            {
+                ValueKind.Number => CastInt32Number(value.Number),
+                ValueKind.Int64 => CastInt32Number(value.Int64),
+                ValueKind.UInt64 => CastInt32Number(value.UInt64),
+                _ => throw new AuroraRuntimeException("An int32 cast requires a numeric value.")
+            };
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -391,14 +414,14 @@ namespace AuroraScript.Runtime
         /// <summary>Validates an exact String value.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum CheckString(ScriptDatum value) =>
-            value.Kind == ValueKind.String
+            value.Kind is ValueKind.String or ValueKind.Null
                 ? value
                 : Mismatch(CheckedType.String, value);
 
         /// <summary>Validates an exact Object value.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum CheckObject(ScriptDatum value) =>
-            value.Kind == ValueKind.Object && value.Reference is ScriptObject
+            value.Kind == ValueKind.Null || value.Kind == ValueKind.Object && value.Reference is ScriptObject
                 ? value
                 : Mismatch(CheckedType.Object, value);
 
@@ -425,7 +448,7 @@ namespace AuroraScript.Runtime
         /// <summary>Validates an exact Array value.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum CheckArray(ScriptDatum value) =>
-            value.Kind == ValueKind.Array && value.Reference is ScriptArray
+            value.Kind == ValueKind.Null || value.Kind == ValueKind.Array && value.Reference is ScriptArray
                 ? value
                 : Mismatch(CheckedType.Array, value);
 
@@ -516,6 +539,77 @@ namespace AuroraScript.Runtime
             value.Reference is ScriptUInt64Array
                 ? value
                 : Mismatch(CheckedType.UInt64Array, value);
+
+        /// <summary>Validates a nullable native object contract.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum CheckNativeObject<T>(ScriptDatum value) where T : ScriptObject
+        {
+            _ = GetNullableNativeObject<T>(value);
+            return value;
+        }
+
+        /// <summary>Validates a nullable callable reference.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum CheckCallable(ScriptDatum value) =>
+            value.Kind is ValueKind.Null or ValueKind.Function or ValueKind.ClrFunction or ValueKind.ClrBonding
+                ? value : throw new AuroraRuntimeException("Type check failed: expected callable.");
+
+        /// <summary>Validates the exact arity of a strong callable invocation.</summary>
+        public static void CheckArgumentCount(int actual, int expected)
+        {
+            if (actual != expected)
+                throw new AuroraRuntimeException($"Callable requires {expected} arguments, actual {actual}.");
+        }
+
+        /// <summary>Extracts a checked String value while preserving null.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static string GetStringValue(ScriptDatum value) => value.Kind == ValueKind.Null ? null : value.StringText;
+
+        /// <summary>Wraps a native string while preserving null.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum FromNullableString(string value) => value == null ? ScriptDatum.Null : ScriptDatum.FromString(value);
+
+        /// <summary>Formats a nullable native string for script concatenation.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static string FormatString(string value) => value ?? "null";
+
+        /// <summary>Rejects null before calling a native string member.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static string RequireStringReceiver(string value) => value ??
+            throw new AuroraRuntimeException("Cannot access a member of null.");
+
+        /// <summary>Checks a structure receiver and detects repeated visits in recursive shapes.</summary>
+        public static bool EnterStructure(ScriptDatum value, string type,
+            ref HashSet<(ScriptObject, string)> visited, bool recursive)
+        {
+            if (value.Kind == ValueKind.Null) return false;
+            if (value.Kind != ValueKind.Object)
+                throw new AuroraRuntimeException($"Type check failed: expected {type}, actual {ScriptDatum.GetTypeName(value)}.");
+            if (!recursive) return true;
+            visited ??= new();
+            return visited.Add((value.Object, type));
+        }
+
+        /// <summary>Reads a structural field and records whether validation invoked user code.</summary>
+        public static ScriptDatum ReadStructuralField(ScriptDatum owner, ScriptContext context,
+            string name, ref bool pure)
+        {
+            if (owner.Reference is ScriptObject obj && obj.GetType() == typeof(ScriptObject) &&
+                obj.TryGetOwnDataProperty(name, out var value)) return value;
+            pure = false;
+            return ObjectOps.GetProperty(owner, context, name);
+        }
+
+        /// <summary>Reads a structural field, omitting its type check while a plain data proof is valid.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum GetStructuralField(ScriptContext context, ScriptDatum owner,
+            string name, CheckedType expected, bool proven)
+        {
+            // Only an ordinary own data slot can be read without invoking user code.
+            if (proven && owner.Reference is ScriptObject obj && obj.GetType() == typeof(ScriptObject) &&
+                obj.TryGetOwnDataProperty(name, out var value)) return value;
+            return Check(ObjectOps.GetProperty(owner, context, name), expected);
+        }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static ScriptDatum Mismatch(

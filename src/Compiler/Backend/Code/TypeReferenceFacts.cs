@@ -10,7 +10,7 @@ namespace AuroraScript.Compiler.Backend.Code
     /// <summary>
     /// Resolves source contracts into the coarse facts used by the typed
     /// backend. Custom types stay Object facts; their fields supply native
-    /// Number/Boolean/packed-array proofs at compile time. Host NativeType
+    /// Number/Boolean/packed-array facts after a checked boundary. Host NativeType
     /// names resolve through the engine catalog.
     /// </summary>
     internal static class TypeReferenceFacts

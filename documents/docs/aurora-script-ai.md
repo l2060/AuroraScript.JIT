@@ -168,20 +168,20 @@ a = { b: 1234 };
 Literals:
 
 - number: `1`, `1.5`, `10000D` (force `Number`), `1L` (force `int64`), `1UL` (force `uint64`), `0xD76AA478u` (force `UInt32`), `100000` (inferred `Int32` when it fits), hexadecimal `0xFFFF` (integer by default)
-- integer constraint: lowercase `int32` is allowed on parameters, returns,
-  shape fields, and `value as int32`. It requires an exact signed 32-bit
-  integer at checked boundaries but keeps script `Number` identity
-  (`typeof` is `"number"`). A local whose every assignment is an integer keeps
-  32-bit storage and wraps like CLR `int` instead of widening to `Number`, so
-  it cannot hold negative zero or `NaN`: `-14 % 7` is `0` and `x % 0` raises.
-  Expressions from those locals wrap too (`currentX - 1`). `/` stays `Number`;
-  an exact integer quotient uses `((a - b) / c) as int32` (parentheses required).
-- unsigned integer constraint: lowercase `uint32` is allowed on parameters,
-  returns, shape fields, and `value as uint32`. Checked boundaries require an
-  exact value in `0..4294967295` and reject negative zero. Suffix `U`/`u`
-  selects `UInt32` literal storage without changing unsuffixed inference.
-  Arithmetic wraps modulo 2^32, bitwise results stay unsigned, `>>` is logical,
-  and runtime identity remains Number (`typeof` is `"number"`).
+- `int32` / `uint32` are exact Number constraints. Declarations enforce them;
+  `as` asserts only the current value and does not pin a weak local's type.
+  Number arithmetic never changes because of inferred integer storage. Proven
+  integers default to int32; exact results outside int32 use wider internal
+  integer storage, preserving `2147483647 + 1 == 2147483648` and `typeof "number"`.
+  Overflow widens, `% 0` produces NaN, and negative zero is preserved.
+- `(int32)value` truncates numeric values toward zero and rejects non-finite
+  or out-of-range results. Strings and booleans are not numeric casts.
+- Use `(a + b) | 0` or `(a + b) >>> 0` for explicit 32-bit wrapping.
+  `>>` is signed for all Number values, including `U` literals; `>>>` is unsigned.
+- Strong boundaries reject known mismatches during compilation and dynamic
+  mismatches at runtime. Structural assertions check fields; aliases and unknown
+  calls invalidate the proof for unchecked field reads. Reference types accept
+  null, value types do not. Callable annotations are contracts, not just hints.
 - exact 64-bit integers: lowercase `int64` / `uint64` are runtime types
   (`typeof 1L` is `"int64"`, `typeof 1UL` is `"uint64"`). Same-kind arithmetic
   wraps like CLR `long`/`ulong`, including integer `/`. Mixing with `Number`
@@ -347,7 +347,7 @@ import http from "http";
 - Use `native func` only when a stable native ABI and direct-call behavior are required. Its defaults must be trailing compiler-foldable primitive constants; when a parameter has an explicit type, the default type must match it exactly.
 - Use lowercase `int32` for indices, lengths, counters, and IDs that must stay
   in signed 32-bit range. It is a checked compile/ABI constraint, not a
-  constructor or runtime type; do not spell it `Int32`. Integer locals wrap;
+  constructor or runtime type; do not spell it `Int32`. Inferred integer storage does not change Number semantics;
   script `/` is not integer division — write `((a - b) / c) as int32` for an
   exact quotient, not `Math.floor`.
 - Use lowercase `uint32`, `UInt32Array`, and `U`/`u` constants for unsigned

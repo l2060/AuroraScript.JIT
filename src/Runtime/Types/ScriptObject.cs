@@ -1,4 +1,4 @@
-﻿using AuroraScript.Runtime.Debugging;
+using AuroraScript.Runtime.Debugging;
 using AuroraScript.Runtime.Interop;
 using AuroraScript.Runtime.Property;
 using System;
@@ -40,6 +40,19 @@ namespace AuroraScript.Runtime.Types
         private PropertyAccessor[] propertyAccessors;
 
         internal HiddenClass hiddenClass = HiddenClass.Root;
+
+        internal bool TryGetOwnDataProperty(string name, out ScriptDatum value)
+        {
+            if (hiddenClass.TryGet(name, out var meta) &&
+                (propertyAccessors == null || meta.Slot >= propertyAccessors.Length ||
+                 propertyAccessors[meta.Slot] == null))
+            {
+                value = propertyValues[meta.Slot];
+                if (value.Reference is not BondingGetter && value.Reference is not BondingAccessor) return true;
+            }
+            value = default;
+            return false;
+        }
 
         private ObjectFlags flags = ObjectFlags.None;
         private ClrInstanceObject clrFallback;

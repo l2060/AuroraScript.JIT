@@ -1115,9 +1115,7 @@ Supported Core parameter and return types:
   `int32` boundaries and `[AuroraParam(MatchLevel.Exact)] int` require an
   exact integral Number in signed 32-bit range; weak host adapters retain
   their existing coercion behavior. Proven direct calls use the native
-  `System.Int32` ABI. Integer locals and expressions that stay on that ABI
-  wrap like CLR `int` for `+`, `-`, `*`, `%`, and increments; they are not
-  widened to `double` at overflow.
+  `System.Int32` ABI. Inferred integer storage preserves Number arithmetic; only range-proven operations or explicit bitwise wrapping remain integer operations. Declared integer stores and returns check range.
 - CLR `long` / `ulong` align with script `int64` / `uint64`. Proven direct
   calls use `System.Int64` / `System.UInt64`. Same-kind script arithmetic
   wraps like the CLR integer; mixed `int64`/`uint64`/`Number` operands become

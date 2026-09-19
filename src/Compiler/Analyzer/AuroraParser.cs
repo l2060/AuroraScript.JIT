@@ -564,7 +564,7 @@ namespace AuroraScript.Compiler.Analyzer
             // Grouping (
             if (token.Symbol == Symbols.PT_LEFTPARENTHESIS)
             {
-
+                if (TryParseNumericCast(token.Range, out var cast)) return cast;
                 using (scopeStack.Scope(ScopeType.GROUP))
                 {
                     var group = new GroupExpression(Operator.Grouping);
@@ -670,6 +670,7 @@ namespace AuroraScript.Compiler.Analyzer
             // Grouping (
             if (symbol == Symbols.PT_LEFTPARENTHESIS)
             {
+                if (TryParseNumericCast(range, out var cast)) return cast;
                 using (scopeStack.Scope(ScopeType.GROUP))
                 {
                     var group = new GroupExpression(Operator.Grouping);
@@ -763,6 +764,26 @@ namespace AuroraScript.Compiler.Analyzer
 
             var unexpected = new OperatorToken { Symbol = symbol, Value = symbol?.Name, Range = range };
             throw new AuroraCompilationException(AuroraCompilationStage.Parsing, this.Lexer.FullPath, unexpected, $"Unknown prefix token: {unexpected.Value}");
+        }
+
+        private bool TryParseNumericCast(SourceSpan start, out Expression expression)
+        {
+            expression = null;
+            if (Lexer.LookAtHead() is not IdentifierToken { Value: "int32" } type)
+                return false;
+            var snapshot = Lexer.CreateSnapshot();
+            Lexer.Next();
+            if (!Lexer.TestNext(Symbols.PT_RIGHTPARENTHESIS))
+            {
+                Lexer.RestoreSnapshot(snapshot);
+                return false;
+            }
+            var value = ParseExpression(Operator.Negate.Precedence);
+            if (value == null)
+                throw new AuroraCompilationException(AuroraCompilationStage.Parsing,
+                    Lexer.FullPath, type, "A numeric cast requires an operand.");
+            expression = SetRange(new NumericCastExpression(value, type), start, value.Range);
+            return true;
         }
 
         private bool TryParseInt64MinLiteralNegation(

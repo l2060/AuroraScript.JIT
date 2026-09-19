@@ -42,6 +42,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             _il.Emit(OpCodes.Dup);
             EmitDatumToNativeParameter(_il, new DirectParameterType(
                 _code.GetLocalType(binding.Local), nativeObject: _code.GetLocalNativeObjectType(binding.Local)));
+            if (_code.UsesWideIntegerStorage(binding.Local)) ConvertStackToIntegerNumber(StackValueKind.Number);
             EmitStoreLocalFromStack(binding.Local);
         }
     }

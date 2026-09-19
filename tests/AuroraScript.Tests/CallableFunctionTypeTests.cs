@@ -234,63 +234,17 @@ public sealed class CallableFunctionTypeTests
 #if NET9_0_OR_GREATER
     [InlineData(CompilationMode.Persistence)]
 #endif
-    public async Task UnreachableNativeArgumentDropsTheCallableGuard(
-        CompilationMode mode)
+    public async Task KnownInvalidCallableArgumentsFailCompilation(CompilationMode mode)
     {
         using var workspace = new TestWorkspace();
-        var (_, domain) = await workspace.CompileModuleAsync(
-            """
+        await Assert.ThrowsAsync<AuroraCompilationException>(() => workspace.CompileModuleAsync("""
             @module(TEST);
             type Action(Object arg) void;
-
-            native func actionCallback(Action callback) void {
-                callback(12345);
-            }
-
-            export native func run() void {
-                actionCallback(handler);
-            }
-
-            export native func handler() void {
-            }
-            """,
-            mode);
-        using (domain)
-        {
-            TestWorkspace.Execute(domain, "run");
-        }
-#if NET9_0_OR_GREATER
-        if (mode == CompilationMode.Persistence)
-        {
-            var assembly = Assembly.Load(
-                File.ReadAllBytes(
-                    Path.Combine(workspace.Root, "test-output.dll")));
-            var methods = assembly.GetTypes()
-                .SelectMany(type => type.GetMethods())
-                .ToArray();
-
-            // A Number cannot reach an Object parameter, so the contract has no
-            // native path to guard and the call stays a plain dynamic invoke.
-            var entry = Assert.Single(
-                methods,
-                method => method.Name == "actionCallback$native");
-            var calls = StringOptimizationTests.GetCalls(entry);
-            Assert.DoesNotContain(
-                calls,
-                call => call.Name == nameof(CallFrameOps.GetNativeTarget));
-            Assert.DoesNotContain(
-                calls,
-                call => call.Name == nameof(CallFrameOps.EnterClosure));
-            Assert.Contains(calls, call => call.Name == nameof(CallOps.Invoke1));
-            Assert.DoesNotContain(
-                methods,
-                method => method.Name.StartsWith(
-                    "Action$callable",
-                    StringComparison.Ordinal));
-        }
-#endif
+            native func actionCallback(Action callback) void { callback(12345); }
+            export native func run() void { actionCallback(handler); }
+            native func handler(Object arg) void {}
+            """, mode));
     }
-
     [Fact]
     public async Task WeakFunctionTypeKeepsDynamicInvocation()
     {
@@ -399,39 +353,17 @@ public sealed class CallableFunctionTypeTests
     }
 
     [Fact]
-    public async Task StrongFunctionTypeReportsConventionMismatch()
+    public async Task StrongFunctionTypeRejectsConventionMismatch()
     {
         using var workspace = new TestWorkspace();
-        var engine = workspace.CreateEngine();
-        await engine.BuildAsync(
-            workspace.MemorySource(
-                "main.as",
-                """
-                @module(TEST);
-                type Predicate(Number value) Boolean;
-                func apply(Predicate callback) Boolean {
-                    return callback(1);
-                }
-                export func run() {
-                    return apply((left, right) => true);
-                }
-                """));
-
-        var warning = Assert.Single(
-            engine.CompilationWarnings,
-            item => item.Message.Contains(
-                "expected 1 parameters but found 2",
-                System.StringComparison.Ordinal));
-        Assert.Equal(
-            AuroraCompilationDiagnosticSeverity.Warning,
-            warning.Severity);
-
-        using var domain = engine.CreateDomain();
-        ScriptAssert.Equal(
-            true,
-            TestWorkspace.Execute(domain, "run"));
+        var error = await Assert.ThrowsAsync<AuroraCompilationException>(() => workspace.CompileModuleAsync("""
+            @module(TEST);
+            type Predicate(Number value) Boolean;
+            func apply(Predicate callback) Boolean { return callback(1); }
+            export func run() { return apply((left, right) => true); }
+            """));
+        Assert.Contains("expected 1 parameters but found 2", error.Message);
     }
-
     [Fact]
     public async Task ExportedFunctionTypeFlowsThroughQualifiedImportWithoutRuntimeExport()
     {
@@ -572,11 +504,11 @@ public sealed class CallableFunctionTypeTests
              type Narrow(int32 x) Number;
              func raw(x = 9) { return x; }
              func mixed(Narrow f) {
-                 return [f(1.5), (f)(2i), f(...[3.5]), f(), f(4i,5), f(6.5), f(7i)];
+                 return [f(1), (f)(2i), f(...[3]), f(9), f(4i), f(6), f(7i)];
              }
              func precise(Narrow f) Number { return f(8i); }
              export func run() { return [mixed(raw), precise(x=>x+1)]; }
-             """, new object[] { new object[] { 1.5, 2, 3.5, 9, 4, 6.5, 7 }, 9 }),
+             """, new object[] { new object[] { 1, 2, 3, 9, 4, 6, 7 }, 9 }),
             ("""
              type ObjectFactory() Object;
              type ArrayFactory() Array;
@@ -597,39 +529,39 @@ public sealed class CallableFunctionTypeTests
              func identity(x) { return x; }
              func signed(Signed f) String { return f(1); }
              func unsigned(Unsigned f) String { return f(1L); }
-             func narrow(Narrow f) Number { return f(1.5); }
+             func narrow(Narrow f) Number { return f(1); }
              export func run() { return [signed(kind), unsigned(kind), narrow(identity)]; }
-             """, new object[] { "number", "int64", 1.5 }),
+             """, new object[] { "int64", "uint64", 1 }),
             ("""
              type NumberAction(Number x) void;
              type ObjectAction(Object x) void;
              func raw(x) { return 42; }
              func hit(NumberAction f) { return f(1); }
-             func miss(ObjectAction f) { return f(1); }
+             func miss(ObjectAction f) { return f({}); }
              func spread(NumberAction f) { return f(...[1]); }
-             func missing(NumberAction f) { return f(); }
-             func extra(NumberAction f) { return f(1,2); }
+             func nullable(ObjectAction f) { return f(null); }
+             func indirect(NumberAction f) { return (f)(1); }
              func statement(NumberAction f) { f(...[1]); return 7; }
              export func run() {
-                 return [hit(raw), miss(raw), spread(raw), missing(raw), extra(raw),
+                 return [hit(raw), miss(raw), spread(raw), nullable(raw), indirect(raw),
                          hit(x=>{}), statement(raw)];
              }
              """, new object?[] { null, null, null, null, null, null, 7 }),
             ("""
              type Read(Number x) Number;
              func defaults(Number x = 3) Number { return x; }
-             func invoke(Read f) { return [f(), f(4,5), f(...[6])]; }
+             func invoke(Read f) { return [f(3), f(4), f(...[6])]; }
              export func run() { return invoke(defaults); }
              """, new object[] { 3, 4, 6 }),
             ("""
-             type Read(Number x);
+             type Read(x);
              func use(Read f) { return f('text'); }
              export func run() { return use(x=>x+1); }
              """, "text1"),
             ("""
              type Action(Number x) void;
-             func use(Action f) { return f(); }
-             export func run() { return use(...[()=>42]); }
+             func use(Action f) { return f(1); }
+             export func run() { return use(...[x=>42]); }
              """, null!),
             ("""
              type Echo(Int32Array x) Int32Array;

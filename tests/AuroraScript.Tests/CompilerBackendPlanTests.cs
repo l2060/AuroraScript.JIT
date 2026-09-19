@@ -162,9 +162,9 @@ public sealed class CompilerBackendPlanTests
 
         Assert.Equal(FlowValueType.Dynamic, code.GetLocalType(function.LocalSlots.Single(slot => slot.Name == "iterations").Id));
         // `sum` accumulates `i / 2`, which is not integer division, so it stays
-        // a Number. `i` only ever holds integers and keeps native int storage.
+        // a Number. An unbounded dynamic limit cannot prove Int32 counter range.
         Assert.Equal(FlowValueType.Number, code.GetLocalType(function.LocalSlots.Single(slot => slot.Name == "sum").Id));
-        Assert.Equal(FlowValueType.Int32, code.GetLocalType(function.LocalSlots.Single(slot => slot.Name == "i").Id));
+        Assert.Equal(FlowValueType.Number, code.GetLocalType(function.LocalSlots.Single(slot => slot.Name == "i").Id));
         Assert.Equal(FlowValueType.Boolean, code.GetLocalType(function.LocalSlots.Single(slot => slot.Name == "enabled").Id));
         Assert.Equal(FlowValueType.String, code.GetLocalType(function.LocalSlots.Single(slot => slot.Name == "label").Id));
     }
@@ -526,16 +526,15 @@ public sealed class CompilerBackendPlanTests
 
         Assert.Equal(FlowValueType.Int32, LocalType("n"));
         Assert.Equal(FlowValueType.Int32, LocalType("k"));
-        Assert.Equal(FlowValueType.Number, LocalType("wideK"));
-        // Integer remainder cannot hold negative zero or NaN, so both stay ints
-        // and a zero divisor reports an error at runtime instead.
-        Assert.Equal(FlowValueType.Int32, LocalType("signedZero"));
-        Assert.Equal(FlowValueType.Int32, LocalType("invalid"));
+        Assert.Equal(FlowValueType.Int32, LocalType("wideK")); // Narrow the result after wide remainder.
+        // Observable negative zero and NaN require Number storage.
+        Assert.Equal(FlowValueType.Number, LocalType("signedZero"));
+        Assert.Equal(FlowValueType.Number, LocalType("invalid"));
         Assert.Equal(FlowValueType.Int32, LocalType("v"));
         Assert.Equal(FlowValueType.Int32, LocalType("m"));
-        // Integer-only locals keep native int storage and wrap on overflow.
-        Assert.Equal(FlowValueType.Int32, LocalType("overflow"));
-        Assert.Equal(FlowValueType.Int32, LocalType("max"));
+        // Potential overflow preserves Number arithmetic.
+        Assert.Equal(FlowValueType.Number, LocalType("overflow"));
+        Assert.Equal(FlowValueType.Number, LocalType("max"));
     }
 
     [Fact]
@@ -578,13 +577,13 @@ public sealed class CompilerBackendPlanTests
         Assert.Equal(FlowValueType.Number, LocalType("d"));
         Assert.Equal(FlowValueType.Int64, LocalType("longValue"));
         Assert.Equal(FlowValueType.UInt32, LocalType("unsigned"));
-        Assert.Equal(FlowValueType.Number, LocalType("real"));
+        Assert.Equal(FlowValueType.Int32, LocalType("real")); // Integral Number value; no explicit D storage hint.
         Assert.Equal(FlowValueType.Int32, LocalType("grouped"));
         Assert.Equal(FlowValueType.Number, LocalType("fraction"));
     }
 
     [Fact]
-    public void TypedModuleCodeKeepsSafeStringCodesAsNumberAndWhileCountersAsInt32()
+    public void TypedModuleCodeKeepsBoundedStringCodesAndWhileCountersAsInt32()
     {
         var root = Path.GetTempPath();
         var options = EngineOptions.Default
@@ -621,7 +620,7 @@ public sealed class CompilerBackendPlanTests
                 run.LocalSlots.Single(slot => slot.Name == name).Id);
         }
 
-        Assert.Equal(FlowValueType.Number, LocalType("code"));
+        Assert.Equal(FlowValueType.Int32, LocalType("code"));
         Assert.Equal(FlowValueType.Int32, LocalType("left"));
         Assert.Equal(FlowValueType.Int32, LocalType("right"));
         Assert.Equal(FlowValueType.Number, LocalType("invalid"));

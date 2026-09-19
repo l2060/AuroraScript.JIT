@@ -20,7 +20,7 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo DatumFromInt64 = Method(typeof(ScriptDatum), nameof(ScriptDatum.FromInt64), typeof(long));
         public static readonly MethodInfo DatumFromUInt64 = Method(typeof(ScriptDatum), nameof(ScriptDatum.FromUInt64), typeof(ulong));
         public static readonly MethodInfo DatumFromBoolean = Method(typeof(ScriptDatum), nameof(ScriptDatum.FromBoolean), typeof(bool));
-        public static readonly MethodInfo DatumFromString = Method(typeof(ScriptDatum), nameof(ScriptDatum.FromString), typeof(string));
+        public static readonly MethodInfo DatumFromString = Method(typeof(TypeCheckOps), nameof(TypeCheckOps.FromNullableString), typeof(string));
         public static readonly MethodInfo DatumFromObject = Method(typeof(ScriptDatum), nameof(ScriptDatum.FromObject), typeof(ScriptObject));
         public static readonly MethodInfo DatumToObject = Method(typeof(ScriptDatum), nameof(ScriptDatum.ToObject), typeof(ScriptDatum));
         public static readonly MethodInfo DatumToString = Method(typeof(ScriptDatum), nameof(ScriptDatum.ToString), typeof(ScriptDatum));
@@ -297,7 +297,6 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo StringConcat3 = Method(typeof(string), nameof(string.Concat), typeof(string), typeof(string), typeof(string));
         public static readonly MethodInfo StringConcat4 = Method(typeof(string), nameof(string.Concat), typeof(string), typeof(string), typeof(string), typeof(string));
         public static readonly MethodInfo StringLength = Method(typeof(ValueOps), nameof(ValueOps.GetStringLength), typeof(string));
-        public static readonly MethodInfo AscendingLoopBound = Method(typeof(ValueOps), nameof(ValueOps.ToAscendingLoopBound), typeof(double));
         public static readonly ConstructorInfo StringBuilderCapacity = Constructor(typeof(StringBuilder), typeof(int));
         public static readonly MethodInfo StringBuilderAppend = InstanceMethod(typeof(StringBuilder), nameof(StringBuilder.Append), typeof(string));
         public static readonly MethodInfo StringBuilderToString = typeof(StringBuilder).GetMethod(nameof(StringBuilder.ToString), Type.EmptyTypes);

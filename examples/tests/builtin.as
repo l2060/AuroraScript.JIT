@@ -93,11 +93,11 @@ native func log(String text) void {
 }
 
 native func actionCallback(Action callback) void {
-	callback(12345);
+	callback("12345");
 }
 
 export native func testAction() void {
-	actionCallback(testPath);
+	actionCallback(log);
 }
 
 
@@ -106,5 +106,5 @@ export native func testPath() void {
 	var path = Path.of('a', 'b', 'c');
 	path.append('data');
 	path.append(p1);
-	log(path);
+	log(path.toString());
 }

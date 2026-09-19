@@ -10,15 +10,20 @@ namespace AuroraScript.Compiler.Backend.Emission
 {
     internal sealed partial class TypedCilEmitter
     {
-        private readonly Dictionary<Expression, LocalBuilder> _savedOperands =
+        private readonly Dictionary<Expression, (LocalBuilder Local, StackValueKind Kind)> _savedOperands =
             new(ReferenceEqualityComparer.Instance);
         private readonly HashSet<Expression> _guardedRoots = new(ReferenceEqualityComparer.Instance);
 
         private bool TryEmitSavedOperand(Expression expression, out StackValueKind kind)
         {
             kind = default;
-            if (expression == null || !_savedOperands.TryGetValue(expression, out var local)) return false;
-            _il.Emit(OpCodes.Ldloc, local);
+            if (expression == null || !_savedOperands.TryGetValue(expression, out var saved)) return false;
+            _il.Emit(OpCodes.Ldloc, saved.Local);
+            if (saved.Kind != StackValueKind.Datum)
+            {
+                kind = saved.Kind;
+                return true;
+            }
             var type = _code.GetExpressionType(expression);
             kind = IsProvenValueType(type) && type != FlowValueType.Null
                 ? EmitCheckedDatumConversion(type) : StackValueKind.Datum;
@@ -78,7 +83,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 finally { _code = original; }
                 if (ReferenceEquals(ordinaryTarget, guardedTarget)) return false;
             }
-            var saved = new List<(Expression Expression, LocalBuilder Previous)>();
+            var saved = new List<(Expression Expression, (LocalBuilder Local, StackValueKind Kind) Previous)>();
             _guardedRoots.Add(expression);
             try
             {
@@ -88,11 +93,19 @@ namespace AuroraScript.Compiler.Backend.Emission
                 foreach (var operand in operands)
                 {
                     _savedOperands.TryGetValue(operand, out var previous);
-                    var local = DeclareLocal(typeof(ScriptDatum));
-                    EmitDatum(operand);
+                    var operandKind = EmitExpression(operand, materializeVoid: true);
+                    // Preserve proven scalar storage across both branches. Only
+                    // operands needing a runtime guard require a datum tag.
+                    if (guards.ContainsKey(operand) || operandKind is not (StackValueKind.Int32 or StackValueKind.UInt32 or
+                        StackValueKind.Int64 or StackValueKind.UInt64 or StackValueKind.Number or StackValueKind.NumberInt64 or StackValueKind.Boolean))
+                    {
+                        ConvertToDatum(operandKind);
+                        operandKind = StackValueKind.Datum;
+                    }
+                    var local = DeclareLocal(GetStackClrType(operandKind));
                     _il.Emit(OpCodes.Stloc, local);
                     saved.Add((operand, previous));
-                    _savedOperands[operand] = local;
+                    _savedOperands[operand] = (local, operandKind);
                 }
 
                 var fallback = _il.DefineLabel();
@@ -100,8 +113,8 @@ namespace AuroraScript.Compiler.Backend.Emission
                 foreach (var guard in guards)
                 {
                     if (nativeGuards.TryGetValue(guard.Key, out var native))
-                        EmitObjectTypeGuard(_savedOperands[guard.Key], native.ClrType, fallback);
-                    else EmitTypeGuard(_savedOperands[guard.Key], guard.Value, fallback);
+                        EmitObjectTypeGuard(_savedOperands[guard.Key].Local, native.ClrType, fallback);
+                    else EmitTypeGuard(_savedOperands[guard.Key].Local, guard.Value, fallback);
                 }
 
                 // Only the immediate guarded operands and this operation are
@@ -130,7 +143,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 _guardedRoots.Remove(expression);
                 foreach (var item in saved)
                 {
-                    if (item.Previous == null) _savedOperands.Remove(item.Expression);
+                    if (item.Previous.Local == null) _savedOperands.Remove(item.Expression);
                     else _savedOperands[item.Expression] = item.Previous;
                 }
             }

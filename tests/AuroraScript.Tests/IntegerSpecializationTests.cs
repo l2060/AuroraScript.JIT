@@ -143,12 +143,8 @@ public sealed class IntegerSpecializationTests
                 domain,
                 "bump",
                 arguments: [ScriptDatum.FromNumber(41)]));
-        ScriptAssert.Equal(
-            int.MinValue,
-            TestWorkspace.Execute(
-                domain,
-                "bump",
-                arguments: [ScriptDatum.FromNumber(int.MaxValue)]));
+        Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(
+            domain, "bump", arguments: [ScriptDatum.FromNumber(int.MaxValue)]));
         ScriptAssert.Equal(
             32,
             TestWorkspace.Execute(
@@ -158,12 +154,8 @@ public sealed class IntegerSpecializationTests
                     ScriptDatum.FromNumber(2),
                     ScriptDatum.FromNumber(3),
                     ScriptDatum.FromNumber(10)]));
-        ScriptAssert.Equal(
-            int.MinValue,
-            TestWorkspace.Execute(
-                domain,
-                "increment",
-                arguments: [ScriptDatum.FromNumber(int.MaxValue)]));
+        Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(
+            domain, "increment", arguments: [ScriptDatum.FromNumber(int.MaxValue)]));
 
         Assert.Throws<AuroraRuntimeException>(() =>
             TestWorkspace.Execute(
@@ -234,9 +226,9 @@ public sealed class IntegerSpecializationTests
             export native func operations() Array {
                 var values = new UInt32Array(2);
                 values[0] = 0xFFFFFFFFu;
-                values[1] = values[0] + 1u;
+                values[1] = (values[0] + 1u) >>> 0;
                 var max = values[0];
-                max += 1u;
+                max = (max + 1u) >>> 0;
                 var post = values[0]++;
                 var pre = ++values[0];
                 values[0] -= 2u;
@@ -288,8 +280,8 @@ public sealed class IntegerSpecializationTests
         ScriptAssert.Equal(
             new object?[]
             {
-                uint.MaxValue, 0u, 0u, uint.MaxValue, 1u, uint.MaxValue, 0u, 15u,
-                1u, 0x80000000u, uint.MaxValue, uint.MaxValue, uint.MaxValue,
+                uint.MaxValue, 0u, 0u, uint.MaxValue, 1u, -1d, 4294967296d, 15u,
+                -1d, -2147483648d, -1d, uint.MaxValue, uint.MaxValue,
                 true, false, "number"
             },
             TestWorkspace.Execute(domain, "operations"));
@@ -326,8 +318,7 @@ public sealed class IntegerSpecializationTests
                     "checkedReturn",
                     arguments: [ScriptDatum.FromNumber(invalid)]));
         }
-        Assert.Throws<AuroraRuntimeException>(() =>
-            TestWorkspace.Execute(domain, "remainderByZero"));
+        Assert.True(double.IsNaN(TestWorkspace.Execute(domain, "remainderByZero").Number));
     }
 
     [Fact]
@@ -393,7 +384,7 @@ public sealed class IntegerSpecializationTests
 #if NET9_0_OR_GREATER
     [InlineData(CompilationMode.Persistence)]
 #endif
-    public async Task IntegerLocalsWrapWhileNumberLocalsKeepScriptSemantics(CompilationMode mode)
+    public async Task IntegerLocalsPreserveNumberSemantics(CompilationMode mode)
     {
         using var workspace = new TestWorkspace();
         var (_, domain) = await workspace.CompileModuleAsync(
@@ -431,14 +422,14 @@ public sealed class IntegerSpecializationTests
         ScriptAssert.Equal(
             new object?[]
             {
-                int.MinValue, int.MinValue, int.MinValue, 2147483647d,
+                2147483648d, 2147483648d, 2147483648d, 2147483647d,
                 double.NegativeInfinity, -1, 4294967295d, int.MinValue
             },
             TestWorkspace.Execute(domain, "run", arguments: ScriptDatum.FromBoolean(false)));
         ScriptAssert.Equal(
             new object?[]
             {
-                int.MinValue, int.MinValue, int.MinValue, 0.5d,
+                2147483648d, 2147483648d, 2147483648d, 0.5d,
                 double.NegativeInfinity, -1, 4294967295d, int.MinValue
             },
             TestWorkspace.Execute(domain, "run", arguments: ScriptDatum.FromBoolean(true)));
@@ -450,7 +441,7 @@ public sealed class IntegerSpecializationTests
 #if NET9_0_OR_GREATER
     [InlineData(CompilationMode.Persistence)]
 #endif
-    public async Task IntegerRemainderStaysIntegralWhileNumberRemainderKeepsScriptSemantics(
+    public async Task IntegerRemainderPreservesNegativeZeroAndNaN(
         CompilationMode mode)
     {
         using var workspace = new TestWorkspace();
@@ -484,16 +475,14 @@ public sealed class IntegerSpecializationTests
             """,
             mode);
 
-        // Both operands are integers, so the remainder is an integer and
-        // cannot carry the negative zero a Number remainder would.
+        // Integer storage must preserve negative zero and NaN when observable.
         ScriptAssert.Equal(
             new object?[]
             {
-                1, 4L, double.PositiveInfinity, 0.5d, double.NaN
+                1, 4L, double.NegativeInfinity, 0.5d, double.NaN
             },
             TestWorkspace.Execute(domain, "run"));
-        Assert.Throws<AuroraRuntimeException>(() =>
-            TestWorkspace.Execute(domain, "remainderByZero"));
+        Assert.True(double.IsNaN(TestWorkspace.Execute(domain, "remainderByZero").Number));
     }
 
     [Theory]
@@ -663,11 +652,11 @@ public sealed class IntegerSpecializationTests
             const ADDEND = 0xD76AA478u;
 
             native func rotate(uint32 value, int32 shift) uint32 {
-                return (value << shift) | (value >> (32 - shift));
+                return ((value << shift) | (value >>> (32 - shift))) >>> 0;
             }
 
             native func step(uint32 value, uint32 addend) uint32 {
-                return rotate(value + addend, 7);
+                return rotate((value + addend) >>> 0, 7);
             }
 
             export native func process(UInt32Array values) uint32 {
@@ -845,6 +834,152 @@ public sealed class IntegerSpecializationTests
         Assert.DoesNotContain(OpCodes.Conv_R8, unsignedOpcodes);
         Assert.DoesNotContain(OpCodes.Conv_R_Un, unsignedOpcodes);
         AssertNoNumericChecks(reader, unsignedIl);
+    }
+
+    [Fact]
+    public async Task PersistenceKeepsInt32BoundaryArithmeticAndShellsNative()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync("""
+            @module(TEST);
+            export native func add(int32 x, int32 y) int32 { return x + y; }
+            export native func subtract(int32 x, int32 y) int32 { return x - y; }
+            export native func compound(int32 x, int32 y) int32 { x += y; return x; }
+            """, CompilationMode.Persistence);
+        using (domain)
+        {
+            ScriptAssert.Equal(7, TestWorkspace.Execute(domain, "add", arguments: [ScriptDatum.FromNumber(3), ScriptDatum.FromNumber(4)]));
+            foreach (var name in new[] { "add", "compound" })
+                Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, name,
+                    arguments: [ScriptDatum.FromNumber(int.MaxValue), ScriptDatum.FromNumber(1)]));
+            Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, "subtract",
+                arguments: [ScriptDatum.FromNumber(int.MinValue), ScriptDatum.FromNumber(1)]));
+        }
+        using var stream = File.OpenRead(Path.Combine(workspace.Root, "test-output.dll"));
+        using var pe = new PEReader(stream);
+        var reader = pe.GetMetadataReader();
+        foreach (var name in new[] { "add", "subtract", "compound" })
+        {
+            var method = FindMethod(reader, name + "$native");
+            var il = pe.GetMethodBody(method.RelativeVirtualAddress).GetILBytes();
+            var opcodes = ReadOpCodes(il);
+            Assert.Contains(name == "subtract" ? OpCodes.Sub_Ovf : OpCodes.Add_Ovf, opcodes);
+            Assert.DoesNotContain(OpCodes.Conv_R8, opcodes);
+            Assert.DoesNotContain(OpCodes.Conv_I4, opcodes);
+            AssertNoNumericChecks(reader, il);
+            method = FindMethod(reader, name + "$typed");
+            il = pe.GetMethodBody(method.RelativeVirtualAddress).GetILBytes();
+            Assert.DoesNotContain(OpCodes.Conv_I4, ReadOpCodes(il));
+            AssertNoNumericChecks(reader, il);
+        }
+    }
+
+    [Fact]
+    public async Task PersistencePreservesIntegerStorageAcrossRangesArraysAndGuards()
+    {
+        using var workspace = new TestWorkspace();
+        var (_, domain) = await workspace.CompileModuleAsync("""
+            @module(TEST);
+            export native func small(UInt8Array a, UInt16Array b, int32 i) int32 {
+                return a[i] * 256 + b[i];
+            }
+            export native func bounded(int32 parent) int32 {
+                if (parent < 0 || parent >= 65535) return -1;
+                var left = parent * 2 + 1;
+                var right = left + 1;
+                return left ^ right;
+            }
+            export native func insertion(Int32Array a) int32 {
+                for (var i = 0; i < a.length; i++) {
+                    var value = a[i]; var j = i;
+                    while (j > 0 && a[j - 1] > value) { a[j] = a[j - 1]; j--; }
+                    a[j] = value;
+                }
+                return a[0];
+            }
+            export native func cached(Int32Array a, Int32Array b, int32 parent) int32 {
+                var left = parent * 2 + 1;
+                if (left < 0 || left >= a.length) return -1;
+                return a[left] ^ b[left];
+            }
+            export native func nextToken(int32 previous, Int32Array output) int32 {
+                var token = previous + 1;
+                if (token > 2147483646) token = 1;
+                output[0] = token;
+                output[1] = token;
+                return token;
+            }
+            export native func cancel(int32 input) int32 {
+                var n = input + 1;
+                return n - 1;
+            }
+            export native func copyPath(Array output, Int32Array parents, int32 node) int32 {
+                var count = 0;
+                while (node >= 0) {
+                    output[count] = node;
+                    count++;
+                    node = parents[node];
+                }
+                var left = 0; var right = count - 1;
+                while (left < right) {
+                    var tmp = output[left]; output[left] = output[right]; output[right] = tmp;
+                    left++; right--;
+                }
+                return count;
+            }
+            func weak(a, int32 index) { return a[index] + index; }
+            export func run() {
+                var a = new Int32Array(2); a[0] = 5; a[1] = 3;
+                var b = new UInt8Array(1); b[0] = 255;
+                var c = new UInt16Array(1); c[0] = 65535;
+                return [small(b, c, 0), bounded(7), insertion(a), cached(a, a, 0), weak(a, 1), weak({1: 8}, 1)];
+            }
+            """, CompilationMode.Persistence);
+        using (domain)
+        {
+            ScriptAssert.Equal(new object?[] { 130815, 31, 3, 0, 6, 9 }, TestWorkspace.Execute(domain, "run"));
+            var output = new AuroraScript.Runtime.Types.ScriptInt32Array(2);
+            foreach (var previous in new[] { 0, int.MaxValue - 1, int.MaxValue })
+            {
+                ScriptAssert.Equal(1, TestWorkspace.Execute(domain, "nextToken",
+                    arguments: [ScriptDatum.FromNumber(previous), ScriptDatum.FromObject(output)]));
+                Assert.Equal(1, output.GetElement(0));
+                Assert.Equal(1, output.GetElement(1));
+            }
+            foreach (var input in new[] { int.MinValue, 0, int.MaxValue })
+                ScriptAssert.Equal(input, TestWorkspace.Execute(domain, "cancel", arguments: [ScriptDatum.FromNumber(input)]));
+            var path = new AuroraScript.Runtime.Types.ScriptArray();
+            var parents = new AuroraScript.Runtime.Types.ScriptInt32Array(3);
+            parents.SetElement(0, -1); parents.SetElement(1, 0); parents.SetElement(2, 1);
+            ScriptAssert.Equal(3, TestWorkspace.Execute(domain, "copyPath", arguments:
+                [ScriptDatum.FromObject(path), ScriptDatum.FromObject(parents), ScriptDatum.FromNumber(2)]));
+            for (var i = 0; i < 3; i++) ScriptAssert.Equal(i, path.GetElement(i));
+        }
+        using var stream = File.OpenRead(Path.Combine(workspace.Root, "test-output.dll"));
+        using var pe = new PEReader(stream);
+        var reader = pe.GetMetadataReader();
+        foreach (var name in new[] { "small", "bounded", "insertion", "copyPath" })
+        {
+            var method = FindMethod(reader, name + "$native");
+            var il = pe.GetMethodBody(method.RelativeVirtualAddress).GetILBytes();
+            var opcodes = ReadOpCodes(il);
+            Assert.DoesNotContain(OpCodes.Conv_R8, opcodes);
+            Assert.DoesNotContain(OpCodes.Conv_I4, opcodes);
+            AssertNoNumericChecks(reader, il);
+        }
+        var cached = FindMethod(reader, "cached$native");
+        var cachedOpcodes = ReadOpCodes(pe.GetMethodBody(cached.RelativeVirtualAddress).GetILBytes());
+        Assert.Equal(1, cachedOpcodes.Count(op => op == OpCodes.Conv_I4));
+        var nextToken = FindMethod(reader, "nextToken$native");
+        var tokenIl = pe.GetMethodBody(nextToken.RelativeVirtualAddress).GetILBytes();
+        Assert.Equal(1, ReadOpCodes(tokenIl).Count(op => op == OpCodes.Conv_I4));
+        Assert.DoesNotContain(OpCodes.Conv_R8, ReadOpCodes(tokenIl));
+        AssertNoNumericChecks(reader, tokenIl);
+        var cancelIl = pe.GetMethodBody(FindMethod(reader, "cancel$native").RelativeVirtualAddress).GetILBytes();
+        Assert.DoesNotContain(OpCodes.Conv_R8, ReadOpCodes(cancelIl));
+        AssertNoNumericChecks(reader, cancelIl);
+        var weak = FindMethod(reader, "weak$typed");
+        Assert.DoesNotContain(OpCodes.Conv_I4, ReadOpCodes(pe.GetMethodBody(weak.RelativeVirtualAddress).GetILBytes()));
     }
 
     private static MethodDefinition FindMethod(MetadataReader reader, string name)

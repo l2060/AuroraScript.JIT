@@ -900,11 +900,10 @@ public sealed class PackedArrayTests
                 StringComparison.Ordinal)));
         var method = reader.GetMethodDefinition(methodHandle);
         // DEFAULT, four parameters, then int[], sbyte[], bool[], int. The
-        // declared Number return narrows to I4 because `sum` only ever holds
-        // integers.
+        // declared Number accumulator can exceed Int32 range and returns R8.
         var signature = reader.GetBlobBytes(method.Signature);
         Assert.Equal(5, signature[1]); // ScriptContext plus four parameters.
-        Assert.Equal(0x08, signature[2]);
+        Assert.Equal(0x0d, signature[2]);
         Assert.Equal(3, signature.Count(value => value == 0x1d));
         var il = peReader.GetMethodBody(method.RelativeVirtualAddress).GetILBytes();
         var opcodes = ReadOpCodes(il.AsSpan());

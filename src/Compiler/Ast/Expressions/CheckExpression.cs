@@ -4,7 +4,7 @@ namespace AuroraScript.Compiler.Ast.Expressions
     /// Runtime type assertion that also supplies an exact flow fact to the
     /// typed backend.
     /// </summary>
-    internal sealed class CheckExpression : Expression
+    internal class CheckExpression : Expression
     {
         internal CheckExpression(
             Expression value,
@@ -35,6 +35,15 @@ namespace AuroraScript.Compiler.Ast.Expressions
         public override void Accept(IAstVisitor visitor)
         {
             visitor.AcceptCheckExpression(this);
+        }
+    }
+
+    /// <summary>An explicit, checked numeric conversion, distinct from an assertion.</summary>
+    internal sealed class NumericCastExpression : CheckExpression
+    {
+        internal NumericCastExpression(Expression value, Token typeToken)
+            : base(value, typeToken, typeToken)
+        {
         }
     }
 }

@@ -21,12 +21,23 @@ namespace AuroraScript.Compiler.Backend.Emission
             returnKind = StackValueKind.Datum;
             if (!_code.TryGetCallableType(
                 _module.Declaration, call.Target, out var callable, out var callableModule))
-                return false;
+            {
+                if (call.Target is not NameExpression name ||
+                    !TypeReferenceFacts.TryGetFunctionType(_module.Declaration,
+                        GetBindingContract(_code.GetName(name)), out callable)) return false;
+                callableModule = callable.Parent as ModuleDeclaration ?? _module.Declaration;
+            }
+            if (!callable.IsStrong) return false;
 
             var plan = GetCallablePlan(callable, callableModule);
-            ReportCallableCallWarnings(call, plan);
-            if (plan.ReturnType.Type == FlowValueType.None)
-                return false;
+            if (!HasSpread(call.Arguments))
+            {
+                if (call.Arguments.Count != callable.Parameters.Count)
+                    throw new AuroraCompilationException(AuroraCompilationStage.Emission, call,
+                        $"Callable '{callable.Name.Value}' requires {callable.Parameters.Count} arguments.");
+                for (var i = 0; i < call.Arguments.Count; i++)
+                    ValidateBoundary(call.Arguments[i], callable.Parameters[i].DeclaredType);
+            }
 
             if (CanUseCallableThunk(call, plan))
             {
@@ -36,7 +47,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 // Reuse the ordinary entry for wide calls, spread and arguments
                 // that cannot safely round trip before the native target probe.
-                EmitCall(call);
+                EmitCall(call, contract: callable);
                 returnKind = EmitCallableResult(_il, callable, plan.ReturnType, materializeVoid);
             }
             return true;
@@ -59,6 +70,7 @@ namespace AuroraScript.Compiler.Backend.Emission
             var returnType = new DirectParameterType(returnFlow, nativeObject: nativeReturn);
             var returnsVoid = TypeReferenceFacts.IsVoid(callable.ReturnType);
             var canUseThunk = callable.Parameters.Count < TypedRuntimeMetadata.Invoke.Length &&
+                (callable.ReturnType == null || returnFlow != FlowValueType.Object || nativeReturn != null) &&
                 (returnsVoid || CanRoundTripThroughDatum(returnType));
             var parameterTypes = new DirectParameterType[callable.Parameters.Count];
             for (var i = 0; i < callable.Parameters.Count; i++)
@@ -73,6 +85,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 var type = new DirectParameterType(flow, nativeObject: native);
                 parameterTypes[i] = type;
                 canUseThunk &= parameter.Initializer == null && !parameter.IsSpreadOperator &&
+                    (flow != FlowValueType.Object || native != null) &&
                     CanRoundTripThroughDatum(type);
             }
             Type[] delegateSignature = null;
@@ -113,12 +126,13 @@ namespace AuroraScript.Compiler.Backend.Emission
         }
 
         // Both the shared thunk and ordinary dynamic calls use this return boundary.
-        private static StackValueKind EmitCallableResult(
+        private StackValueKind EmitCallableResult(
             ILGenerator il,
             FunctionTypeDeclaration callable,
             DirectParameterType returnType,
             bool materializeVoid)
         {
+            if (callable.ReturnType == null) return StackValueKind.Datum;
             if (TypeReferenceFacts.IsVoid(callable.ReturnType))
             {
                 il.Emit(OpCodes.Pop);
@@ -127,10 +141,10 @@ namespace AuroraScript.Compiler.Backend.Emission
                 il.Emit(OpCodes.Ldsfld, TypedRuntimeMetadata.DatumNull);
                 return StackValueKind.Datum;
             }
-            if (returnType.NativeObject == null &&
-                FlowValueTypeFacts.FromCheckedTypeName(callable.ReturnType.Name) != FlowValueType.None)
-                il.Emit(OpCodes.Call, TypedRuntimeMetadata.GetTypeCheck(
-                    FlowValueTypeFacts.GetCheckedType(callable.ReturnType.Name)));
+            var previous = _il;
+            _il = il;
+            try { EmitDatumBoundary(callable.ReturnType, callable.Parent as ModuleDeclaration); }
+            finally { _il = previous; }
 
             // Packed storage is not a script value; keep the checked datum when
             // no native object representation is available.

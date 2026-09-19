@@ -1,6 +1,7 @@
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Backend.Code;
 using AuroraScript.Hosting;
+using AuroraScript.Runtime;
 using AuroraScript.Runtime.Types;
 using System;
 using System.Reflection.Emit;
@@ -254,16 +255,9 @@ namespace AuroraScript.Compiler.Backend.Emission
             {
                 return;
             }
-            if (kind == StackValueKind.Datum)
-            {
-                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumToObject);
-            }
-            else if (kind != StackValueKind.Object)
-            {
-                ConvertToDatum(kind);
-                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.DatumToObject);
-            }
-            _il.Emit(OpCodes.Castclass, descriptor.ClrType);
+            ConvertToDatum(kind);
+            _il.Emit(OpCodes.Call, typeof(TypeCheckOps).GetMethod(nameof(TypeCheckOps.GetNullableNativeObject))
+                .MakeGenericMethod(descriptor.ClrType));
         }
 
         private StackValueKind EmitNativeFieldRead(

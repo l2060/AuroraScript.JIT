@@ -162,11 +162,10 @@ func apply(Predicate callback, Number value, Array items) Boolean {
 ```
 
 A declaration without parameter and return types is weak and preserves dynamic
-invocation. A complete strong signature validates calls, supplies contextual
+invocation. Any parameter or return annotation makes a callable strong. Strong calls validate declared argument types, arity and the declared result on both native and dynamic paths. A complete signature supplies contextual
 lambda parameter types, and permits a compatible non-capturing function value
 to expose a guarded native entry. Calls fall back to the ordinary Datum closure
-when no matching native entry exists. Fallback calls preserve the original script
-arguments; native dispatch must not introduce earlier argument conversions.
+when no matching native entry exists. Untyped targets are accepted through checked calls; explicitly incompatible function signatures are compilation errors. Weak callable declarations supply dispatch hints and preserve dynamic invocation.
 A callable declared `void` discards the target's result: calls used as values
 produce `null`, including dynamic fallback and spread calls. An `@global()` declaration file uses
 `declare type Callback(...);` for a host-provided callable type.
@@ -197,8 +196,7 @@ are valid, while `return expression;` is rejected. A direct native call used
 as a statement does not materialize a result. Dynamic, exported, or
 value-producing calls observe `null`, matching a host `[Export]` method
 whose CLR return type is `void`. `void` is not an alias for `Null`; it is valid
-only as a `native func` or callable `type Name(...)` return contract, not on
-ordinary functions, parameters, fields, or assertions.
+only as an ordinary/native function or callable return contract, not on parameters, fields, or assertions.
 
 Native functions may use trailing primitive defaults that the compiler can evaluate as constants,
 but the default must exactly match an explicit `Number`, `Boolean`, `String`, or
@@ -245,40 +243,54 @@ func add(Point p) Number {
 }
 ```
 
-After a value is granted as `Point` (`Point p`, `value as Point`, or a
-declared `Point` return), the compiler treats `p.x` and `p.y` as `Number` so
-arithmetic can use native code. Object literals in those same positions are
-also granted the shape, so `return { x: 1, y: 2 }` and `sum(Point p)` of
-`{ x: 1, y: 2 }` do not need `as Point`. A local keeps the shape only when
-every branch agrees. Missing or ill-typed fields still follow ordinary weak
-coercion (for example arithmetic becomes `NaN`); they are not rejected as a
-`Point` mismatch. Runtime exact checks remain only on builtin native types
-(`Number`, `Boolean`, packed arrays, and the other `CheckedType` names) and
-the lowercase `int32` and `uint32` numeric constraints at typed parameters, declared
-returns that are not already proven, and assertions such as
-`value as Number`, `value as int32`, or `value as uint32`. `int32` accepts only finite integral
-numbers in `-2147483648..2147483647` and rejects negative zero because native
-integer storage cannot preserve its sign. `uint32` accepts `0..4294967295`
-with the same exactness and negative-zero rules. Checked boundaries do not
-truncate or wrap. A local whose every assignment is an integer keeps 32-bit storage:
-integer literals, `int32` parameters, fields, and returns, `as int32` values,
-`Int32Array` elements, signed bitwise results, and `+`, `-`, `*`, `%` over
-those. Such a local is never conservatively widened to `Number`; it wraps like
-CLR `int` instead, so `var max = 2147483647; max + 1` is `-2147483648`.
-Expressions built from those locals wrap the same way (`currentX - 1` stays
-`int32`). Write `2147483647D` or any fractional assignment to opt a local back
-into `Number`. Integer `%` likewise cannot represent the negative zero or `NaN`
-a `Number` remainder would produce, so `-14 % 7` is `0` and a zero divisor
-raises a runtime error; give either operand `Number` storage to keep those
-values. `/` is script number division. When the quotient is an exact integer,
-assert it with `((current - currentX) / width) as int32`. Parentheses are
-required because `as` binds tighter than `/`; `Math.floor` is not a substitute
-because it returns `Number` and would hide a non-integral quotient.
-For unsigned word algorithms, use `uint32`, `UInt32Array`, and `U`/`u`
-literal suffixes. Unsuffixed literal inference is unchanged. Native `uint32`
-arithmetic wraps modulo 2^32, bitwise results remain unsigned, and `>>` is a
-logical right shift. `int32` and `uint32` do not add a runtime type identity, introduce a
-global constructor, or act as a TDoc type name.
+A declared type is a contract. Known incompatible assignments, arguments and
+returns are compilation errors; dynamic values are checked when they enter the
+contract. Capturing a binding or using a native entry does not weaken it.
+`as` asserts the current value. It does not permanently type an inferred local:
+`var n = 1 as int32; n = 1.5;` is valid.
+
+Structural contracts validate declared fields, including nested shapes, at the
+boundary. Missing fields read as `null`, so a missing value-type field fails.
+A reference field may be null. Recursive shapes support cyclic object graphs.
+Checks do not freeze, copy, or attach permanent write rules to the object.
+After `var p = value as Point; var n = p.x;`, ordinary own data fields can reuse
+the assertion. Possible writes, calls, getters and control-flow joins invalidate
+that proof; subsequent typed reads check again. A getter cannot establish an
+unchecked proof for later reads.
+
+`int32` requires a finite integral Number in `-2147483648..2147483647`;
+`uint32` requires `0..4294967295`. Both reject negative zero. Assertions do not
+truncate or wrap. `(int32)value` explicitly truncates a numeric value toward
+zero, rejecting non-finite values and results outside the int32 range. It does
+not parse strings or convert booleans. Invalid constant casts fail compilation.
+The cast has unary precedence: `(int32)123.5 + 1` is `124`.
+
+All Number values retain the same arithmetic semantics regardless of inferred
+storage: `var max = 2147483647; max + 1` is `2147483648`, `% 0` is NaN, and
+negative-zero remainders are preserved. Integral values without explicit type
+annotations default to int32 storage when their range fits. Wider exact results use internal 64-bit
+integer storage, and narrow again where the range is proven; this does not
+change `typeof` from `"number"` to `"int64"`. Calculations requiring IEEE rounding
+retain Number precision, including unit counters starting inside the exact-integer
+range stopping at +/-2^53.
+For example, `100` initially uses int32 and `123.45` uses double. A literal's
+initial storage does not constrain later assignments to a `var`; `0i` alone
+does not declare a permanent int32 binding. The explicit `L` suffix retains
+int64 semantics even for small values such as `123L`.
+Bounded loops and array indexes retain integer IL. A declared int32/uint32 assignment or
+return checks that the result fits. `/` remains floating division;
+`((a - b) / c) as int32` asserts an exact quotient, while `(int32)((a - b) / c)`
+explicitly truncates it.
+
+32-bit bitwise operations use Number semantics: `>>` is signed and `>>>` is
+unsigned. Use `(a + b) | 0` or `(a + b) >>> 0` when intentional 32-bit wrapping
+is required, including algorithms using `uint32` parameters and `U` literals.
+These constraints do not create distinct runtime types or constructors.
+
+Number, Boolean, int32, uint32, int64 and uint64 are nonnullable value contracts.
+String, Object, Array, packed arrays, structural, callable and NativeType
+references accept null. Missing arguments still follow argument/default rules;
+missing and nullable are not new type annotations. There is no `T?` syntax.
 
 `int64` and `uint64` are runtime integers, not Number aliases. `typeof 1L`
 is `"int64"` and `typeof 1UL` is `"uint64"`. Same-kind `+`, `-`, `*`, `/`,
@@ -326,9 +338,7 @@ func left(Rect rect) Number {
 }
 ```
 
-Shapes may also reference themselves or other shapes cyclically. Cycles
-remain compile-time metadata only; the compiler does not validate custom
-shape legality at runtime:
+Shapes may reference themselves or other shapes cyclically. Runtime validation tracks visited object/type pairs to terminate on cycles:
 
 ```as
 export type Node {
@@ -354,11 +364,11 @@ export type Right {
 }
 ```
 
-Nested and cyclic shapes do not add runtime object scans.
+Nested shapes are validated at boundaries. Acyclic validation does not allocate a visited set; recursive shapes allocate one only for non-null values.
 
 Only `export type` declarations are visible through the alias. Qualified
 shape references remain compile-time metadata and do not add runtime module
-properties or object checks. Using an imported type as a value
+properties. Their boundaries validate objects just like local shapes. Using an imported type as a value
 (`models.Point` in an expression) is rejected at compile time. The alias
 itself is still the module instance: `models.add` is a function, `models.Point`
 is not a property.
@@ -385,7 +395,7 @@ var fractions = new Float64Array(size);
 var flags = new BooleanArray(size);
 ```
 
-Each constructor accepts an optional non-negative length and zero-initializes contiguous primitive storage. `length` is read-only; `push`, `pop`, and element deletion are not supported. A general `Array` has writable `length`: shortening clears removed elements, while growing appends `null` slots. Use a general `Array` when the collection must grow or contain mixed values. Script numbers are doubles, so values read from `Int64Array` and `UInt64Array` must be exactly representable as a script number; use TDoc typed values when exact 64-bit persistence is required.
+Each constructor accepts an optional non-negative length and zero-initializes contiguous primitive storage. `length` is read-only; `push`, `pop`, and element deletion are not supported. A general `Array` has writable `length`: shortening clears removed elements, while growing appends `null` slots. Use a general `Array` when the collection must grow or contain mixed values. `Int64Array` and `UInt64Array` reads produce exact `int64` and `uint64` values, respectively; they do not round through Number.
 
 `Conv8` reads and writes scalars and UTF-8 text on a `UInt8Array` only. Multi-byte integers and floats take `littleEndian` (default `true`). `typeof Conv8` is `"type"`; `new Conv8()` fails. There is no script `Encoding` global.
 
@@ -624,7 +634,7 @@ typeof new HashMap();          // "HashMap"
 typeof new Path("mem://app");  // "Path"
 ```
 
-`value as Number` (and other builtin native type names) is a runtime assertion and is not a substitute for `typeof`. `value as Point` is a compile-time grant that unlocks native field facts; it does not scan the object. Host code should call `ScriptDatum.TypeOf` / `GetTypeName` for the same names; `ValueKind` is only the datum storage tag.
+`value as Number` (and other builtin native type names) is a runtime assertion and is not a substitute for `typeof`. `value as Point` validates its structural contract; field facts are reused only while the proof remains valid. Host code should call `ScriptDatum.TypeOf` / `GetTypeName` for the same names; `ValueKind` is only the datum storage tag.
 
 ## Templates
 

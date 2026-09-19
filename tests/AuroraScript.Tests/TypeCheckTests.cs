@@ -230,7 +230,7 @@ public sealed class TypeCheckTests
 #if NET9_0_OR_GREATER
     [InlineData(CompilationMode.Persistence)]
 #endif
-    public async Task CustomTypesGrantCompileTimeNativeFieldFacts(
+    public async Task CustomTypesValidateAndExposeNativeFieldFacts(
         CompilationMode mode)
     {
         using var workspace = new TestWorkspace();
@@ -284,7 +284,7 @@ public sealed class TypeCheckTests
                 return p.x + p.y;
             }
             export func valid() Point {
-                return { x: 1, y: null };
+                return { x: 1, y: 2 };
             }
             export func topLevelValue() {
                 return topLevel;
@@ -295,8 +295,8 @@ public sealed class TypeCheckTests
             export func acceptMissingFields() {
                 return add({});
             }
-            export func nonObject() {
-                return 1 as Point;
+            export func nonObject(value = 1) {
+                return value as Point;
             }
             export func dynamic(value) Point {
                 return value;
@@ -359,22 +359,11 @@ public sealed class TypeCheckTests
                     ScriptDatum.FromObject(CreatePoint(2, 3)),
                     ScriptDatum.FromObject(CreatePoint(8, 1))]));
         ScriptAssert.Equal(3, TestWorkspace.Execute(domain, "originSum"));
-        Assert.Equal(
-            ValueKind.Number,
-            TestWorkspace.Execute(domain, "nonObject").Kind);
-        Assert.Equal(
-            ValueKind.Number,
-            TestWorkspace.Execute(
-                domain,
-                "dynamic",
-                arguments: [ScriptDatum.FromNumber(1)]).Kind);
-        Assert.True(double.IsNaN(
-            TestWorkspace.Execute(domain, "acceptWrongShape").Number));
-        ScriptAssert.Equal(
-            0,
-            TestWorkspace.Execute(domain, "acceptMissingFields"));
+        Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, "nonObject"));
+        Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, "dynamic", arguments: [ScriptDatum.FromNumber(1)]));
+        Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, "acceptWrongShape"));
+        Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, "acceptMissingFields"));
     }
-
     private static ScriptObject CreatePoint(double x, double y)
     {
         var point = new ScriptObject();

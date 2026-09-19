@@ -125,20 +125,20 @@
       "notes": [
         "type followed by a parameter list declares a compile-time callable type; type followed by a member block declares a structural type.",
         "A signature with no typed parameters and no return type is weak and preserves dynamic invocation.",
-        "A complete strong signature validates calls, supplies contextual lambda parameter types, and enables guarded native callable dispatch for compatible non-capturing function values.",
+        "Any parameter or return annotation makes the callable strong. Declared types and arity are enforced on native and dynamic paths. Complete signatures also supply contextual lambda types and guarded native dispatch.",
         "export exposes the callable type to importing modules; declare is used in @global() declaration files; no runtime value is emitted."
       ]
     },
     {
       "id": "constraint.int32",
-      "syntax": "func name(int32 value) int32 { ... } | value as int32 | type Shape { int32 field; }",
+      "syntax": "func name(int32 value) int32 { ... } | value as int32 | (int32)value | type Shape { int32 field; }",
       "scope": "type-contract",
       "notes": [
         "int32 is a lowercase numeric constraint, not a script runtime type or global constructor.",
         "It accepts only finite integral Number values in -2147483648..2147483647, rejects negative zero, and never truncates or wraps at a checked boundary.",
-        "A local whose every assignment is an integer (integer literals, int32 parameters/fields/returns, Int32Array elements, signed bitwise results, and +/-/*/% over those) keeps 32-bit storage and wraps like CLR int instead of being widened to Number.",
-        "Expressions built from those locals also wrap: currentX - 1 stays int32 and is passed to an int32 parameter without a Number round-trip.",
-        "Integer storage cannot hold negative zero or NaN, so -14 % 7 is 0 and an integer remainder by zero raises a runtime error; give an operand Number storage to keep script remainder semantics.",
+        "Inferred integer storage preserves Number semantics; only proven ranges and explicit bitwise wrapping use integer arithmetic.",
+        "as asserts the current value without fixing the type of an inferred local. Declared bindings enforce their contract on every assignment, including captured bindings.",
+        "(int32)value truncates numeric values toward zero and rejects non-finite or out-of-range results. It does not parse strings or convert booleans.",
         "/ remains Number division. An exact integer quotient uses ((a - b) / c) as int32; parentheses are required because as binds tighter than /.",
         "Native/direct parameters and returns use CLR System.Int32; dynamic boundaries perform an exact range and integrality check.",
         "Values retain Number identity, so typeof remains \"number\"."
@@ -153,7 +153,7 @@
         "It accepts only finite integral Number values in 0..4294967295, rejects negative zero, and never truncates or wraps at a checked boundary.",
         "U/u suffixes select UInt32 literal storage; unsuffixed literal inference is unchanged.",
         "Native/direct parameters and returns use CLR System.UInt32, while UInt32Array element reads preserve the same scalar flow type.",
-        "Arithmetic wraps modulo 2^32, bitwise results remain UInt32, and >> is a logical right shift.",
+        "Arithmetic follows Number semantics. Use (a + b) >>> 0 for explicit unsigned wrapping. >> is signed and >>> is unsigned.",
         "Values retain Number identity, so typeof remains \"number\"."
       ]
     },
@@ -187,11 +187,11 @@
       "syntax": "native func name(parameters) void { statements; return; }",
       "scope": "module",
       "notes": [
-        "void is a contextual return contract for native functions only; it is not an alias for Null.",
+        "void is a contextual return contract for ordinary functions, native functions and callable types; it is not an alias for Null.",
         "The native CLR entry returns void. Falling through and bare return are valid; return expression is rejected.",
         "Direct native calls used as statements do not materialize a result.",
         "Exported, dynamic, or otherwise value-producing calls observe null.",
-        "void is invalid on ordinary functions, parameters, fields, and type assertions."
+        "void is invalid on parameters, fields, and type assertions."
       ]
     },
     {

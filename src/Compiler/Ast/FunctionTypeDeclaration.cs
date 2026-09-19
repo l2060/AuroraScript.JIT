@@ -36,7 +36,7 @@ namespace AuroraScript.Compiler.Ast
         public IReadOnlyList<ParameterDeclaration> Parameters { get; }
 
         /// <summary>
-        /// A missing return type makes this a weak callable contract.
+        /// A callable is weak only when both its parameters and return are untyped.
         /// </summary>
         public TypeReference ReturnType { get; }
 

@@ -14,17 +14,17 @@ func throwMethod() {
 }
 
 native func RotateLeft(uint32 lValue, int32 iShiftBits) uint32 {
-	return(lValue << iShiftBits) | (lValue >>> (32 - iShiftBits));
+	return ((lValue << iShiftBits) | (lValue >>> (32 - iShiftBits))) >>> 0;
 }
 
 native func AddUnsigned(uint32 lX, uint32 lY) uint32 {
-	return lX + lY;
+	return (lX + lY) >>> 0;
 }
 
-native func F(uint32 x, uint32 y, uint32 z) uint32 { return(x & y) | ((~x) & z); }
-native func G(uint32 x, uint32 y, uint32 z) uint32 { return(x & z) | (y & (~z)); }
-native func H(uint32 x, uint32 y, uint32 z) uint32 { return(x ^ y ^ z); }
-native func I(uint32 x, uint32 y, uint32 z) uint32 { return(y ^ (x | (~z))); }
+native func F(uint32 x, uint32 y, uint32 z) uint32 { return ((x & y) | ((~x) & z)) >>> 0; }
+native func G(uint32 x, uint32 y, uint32 z) uint32 { return ((x & z) | (y & (~z))) >>> 0; }
+native func H(uint32 x, uint32 y, uint32 z) uint32 { return (x ^ y ^ z) >>> 0; }
+native func I(uint32 x, uint32 y, uint32 z) uint32 { return (y ^ (x | (~z))) >>> 0; }
 
 native func FF(uint32 a, uint32 b, uint32 c, uint32 d, uint32 x, int32 s, uint32 ac) uint32 {
 	a = AddUnsigned(a, AddUnsigned(AddUnsigned(F(b, c, d), x), ac));

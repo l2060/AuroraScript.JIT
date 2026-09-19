@@ -468,6 +468,10 @@ namespace AuroraScript.Compiler.Backend.Code
                 var type = observed != null && parameterIndex < observed.Types.Length
                     ? observed.Types[parameterIndex]
                     : FlowValueType.None;
+                // A native declaration exposes its datum shell to unobserved callers.
+                // Call-site samples cannot turn an unannotated parameter into a contract.
+                if (function.IsNativeDeclared && demand == NativeCoercionKind.None)
+                    type = FlowValueType.Dynamic;
                 var sawNonNative = observed != null &&
                     parameterIndex < observed.SawNonNative.Length &&
                     observed.SawNonNative[parameterIndex];

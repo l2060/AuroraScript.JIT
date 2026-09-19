@@ -47,6 +47,9 @@ public sealed class AstarExampleTests
                 var path = newPathBuffer(finder);
                 var diagonalCount = findPathInto(finder, 0, 0, 4, 4, path, true, true);
                 var diagonalOk = diagonalCount == 5 && path[0] == 0 && path[4] == 24;
+                finder.searchId = 2147483647;
+                var rolloverCount = findPathInto(finder, 0, 0, 4, 4, path, true, true);
+                var rolloverOk = rolloverCount == 5 && finder.searchId == 1 && path[4] == 24;
 
                 var cornerMap = new Int8Array(4);
                 cornerMap.fill(1);
@@ -77,7 +80,8 @@ public sealed class AstarExampleTests
                     blockedCorner,
                     allowedCorner,
                     avoidsExpensiveCell,
-                    weightedFinder.expanded > 0
+                    weightedFinder.expanded > 0,
+                    rolloverOk
                 ];
             }
             """;
@@ -86,7 +90,7 @@ public sealed class AstarExampleTests
         using (domain)
         {
             ScriptAssert.Equal(
-                new object?[] { true, 0, 2, true, true },
+                new object?[] { true, 0, 2, true, true, true },
                 TestWorkspace.Execute(domain, "verifyOptimizedAstar", "ASTAR"));
         }
     }
@@ -158,6 +162,10 @@ public sealed class AstarExampleTests
         Assert.Contains(OpCodes.Ldelem_R8, heapOpcodes);
         Assert.Contains(OpCodes.Stelem_I4, heapOpcodes);
         Assert.Contains(OpCodes.Stelem_R8, heapOpcodes);
+        Assert.Contains(OpCodes.Div, heapOpcodes);
+        Assert.DoesNotContain(OpCodes.Conv_R8, heapOpcodes);
+        Assert.DoesNotContain(OpCodes.Conv_I4, heapOpcodes);
+        Assert.DoesNotContain(OpCodes.Rem, heapOpcodes);
         Assert.False(findPathHandle.IsNil, "Persisted Astar path finder method was not emitted.");
 
         var findPath = reader.GetMethodDefinition(findPathHandle);

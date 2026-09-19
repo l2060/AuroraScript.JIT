@@ -173,8 +173,8 @@ public sealed class ClrDirectCompilationTests
                 var value = (new Host(5)) as Host;
                 return value.Add(2);
             }
-            export func badParameter() { return read(1); }
-            export func badCheck() { return 1 as Host; }
+            export func badParameter(value = 1) { return read(value); }
+            export func badCheck(value = 1) { return value as Host; }
             """));
         using var domain = engine.CreateDomain();
 

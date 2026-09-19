@@ -321,17 +321,17 @@ public sealed class ReleaseRegressionTests
         var (_, domain) = await workspace.CompileModuleAsync(
             """
             @module(TEST);
-            type Datum {}
-            native func identity(Datum value) Datum { return value; }
-            export native func relay(Datum value) Datum { return identity(value); }
-            export func warmup() { return relay(41) + 1; }
+            native func identity(value) Object { return {value: value}; }
+            native func relay(value) Object { return identity(value); }
+            export func relayResult(value) { return relay(value).value; }
+            export func warmup() { return relay(41).value + 1; }
             """,
             enableHotReload: false);
 
         ScriptAssert.Equal(42, TestWorkspace.Execute(domain, "warmup"));
         ScriptAssert.Equal(
             "Aurora",
-            TestWorkspace.Execute(domain, "relay", arguments: ScriptDatum.FromString("Aurora")));
+            TestWorkspace.Execute(domain, "relayResult", arguments: ScriptDatum.FromString("Aurora")));
     }
 
     [Fact]

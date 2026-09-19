@@ -224,15 +224,55 @@ Choose the narrowest type that matches the required semantics:
 
 ## Integer Kernels
 
-Use signed bitwise operations and `Int32Array`/`Int8Array` values when the algorithm is naturally 32-bit. A local whose every assignment is an integer — integer literals, `int32` parameters, fields, and returns, packed-array loads, signed bitwise results, and `+`, `-`, `*`, `%` over those — keeps native CIL `int` storage for its whole lifetime and wraps on overflow. Expressions built from those locals wrap the same way, so `astarHeuristic(currentX - 1, currentY, ...)` stays on the `int` ABI. It is not conservatively widened to `double`. Division, unsigned right shift, and any fractional or `Number` assignment still produce `double`, as do the operations that need `NaN` or infinity.
+Number semantics are independent of inferred storage. The compiler retains native
+integer IL for proven ranges, bounded induction variables and explicit bitwise
+operations. Inferred integers use int32 when their range fits. Exact intermediate
+results beyond int32 use native 64-bit integers: `2147483647 + 1` retains
+`2147483648` and still has `typeof "number"`. Operations needing IEEE rounding
+retain Number precision; inferred storage never introduces wrapping.
+Storage selection also requires integer execution to preserve those semantics
+without simulating floating-point rounding. Unbounded Number counters keep native
+double arithmetic instead of long arithmetic with a saturation branch on every
+increment. Proven int32 loops and bounded wider integer calculations retain
+integer storage. Discarded local increments/decrements do not materialize their
+unused expression values. Integer operation selection respects operand storage
+as well as range proofs, avoiding conversions from double to long and back just
+because a floating value is known to be integral.
 
-This means an integer-oriented loop avoids repeated `double` conversions. The trade-off is that such a local cannot hold negative zero or `NaN`, so an integer `%` with a zero divisor raises a runtime error instead. When a `/` quotient is an exact integer, assert it with `((current - currentX) / width) as int32` (parentheses required: `as` binds tighter than `/`). Do not add `Math.floor` solely to recover an `int`; if a value genuinely needs number semantics, give it `Number` storage with a `D` suffix or a fractional assignment.
+Range proofs follow assignments, comparisons, early exits, loop bounds, and
+successful native array accesses. Both `for` and `while` require a proven range;
+increment/decrement direction alone cannot justify int32 storage, especially
+with inclusive bounds or multiple updates per iteration.
+Array's negative-index behavior is preserved;
+a right-hand-side mutation invalidates a write's proof about its index variable.
+For packed arrays, a proven integer in `int.MinValue..uint.MaxValue` can narrow
+directly to int32: positive overflow becomes a negative index and still fails
+the CLR array bounds check. This rule does not extend to `2^32`, which would
+wrap to zero, or to ordinary Array's negative-index behavior.
+Proven integer indexes and their arithmetic stay in native integer storage;
+`UInt8Array`, `Int16Array`, and `UInt16Array` reads also retain integer storage.
+When a Number local needs several proven integer reads, the compiler shares an
+integer representation and refreshes it on every write. Paths without an integer
+proof continue to use the original Number. Proven scalar operands keep their native
+storage across speculative fast paths and dynamic fallbacks.
+Using a value as an array index alone does not prove that its earlier arithmetic
+fits in int32; a potentially overflowing calculation still preserves Number semantics.
 
-For unsigned 32-bit word kernels, declare parameters, returns, and shape fields
-as `uint32`, store words in `UInt32Array`, and suffix constants with `U`/`u`
-such as `0xD76AA478u`. These values use the CLR `uint` ABI, `+`, `-`, and `*`
-wrap modulo 2^32, and `>>` is logical. Unsuffixed literals retain the normal
-`Int32`/`Int64` inference rules.
+For an unchanged local string, a proven `0 <= i < text.length` allows
+`text.charCodeAt(i)` to use a native integer character read. A write to the index
+invalidates that bound; arbitrary indexes keep the NaN-producing checked call.
+Counted loops can also bound positive constant accumulations and counters that
+reset immediately at a reachable limit. A UTF-8 byte count may need 64-bit
+storage even when the source length and individual character codes fit int32.
+For exact integer `n` and a positive constant `d`, `(n - n % d) / d` can use
+integer division, narrowing the quotient only after the wider calculation.
+
+Use `value as int32` for exact boundaries and `(int32)value` for explicit numeric
+truncation. Declared integer bindings reject results outside their range.
+For word algorithms, express wrapping with `(a + b) | 0` or `(a + b) >>> 0`.
+Adding two 32-bit words before this explicit wrap can still compile to integer
+addition. `>>` is signed; use `>>>` for logical shifts. Unsuffixed large literals
+remain Number; exact 64-bit literals require `L` or `UL`.
 
 For exact 64-bit values, suffix literals with `L`/`UL` and declare `int64` /
 `uint64` parameters, returns, and packed `Int64Array`/`UInt64Array` storage.

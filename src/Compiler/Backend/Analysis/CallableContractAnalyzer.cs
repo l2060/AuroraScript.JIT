@@ -1,4 +1,4 @@
-﻿using AuroraScript.Compiler.Ast;
+using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Backend.Code;
 using AuroraScript.Compiler.Backend.Plans;
@@ -308,10 +308,9 @@ namespace AuroraScript.Compiler.Backend.Analysis
                 if (function.Declaration.Parameters.Count !=
                     callable.Parameters.Count)
                 {
-                    _session.ReportWarning(
+                    throw new AuroraCompilationException(AuroraCompilationStage.Emission,
                         argument,
                         $"Function value is incompatible with function type '{callable.Name.Value}': expected {callable.Parameters.Count} parameters but found {function.Declaration.Parameters.Count}.");
-                    return false;
                 }
                 for (var i = 0; i < callable.Parameters.Count; i++)
                 {
@@ -319,35 +318,16 @@ namespace AuroraScript.Compiler.Backend.Analysis
                         callable.Parameters[i].DeclaredType;
                     var actual =
                         function.Declaration.Parameters[i].DeclaredType;
-                    if (!function.IsLambda &&
-                        expected != null &&
-                        actual == null)
-                    {
-                        _session.ReportWarning(
-                            argument,
-                            $"Function value parameter {i + 1} has no declared type required by function type '{callable.Name.Value}'.");
-                        return false;
-                    }
                     if (actual != null &&
                         expected != null &&
                         !StringComparer.Ordinal.Equals(
                             actual.DisplayName,
                             expected.DisplayName))
                     {
-                        _session.ReportWarning(
+                        throw new AuroraCompilationException(AuroraCompilationStage.Emission,
                             argument,
                             $"Function value parameter {i + 1} is incompatible with function type '{callable.Name.Value}': expected '{expected.DisplayName}' but found '{actual.DisplayName}'.");
-                        return false;
-                    }
-                }
-                if (!function.IsLambda &&
-                    callable.ReturnType != null &&
-                    function.Declaration.ReturnType == null)
-                {
-                    _session.ReportWarning(
-                        argument,
-                        $"Function value has no declared return type required by function type '{callable.Name.Value}'.");
-                    return false;
+                        }
                 }
                 if (function.Declaration.ReturnType != null &&
                     callable.ReturnType != null &&
@@ -355,10 +335,9 @@ namespace AuroraScript.Compiler.Backend.Analysis
                         function.Declaration.ReturnType.DisplayName,
                         callable.ReturnType.DisplayName))
                 {
-                    _session.ReportWarning(
+                    throw new AuroraCompilationException(AuroraCompilationStage.Emission,
                         argument,
                         $"Function value return type is incompatible with function type '{callable.Name.Value}': expected '{callable.ReturnType.DisplayName}' but found '{function.Declaration.ReturnType.DisplayName}'.");
-                    return false;
                 }
                 return true;
             }
