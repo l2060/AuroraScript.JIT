@@ -40,7 +40,7 @@ public sealed class Md5ExampleTests
                 .GetTypes().SelectMany(type => type.GetMethods()).Single(method => method.Name == "MD5$native");
             var locals = method.GetMethodBody()!.LocalVariables;
             Assert.DoesNotContain(locals, local => local.LocalType == typeof(double));
-            Assert.Contains(locals, local => local.LocalType == typeof(long));
+            Assert.Contains(locals, local => local.LocalType == typeof(int));
             var calls = StringOptimizationTests.GetCalls(method);
             Assert.DoesNotContain(calls, call => call.Name is "CharCodeAtCore" or "ValidateLength" or "ToArithmeticNumber");
             Assert.Contains(calls, call => call.DeclaringType == typeof(string) && call.Name == "get_Chars");

@@ -3384,21 +3384,18 @@ namespace AuroraScript.Compiler.Backend.Emission
             if (arrayType == FlowValueType.UInt8Array)
             {
                 EmitInt32Value(value);
-                _il.Emit(OpCodes.Conv_U1);
                 _il.Emit(OpCodes.Stelem_I1);
                 return;
             }
             if (arrayType == FlowValueType.Int16Array)
             {
                 EmitInt32Value(value);
-                _il.Emit(OpCodes.Conv_I2);
                 _il.Emit(OpCodes.Stelem_I2);
                 return;
             }
             if (arrayType == FlowValueType.UInt16Array)
             {
                 EmitInt32Value(value);
-                _il.Emit(OpCodes.Conv_U2);
                 _il.Emit(OpCodes.Stelem_I2);
                 return;
             }
@@ -3439,7 +3436,6 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
 
             EmitInt32Value(value);
-            if (arrayType == FlowValueType.Int8Array) _il.Emit(OpCodes.Conv_I1);
             _il.Emit(arrayType == FlowValueType.Int8Array
                 ? OpCodes.Stelem_I1
                 : OpCodes.Stelem_I4);
@@ -4491,25 +4487,37 @@ namespace AuroraScript.Compiler.Backend.Emission
             LocalBuilder arguments,
             LocalBuilder count)
         {
-            EmitInt32(source.Count);
-            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.RentArguments);
-            _il.Emit(OpCodes.Stloc, arguments);
-            EmitInt32(0);
-            _il.Emit(OpCodes.Stloc, count);
+            if (_breakLabels.Count == 0)
+            {
+                EmitInt32(source.Count);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.RentArguments);
+                _il.Emit(OpCodes.Stloc, arguments);
+                EmitInt32(0);
+                _il.Emit(OpCodes.Stloc, count);
+            }
+            else
+            {
+                _il.Emit(OpCodes.Ldloca, arguments);
+                _il.Emit(OpCodes.Ldloca, count);
+                EmitInt32(source.Count);
+                _il.Emit(OpCodes.Call, TypedRuntimeMetadata.PrepareArguments);
+            }
 
             for (var i = 0; i < source.Count; i++)
             {
-                _il.Emit(OpCodes.Ldloc, arguments);
-                _il.Emit(OpCodes.Ldloca, count);
                 if (source[i] is SpreadExpression spread)
                 {
                     EmitDatum(spread.Expression);
-                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.AppendSpread);
+                    _il.Emit(OpCodes.Ldloc, arguments);
+                    _il.Emit(OpCodes.Ldloca, count);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.AppendSpreadValueFirst);
                 }
                 else
                 {
                     EmitDatum(source[i]);
-                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.AppendArgument);
+                    _il.Emit(OpCodes.Ldloc, arguments);
+                    _il.Emit(OpCodes.Ldloca, count);
+                    _il.Emit(OpCodes.Call, TypedRuntimeMetadata.AppendArgumentValueFirst);
                 }
                 _il.Emit(OpCodes.Stloc, arguments);
             }
@@ -4523,17 +4531,9 @@ namespace AuroraScript.Compiler.Backend.Emission
             }
             _argumentBuffers.Add((arguments, count));
 
-            // A script catch can consume an exception raised while this call site
-            // owns a buffer. If the site is entered again (for example in a loop),
-            // return that retained buffer before replacing the local. The function
-            // cleanup region remains the backstop when control leaves immediately.
-            _il.Emit(OpCodes.Ldloc, arguments);
-            _il.Emit(OpCodes.Ldloc, count);
-            _il.Emit(OpCodes.Call, TypedRuntimeMetadata.ReturnArguments);
-            _il.Emit(OpCodes.Ldnull);
-            _il.Emit(OpCodes.Stloc, arguments);
-            EmitInt32(0);
-            _il.Emit(OpCodes.Stloc, count);
+            // PrepareArguments owns the complete transition.  This keeps the
+            // first-entry and caught-exception re-entry paths equivalent while
+            // avoiding redundant stores and a null-check in every call site.
         }
 
         private void ReleaseArgumentBuffer(LocalBuilder arguments, LocalBuilder count)
@@ -4907,9 +4907,32 @@ namespace AuroraScript.Compiler.Backend.Emission
                 EmitInt32ArithmeticOperator(op);
                 return StackValueKind.Int32;
             }
+            if ((op == Operator.Add || op == Operator.Subtract ||
+                    op == Operator.Multiply || op == Operator.Modulo) &&
+                IsStrongStructuralInt32Operand(binary.Left) &&
+                IsStrongStructuralInt32Operand(binary.Right))
+            {
+                EmitInt32Value(binary.Left);
+                EmitInt32Value(binary.Right);
+                EmitInt32ArithmeticOperator(op);
+                return StackValueKind.Int32;
+            }
             if ((op == Operator.Add || op == Operator.Subtract || op == Operator.Multiply || op == Operator.Modulo) &&
                 _code.IsExactIntegerNumber(binary) && CanEmitIntegerNumber(binary.Left) && CanEmitIntegerNumber(binary.Right))
             {
+                // Exact integer range analysis can leave the expression's
+                // operands in Number storage even though the result is already
+                // proven Int32. Emit the operation at its result width instead
+                // of materializing two Int64 values and narrowing them again.
+                if (_code.GetExpressionType(binary) == FlowValueType.Int32 &&
+                    !FlowValueTypeFacts.ContainsExact64(_code.GetExpressionType(binary.Left)) &&
+                    !FlowValueTypeFacts.ContainsExact64(_code.GetExpressionType(binary.Right)))
+                {
+                    EmitInt32Value(binary.Left);
+                    EmitInt32Value(binary.Right);
+                    EmitInt32ArithmeticOperator(op);
+                    return StackValueKind.Int32;
+                }
                 EmitIntegerNumber(binary.Left);
                 EmitIntegerNumber(binary.Right);
                 _il.Emit(op == Operator.Add ? OpCodes.Add : op == Operator.Subtract ? OpCodes.Sub :
@@ -6448,6 +6471,19 @@ namespace AuroraScript.Compiler.Backend.Emission
                 !_session.CompileSession.Symbols[binding.ModuleSymbol].HasFlag(BackendSymbolFlags.DeclaredOnly);
         }
 
+        private bool IsStrongStructuralInt32Operand(Expression expression)
+        {
+            if (expression is not GetPropertyExpression property)
+                return false;
+            if (_code.GetExpressionType(property) == FlowValueType.Int32 ||
+                _code.GetExpressionType(property) == FlowValueType.UInt32)
+                return true;
+            var field = GetStructuralFieldType(property);
+            if (field == null) return false;
+            var type = FlowValueTypeFacts.FromCheckedTypeName(field.Name);
+            return type == FlowValueType.Int32 || type == FlowValueType.UInt32;
+        }
+
         private StackValueKind EmitUnary(UnaryExpression unary, bool resultUsed)
         {
             var op = unary.Operator;
@@ -6597,16 +6633,17 @@ namespace AuroraScript.Compiler.Backend.Emission
 
             var increment = unary.Operator == Operator.PreIncrement || unary.Operator == Operator.PostIncrement;
             var postfix = unary.Operator == Operator.PostIncrement || unary.Operator == Operator.PostDecrement;
-            var integerContract = GetBindingContract(binding)?.Name;
             if (_code.GetLocalType(binding.Local) == FlowValueType.Int32 &&
                 _code.GetExpressionType(unary) == FlowValueType.Int32)
             {
                 _il.Emit(OpCodes.Ldloc, _locals[binding.Local.Value]);
                 if (resultUsed && postfix) _il.Emit(OpCodes.Dup);
                 _il.Emit(OpCodes.Ldc_I4_1);
-                _il.Emit(integerContract == "int32"
-                    ? increment ? OpCodes.Add_Ovf : OpCodes.Sub_Ovf
-                    : increment ? OpCodes.Add : OpCodes.Sub);
+                // A declared/explicit int32 local already has its boundary
+                // checked when it enters the function. Its arithmetic follows
+                // CLR unchecked int32 wraparound; overflow checks here would
+                // reintroduce Number semantics at every ++/--.
+                _il.Emit(increment ? OpCodes.Add : OpCodes.Sub);
                 if (resultUsed && !postfix) _il.Emit(OpCodes.Dup);
                 _il.Emit(OpCodes.Stloc, _locals[binding.Local.Value]);
                 return resultUsed ? StackValueKind.Int32 : StackValueKind.Void;
@@ -6617,9 +6654,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                 _il.Emit(OpCodes.Ldloc, _locals[binding.Local.Value]);
                 if (resultUsed && postfix) _il.Emit(OpCodes.Dup);
                 _il.Emit(OpCodes.Ldc_I4_1);
-                _il.Emit(integerContract == "uint32"
-                    ? increment ? OpCodes.Add_Ovf_Un : OpCodes.Sub_Ovf_Un
-                    : increment ? OpCodes.Add : OpCodes.Sub);
+                _il.Emit(increment ? OpCodes.Add : OpCodes.Sub);
                 if (resultUsed && !postfix) _il.Emit(OpCodes.Dup);
                 _il.Emit(OpCodes.Stloc, _locals[binding.Local.Value]);
                 return resultUsed ? StackValueKind.UInt32 : StackValueKind.Void;
@@ -7223,9 +7258,36 @@ namespace AuroraScript.Compiler.Backend.Emission
                     return;
                 }
             }
+            if (TryEmitInt32ArithmeticAsNumber(expression)) return;
             if (TryEmitAddAsNumber(expression)) return;
             var kind = EmitExpression(expression);
             ConvertStackToNumber(kind);
+        }
+
+        private bool TryEmitInt32ArithmeticAsNumber(Expression expression)
+        {
+            if (expression is not BinaryExpression binary ||
+                binary.Operator != Operator.Add &&
+                binary.Operator != Operator.Subtract &&
+                binary.Operator != Operator.Multiply ||
+                _code.GetExpressionType(binary.Left) != FlowValueType.Int32 ||
+                _code.GetExpressionType(binary.Right) != FlowValueType.Int32)
+            {
+                return false;
+            }
+
+            // Int32 operands widened to Int64 preserve the exact arithmetic
+            // result.  Convert only the final result to Number; converting each
+            // operand to double first needlessly widens a strongly typed
+            // operation and can lose integer precision earlier than necessary.
+            EmitInt32Value(binary.Left);
+            _il.Emit(OpCodes.Conv_I8);
+            EmitInt32Value(binary.Right);
+            _il.Emit(OpCodes.Conv_I8);
+            _il.Emit(binary.Operator == Operator.Add ? OpCodes.Add :
+                binary.Operator == Operator.Subtract ? OpCodes.Sub : OpCodes.Mul);
+            _il.Emit(OpCodes.Conv_R8);
+            return true;
         }
 
         /// <summary>

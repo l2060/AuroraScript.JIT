@@ -423,7 +423,7 @@ export native func findPathInto(AStar astar, int32 startX, int32 startY, int32 g
 
 		var currentX = current % width;
 		// current - currentX is a multiple of width, so this division is exact.
-		var currentY = ((current - currentX) / width) as int32;
+		var currentY = (int32)((current - currentX) / width);
 		var baseG = gScore[current];
 
 		if (currentX > 0) {

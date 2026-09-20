@@ -70,6 +70,12 @@ namespace Examples
 
         private static void GlobalConfiguration(ScriptGlobal g)
         {
+            int a = 111;
+            int b = 123;
+            var c = a * b;
+
+
+
             g.Define("PI", ScriptDatum.FromNumber(Math.PI), writeable: false, enumerable: true);
             g.Define("ENABLE_HOT_RELOAD", ScriptDatum.FromBoolean(engineOptions.Runtime.EnableHotReload), writeable: false, enumerable: true);
             g.Define("GIVE", ScriptDatum.FromBonding(Functions.GIVE), false, true);

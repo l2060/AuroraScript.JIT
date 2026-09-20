@@ -136,8 +136,11 @@ namespace AuroraScript.Compiler.Backend.Code
         public static readonly MethodInfo[] Invoke = CallMethods(property: false);
         public static readonly MethodInfo[] InvokeProperty = CallMethods(property: true);
         public static readonly MethodInfo RentArguments = Method(typeof(CallOps), nameof(CallOps.RentArguments), typeof(int));
+        public static readonly MethodInfo PrepareArguments = Method(typeof(CallOps), nameof(CallOps.PrepareArguments), typeof(ScriptDatum[]).MakeByRefType(), typeof(int).MakeByRefType(), typeof(int));
         public static readonly MethodInfo AppendArgument = Method(typeof(CallOps), nameof(CallOps.AppendArgument), typeof(ScriptDatum[]), typeof(int).MakeByRefType(), typeof(ScriptDatum));
+        public static readonly MethodInfo AppendArgumentValueFirst = Method(typeof(CallOps), nameof(CallOps.AppendArgumentValueFirst), typeof(ScriptDatum), typeof(ScriptDatum[]), typeof(int).MakeByRefType());
         public static readonly MethodInfo AppendSpread = Method(typeof(CallOps), nameof(CallOps.AppendSpread), typeof(ScriptDatum[]), typeof(int).MakeByRefType(), typeof(ScriptDatum));
+        public static readonly MethodInfo AppendSpreadValueFirst = Method(typeof(CallOps), nameof(CallOps.AppendSpreadValueFirst), typeof(ScriptDatum), typeof(ScriptDatum[]), typeof(int).MakeByRefType());
         public static readonly MethodInfo ReturnArguments = Method(typeof(CallOps), nameof(CallOps.ReturnArguments), typeof(ScriptDatum[]), typeof(int));
         public static readonly MethodInfo InvokeMany = Method(typeof(CallOps), nameof(CallOps.InvokeMany), typeof(ScriptDatum), typeof(ScriptContext), typeof(ScriptDatum[]), typeof(int));
         public static readonly MethodInfo InvokePropertyMany = Method(typeof(CallOps), nameof(CallOps.InvokePropertyMany), typeof(ScriptDatum), typeof(ScriptContext), typeof(string), typeof(ScriptDatum[]), typeof(int));

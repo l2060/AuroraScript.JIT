@@ -170,6 +170,19 @@ namespace AuroraScript.Runtime
             return ArrayPool<ScriptDatum>.Shared.Rent(Math.Max(1, capacity));
         }
 
+        // Acquires the argument buffer owned by a call site.  Keeping the
+        // ownership transition here lets the emitter express it as one
+        // operation: the first entry (null/zero locals) and a re-entry after a
+        // caught exception have identical semantics without branches or
+        // placeholder stores in generated methods.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void PrepareArguments(ref ScriptDatum[] arguments, ref int count, int capacity)
+        {
+            if (arguments != null) ReturnArguments(arguments, count);
+            arguments = RentArguments(capacity);
+            count = 0;
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum[] AppendArgument(ScriptDatum[] arguments, ref int count, ScriptDatum value)
         {
@@ -177,6 +190,10 @@ namespace AuroraScript.Runtime
             arguments[count++] = value;
             return arguments;
         }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum[] AppendArgumentValueFirst(ScriptDatum value, ScriptDatum[] arguments, ref int count) =>
+            AppendArgument(arguments, ref count, value);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ScriptDatum[] AppendSpread(ScriptDatum[] arguments, ref int count, ScriptDatum value)
@@ -201,6 +218,10 @@ namespace AuroraScript.Runtime
             }
             return AppendArgument(arguments, ref count, value);
         }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ScriptDatum[] AppendSpreadValueFirst(ScriptDatum value, ScriptDatum[] arguments, ref int count) =>
+            AppendSpread(arguments, ref count, value);
 
         public static ScriptObject ResolveElementCall(ScriptDatum receiver, ScriptContext context, ScriptDatum index)
         {

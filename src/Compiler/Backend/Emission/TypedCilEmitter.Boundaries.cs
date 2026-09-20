@@ -103,6 +103,15 @@ namespace AuroraScript.Compiler.Backend.Emission
         private TypeReference GetStructuralFieldType(Expression owner, string name)
         {
             var shape = _code.GetStructuralType(owner);
+            if (shape == null && owner is NameExpression ownerName &&
+                _code.GetName(ownerName) is var binding && binding.IsLocal &&
+                _function.LocalSlots[binding.Local.Value].Declaration is ParameterDeclaration parameter)
+            {
+                TypeReferenceFacts.TryGetCustomType(
+                    _module.Declaration,
+                    parameter.DeclaredType,
+                    out shape);
+            }
             if (shape == null) return null;
             foreach (var field in shape.Fields)
                 if (field.Name.Value == name) return field.Type;

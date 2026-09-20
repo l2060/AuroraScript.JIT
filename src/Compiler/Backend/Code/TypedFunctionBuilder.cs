@@ -621,6 +621,12 @@ namespace AuroraScript.Compiler.Backend.Code
             private List<ShapeSnapshot> _shapeSnapshots;
             private int _shapeSnapshotCount;
             private readonly FlowValueType[] _forcedLocalTypes;
+            // Strong int32/uint32 provenance is separate from inferred integer
+            // storage.  Only this provenance is allowed to select unchecked
+            // CLR-style 32-bit arithmetic.
+            private readonly bool[] _strongIntegerLocals;
+            private readonly HashSet<Expression> _strongIntegerExpressions =
+                new(ReferenceEqualityComparer.Instance);
             private readonly bool[] _writtenLocals;
             private bool[] _unobservedInitialNulls;
             private readonly DirectParameterType[] _parameterTypes;
@@ -674,6 +680,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 _clrTypes = new Dictionary<Expression, Type>(ReferenceEqualityComparer.Instance);
                 _localClrTypes = new Type[function.LocalSlots.Length];
                 _forcedLocalTypes = new FlowValueType[function.LocalSlots.Length];
+                _strongIntegerLocals = new bool[function.LocalSlots.Length];
                 _writtenLocals = new bool[function.LocalSlots.Length];
                 _parameterTypes = parameterTypes;
                 _directReturnTypes = directReturnTypes;
@@ -719,6 +726,8 @@ namespace AuroraScript.Compiler.Backend.Code
                         if (checkedType != FlowValueType.None && _locals[i] == checkedType)
                         {
                             _forcedLocalTypes[i] = checkedType;
+                            if (checkedType is FlowValueType.Int32 or FlowValueType.UInt32)
+                                _strongIntegerLocals[i] = true;
                         }
                         if (function.LocalSlots[i].Declaration is
                                 ParameterDeclaration typedParameter &&
@@ -899,6 +908,7 @@ namespace AuroraScript.Compiler.Backend.Code
                 _moduleCachedReads?.Clear();
                 _moduleValueEpoch = 0;
                 _expressionTypes.Clear();
+                _strongIntegerExpressions.Clear();
                 _nativeCalls?.Clear();
                 _hostCalls?.Clear();
                 _clrCalls?.Clear();
@@ -941,6 +951,26 @@ namespace AuroraScript.Compiler.Backend.Code
                             var initializerType = variable.Initializer == null
                                 ? FlowValueType.Null
                                 : AnalyzeExpression(variable.Initializer);
+                            // An explicit integer suffix or cast establishes
+                            // native integer storage for the
+                            // local, just like a declared int32/uint32
+                            // parameter. Keep that contract across later
+                            // mutations and compound assignments; otherwise the
+                            // first ++/+= can merge the native value with Number
+                            // and every subsequent use is emitted through double.
+                            if (TryGetExplicitIntegerType(variable.Initializer, out var explicitIntegerType))
+                            {
+                                _forcedLocalTypes[slot.Value] = explicitIntegerType;
+                                _locals[slot.Value] = explicitIntegerType;
+                                _strongIntegerLocals[slot.Value] = true;
+                            }
+                            else if (initializerType is FlowValueType.Int32 or FlowValueType.UInt32 &&
+                                IsStrongIntegerExpression(variable.Initializer))
+                            {
+                                _forcedLocalTypes[slot.Value] = initializerType;
+                                _locals[slot.Value] = initializerType;
+                                _strongIntegerLocals[slot.Value] = true;
+                            }
                             MergeLocal(slot, initializerType);
                             RecordIntegerRange(slot, TryGetIntegerRange(variable.Initializer, out var initializerMin, out var initializerMax), initializerMin, initializerMax);
                             if (!_writtenLocals[slot.Value] &&
@@ -1128,6 +1158,8 @@ namespace AuroraScript.Compiler.Backend.Code
                             _module.Declaration,
                             check.AssertedType,
                             _hostExports);
+                        if (type is FlowValueType.Int32 or FlowValueType.UInt32)
+                            _strongIntegerExpressions.Add(expression);
                         break;
                     case TypedDocumentExpression tdoc:
                         var inferredTDocType = AnalyzeExpression(tdoc.Value);
@@ -1135,6 +1167,9 @@ namespace AuroraScript.Compiler.Backend.Code
                         break;
                     case LiteralExpression literal:
                         type = LiteralTypeFacts.GetType(literal);
+                        if (literal.Token is NumberToken number &&
+                            number.Suffix is NumericLiteralSuffix.Int32 or NumericLiteralSuffix.UInt32)
+                            _strongIntegerExpressions.Add(expression);
                         break;
                     case NameExpression name:
                         type = AnalyzeName(name);
@@ -1158,6 +1193,14 @@ namespace AuroraScript.Compiler.Backend.Code
                                 binary.Right,
                                 binaryLeft,
                                 binaryRight);
+                        if (IsStrongIntegerArithmetic(binary, binaryLeft, binaryRight))
+                        {
+                            type = binaryLeft == FlowValueType.UInt32 &&
+                                binaryRight == FlowValueType.UInt32
+                                    ? FlowValueType.UInt32
+                                    : FlowValueType.Int32;
+                            _strongIntegerExpressions.Add(binary);
+                        }
                         if (TryGetExactIntegerQuotient(binary, out var numerator, out var divisor) &&
                             TryGetIntegerRange(numerator, out var numeratorMin, out var numeratorMax) &&
                             numeratorMin >= -9007199254740991L && numeratorMax <= 9007199254740991L)
@@ -1501,6 +1544,17 @@ namespace AuroraScript.Compiler.Backend.Code
                 if (clrType != null)
                 {
                     _clrTypes[expression] = clrType;
+                }
+                // Preserve the declared integer provenance of structural fields,
+                // packed elements, and explicit checks when the expression is
+                // copied into another local. This prevents a later arithmetic
+                // use from falling back to Number merely because the value came
+                // through a property read.
+                if (type is FlowValueType.Int32 or FlowValueType.UInt32 &&
+                    TryGetDeclaredNumericType(expression, out var declaredInteger) &&
+                    declaredInteger == type)
+                {
+                    _strongIntegerExpressions.Add(expression);
                 }
                 InvalidateModuleValuesAfter(expression);
                 return type;
@@ -2235,11 +2289,21 @@ namespace AuroraScript.Compiler.Backend.Code
                 out FlowValueType type)
             {
                 type = FlowValueType.Dynamic;
-                if (!_structuralTypes.TryGetValue(owner, out var declaration) ||
-                    !TryGetStaticPropertyName(property, out var name))
+                if (!TryGetStaticPropertyName(property, out var name))
                 {
                     return false;
                 }
+                if (!_structuralTypes.TryGetValue(owner, out var declaration) &&
+                    owner is NameExpression ownerName &&
+                    _names.TryGetValue(ownerName, out var ownerBinding) && ownerBinding.IsLocal &&
+                    _function.LocalSlots[ownerBinding.Local.Value].Declaration is ParameterDeclaration parameter)
+                {
+                    TypeReferenceFacts.TryGetCustomType(
+                        _module.Declaration,
+                        parameter.DeclaredType,
+                        out declaration);
+                }
+                if (declaration == null) return false;
 
                 for (var i = 0; i < declaration.Fields.Count; i++)
                 {
@@ -3559,6 +3623,74 @@ namespace AuroraScript.Compiler.Backend.Code
                 return false;
             }
 
+            private bool IsStrongIntegerArithmetic(
+                BinaryExpression binary,
+                FlowValueType left,
+                FlowValueType right)
+            {
+                if (binary.Operator != Operator.Add &&
+                    binary.Operator != Operator.Subtract &&
+                    binary.Operator != Operator.Multiply &&
+                    binary.Operator != Operator.Modulo ||
+                    !FlowValueTypeFacts.IsNumberCompatible(left) ||
+                    !FlowValueTypeFacts.IsNumberCompatible(right) ||
+                    FlowValueTypeFacts.ContainsExact64(left) ||
+                    FlowValueTypeFacts.ContainsExact64(right))
+                    return false;
+                if ((left == FlowValueType.Int32 || left == FlowValueType.UInt32) &&
+                    right == left)
+                    return true;
+                return IsStrongIntegerExpression(binary.Left) &&
+                    IsStrongIntegerExpression(binary.Right);
+            }
+
+            private bool IsStrongIntegerExpression(Expression expression)
+            {
+                while (expression is GroupExpression group && group.Expressions.Count == 1)
+                    expression = group.Expression;
+                if (expression == null) return false;
+                if (_strongIntegerExpressions.Contains(expression)) return true;
+                if (expression is LiteralExpression literal &&
+                    literal.Token is NumberToken number)
+                {
+                    return number.Suffix is NumericLiteralSuffix.Int32 or NumericLiteralSuffix.UInt32;
+                }
+                if (expression is NameExpression name &&
+                    _names.TryGetValue(name, out var binding) && binding.IsLocal)
+                    return _strongIntegerLocals[binding.Local.Value];
+                return false;
+            }
+
+            private bool TryGetExplicitIntegerType(
+                Expression expression,
+                out FlowValueType type)
+            {
+                while (expression is GroupExpression group && group.Expressions.Count == 1)
+                    expression = group.Expression;
+                if (expression is CheckExpression check)
+                {
+                    type = TypeReferenceFacts.GetFlowType(
+                        _module.Declaration,
+                        check.AssertedType,
+                        _hostExports);
+                    if (type is FlowValueType.Int32 or FlowValueType.UInt32)
+                        return true;
+                }
+                if (expression is LiteralExpression literal &&
+                    literal.Token is NumberToken number)
+                {
+                    type = number.Suffix switch
+                    {
+                        NumericLiteralSuffix.Int32 => FlowValueType.Int32,
+                        NumericLiteralSuffix.UInt32 => FlowValueType.UInt32,
+                        _ => FlowValueType.None
+                    };
+                    return type != FlowValueType.None;
+                }
+                type = FlowValueType.None;
+                return false;
+            }
+
             private bool TryGetDeclaredNumericType(
                 Expression expression,
                 out FlowValueType type)
@@ -3821,6 +3953,10 @@ namespace AuroraScript.Compiler.Backend.Code
                 }
                 if (op == Operator.Negate)
                 {
+                    if (operand == FlowValueType.Int32)
+                    {
+                        return FlowValueType.Int32;
+                    }
                     if (operand is FlowValueType.Int64 or FlowValueType.UInt64)
                     {
                         return operand;

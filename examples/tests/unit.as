@@ -904,7 +904,7 @@ export func testDraw() {
 	var i = 0;
 	var j = 0;
 	var n = 21;
-	var r = Math.round(n / 2);
+	var r = (int32)Math.round(n / 2);
 	var l = r;
 	var k = 1;
 	for (i = 0; i < n; i++)
