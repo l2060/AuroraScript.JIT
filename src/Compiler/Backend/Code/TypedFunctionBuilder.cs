@@ -4191,7 +4191,12 @@ namespace AuroraScript.Compiler.Backend.Code
                         _invariantIntegerRanges[i] = (min, max);
                         changed = true;
                     }
-                    if (_locals[i] == FlowValueType.Number && FitsInt32(min, max))
+                    // An inferred Number keeps IEEE/Number overflow semantics.
+                    // A finite integer range alone is insufficient to replace it
+                    // with int32 storage; explicit strong integer declarations and
+                    // the loop induction proof are the only narrowing paths.
+                    if (_locals[i] == FlowValueType.Number &&
+                        _strongIntegerLocals[i] && FitsInt32(min, max))
                     {
                         _locals[i] = _forcedLocalTypes[i] = FlowValueType.Int32;
                         changed = true;
