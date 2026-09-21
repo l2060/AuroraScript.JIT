@@ -342,7 +342,7 @@ Use these defaults unless the user asks for a different style:
 - Use `StringBuffer` for large loop-built strings.
 - Distinguish packed arrays with `typeof value == "Int8Array"` or `check Int8Array value`; do not compare `typeof` to `"object"` for those values.
 - Encode binary layouts on `UInt8Array` with `Conv8` (`littleEndian` default `true`; strings are UTF-8). Do not invent an `Encoding` global or pass `Int8Array` to `Conv8`.
-- Inferred storage preserves Number semantics. Use explicit bitwise operations for intentional 32-bit wrapping; `(int32)value` truncates numeric input and checks the resulting range.
+- Inferred storage preserves Number semantics. Use explicit bitwise operations for intentional 32-bit wrapping; `(int32)value` uses CLR truncation and conversion semantics.
 - Script `/` on `Number`/`int32` is floating division. For an exact 32-bit quotient write `((a - b) / c) as int32`. Parentheses are required because `as` binds tighter than `/`. Do not wrap with `Math.floor` if a non-integral result should fail.
 - Use `int64`/`uint64` (`1L`, `1UL`, `tdoc Int64`, `Int64Array`) when a value must stay exact past `Number.MAX_SAFE_INTEGER`. Keep both operands the same kind. Same-kind `/` is integer division.
 - `Env.ticks()` returns monotonic 100-nanosecond ticks as `int64`; `Env.elapsedMs()` returns milliseconds as `Number`. Do not invent a `Date.now` high-resolution clock.

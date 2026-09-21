@@ -168,14 +168,11 @@ namespace AuroraScript.Runtime
             return MismatchNumber(value);
         }
 
-        /// <summary>Explicit numeric cast: truncate toward zero, rejecting non-finite or out-of-range results.</summary>
+        /// <summary>Explicit numeric cast using CLR's native double-to-int32 conversion semantics.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int CastInt32Number(double value)
         {
-            var integer = System.Math.Truncate(value);
-            if (integer >= int.MinValue && integer <= int.MaxValue)
-                return (int)integer;
-            throw new AuroraRuntimeException("Cannot convert number to int32: value is not finite or is out of range.");
+            return (int)value;
         }
 
         /// <summary>Explicitly casts a numeric datum to int32, truncating toward zero.</summary>

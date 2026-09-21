@@ -174,8 +174,9 @@ Literals:
   integers default to int32; exact results outside int32 use wider internal
   integer storage, preserving `2147483647 + 1 == 2147483648` and `typeof "number"`.
   Overflow widens, `% 0` produces NaN, and negative zero is preserved.
-- `(int32)value` truncates numeric values toward zero and rejects non-finite
-  or out-of-range results. Strings and booleans are not numeric casts.
+- `(int32)value` follows CLR numeric conversion semantics: truncation toward
+  zero and the .NET result for non-finite or out-of-range values. Strings and
+  booleans are not numeric casts.
 - Use `(a + b) | 0` or `(a + b) >>> 0` for explicit 32-bit wrapping.
   `>>` is signed for all Number values, including `U` literals; `>>>` is unsigned.
 - Strong boundaries reject known mismatches during compilation and dynamic

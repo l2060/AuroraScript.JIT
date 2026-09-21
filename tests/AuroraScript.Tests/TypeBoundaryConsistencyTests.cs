@@ -44,10 +44,16 @@ public sealed class TypeBoundaryConsistencyTests
             ScriptAssert.Equal(int.MaxValue, TestWorkspace.Execute(domain, "cancelled", arguments: [ScriptDatum.FromNumber(int.MaxValue)]));
             ScriptAssert.Equal(-2147483649d, TestWorkspace.Execute(domain, "invalidated", arguments: [ScriptDatum.FromNumber(1)]));
             ScriptAssert.Equal(123, TestWorkspace.Execute(domain, "cast", arguments: [ScriptDatum.FromNumber(123.9)]));
-            foreach (var value in new[] { ScriptDatum.FromString("12"), ScriptDatum.Null,
-                ScriptDatum.FromNumber(double.NaN), ScriptDatum.FromNumber(double.PositiveInfinity),
-                ScriptDatum.FromNumber(2147483648d) })
-                Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, "cast", arguments: [value]));
+            Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, "cast",
+                arguments: [ScriptDatum.FromString("12")]));
+            Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, "cast",
+                arguments: [ScriptDatum.Null]));
+            ScriptAssert.Equal(0, TestWorkspace.Execute(domain, "cast",
+                arguments: [ScriptDatum.FromNumber(double.NaN)]));
+            ScriptAssert.Equal(int.MinValue, TestWorkspace.Execute(domain, "cast",
+                arguments: [ScriptDatum.FromNumber(double.PositiveInfinity)]));
+            ScriptAssert.Equal(int.MinValue, TestWorkspace.Execute(domain, "cast",
+                arguments: [ScriptDatum.FromNumber(2147483648d)]));
         }
     }
 

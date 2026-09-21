@@ -1,10 +1,11 @@
+
 using AuroraScript.Compiler.Ast;
 using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Ast.Statements;
-using AuroraScript.Compiler.Backend.Code;
-using AuroraScript.Compiler.Backend.Binding;
-using AuroraScript.Compiler.Backend.Plans;
 using AuroraScript.Compiler.Backend.Analysis;
+using AuroraScript.Compiler.Backend.Binding;
+using AuroraScript.Compiler.Backend.Code;
+using AuroraScript.Compiler.Backend.Plans;
 using AuroraScript.Compiler.Backend.Traversal;
 using AuroraScript.Hosting;
 using AuroraScript.Runtime;
@@ -304,16 +305,16 @@ namespace AuroraScript.Compiler.Backend.Emission
                     : nativeReturn != null
                         ? nativeReturn.ClrType
                     : code.ReturnType switch
-                {
-                    FlowValueType.Int32 => typeof(int),
-                    FlowValueType.UInt32 => typeof(uint),
-                    FlowValueType.Int64 => typeof(long),
-                    FlowValueType.UInt64 => typeof(ulong),
-                    FlowValueType.Boolean => typeof(bool),
-                    FlowValueType.Number => typeof(double),
-                    FlowValueType.String => typeof(string),
-                    _ => typeof(ScriptDatum)
-                };
+                    {
+                        FlowValueType.Int32 => typeof(int),
+                        FlowValueType.UInt32 => typeof(uint),
+                        FlowValueType.Int64 => typeof(long),
+                        FlowValueType.UInt64 => typeof(ulong),
+                        FlowValueType.Boolean => typeof(bool),
+                        FlowValueType.Number => typeof(double),
+                        FlowValueType.String => typeof(string),
+                        _ => typeof(ScriptDatum)
+                    };
                 var native = _session.Builder.DefineMethod(
                     _module.Source.FullPath,
                     name + "$native",
@@ -790,27 +791,27 @@ namespace AuroraScript.Compiler.Backend.Emission
                     ?? (IsUntypedContextObjectLocal(i)
                         ? typeof(ScriptObject)
                         : _code.LocalTypes[i] switch
-                {
-                    FlowValueType.Int32 => typeof(int),
-                    FlowValueType.UInt32 => typeof(uint),
-                    FlowValueType.Int64 => typeof(long),
-                    FlowValueType.UInt64 => typeof(ulong),
-                    FlowValueType.Number => _code.UsesWideIntegerStorage(new LocalSlotId(i)) ? typeof(long) : typeof(double),
-                    FlowValueType.Boolean => typeof(bool),
-                    FlowValueType.String => typeof(string),
-                    FlowValueType.Int32Array => GetPackedLocalClrType(FlowValueType.Int32Array),
-                    FlowValueType.Int8Array => GetPackedLocalClrType(FlowValueType.Int8Array),
-                    FlowValueType.Float32Array => GetPackedLocalClrType(FlowValueType.Float32Array),
-                    FlowValueType.Float64Array => GetPackedLocalClrType(FlowValueType.Float64Array),
-                    FlowValueType.BooleanArray => GetPackedLocalClrType(FlowValueType.BooleanArray),
-                    FlowValueType.UInt8Array => GetPackedLocalClrType(FlowValueType.UInt8Array),
-                    FlowValueType.Int16Array => GetPackedLocalClrType(FlowValueType.Int16Array),
-                    FlowValueType.UInt16Array => GetPackedLocalClrType(FlowValueType.UInt16Array),
-                    FlowValueType.UInt32Array => GetPackedLocalClrType(FlowValueType.UInt32Array),
-                    FlowValueType.Int64Array => GetPackedLocalClrType(FlowValueType.Int64Array),
-                    FlowValueType.UInt64Array => GetPackedLocalClrType(FlowValueType.UInt64Array),
-                    _ => typeof(ScriptDatum),
-                });
+                        {
+                            FlowValueType.Int32 => typeof(int),
+                            FlowValueType.UInt32 => typeof(uint),
+                            FlowValueType.Int64 => typeof(long),
+                            FlowValueType.UInt64 => typeof(ulong),
+                            FlowValueType.Number => _code.UsesWideIntegerStorage(new LocalSlotId(i)) ? typeof(long) : typeof(double),
+                            FlowValueType.Boolean => typeof(bool),
+                            FlowValueType.String => typeof(string),
+                            FlowValueType.Int32Array => GetPackedLocalClrType(FlowValueType.Int32Array),
+                            FlowValueType.Int8Array => GetPackedLocalClrType(FlowValueType.Int8Array),
+                            FlowValueType.Float32Array => GetPackedLocalClrType(FlowValueType.Float32Array),
+                            FlowValueType.Float64Array => GetPackedLocalClrType(FlowValueType.Float64Array),
+                            FlowValueType.BooleanArray => GetPackedLocalClrType(FlowValueType.BooleanArray),
+                            FlowValueType.UInt8Array => GetPackedLocalClrType(FlowValueType.UInt8Array),
+                            FlowValueType.Int16Array => GetPackedLocalClrType(FlowValueType.Int16Array),
+                            FlowValueType.UInt16Array => GetPackedLocalClrType(FlowValueType.UInt16Array),
+                            FlowValueType.UInt32Array => GetPackedLocalClrType(FlowValueType.UInt32Array),
+                            FlowValueType.Int64Array => GetPackedLocalClrType(FlowValueType.Int64Array),
+                            FlowValueType.UInt64Array => GetPackedLocalClrType(FlowValueType.UInt64Array),
+                            _ => typeof(ScriptDatum),
+                        });
                 result[i] = DeclareLocal(type);
                 _session.Builder.SetLocalSymInfo(result[i], _function.LocalSlots[i].Name);
                 if (!_directMode &&
@@ -2073,18 +2074,9 @@ namespace AuroraScript.Compiler.Backend.Emission
                     EmitNumber(expression.Value);
                     // A proven int32 range has the same truncation semantics as
                     // C#'s native conversion, so emit the CLR conversion directly.
-                    // Keep the runtime helper for an unconstrained Number: it must
-                    // reject NaN, infinities, and out-of-range values.
-                    if (_code.IntegerRanges != null &&
-                        _code.IntegerRanges.TryGetValue(expression.Value, out var range) &&
-                        range.Min >= int.MinValue && range.Max <= int.MaxValue)
-                    {
-                        _il.Emit(OpCodes.Conv_I4);
-                    }
-                    else
-                    {
-                        _il.Emit(OpCodes.Call, typeof(TypeCheckOps).GetMethod(nameof(TypeCheckOps.CastInt32Number)));
-                    }
+                    // Numeric values already have a native representation. Use
+                    // CLR conversion semantics for explicit numeric casts.
+                    _il.Emit(OpCodes.Conv_I4);
                 }
                 else
                 {
