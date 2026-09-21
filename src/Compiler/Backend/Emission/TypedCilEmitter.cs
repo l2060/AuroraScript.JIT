@@ -2005,7 +2005,7 @@ namespace AuroraScript.Compiler.Backend.Emission
                     case GetElementExpression element:
                         return EmitGetElement(element);
                     case SetElementExpression element:
-                        return EmitSetElement(element);
+                        return EmitSetElement(element, materializeVoid);
                     case ArrayLiteralExpression array:
                         return EmitArrayLiteral(array);
                     case MapExpression map:
@@ -2071,7 +2071,20 @@ namespace AuroraScript.Compiler.Backend.Emission
                 else if (FlowValueTypeFacts.IsNumeric(actual))
                 {
                     EmitNumber(expression.Value);
-                    _il.Emit(OpCodes.Call, typeof(TypeCheckOps).GetMethod(nameof(TypeCheckOps.CastInt32Number)));
+                    // A proven int32 range has the same truncation semantics as
+                    // C#'s native conversion, so emit the CLR conversion directly.
+                    // Keep the runtime helper for an unconstrained Number: it must
+                    // reject NaN, infinities, and out-of-range values.
+                    if (_code.IntegerRanges != null &&
+                        _code.IntegerRanges.TryGetValue(expression.Value, out var range) &&
+                        range.Min >= int.MinValue && range.Max <= int.MaxValue)
+                    {
+                        _il.Emit(OpCodes.Conv_I4);
+                    }
+                    else
+                    {
+                        _il.Emit(OpCodes.Call, typeof(TypeCheckOps).GetMethod(nameof(TypeCheckOps.CastInt32Number)));
+                    }
                 }
                 else
                 {
@@ -2557,16 +2570,16 @@ namespace AuroraScript.Compiler.Backend.Emission
             return _code.GetExpressionType(index) == FlowValueType.Int32;
         }
 
-        private StackValueKind EmitSetElement(SetElementExpression expression)
+        private StackValueKind EmitSetElement(SetElementExpression expression, bool materializeVoid)
         {
             if (TryGetNativeIndexer(expression.Object, expression.Index, out var nativeOwner))
-                return EmitNativeIndexWrite(expression, nativeOwner);
+                return EmitNativeIndexWrite(expression, nativeOwner, materializeVoid);
             var receiverType = _code.GetExpressionType(expression.Object);
 
             if (FlowValueTypeFacts.IsPackedArray(receiverType) &&
                 FlowValueTypeFacts.IsNumeric(_code.GetExpressionType(expression.Index)))
             {
-                return EmitPackedSetElement(expression, receiverType);
+                return EmitPackedSetElement(expression, receiverType, materializeVoid);
             }
 
             EmitDatum(expression.Object);
@@ -2635,8 +2648,22 @@ namespace AuroraScript.Compiler.Backend.Emission
 
         private StackValueKind EmitPackedSetElement(
             SetElementExpression expression,
-            FlowValueType arrayType)
+            FlowValueType arrayType,
+            bool materializeValue)
         {
+            if (!materializeValue &&
+                CanEmitDirectStackOperand(expression.Object) &&
+                CanEmitDirectStackOperand(expression.Index) &&
+                CanEmitDirectStackOperand(expression.Value) &&
+                !TryGetCachedParameter(expression.Value, out _, out _))
+            {
+                EmitPackedArrayStorage(expression.Object, arrayType);
+                EmitPackedIndex(expression.Index);
+                var directKind = EmitExpression(expression.Value);
+                EmitPackedElementStore(arrayType, directKind);
+                return StackValueKind.Void;
+            }
+
             var receiver = DeclareLocal(TypedRuntimeMetadata.PackedArray(arrayType).Items.FieldType);
             EmitPackedArrayStorage(expression.Object, arrayType);
             _il.Emit(OpCodes.Stloc, receiver);
@@ -2664,6 +2691,14 @@ namespace AuroraScript.Compiler.Backend.Emission
             _il.Emit(OpCodes.Ldloc, receiver);
             _il.Emit(OpCodes.Ldloc, index);
             _il.Emit(OpCodes.Ldloc, stored);
+            EmitPackedElementStore(arrayType, storedKind);
+
+            _il.Emit(OpCodes.Ldloc, value);
+            return valueKind;
+        }
+
+        private void EmitPackedElementStore(FlowValueType arrayType, StackValueKind storedKind)
+        {
             if (arrayType == FlowValueType.Float32Array)
             {
                 ConvertStackToNumber(storedKind);
@@ -2721,9 +2756,6 @@ namespace AuroraScript.Compiler.Backend.Emission
                     ? OpCodes.Stelem_I1
                     : OpCodes.Stelem_I4);
             }
-
-            _il.Emit(OpCodes.Ldloc, value);
-            return valueKind;
         }
 
         private void EmitPackedIndex(Expression expression)

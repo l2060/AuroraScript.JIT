@@ -49,8 +49,23 @@ namespace AuroraScript.Compiler.Backend.Emission
             _il.Emit(OpCodes.Stloc, index);
         }
 
-        private StackValueKind EmitNativeIndexWrite(SetElementExpression expression, HostNativeObjectDescriptor owner)
+        private StackValueKind EmitNativeIndexWrite(
+            SetElementExpression expression,
+            HostNativeObjectDescriptor owner,
+            bool materializeValue)
         {
+            if (!materializeValue &&
+                CanEmitDirectStackOperand(expression.Object) &&
+                CanEmitDirectStackOperand(expression.Index) &&
+                CanEmitDirectStackOperand(expression.Value))
+            {
+                EmitNativeReceiver(expression.Object, owner);
+                EmitInt32Value(expression.Index);
+                EmitDirectDatumOperand(expression.Value);
+                _il.Emit(OpCodes.Callvirt, owner.IndexSetter);
+                return StackValueKind.Void;
+            }
+
             EmitNativeIndexTarget(expression.Object, expression.Index, owner, out var receiver, out var index);
             var value = DeclareLocal(typeof(Runtime.ScriptDatum));
             EmitDatum(expression.Value);
@@ -58,6 +73,55 @@ namespace AuroraScript.Compiler.Backend.Emission
             EmitNativeIndexStore(owner, receiver, index, value);
             _il.Emit(OpCodes.Ldloc, value);
             return StackValueKind.Datum;
+        }
+
+        private bool CanEmitDirectStackOperand(Expression expression)
+        {
+            switch (expression)
+            {
+                case NameExpression name:
+                    return _code.GetName(name).IsLocal;
+                case LiteralExpression:
+                    return true;
+                case UnaryExpression unary when unary.Operator == Operator.Negate:
+                    return CanEmitDirectStackOperand(unary.Expression);
+                case GetElementExpression element:
+                    if (!CanEmitDirectStackOperand(element.Object) ||
+                        !CanEmitDirectStackOperand(element.Index))
+                    {
+                        return false;
+                    }
+                    if (TryGetNativeIndexer(element.Object, element.Index, out _))
+                    {
+                        return true;
+                    }
+                    var type = _code.GetExpressionType(element.Object);
+                    return FlowValueTypeFacts.IsPackedArray(type) &&
+                        FlowValueTypeFacts.IsNumeric(_code.GetExpressionType(element.Index));
+                default:
+                    return false;
+            }
+        }
+
+        private void EmitDirectDatumOperand(Expression expression)
+        {
+            if (expression is GetElementExpression element)
+            {
+                if (TryGetNativeIndexer(element.Object, element.Index, out var nativeOwner))
+                {
+                    EmitNativeIndexRead(element.Object, element.Index, nativeOwner);
+                    return;
+                }
+                var type = _code.GetExpressionType(element.Object);
+                if (FlowValueTypeFacts.IsPackedArray(type) &&
+                    FlowValueTypeFacts.IsNumeric(_code.GetExpressionType(element.Index)))
+                {
+                    var kind = EmitPackedGetElement(element.Object, element.Index, type);
+                    ConvertToDatum(kind);
+                    return;
+                }
+            }
+            EmitDatum(expression);
         }
 
         private void EmitNativeIndexStore(HostNativeObjectDescriptor owner,

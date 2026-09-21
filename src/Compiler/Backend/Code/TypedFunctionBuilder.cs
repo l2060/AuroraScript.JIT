@@ -3088,9 +3088,33 @@ namespace AuroraScript.Compiler.Backend.Code
                 if (!_names.TryGetValue(conditionName, out var conditionBinding) ||
                     !conditionBinding.IsLocal ||
                     IsCaptured(conditionBinding.Local) ||
-                    _locals[conditionBinding.Local.Value] != FlowValueType.Int32 ||
-                    !_expressionTypes.TryGetValue(condition.Right, out var boundType) ||
-                    boundType != FlowValueType.Int32)
+                    !_expressionTypes.TryGetValue(condition.Right, out var boundType))
+                {
+                    return false;
+                }
+                var boundedInt32 = boundType == FlowValueType.Int32;
+                if (!boundedInt32 && boundType == FlowValueType.Number &&
+                    TryGetIntegerRange(condition.Right, out var boundMin, out var boundMax))
+                    boundedInt32 = FitsInt32(boundMin, boundMax);
+                if (!boundedInt32) return false;
+
+                var inductionType = _locals[conditionBinding.Local.Value];
+                if (inductionType == FlowValueType.Number)
+                {
+                    var declaration = _function.LocalSlots[conditionBinding.Local.Value].Declaration as VariableDeclaration;
+                    var initialSafe = declaration?.Initializer != null &&
+                        TryEvaluateInt32Constant(declaration.Initializer, out _);
+                    if (!initialSafe &&
+                        (!TryGetIntegerRange(conditionName, out var currentMin, out var currentMax) ||
+                            !FitsInt32(currentMin, currentMax)))
+                    {
+                        return false;
+                    }
+                    _forcedLocalTypes[conditionBinding.Local.Value] = FlowValueType.Int32;
+                    _locals[conditionBinding.Local.Value] = FlowValueType.Int32;
+                    _strongIntegerLocals[conditionBinding.Local.Value] = true;
+                }
+                else if (inductionType != FlowValueType.Int32)
                 {
                     return false;
                 }
@@ -3192,7 +3216,14 @@ namespace AuroraScript.Compiler.Backend.Code
                     if (_rejectNestedLoops &&
                         node is ForStatement or ForInStatement or WhileStatement)
                     {
-                        if (_owner.WritesLocal(node, _slot)) IsValid = false;
+                        if (_owner.WritesLocal(node, _slot) && !IsBoundedInt32Loop(node)) IsValid = false;
+                        if (IsValid && _owner.WritesLocal(node, _slot))
+                        {
+                            var previous = _rejectNestedLoops;
+                            _rejectNestedLoops = false;
+                            Visit(node);
+                            _rejectNestedLoops = previous;
+                        }
                         return;
                     }
 
@@ -3247,6 +3278,25 @@ namespace AuroraScript.Compiler.Backend.Code
 
                     var visitor = new ChildVisitor(this);
                     AstTraversal.VisitChildren(node, ref visitor);
+                }
+
+                private bool IsBoundedInt32Loop(AstNode node)
+                {
+                    var condition = node switch
+                    {
+                        WhileStatement loop => loop.Condition,
+                        ForStatement loop => loop.Condition,
+                        _ => null
+                    };
+                    return condition is BinaryExpression binary &&
+                        (binary.Operator == Operator.LessThan ||
+                            binary.Operator == Operator.LessThanOrEqual) &&
+                        _owner.IsLocalName(binary.Left, _slot) &&
+                        _owner._expressionTypes.TryGetValue(binary.Right, out var bound) &&
+                        (bound == FlowValueType.Int32 ||
+                            bound == FlowValueType.Number &&
+                            _owner.TryGetIntegerRange(binary.Right, out var boundMin, out var boundMax) &&
+                            TypeAnalyzer.FitsInt32(boundMin, boundMax));
                 }
 
                 private void AddDelta(int delta)
