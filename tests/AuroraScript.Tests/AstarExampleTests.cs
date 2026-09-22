@@ -49,7 +49,9 @@ public sealed class AstarExampleTests
                 var diagonalOk = diagonalCount == 5 && path[0] == 0 && path[4] == 24;
                 finder.searchId = 2147483647;
                 var rolloverCount = findPathInto(finder, 0, 0, 4, 4, path, true, true);
-                var rolloverOk = rolloverCount == 5 && finder.searchId == 1 && path[4] == 24;
+                // searchId is a strong int32 field. Its increment follows the
+                // native IL wraparound semantics before the script guard runs.
+                var rolloverOk = rolloverCount == 5 && finder.searchId == -2147483648 && path[4] == 24;
 
                 var cornerMap = new Int8Array(4);
                 cornerMap.fill(1);

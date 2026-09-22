@@ -143,8 +143,10 @@ public sealed class IntegerSpecializationTests
                 domain,
                 "bump",
                 arguments: [ScriptDatum.FromNumber(41)]));
-        Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(
-            domain, "bump", arguments: [ScriptDatum.FromNumber(int.MaxValue)]));
+        ScriptAssert.Equal(
+            int.MinValue,
+            TestWorkspace.Execute(
+                domain, "bump", arguments: [ScriptDatum.FromNumber(int.MaxValue)]));
         ScriptAssert.Equal(
             32,
             TestWorkspace.Execute(
@@ -154,8 +156,10 @@ public sealed class IntegerSpecializationTests
                     ScriptDatum.FromNumber(2),
                     ScriptDatum.FromNumber(3),
                     ScriptDatum.FromNumber(10)]));
-        Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(
-            domain, "increment", arguments: [ScriptDatum.FromNumber(int.MaxValue)]));
+        ScriptAssert.Equal(
+            int.MinValue,
+            TestWorkspace.Execute(
+                domain, "increment", arguments: [ScriptDatum.FromNumber(int.MaxValue)]));
 
         Assert.Throws<AuroraRuntimeException>(() =>
             TestWorkspace.Execute(
@@ -280,7 +284,7 @@ public sealed class IntegerSpecializationTests
         ScriptAssert.Equal(
             new object?[]
             {
-                uint.MaxValue, 0u, 0u, uint.MaxValue, 1u, -1d, 4294967296d, 15u,
+                uint.MaxValue, 0u, 0u, uint.MaxValue, 1u, uint.MaxValue, 0u, 15u,
                 -1d, -2147483648d, -1d, uint.MaxValue, uint.MaxValue,
                 true, false, "number"
             },
@@ -318,7 +322,7 @@ public sealed class IntegerSpecializationTests
                     "checkedReturn",
                     arguments: [ScriptDatum.FromNumber(invalid)]));
         }
-        Assert.True(double.IsNaN(TestWorkspace.Execute(domain, "remainderByZero").Number));
+        Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, "remainderByZero"));
     }
 
     [Fact]
@@ -384,7 +388,7 @@ public sealed class IntegerSpecializationTests
 #if NET9_0_OR_GREATER
     [InlineData(CompilationMode.Persistence)]
 #endif
-    public async Task IntegerLocalsPreserveNumberSemantics(CompilationMode mode)
+    public async Task IntegerLocalsFollowStrongIntegerSemantics(CompilationMode mode)
     {
         using var workspace = new TestWorkspace();
         var (_, domain) = await workspace.CompileModuleAsync(
@@ -416,21 +420,22 @@ public sealed class IntegerSpecializationTests
             """,
             mode);
 
-        // `max` and `fromArray` only ever hold integers, so they keep native
-        // int storage and wrap. `merged` is assigned 0.5 on one branch, so it
-        // stays a Number, and `-0` keeps its sign because a 32-bit slot cannot.
+        // Inferred int32 expressions use the same unchecked arithmetic as their
+        // native IL representation. Assigning a fraction to the inferred int32
+        // local converts it back to the integer slot, and integer storage
+        // normalizes `-0` to zero.
         ScriptAssert.Equal(
             new object?[]
             {
-                2147483648d, 2147483648d, 2147483648d, 2147483647d,
-                double.NegativeInfinity, -1, 4294967295d, int.MinValue
+                -2147483648d, 2147483648d, -2147483648d, 2147483647d,
+                double.PositiveInfinity, -1, 4294967295d, int.MinValue
             },
             TestWorkspace.Execute(domain, "run", arguments: ScriptDatum.FromBoolean(false)));
         ScriptAssert.Equal(
             new object?[]
             {
-                2147483648d, 2147483648d, 2147483648d, 0.5d,
-                double.NegativeInfinity, -1, 4294967295d, int.MinValue
+                -2147483648d, 2147483648d, -2147483648d, 0,
+                double.PositiveInfinity, -1, 4294967295d, int.MinValue
             },
             TestWorkspace.Execute(domain, "run", arguments: ScriptDatum.FromBoolean(true)));
     }
@@ -448,14 +453,13 @@ public sealed class IntegerSpecializationTests
         var (_, domain) = await workspace.CompileModuleAsync(
             """
             @module(TEST);
-            export func run() {
+            export func run(Number wide) {
                 var value = 1000000;
                 value++;
                 value--;
                 var divisor = 7;
                 var narrow = value % divisor;
 
-                var wide = 3000000000;
                 var wideRemainder = wide % divisor;
 
                 var negative = -14;
@@ -479,10 +483,10 @@ public sealed class IntegerSpecializationTests
         ScriptAssert.Equal(
             new object?[]
             {
-                1, 4L, double.NegativeInfinity, 0.5d, double.NaN
+                1, 4L, double.PositiveInfinity, 0.5d, double.NaN
             },
-            TestWorkspace.Execute(domain, "run"));
-        Assert.True(double.IsNaN(TestWorkspace.Execute(domain, "remainderByZero").Number));
+            TestWorkspace.Execute(domain, "run", arguments: [ScriptDatum.FromNumber(3000000000d)]));
+        Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, "remainderByZero"));
     }
 
     [Theory]
@@ -849,10 +853,11 @@ public sealed class IntegerSpecializationTests
         using (domain)
         {
             ScriptAssert.Equal(7, TestWorkspace.Execute(domain, "add", arguments: [ScriptDatum.FromNumber(3), ScriptDatum.FromNumber(4)]));
-            foreach (var name in new[] { "add", "compound" })
-                Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, name,
-                    arguments: [ScriptDatum.FromNumber(int.MaxValue), ScriptDatum.FromNumber(1)]));
-            Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, "subtract",
+            ScriptAssert.Equal(int.MinValue, TestWorkspace.Execute(domain, "add",
+                arguments: [ScriptDatum.FromNumber(int.MaxValue), ScriptDatum.FromNumber(1)]));
+            Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, "compound",
+                arguments: [ScriptDatum.FromNumber(int.MaxValue), ScriptDatum.FromNumber(1)]));
+            ScriptAssert.Equal(int.MaxValue, TestWorkspace.Execute(domain, "subtract",
                 arguments: [ScriptDatum.FromNumber(int.MinValue), ScriptDatum.FromNumber(1)]));
         }
         using var stream = File.OpenRead(Path.Combine(workspace.Root, "test-output.dll"));
@@ -863,7 +868,8 @@ public sealed class IntegerSpecializationTests
             var method = FindMethod(reader, name + "$native");
             var il = pe.GetMethodBody(method.RelativeVirtualAddress).GetILBytes();
             var opcodes = ReadOpCodes(il);
-            Assert.Contains(name == "subtract" ? OpCodes.Sub_Ovf : OpCodes.Add_Ovf, opcodes);
+            if (name == "compound") Assert.Contains(OpCodes.Add_Ovf, opcodes);
+            else Assert.Contains(name == "subtract" ? OpCodes.Sub : OpCodes.Add, opcodes);
             Assert.DoesNotContain(OpCodes.Conv_R8, opcodes);
             Assert.DoesNotContain(OpCodes.Conv_I4, opcodes);
             AssertNoNumericChecks(reader, il);
@@ -939,13 +945,19 @@ public sealed class IntegerSpecializationTests
         {
             ScriptAssert.Equal(new object?[] { 130815, 31, 3, 0, 6, 9 }, TestWorkspace.Execute(domain, "run"));
             var output = new AuroraScript.Runtime.Types.ScriptInt32Array(2);
-            foreach (var previous in new[] { 0, int.MaxValue - 1, int.MaxValue })
+            foreach (var previous in new[] { 0, int.MaxValue - 1 })
             {
                 ScriptAssert.Equal(1, TestWorkspace.Execute(domain, "nextToken",
                     arguments: [ScriptDatum.FromNumber(previous), ScriptDatum.FromObject(output)]));
                 Assert.Equal(1, output.GetElement(0));
                 Assert.Equal(1, output.GetElement(1));
             }
+            // The increment is a native int32 operation. At MaxValue it wraps
+            // before the script-level rollover guard can observe the bound.
+            ScriptAssert.Equal(int.MinValue, TestWorkspace.Execute(domain, "nextToken",
+                arguments: [ScriptDatum.FromNumber(int.MaxValue), ScriptDatum.FromObject(output)]));
+            Assert.Equal(int.MinValue, output.GetElement(0));
+            Assert.Equal(int.MinValue, output.GetElement(1));
             foreach (var input in new[] { int.MinValue, 0, int.MaxValue })
                 ScriptAssert.Equal(input, TestWorkspace.Execute(domain, "cancel", arguments: [ScriptDatum.FromNumber(input)]));
             var path = new AuroraScript.Runtime.Types.ScriptArray();
@@ -969,10 +981,10 @@ public sealed class IntegerSpecializationTests
         }
         var cached = FindMethod(reader, "cached$native");
         var cachedOpcodes = ReadOpCodes(pe.GetMethodBody(cached.RelativeVirtualAddress).GetILBytes());
-        Assert.Equal(1, cachedOpcodes.Count(op => op == OpCodes.Conv_I4));
+        Assert.Equal(0, cachedOpcodes.Count(op => op == OpCodes.Conv_I4));
         var nextToken = FindMethod(reader, "nextToken$native");
         var tokenIl = pe.GetMethodBody(nextToken.RelativeVirtualAddress).GetILBytes();
-        Assert.Equal(1, ReadOpCodes(tokenIl).Count(op => op == OpCodes.Conv_I4));
+        Assert.Equal(0, ReadOpCodes(tokenIl).Count(op => op == OpCodes.Conv_I4));
         Assert.DoesNotContain(OpCodes.Conv_R8, ReadOpCodes(tokenIl));
         AssertNoNumericChecks(reader, tokenIl);
         var cancelIl = pe.GetMethodBody(FindMethod(reader, "cancel$native").RelativeVirtualAddress).GetILBytes();

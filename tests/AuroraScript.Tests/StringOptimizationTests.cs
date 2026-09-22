@@ -110,14 +110,17 @@ public sealed class StringOptimizationTests
         using var workspace = new TestWorkspace();
         var (_, domain) = await workspace.CompileModuleAsync("""
             @module(TEST);
-            export native func overflow(String text) Number { return text.length + 2147483647; }
+            export native func overflow(String text) Number {
+                var limit = 2147483647D;
+                return text.length + limit;
+            }
             export native func stable(String text) int32 {
                 var result = 0;
                 for (var i = 0; i < 3; i++) { result = text.length - 2; text = text + 'x'; }
                 return result;
             }
             export native func mutable(String text) Number {
-                var offset = text.length;
+                var offset = text.length + 0D;
                 var result = 0;
                 for (var i = 0; i < 3; i++) { result = text.length + offset; offset = offset + 1073741824; }
                 return result;

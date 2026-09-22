@@ -145,8 +145,10 @@ public sealed class IntegerRangeOptimizationTests
         Assert.Equal(ValueKind.UInt64, unsigned.Kind);
         Assert.Equal(3UL, unsigned.UInt64);
         ScriptAssert.Equal(new object[] { 3, 5, 5, 3, 3 }, TestWorkspace.Execute(domain, "observed"));
-        Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, "signed32", arguments: [ScriptDatum.FromNumber(int.MaxValue)]));
-        Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, "unsigned32", arguments: [ScriptDatum.FromNumber(uint.MaxValue)]));
+        ScriptAssert.Equal(int.MaxValue,
+            TestWorkspace.Execute(domain, "signed32", arguments: [ScriptDatum.FromNumber(int.MaxValue)]));
+        ScriptAssert.Equal(uint.MaxValue,
+            TestWorkspace.Execute(domain, "unsigned32", arguments: [ScriptDatum.FromNumber(uint.MaxValue)]));
 #if NET9_0_OR_GREATER
         if (mode == CompilationMode.Persistence)
         {

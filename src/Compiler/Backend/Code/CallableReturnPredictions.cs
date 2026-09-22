@@ -28,6 +28,11 @@ namespace AuroraScript.Compiler.Backend.Code
             new(ReferenceEqualityComparer.Instance);
         private readonly Dictionary<SymbolId, AstNode> _symbols = new();
         private readonly Dictionary<Expression, FunctionPlan> _resolvedCallables = new(ReferenceEqualityComparer.Instance);
+        private readonly HashSet<AstNode> _resolveVisited = new(ReferenceEqualityComparer.Instance);
+        private readonly FunctionPlan[] _functions;
+        private readonly List<int>[] _dependents;
+        private readonly bool[] _requiresPrediction;
+        private readonly Dictionary<ModulePlan, bool> _initializerRequiresPrediction = new();
         private CallableReturnPrediction[] _returns;
 
         internal TypedFunctionBuilder.FunctionBinding[] Bindings => _bindings;
@@ -59,6 +64,21 @@ namespace AuroraScript.Compiler.Backend.Code
                         module.TryGetSymbol(variable.Name.Value, out var symbol))
                         _symbols[symbol] = variable;
             }
+
+            _functions = new FunctionPlan[maxId + 1];
+            _dependents = new List<int>[maxId + 1];
+            _requiresPrediction = new bool[maxId + 1];
+            for (var i = 0; i < modules.Count; i++)
+            {
+                var module = modules[i];
+                for (var functionIndex = 0; functionIndex < module.Functions.Count; functionIndex++)
+                {
+                    var function = module.Functions[functionIndex];
+                    _functions[function.Id.Value] = function;
+                }
+            }
+
+            BuildDependencies(modules);
         }
 
         public static CallableReturnPredictions Build(IReadOnlyList<ModulePlan> modules, HostExportCatalog hostExports)
@@ -67,93 +87,235 @@ namespace AuroraScript.Compiler.Backend.Code
             foreach (var module in modules)
                 analysis._moduleCodes[module] = TypedModuleCode.Analyze(module, hostExports, analysis);
             var predictions = new TypedFunctionCode[analysis._predictions.Length];
-            var converged = false;
             var upvalues = new Dictionary<FunctionId, FlowValueType[]>();
-            CallableReturnPrediction[] previousReturns = null;
-            Dictionary<FunctionId, FlowValueType[]> previousUpvalues = null;
-            // Starting at bottom allows mutually recursive summaries to acquire
-            // their base-case return types. These are hints, never ABI evidence.
-            var passLimit = Math.Max(6, analysis._declarations.Count * 2 + 2);
-            for (var pass = 0; pass < passLimit; pass++)
+            var queue = new Queue<int>();
+            var queued = new bool[analysis._functions.Length];
+            var iterations = new byte[analysis._functions.Length];
+
+            // Seed the lattice with the already computed generic code. Recursive
+            // functions deliberately keep the bottom value until the worklist
+            // analyzes them, preserving the old recursive inference behavior.
+            for (var i = 0; i < analysis._functions.Length; i++)
             {
-                var next = new CallableReturnPrediction[analysis._returns.Length];
-                var changed = false;
-                foreach (var function in analysis._declarations.Values)
+                var function = analysis._functions[i];
+                if (function == null)
                 {
-                    var binding = analysis._bindings[function.Id.Value];
-                    if (previousReturns != null &&
-                        !analysis.InputsChanged(binding, previousReturns, previousUpvalues, upvalues))
-                    {
-                        next[function.Id.Value] = analysis._returns[function.Id.Value];
-                        continue;
-                    }
-                    var prediction = analysis.CanReuseGeneric(binding)
-                        ? analysis._moduleCodes[binding.Module].GetGeneric(function.Id)
-                        : TypedFunctionBuilder.Analyze(binding, hostExports,
-                            upvalueTypes: upvalues,
-                            callableReturnPrediction: target => analysis.GetReturn(binding, target));
-                    predictions[function.Id.Value] = prediction;
-                    // Int32/UInt32 storage refinements are erased at the ordinary
-                    // datum ABI. Guessing integer arithmetic from them could change
-                    // overflow behavior; preserve the runtime Number kind instead.
-                    var returnType = prediction.ReturnType is FlowValueType.Int32 or FlowValueType.UInt32
-                        ? FlowValueType.Number : prediction.ReturnType;
-                    TypeReferenceFacts.TryGetNativeObject(hostExports, function.Declaration.ReturnType, out var native);
-                    native ??= GetNativeReturn(binding, prediction);
-                    TypeReferenceFacts.TryGetCustomType(binding.Module.Declaration, function.Declaration.ReturnType, out var structural);
-                    var summary = new CallableReturnPrediction(returnType, native, structural);
-                    next[function.Id.Value] = summary;
-                    changed |= analysis._returns[function.Id.Value] != summary;
+                    continue;
                 }
-                previousReturns = analysis._returns;
-                analysis._returns = next;
-                var nextUpvalues = new Dictionary<FunctionId, FlowValueType[]>();
-                foreach (var module in modules)
-                    foreach (var pair in analysis._capturedCells[module].Analyze(predictions))
-                        nextUpvalues[pair.Key] = pair.Value;
-                changed |= !CapturedCellTypes.SameTypes(upvalues, nextUpvalues);
-                previousUpvalues = upvalues;
-                upvalues = nextUpvalues;
-                if (!changed) { converged = true; break; }
+
+                var binding = analysis._bindings[i];
+                var generic = analysis._moduleCodes[binding.Module].GetGeneric(function.Id);
+                predictions[i] = generic;
+                if (!analysis._requiresPrediction[i])
+                {
+                    analysis._returns[i] = analysis.CreateSummary(binding, generic, hostExports);
+                }
+                else
+                {
+                    analysis.Enqueue(i, queue, queued);
+                }
             }
+
+            var converged = analysis.DrainWorklist(
+                hostExports,
+                predictions,
+                upvalues,
+                queue,
+                queued,
+                iterations);
+
+            while (converged)
+            {
+                foreach (var module in modules)
+                {
+                    analysis._capturedCells[module].Update(
+                        predictions,
+                        upvalues,
+                        onChanged: functionId => analysis.Enqueue(functionId.Value, queue, queued));
+                }
+
+                if (queue.Count == 0)
+                {
+                    break;
+                }
+
+                converged = analysis.DrainWorklist(
+                    hostExports,
+                    predictions,
+                    upvalues,
+                    queue,
+                    queued,
+                    iterations);
+            }
+
             // An unstable graph has no usable prediction. The original proven
             // analysis and all of its normal dynamic fallbacks remain intact.
             if (!converged)
             {
                 return analysis;
             }
-            foreach (var function in analysis._declarations.Values)
-                analysis._predictions[function.Id.Value] = analysis.CanReuseGeneric(analysis._bindings[function.Id.Value])
-                    ? new TypedFunctionCode.PredictionFacts(predictions[function.Id.Value].ReturnType, null, null)
-                    : predictions[function.Id.Value].GetPredictionFacts();
+            for (var i = 0; i < analysis._functions.Length; i++)
+            {
+                var function = analysis._functions[i];
+                if (function == null)
+                {
+                    continue;
+                }
+
+                analysis._predictions[i] = analysis._requiresPrediction[i]
+                    ? predictions[i].GetPredictionFacts()
+                    : new TypedFunctionCode.PredictionFacts(predictions[i].ReturnType, null, null);
+            }
             foreach (var pair in analysis._initializers)
-                if (!analysis.CanReuseGeneric(pair.Value))
+                if (analysis._initializerRequiresPrediction[pair.Key])
                     analysis._initializerPredictions[pair.Key] = TypedFunctionBuilder.Analyze(pair.Value, hostExports,
                         callableReturnPrediction: target => analysis.GetReturn(pair.Value, target)).GetPredictionFacts();
             foreach (var code in analysis._moduleCodes.Values) code.ApplyPredictions(analysis);
             return analysis;
         }
 
-        private bool CanReuseGeneric(TypedFunctionBuilder.FunctionBinding binding)
+        private void BuildDependencies(IReadOnlyList<ModulePlan> modules)
         {
-            if (binding.HasUpvalueReference || binding.HasDirectFunctionReference) return false;
+            for (var i = 0; i < _functions.Length; i++)
+            {
+                var function = _functions[i];
+                if (function == null)
+                {
+                    continue;
+                }
+
+                var binding = _bindings[i];
+                var requiresPrediction = binding.HasUpvalueReference;
+                for (var callIndex = 0; callIndex < binding.Calls.Count; callIndex++)
+                {
+                    var call = binding.Calls[callIndex];
+                    var target = ResolveCallable(binding, call.Target);
+                    if (target == null || !NeedsCallablePrediction(binding, call.Target))
+                    {
+                        continue;
+                    }
+
+                    requiresPrediction = true;
+                    var dependents = _dependents[target.Id.Value] ??= new List<int>();
+                    if (dependents.Count == 0 || dependents[^1] != i)
+                    {
+                        dependents.Add(i);
+                    }
+                }
+
+                _requiresPrediction[i] = requiresPrediction;
+            }
+
+            for (var i = 0; i < modules.Count; i++)
+            {
+                var module = modules[i];
+                _initializerRequiresPrediction[module] = RequiresPrediction(_initializers[module]);
+            }
+        }
+
+        private bool RequiresPrediction(TypedFunctionBuilder.FunctionBinding binding)
+        {
+            if (binding.HasUpvalueReference)
+            {
+                return true;
+            }
+
             foreach (var call in binding.Calls)
-                if (GetReturn(binding, call.Target) != null) return false;
+            {
+                if (ResolveCallable(binding, call.Target) != null &&
+                    NeedsCallablePrediction(binding, call.Target))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool NeedsCallablePrediction(
+            TypedFunctionBuilder.FunctionBinding binding,
+            Expression target)
+        {
+            // A direct name call is already typed by TypedModuleCode's direct and
+            // universal return lattices. The separate callable graph is only
+            // needed once the target has crossed a dynamic value boundary.
+            return target is not NameExpression name ||
+                !binding.Names.TryGetValue(name, out var value) ||
+                !value.DirectFunction.IsValid;
+        }
+
+        private void Enqueue(int functionId, Queue<int> queue, bool[] queued)
+        {
+            if ((uint)functionId >= (uint)_requiresPrediction.Length ||
+                !_requiresPrediction[functionId] || queued[functionId])
+            {
+                return;
+            }
+
+            queued[functionId] = true;
+            queue.Enqueue(functionId);
+        }
+
+        private bool DrainWorklist(
+            HostExportCatalog hostExports,
+            TypedFunctionCode[] predictions,
+            Dictionary<FunctionId, FlowValueType[]> upvalues,
+            Queue<int> queue,
+            bool[] queued,
+            byte[] iterations)
+        {
+            while (queue.Count != 0)
+            {
+                var functionId = queue.Dequeue();
+                queued[functionId] = false;
+                if (++iterations[functionId] > 32)
+                {
+                    return false;
+                }
+
+                var binding = _bindings[functionId];
+                var prediction = TypedFunctionBuilder.Analyze(
+                    binding,
+                    hostExports,
+                    upvalueTypes: upvalues,
+                    callableReturnPrediction: target => GetReturn(binding, target));
+                predictions[functionId] = prediction;
+                var summary = CreateSummary(binding, prediction, hostExports);
+                if (_returns[functionId] == summary)
+                {
+                    continue;
+                }
+
+                _returns[functionId] = summary;
+                var dependents = _dependents[functionId];
+                if (dependents == null)
+                {
+                    continue;
+                }
+
+                for (var i = 0; i < dependents.Count; i++)
+                {
+                    Enqueue(dependents[i], queue, queued);
+                }
+            }
+
             return true;
         }
 
-        private bool InputsChanged(TypedFunctionBuilder.FunctionBinding binding,
-            CallableReturnPrediction[] previousReturns,
-            Dictionary<FunctionId, FlowValueType[]> previousUpvalues,
-            Dictionary<FunctionId, FlowValueType[]> upvalues)
+        private CallableReturnPrediction CreateSummary(
+            TypedFunctionBuilder.FunctionBinding binding,
+            TypedFunctionCode prediction,
+            HostExportCatalog hostExports)
         {
-            previousUpvalues.TryGetValue(binding.Function.Id, out var previousCells);
-            upvalues.TryGetValue(binding.Function.Id, out var cells);
-            if (!CapturedCellTypes.SameTypes(previousCells, cells)) return true;
-            foreach (var call in binding.Calls)
-                if (_resolvedCallables.TryGetValue(call.Target, out var target) && target != null &&
-                    previousReturns[target.Id.Value] != _returns[target.Id.Value]) return true;
-            return false;
+            // Int32/UInt32 storage refinements are erased at the ordinary datum
+            // ABI. Guessing integer arithmetic from them could change overflow
+            // behavior; preserve the runtime Number kind instead.
+            var returnType = prediction.ReturnType is FlowValueType.Int32 or FlowValueType.UInt32
+                ? FlowValueType.Number : prediction.ReturnType;
+            TypeReferenceFacts.TryGetNativeObject(hostExports, binding.Function.Declaration.ReturnType, out var native);
+            native ??= GetNativeReturn(binding, prediction);
+            TypeReferenceFacts.TryGetCustomType(binding.Module.Declaration, binding.Function.Declaration.ReturnType, out var structural);
+            return new CallableReturnPrediction(returnType, native, structural);
         }
 
         public void Apply(ModulePlan module, TypedFunctionCode[] generic,
@@ -178,12 +340,23 @@ namespace AuroraScript.Compiler.Backend.Code
 
         private CallableReturnPrediction? GetReturn(TypedFunctionBuilder.FunctionBinding binding, Expression target)
         {
-            if (!_resolvedCallables.TryGetValue(target, out var function))
-            {
-                function = Resolve(binding, target, new HashSet<AstNode>(ReferenceEqualityComparer.Instance));
-                _resolvedCallables[target] = function;
-            }
+            var function = ResolveCallable(binding, target);
             return function != null ? _returns[function.Id.Value] : null;
+        }
+
+        private FunctionPlan ResolveCallable(
+            TypedFunctionBuilder.FunctionBinding binding,
+            Expression target)
+        {
+            if (_resolvedCallables.TryGetValue(target, out var function))
+            {
+                return function;
+            }
+
+            _resolveVisited.Clear();
+            function = Resolve(binding, target, _resolveVisited);
+            _resolvedCallables[target] = function;
+            return function;
         }
 
         private static HostNativeObjectDescriptor GetNativeReturn(

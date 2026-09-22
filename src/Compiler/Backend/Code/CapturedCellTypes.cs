@@ -3,6 +3,7 @@ using AuroraScript.Compiler.Ast.Expressions;
 using AuroraScript.Compiler.Ast.Statements;
 using AuroraScript.Compiler.Backend.Plans;
 using AuroraScript.Compiler.Backend.Traversal;
+using System;
 using System.Collections.Generic;
 
 namespace AuroraScript.Compiler.Backend.Code
@@ -100,6 +101,43 @@ namespace AuroraScript.Compiler.Backend.Code
                 result[pair.Key] = types;
             }
             return result;
+        }
+
+        internal bool Update(
+            TypedFunctionCode[] functions,
+            Dictionary<FunctionId, FlowValueType[]> result,
+            ModulePlan module = null,
+            Action<FunctionId> onChanged = null)
+        {
+            var changed = false;
+            foreach (var pair in _cells)
+            {
+                if (!result.TryGetValue(pair.Key, out var types))
+                {
+                    types = new FlowValueType[pair.Value.Length];
+                    result.Add(pair.Key, types);
+                }
+
+                var functionChanged = false;
+                for (var slot = 0; slot < types.Length; slot++)
+                {
+                    var (owner, initializer) = pair.Value[slot];
+                    var index = module == null ? owner.Value : module.GetFunctionIndex(owner);
+                    var type = initializer != null && (uint)index < (uint)functions.Length &&
+                        functions[index] is { } code
+                        ? code.GetExpressionType(initializer) : FlowValueType.Dynamic;
+                    type = IsStableCellType(type) ? type : FlowValueType.Dynamic;
+                    if (types[slot] == type) continue;
+                    types[slot] = type;
+                    functionChanged = true;
+                }
+
+                if (!functionChanged) continue;
+                changed = true;
+                onChanged?.Invoke(pair.Key);
+            }
+
+            return changed;
         }
 
         public static bool SameTypes(

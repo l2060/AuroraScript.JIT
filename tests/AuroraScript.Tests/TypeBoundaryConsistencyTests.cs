@@ -15,7 +15,7 @@ public sealed class TypeBoundaryConsistencyTests
 #if NET9_0_OR_GREATER
     [InlineData(CompilationMode.Persistence)]
 #endif
-    public async Task RepresentationDoesNotChangeNumberSemantics(CompilationMode mode)
+    public async Task StrongIntegerRepresentationFollowsIlSemantics(CompilationMode mode)
     {
         using var workspace = new TestWorkspace();
         var (_, domain) = await workspace.CompileModuleAsync("""
@@ -32,28 +32,34 @@ public sealed class TypeBoundaryConsistencyTests
             """, mode);
         using (domain)
         {
-            ScriptAssert.Equal(2147483648d, TestWorkspace.Execute(domain, "overflow"));
-            ScriptAssert.Equal(1.5, TestWorkspace.Execute(domain, "mutable"));
+            ScriptAssert.Equal(-2147483648d, TestWorkspace.Execute(domain, "overflow"));
+            ScriptAssert.Equal(1, TestWorkspace.Execute(domain, "mutable"));
             ScriptAssert.Equal(1.5, TestWorkspace.Execute(domain, "captured"));
-            Assert.True(double.IsNaN(TestWorkspace.Execute(domain, "modulo").Number));
+            Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, "modulo"));
             var values = (ScriptArray)TestWorkspace.Execute(domain, "unsigned").Reference;
             ScriptAssert.Equal(4294967296d, values.GetElement(0));
             ScriptAssert.Equal(-1, values.GetElement(1));
             ScriptAssert.Equal(-1, values.GetElement(2));
             ScriptAssert.Equal(-119, TestWorkspace.Execute(domain, "castConstant"));
             ScriptAssert.Equal(int.MaxValue, TestWorkspace.Execute(domain, "cancelled", arguments: [ScriptDatum.FromNumber(int.MaxValue)]));
-            ScriptAssert.Equal(-2147483649d, TestWorkspace.Execute(domain, "invalidated", arguments: [ScriptDatum.FromNumber(1)]));
+            ScriptAssert.Equal(int.MaxValue, TestWorkspace.Execute(domain, "invalidated", arguments: [ScriptDatum.FromNumber(1)]));
             ScriptAssert.Equal(123, TestWorkspace.Execute(domain, "cast", arguments: [ScriptDatum.FromNumber(123.9)]));
             Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, "cast",
                 arguments: [ScriptDatum.FromString("12")]));
             Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, "cast",
                 arguments: [ScriptDatum.Null]));
-            ScriptAssert.Equal(0, TestWorkspace.Execute(domain, "cast",
-                arguments: [ScriptDatum.FromNumber(double.NaN)]));
-            ScriptAssert.Equal(int.MinValue, TestWorkspace.Execute(domain, "cast",
-                arguments: [ScriptDatum.FromNumber(double.PositiveInfinity)]));
-            ScriptAssert.Equal(int.MinValue, TestWorkspace.Execute(domain, "cast",
-                arguments: [ScriptDatum.FromNumber(2147483648d)]));
+            // CLR's floating-point-to-int conversion for non-finite and
+            // out-of-range values is runtime-version dependent; both supported
+            // IL results remain valid strong casts.
+            var castNaN = TestWorkspace.Execute(domain, "cast",
+                arguments: [ScriptDatum.FromNumber(double.NaN)]);
+            Assert.True(castNaN.Number == 0d || castNaN.Number == int.MinValue);
+            var castInfinity = TestWorkspace.Execute(domain, "cast",
+                arguments: [ScriptDatum.FromNumber(double.PositiveInfinity)]);
+            Assert.True(castInfinity.Number == int.MinValue || castInfinity.Number == int.MaxValue);
+            var castOutOfRange = TestWorkspace.Execute(domain, "cast",
+                arguments: [ScriptDatum.FromNumber(2147483648d)]);
+            Assert.True(castOutOfRange.Number == int.MinValue || castOutOfRange.Number == int.MaxValue);
         }
     }
 
@@ -63,7 +69,7 @@ public sealed class TypeBoundaryConsistencyTests
 #if NET9_0_OR_GREATER
     [InlineData(CompilationMode.Persistence)]
 #endif
-    public async Task IntegerRangeProofsRespectEvaluationAndControlFlow(CompilationMode mode)
+    public async Task StrongIntegerRangesFollowIlEvaluationAndControlFlow(CompilationMode mode)
     {
         using var workspace = new TestWorkspace();
         var (_, domain) = await workspace.CompileModuleAsync("""
@@ -129,24 +135,24 @@ public sealed class TypeBoundaryConsistencyTests
         using (domain)
         {
             foreach (var method in new[] { "ordered", "loop", "caught" })
-                ScriptAssert.Equal(2147483648d, TestWorkspace.Execute(domain, method));
+                ScriptAssert.Equal(-2147483648d, TestWorkspace.Execute(domain, method));
             foreach (var method in new[] { "branch", "continued" })
             {
-                ScriptAssert.Equal(2147483648d, TestWorkspace.Execute(domain, method, arguments: [ScriptDatum.True]));
+                ScriptAssert.Equal(-2147483648d, TestWorkspace.Execute(domain, method, arguments: [ScriptDatum.True]));
                 ScriptAssert.Equal(1, TestWorkspace.Execute(domain, method, arguments: [ScriptDatum.False]));
             }
-            ScriptAssert.Equal(-2147483649d, TestWorkspace.Execute(domain, "condition", arguments: [ScriptDatum.FromNumber(1)]));
-            ScriptAssert.Equal(1, TestWorkspace.Execute(domain, "wideModulo"));
+            ScriptAssert.Equal(int.MaxValue, TestWorkspace.Execute(domain, "condition", arguments: [ScriptDatum.FromNumber(1)]));
+            ScriptAssert.Equal(-1, TestWorkspace.Execute(domain, "wideModulo"));
             var zeros = (ScriptArray)TestWorkspace.Execute(domain, "zeros").Reference;
-            for (var i = 0; i < 4; i++) Assert.Equal(long.MinValue, BitConverter.DoubleToInt64Bits(zeros.GetElement(i).Number));
+            for (var i = 0; i < 4; i++) Assert.Equal(0, BitConverter.DoubleToInt64Bits(zeros.GetElement(i).Number));
             ScriptAssert.Equal(6, TestWorkspace.Execute(domain, "runGuarded", arguments: [ScriptDatum.FromNumber(0)]));
             ScriptAssert.Equal(-1, TestWorkspace.Execute(domain, "runGuarded", arguments: [ScriptDatum.FromNumber(int.MaxValue)]));
             Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, "invalidIndex"));
             var updated = (ScriptArray)TestWorkspace.Execute(domain, "mutableViews",
                 arguments: [ScriptDatum.FromNumber(int.MaxValue)]).Reference;
-            var expected = new double[] { 2147483648d, 3, 9, 27, 9, 11, 29, 4294967296d };
+            var expected = new double[] { -2147483648d, -2147483648d, 9, 27, 9, 11, 29, 0 };
             for (var i = 0; i < expected.Length; i++) ScriptAssert.Equal(expected[i], updated.GetElement(i));
-            Assert.Equal(long.MinValue, BitConverter.DoubleToInt64Bits(updated.GetElement(8).Number));
+            Assert.Equal(0, BitConverter.DoubleToInt64Bits(updated.GetElement(8).Number));
         }
     }
 
@@ -156,7 +162,7 @@ public sealed class TypeBoundaryConsistencyTests
 #if NET9_0_OR_GREATER
     [InlineData(CompilationMode.Persistence)]
 #endif
-    public async Task InferredIntegersWidenWithoutChangingNumberSemantics(CompilationMode mode)
+    public async Task InferredIntegersFollowStrongIntegerSemantics(CompilationMode mode)
     {
         using var workspace = new TestWorkspace();
         var (_, domain) = await workspace.CompileModuleAsync("""
@@ -211,16 +217,15 @@ public sealed class TypeBoundaryConsistencyTests
             """, mode);
         using (domain)
         {
-            ScriptAssert.Equal(new object?[] { 2147483648d, int.MaxValue, 2147483650d, 1, "number" },
+            ScriptAssert.Equal(new object?[] { int.MinValue, int.MaxValue, -2147483646d, 0, "number" },
                 TestWorkspace.Execute(domain, "widened", arguments: [ScriptDatum.FromNumber(int.MaxValue)]));
             ScriptAssert.Equal(new object?[] { int.MaxValue, 2147483649d, 2147483649d, "number" },
                 TestWorkspace.Execute(domain, "steps"));
             ScriptAssert.Equal(new object?[] { 9007199254740992d, 9007199254740991d, -9007199254740992d, -9007199254740991d, 1 },
                 TestWorkspace.Execute(domain, "precision"));
-            var product = (double)int.MaxValue * int.MaxValue;
-            ScriptAssert.Equal(new object?[] { product, product + 1, "number" },
+            ScriptAssert.Equal(new object?[] { 1, 2, "number" },
                 TestWorkspace.Execute(domain, "product", arguments: [ScriptDatum.FromNumber(int.MaxValue)]));
-            Assert.Throws<AuroraRuntimeException>(() => TestWorkspace.Execute(domain, "invalidWideIndex"));
+            ScriptAssert.Equal(0, TestWorkspace.Execute(domain, "invalidWideIndex"));
             ScriptAssert.Equal(new object?[] { 7, -2147483649d, 2 }, TestWorkspace.Execute(domain, "negativeIndex"));
             ScriptAssert.Equal(2147483648d, TestWorkspace.Execute(domain, "changedIndex"));
         }

@@ -527,13 +527,15 @@ public sealed class CompilerBackendPlanTests
         Assert.Equal(FlowValueType.Int32, LocalType("n"));
         Assert.Equal(FlowValueType.Int32, LocalType("k"));
         Assert.Equal(FlowValueType.Int32, LocalType("wideK")); // Narrow the result after wide remainder.
-        // Observable negative zero and NaN require Number storage.
-        Assert.Equal(FlowValueType.Number, LocalType("signedZero"));
-        Assert.Equal(FlowValueType.Number, LocalType("invalid"));
+        // Strong integer remainder does not preserve negative zero, and a
+        // zero divisor remains an integer operation until runtime validation.
+        Assert.Equal(FlowValueType.Int32, LocalType("signedZero"));
+        Assert.Equal(FlowValueType.Int32, LocalType("invalid"));
         Assert.Equal(FlowValueType.Int32, LocalType("v"));
         Assert.Equal(FlowValueType.Int32, LocalType("m"));
-        // Potential overflow preserves Number arithmetic.
-        Assert.Equal(FlowValueType.Number, LocalType("overflow"));
+        // The standalone overflow is native int32; the later compound write
+        // widens the mutable local back to Number storage.
+        Assert.Equal(FlowValueType.Int32, LocalType("overflow"));
         Assert.Equal(FlowValueType.Number, LocalType("max"));
     }
 
@@ -577,7 +579,7 @@ public sealed class CompilerBackendPlanTests
         Assert.Equal(FlowValueType.Number, LocalType("d"));
         Assert.Equal(FlowValueType.Int64, LocalType("longValue"));
         Assert.Equal(FlowValueType.UInt32, LocalType("unsigned"));
-        Assert.Equal(FlowValueType.Int32, LocalType("real")); // Integral Number value; no explicit D storage hint.
+        Assert.Equal(FlowValueType.Number, LocalType("real")); // No integer suffix means weak Number storage.
         Assert.Equal(FlowValueType.Int32, LocalType("grouped"));
         Assert.Equal(FlowValueType.Number, LocalType("fraction"));
     }
